@@ -210,13 +210,14 @@ pub async fn plan_run(
     notify: &Notify<'_>,
 ) {
     let pool = &state.db;
+    let today = super::today();
     let planned = if stop.is_cancelled() {
         None
     } else {
         tokio::select! {
             biased;
             _ = stop.cancelled() => None,
-            planned = brief::plan(io, question) => Some(planned),
+            planned = brief::plan(io, question, &today) => Some(planned),
         }
     };
     let status = match planned {

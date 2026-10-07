@@ -10,7 +10,8 @@
 //! - `run`: the loop (search → read → extract → gap check), its budget and stop
 //! - `claims`: the extractor call, the only one that sees page text
 //! - `verify`: the quote check, by code
-//! - `report`: the writer call, citation mapping and the report's Markdown
+//! - `report`: the writer and review calls, citation mapping and the report's
+//!   Markdown
 //! - `urls`: which search results get read
 //! - `repo`: the run, source and claim tables
 //! - `service`: what the commands do (start, approve, stop, cancel, read)
@@ -18,7 +19,7 @@
 //!
 //! Safety rules the code keeps, whatever a model or a page says:
 //! - Page text reaches only the extractor, which has no tools. The planner,
-//!   gap checker and writer see claims, quotes, titles and hosts.
+//!   gap checker, writer and reviewer see claims, quotes, titles and hosts.
 //! - Only addresses from search results are fetched, never one a page or a
 //!   model names, and only public web addresses (the network layer checks
 //!   again after DNS).
@@ -116,6 +117,13 @@ pub(crate) fn clip(text: &str, max: usize) -> String {
 /// `text` on one line: runs of whitespace (newlines included) become a space.
 pub(crate) fn one_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Today's local date, `YYYY-MM-DD`: the report's date and the "today" the
+/// planner, gap checker, writer and reviewer are told. Models otherwise
+/// assume their training year is the current one.
+pub fn today() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
 /// Runs in progress (planning or running), each with the token that stops it.

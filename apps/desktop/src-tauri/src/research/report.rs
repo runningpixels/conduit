@@ -2,7 +2,11 @@
 //! done by code.
 //!
 //! The writer sees the brief and the verified claims, each labelled `C<n>`
-//! with its host — never page text — and cites by label. Code then turns
+//! with its host and the extractor's rating of that host's page — never page
+//! text — and cites by label. A review call then checks the draft's
+//! sentences against the claims they cite and returns exact-text fixes,
+//! which code applies only where they match once and cite real labels. Code
+//! then turns
 //! labels into plain `[k]` citations numbered by source in first-cited order,
 //! drops labels that name no verified claim (and any citation or footnote the
 //! writer typed itself), and renders the numbered Sources list from the
@@ -20,6 +24,7 @@ use provider_core::schema::{ResearchBrief, ResearchDepth, ResearchSourceStatus};
 use regex::Regex;
 use serde_json::{json, Value};
 
+use super::claims::{Credibility, SourceRating};
 use super::run::{ClaimRecord, SourceRecord};
 use super::{ask_json, clip, one_line, ResearchIo};
 
@@ -27,6 +32,10 @@ use super::{ask_json, clip, one_line, ResearchIo};
 pub const MAX_WRITER_CLAIMS: usize = 60;
 /// Most uncited pages listed under Sources.
 const MAX_OTHER_PAGES: usize = 50;
+/// Most fixes taken from one review.
+pub const MAX_REVIEW_FIXES: usize = 20;
+/// Most unreadable sites named after an open question.
+const MAX_UNREADABLE_HOSTS: usize = 4;
 
 const WRITER_SYSTEM: &str = "You write research reports from verified facts only. You do not \
 browse or use tools. Reply with JSON only.";
@@ -62,18 +71,31 @@ pub struct Labelled<'a> {
 }
 
 /// Label up to [`MAX_WRITER_CLAIMS`] verified claims, taking them in turn
-/// from each sub-question so none crowds out the rest.
+/// from each sub-question so none crowds out the rest. Within a
+/// sub-question, claims from more credible pages come first, so the cap
+/// drops low-credibility ones first and the writer (and the fallback) meets
+/// the credible ones first.
 pub fn label_claims<'a>(
     claims: &'a [ClaimRecord],
     sources: &'a [SourceRecord],
     sub_questions: usize,
 ) -> Vec<Labelled<'a>> {
     let by_id: HashMap<&str, &SourceRecord> = sources.iter().map(|s| (s.id.as_str(), s)).collect();
+    let credibility = |claim: &ClaimRecord| {
+        by_id
+            .get(claim.source_id.as_str())
+            .map(|s| s.rating.credibility)
+            .unwrap_or_default()
+    };
     let mut queues: Vec<Vec<&ClaimRecord>> = vec![Vec::new(); sub_questions.max(1)];
     for claim in claims.iter().filter(|c| c.verified) {
         if let Some(queue) = queues.get_mut(claim.sub_question) {
             queue.push(claim);
         }
+    }
+    for queue in &mut queues {
+        // Stable: extraction order breaks ties.
+        queue.sort_by_key(|c| credibility(c));
     }
     let mut picked: Vec<&ClaimRecord> = Vec::new();
     let mut depth = 0;
@@ -87,13 +109,18 @@ pub fn label_claims<'a>(
         }
         depth += 1;
     }
-    // Keep the extraction order (and with it, page order) for the labels.
+    // Labels follow credibility, then extraction order (and with it, page order).
     let order: HashMap<&str, usize> = claims
         .iter()
         .enumerate()
         .map(|(i, c)| (c.id.as_str(), i))
         .collect();
-    picked.sort_by_key(|c| order.get(c.id.as_str()).copied().unwrap_or(usize::MAX));
+    picked.sort_by_key(|c| {
+        (
+            credibility(c),
+            order.get(c.id.as_str()).copied().unwrap_or(usize::MAX),
+        )
+    });
     picked
         .into_iter()
         .filter_map(|claim| {
@@ -119,64 +146,354 @@ pub struct Draft {
     pub disagreements: Option<String>,
 }
 
-fn writer_prompt(brief: &ResearchBrief, claims: &[Labelled<'_>]) -> String {
-    let subs = brief
-        .sub_questions
-        .iter()
-        .enumerate()
-        .map(|(i, q)| format!("{}. {q}", i + 1))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let facts = claims
+/// `example.com · low: unreviewed archive` — a page's host and rating, the
+/// reason only for a low one (the one the writer must handle differently).
+fn rated_host(source: &SourceRecord) -> String {
+    let rating = &source.rating;
+    match (rating.credibility, rating.reason.is_empty()) {
+        (Credibility::Low, false) => format!("{} · low: {}", source.host, rating.reason),
+        (credibility, _) => format!("{} · {}", source.host, credibility.as_str()),
+    }
+}
+
+/// The claims as the writer and the reviewer see them, one per line.
+fn fact_lines(claims: &[Labelled<'_>]) -> String {
+    claims
         .iter()
         .map(|c| {
             format!(
                 "[C{}] (sub-question {}; {}) {} Quote: \"{}\"",
                 c.label,
                 c.claim.sub_question + 1,
-                c.source.host,
+                rated_host(c.source),
                 c.claim.claim,
                 clip(&one_line(&c.claim.quote), 200)
             )
         })
         .collect::<Vec<_>>()
-        .join("\n");
+        .join("\n")
+}
+
+fn numbered(sub_questions: &[String]) -> String {
+    sub_questions
+        .iter()
+        .enumerate()
+        .map(|(i, q)| format!("{}. {q}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn writer_prompt(brief: &ResearchBrief, claims: &[Labelled<'_>], today: &str) -> String {
     let scope = brief
         .scope
         .as_deref()
         .map(|s| format!("Scope: {s}\n"))
         .unwrap_or_default();
     format!(
-        "Question: {question}\n{scope}Sub-questions:\n{subs}\n\n\
-Facts, each checked against its source page:\n{facts}\n\n\
+        "Today is {today}.\nQuestion: {question}\n{scope}Sub-questions:\n{subs}\n\n\
+Facts, each checked against its page, with the page's site and credibility:\n{facts}\n\n\
 Write the report from these facts only.\n\
 summary: 5 to 8 sentences that answer the question. End every sentence with the ids of the \
 facts it rests on, like [C2] or [C1, C4].\n\
-findings: for each sub-question that has facts, a short paragraph or a few \"- \" bullets, \
-with ids after every sentence. Leave out sub-questions that have no facts; they are listed \
-separately, so never write that something was not found.\n\
-disagreements: if facts conflict, a short paragraph naming both sides with their ids; else null.\n\
-State the facts themselves; never refer to \"the page\", \"the source\" or \"the article\". \
-Never invent facts, numbers or ids. No title, headings, links or source list.",
-        question = brief.question
+findings: for each sub-question that has facts, a short paragraph or at most 6 \"- \" bullets, \
+ids after every sentence, using only facts that answer that sub-question. Merge facts that say \
+the same thing into one sentence with all their ids. Leave out sub-questions \
+with no facts (they are listed separately); never write that something was not found.\n\
+disagreements: only facts that really conflict, both sides with their ids; else null. Figures \
+that differ by date, edition or version, by definition (effective vs nominal rate), by units or \
+by scope do not conflict: say which where you report them. Drop a figure that is implausible \
+next to the others. Never repeat a finding here.\n\
+Time: anything before {today} is past; give \"as of\" a fact's date when a figure may have \
+changed since.\n\
+Low credibility: never state such a fact as established; attribute it (\"an unreviewed \
+preprint claims …\") or leave it out. The summary must not rest on low-credibility facts alone.\n\
+A figure a site computed itself is \"calculated by\" that site, not \"published\". State each \
+point once, as the fact itself (never \"the page\" or \"the source\"). Never invent facts, \
+numbers or ids. No title, headings, links or source list.",
+        question = brief.question,
+        subs = numbered(&brief.sub_questions),
+        facts = fact_lines(claims),
     )
 }
 
 /// Ask the writer. `Ok(None)` when its reply can't be read (the caller uses
-/// [`fallback_draft`]); `Err` when the call failed.
+/// [`fallback_draft`]); `Err` when the call failed. `today` is `YYYY-MM-DD`.
 pub async fn write(
     io: &dyn ResearchIo,
     brief: &ResearchBrief,
     claims: &[Labelled<'_>],
+    today: &str,
 ) -> Result<Option<Draft>, String> {
     let data = ask_json(
         io,
         WRITER_SYSTEM,
-        &writer_prompt(brief, claims),
+        &writer_prompt(brief, claims, today),
         &writer_schema(),
     )
     .await?;
     Ok(data.and_then(|d| parse_draft(&d, brief.sub_questions.len())))
+}
+
+const REVIEW_SYSTEM: &str = "You review a research report draft against the facts it cites. \
+You only correct the draft; you add no new facts. Reply with JSON only.";
+
+fn review_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "fixes": {
+                "type": "array",
+                "maxItems": MAX_REVIEW_FIXES,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "find": { "type": "string" },
+                        "replace": { "type": "string" }
+                    },
+                    "required": ["find", "replace"]
+                }
+            }
+        },
+        "required": ["fixes"]
+    })
+}
+
+fn review_prompt(
+    brief: &ResearchBrief,
+    draft: &Draft,
+    claims: &[Labelled<'_>],
+    today: &str,
+) -> String {
+    let mut text = format!("Summary:\n{}\n", draft.summary);
+    let mut indexes: Vec<&usize> = draft.findings.keys().collect();
+    indexes.sort();
+    for index in indexes {
+        let question = brief
+            .sub_questions
+            .get(*index)
+            .map(|q| one_line(q))
+            .unwrap_or_default();
+        text.push_str(&format!(
+            "\nFindings for sub-question {} ({question}):\n{}\n",
+            index + 1,
+            draft.findings[index]
+        ));
+    }
+    if let Some(d) = &draft.disagreements {
+        text.push_str(&format!("\nWhere sources disagree:\n{d}\n"));
+    }
+    format!(
+        "Today is {today}.\nQuestion: {question}\n\n\
+Facts the draft may cite, with each page's site and credibility:\n{facts}\n\n\
+<draft>\n{text}</draft>\n\n\
+Find every sentence of the draft that (a) says more than the facts it cites support (a wrong \
+number or date, a dropped qualifier, the wrong source), (b) states a fact but cites no id, \
+(c) contradicts another sentence of the draft, or (d) states a low-credibility fact as \
+established. For each, give a fix: \"find\" is the sentence copied exactly from the draft, ids \
+included; \"replace\" is the corrected sentence, citing only ids listed above, or \"\" to delete \
+it. At most {MAX_REVIEW_FIXES} fixes. If nothing needs fixing, give \"fixes\": [].",
+        question = brief.question,
+        facts = fact_lines(claims),
+    )
+}
+
+/// One exact-text correction the reviewer asked for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fix {
+    pub find: String,
+    /// Empty: delete the sentence `find` is in.
+    pub replace: String,
+}
+
+/// Ask the reviewer for fixes to `draft`. `Ok(None)` when its reply can't be
+/// read; `Err` when the call failed. Either way the caller keeps the draft.
+pub async fn review(
+    io: &dyn ResearchIo,
+    brief: &ResearchBrief,
+    draft: &Draft,
+    claims: &[Labelled<'_>],
+    today: &str,
+) -> Result<Option<Vec<Fix>>, String> {
+    let data = ask_json(
+        io,
+        REVIEW_SYSTEM,
+        &review_prompt(brief, draft, claims, today),
+        &review_schema(),
+    )
+    .await?;
+    Ok(data.and_then(|d| parse_fixes(&d)))
+}
+
+/// The reviewer's fixes; `None` when the reply has no fix list at all. A fix
+/// without a `find` or a `replace` string is left out.
+fn parse_fixes(data: &Value) -> Option<Vec<Fix>> {
+    let items = data["fixes"].as_array().or_else(|| data.as_array())?;
+    Some(
+        items
+            .iter()
+            .filter_map(|item| {
+                let find = item["find"].as_str()?.trim();
+                let replace = item["replace"].as_str()?.trim();
+                (!find.is_empty() && find != replace).then(|| Fix {
+                    find: find.to_string(),
+                    replace: replace.to_string(),
+                })
+            })
+            .take(MAX_REVIEW_FIXES)
+            .collect(),
+    )
+}
+
+/// Apply the reviewer's fixes to `draft`, in order, and return how many
+/// were applied. A fix is skipped unless its `find` occurs exactly once in
+/// the whole draft and its `replace` cites only labels in `claims`; and
+/// unless it would leave the summary or a sub-question's findings empty (a
+/// weak reviewer must not erase the report). An empty `replace` deletes the
+/// sentence `find` is in.
+pub fn apply_fixes(draft: &mut Draft, fixes: &[Fix], claims: &[Labelled<'_>]) -> usize {
+    let known: HashSet<usize> = claims.iter().map(|c| c.label).collect();
+    let mut applied = 0;
+    for fix in fixes {
+        if !labels_in(&fix.replace).iter().all(|l| known.contains(l)) {
+            tracing::info!("research: skipped a review fix that cites an unknown label");
+            continue;
+        }
+        let mut fields: Vec<&mut String> = vec![&mut draft.summary];
+        let mut findings: Vec<(usize, &mut String)> =
+            draft.findings.iter_mut().map(|(i, t)| (*i, t)).collect();
+        findings.sort_by_key(|(i, _)| *i);
+        fields.extend(findings.into_iter().map(|(_, t)| t));
+        let disagreements_at = fields.len();
+        if let Some(d) = draft.disagreements.as_mut() {
+            fields.push(d);
+        }
+        let hits: Vec<usize> = fields
+            .iter()
+            .enumerate()
+            .flat_map(|(i, f)| std::iter::repeat_n(i, f.matches(fix.find.as_str()).count()))
+            .collect();
+        let [field] = hits[..] else {
+            tracing::info!(
+                matches = hits.len(),
+                "research: skipped a review fix whose text is not in the draft exactly once"
+            );
+            continue;
+        };
+        let text = &mut *fields[field];
+        let fixed = replace_once(text, &fix.find, &fix.replace);
+        if fixed.trim().is_empty() && field != disagreements_at {
+            tracing::info!("research: skipped a review fix that would empty a section");
+            continue;
+        }
+        *text = fixed;
+        applied += 1;
+    }
+    if draft
+        .disagreements
+        .as_deref()
+        .is_some_and(|d| d.trim().is_empty())
+    {
+        draft.disagreements = None;
+    }
+    applied
+}
+
+/// The `[C<n>]` labels `text` cites.
+fn labels_in(text: &str) -> Vec<usize> {
+    label_re()
+        .find_iter(text)
+        .flat_map(|m| {
+            m.as_str()
+                .split(|c: char| !c.is_ascii_digit())
+                .filter_map(|d| d.parse::<usize>().ok())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// `text` with its one occurrence of `find` replaced; an empty `replace`
+/// deletes the whole sentence `find` is in, and tidies what is left.
+fn replace_once(text: &str, find: &str, replace: &str) -> String {
+    let Some(start) = text.find(find) else {
+        return text.to_string();
+    };
+    let end = start + find.len();
+    if !replace.is_empty() {
+        return format!("{}{replace}{}", &text[..start], &text[end..]);
+    }
+    let (start, end) = sentence_span(text, start, end);
+    tidy(&format!("{}{}", &text[..start], &text[end..]))
+}
+
+/// The byte range of the sentence (or sentences) around `start..end`: back
+/// to the previous sentence end or line start (keeping a bullet marker),
+/// forward through the next sentence end and any labels after it. A
+/// sentence that starts its line also takes the spaces after it, so the next
+/// one moves up into its place.
+fn sentence_span(text: &str, start: usize, end: usize) -> (usize, usize) {
+    let bytes = text.as_bytes();
+    let ends_sentence = |i: usize| {
+        matches!(bytes[i], b'.' | b'!' | b'?')
+            && bytes.get(i + 1).is_none_or(|b| b.is_ascii_whitespace())
+    };
+    let mut s = start;
+    while s > 0 && bytes[s - 1] != b'\n' && !ends_sentence(s - 1) {
+        s -= 1;
+    }
+    let line_start = s == 0 || bytes[s - 1] == b'\n';
+    if line_start {
+        // Keep the bullet; an emptied bullet line is tidied away.
+        let indent = text[s..].len() - text[s..].trim_start_matches([' ', '\t']).len();
+        if text[s + indent..].starts_with("- ") || text[s + indent..].starts_with("* ") {
+            s += indent + 2;
+        }
+    }
+    let mut e = end;
+    if !(e > start && ends_sentence(e - 1)) {
+        while e < bytes.len() && bytes[e] != b'\n' {
+            e += 1;
+            if ends_sentence(e - 1) {
+                break;
+            }
+        }
+    }
+    // "… fact. [C2]": the labels belong to the sentence.
+    let rest = &text[e..];
+    if let Some(m) = label_re().find(rest) {
+        if rest[..m.start()].trim_matches([' ', '\t']).is_empty() {
+            e += m.end();
+        }
+    }
+    if line_start {
+        e += text[e..].len() - text[e..].trim_start_matches([' ', '\t']).len();
+    }
+    (s, e)
+}
+
+/// Text after a deletion: no doubled spaces, no emptied bullet lines, at
+/// most one blank line in a row, trimmed.
+fn tidy(text: &str) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let indent = line.len() - line.trim_start().len();
+        let body = line[indent..]
+            .split(' ')
+            .filter(|w| !w.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if matches!(body.as_str(), "-" | "*") {
+            continue;
+        }
+        if body.is_empty() && lines.last().is_none_or(|l| l.is_empty()) {
+            continue;
+        }
+        lines.push(if body.is_empty() {
+            String::new()
+        } else {
+            format!("{}{body}", &line[..indent])
+        });
+    }
+    lines.join("\n").trim().to_string()
 }
 
 fn parse_draft(data: &Value, sub_questions: usize) -> Option<Draft> {
@@ -480,10 +797,11 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         footnotes.insert(id.clone(), k as u32);
         if let Some(source) = by_id.get(id.as_str()) {
             entries.push(format!(
-                "{k}. {} — {} — fetched {}",
+                "{k}. {} — {} — fetched {}{}",
                 source_link(source),
                 source.host,
                 date_of(&source.fetched_at),
+                low_credibility_mark(&source.rating),
             ));
         }
     }
@@ -494,10 +812,10 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         .take(MAX_OTHER_PAGES)
         .map(|s| {
             let state = match s.status {
-                ResearchSourceStatus::Read => "",
-                ResearchSourceStatus::Empty => " (no readable text)",
-                ResearchSourceStatus::Failed => " (could not be read)",
-                ResearchSourceStatus::Skipped => " (skipped)",
+                ResearchSourceStatus::Read => low_credibility_mark(&s.rating),
+                ResearchSourceStatus::Empty => " (no readable text)".to_string(),
+                ResearchSourceStatus::Failed => " (could not be read)".to_string(),
+                ResearchSourceStatus::Skipped => " (skipped)".to_string(),
             };
             format!("- {} — {}{state}", source_link(s), s.host)
         })
@@ -528,7 +846,13 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         md.push_str("## Open questions\n\n");
         for index in input.unanswered {
             if let Some(q) = brief.sub_questions.get(*index) {
-                md.push_str(&format!("- {}\n", one_line(q)));
+                let hosts = unreadable_hosts(input.sources, *index);
+                let unread = if hosts.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (pages that could not be read: {})", hosts.join(", "))
+                };
+                md.push_str(&format!("- {}{unread}\n", one_line(q)));
             }
         }
         md.push('\n');
@@ -552,6 +876,37 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         footnotes,
         used_claims: citations.used_claims().clone(),
     }
+}
+
+/// ` (low credibility: <reason>)` for a page rated low; nothing otherwise.
+fn low_credibility_mark(rating: &SourceRating) -> String {
+    match (rating.credibility, rating.reason.is_empty()) {
+        (Credibility::Low, false) => format!(" (low credibility: {})", rating.reason),
+        (Credibility::Low, true) => " (low credibility)".to_string(),
+        _ => String::new(),
+    }
+}
+
+/// Hosts of the pages chosen for `sub_question` that could not be read
+/// (failed or empty), deduplicated, at most [`MAX_UNREADABLE_HOSTS`]: an
+/// unanswered question's answer may well have been on one of them.
+fn unreadable_hosts(sources: &[SourceRecord], sub_question: usize) -> Vec<&str> {
+    let mut hosts: Vec<&str> = Vec::new();
+    for source in sources.iter().filter(|s| {
+        s.sub_question == Some(sub_question)
+            && matches!(
+                s.status,
+                ResearchSourceStatus::Failed | ResearchSourceStatus::Empty
+            )
+    }) {
+        if !source.host.is_empty() && !hosts.contains(&source.host.as_str()) {
+            hosts.push(&source.host);
+        }
+        if hosts.len() == MAX_UNREADABLE_HOSTS {
+            break;
+        }
+    }
+    hosts
 }
 
 fn source_title(source: &SourceRecord) -> String {
@@ -597,6 +952,8 @@ mod tests {
             status: ResearchSourceStatus::Read,
             text: String::new(),
             content_hash: None,
+            rating: SourceRating::default(),
+            sub_question: Some(0),
         }
     }
 
@@ -713,5 +1070,262 @@ mod tests {
         assert!(!md.contains("_Researched"), "{md}");
         assert!(!md.contains('|'), "{md}");
         assert_eq!(r.footnotes.get("s2"), Some(&1));
+    }
+
+    fn rated(id: &str, host: &str, credibility: Credibility, reason: &str) -> SourceRecord {
+        SourceRecord {
+            rating: SourceRating {
+                kind: "unknown",
+                credibility,
+                reason: reason.into(),
+            },
+            ..source(id, host)
+        }
+    }
+
+    fn one_question_brief(subs: &[&str]) -> ResearchBrief {
+        ResearchBrief {
+            question: "Why?".into(),
+            sub_questions: subs.iter().map(|s| s.to_string()).collect(),
+            scope: None,
+            prefer_domains: vec![],
+            avoid_domains: vec![],
+            depth: ResearchDepth::Quick,
+        }
+    }
+
+    #[test]
+    fn credible_claims_come_first_within_a_sub_question() {
+        let sources = vec![
+            rated(
+                "low",
+                "archive.example",
+                Credibility::Low,
+                "unreviewed archive",
+            ),
+            source("mid", "blog.example"),
+            rated("high", "agency.gov", Credibility::High, ""),
+        ];
+        let claims = vec![
+            claim("c-low", "low", 0),
+            claim("c-mid", "mid", 0),
+            claim("c-high", "high", 0),
+            claim("c-other", "low", 1),
+        ];
+        let labelled = label_claims(&claims, &sources, 2);
+        let order: Vec<_> = labelled.iter().map(|l| l.claim.id.as_str()).collect();
+        assert_eq!(order, ["c-high", "c-mid", "c-low", "c-other"]);
+
+        // The writer sees each claim's site and rating; the reason only for a low one.
+        let prompt = writer_prompt(&one_question_brief(&["A?", "B?"]), &labelled, "2026-10-06");
+        assert!(prompt.starts_with("Today is 2026-10-06.\n"), "{prompt}");
+        assert!(
+            prompt.contains("[C1] (sub-question 1; agency.gov · high) Claim c-high."),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("[C2] (sub-question 1; blog.example · medium)"),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("[C3] (sub-question 1; archive.example · low: unreviewed archive)"),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("anything before 2026-10-06 is past"),
+            "{prompt}"
+        );
+    }
+
+    #[test]
+    fn the_writer_cap_drops_low_credibility_claims_first() {
+        let sources = vec![
+            rated("low", "archive.example", Credibility::Low, ""),
+            source("ok", "news.example"),
+        ];
+        let mut claims: Vec<ClaimRecord> = (0..MAX_WRITER_CLAIMS)
+            .map(|i| claim(&format!("low{i}"), "low", 0))
+            .collect();
+        claims.push(claim("good", "ok", 0));
+        let labelled = label_claims(&claims, &sources, 1);
+        assert_eq!(labelled.len(), MAX_WRITER_CLAIMS);
+        assert_eq!(labelled[0].claim.id, "good");
+    }
+
+    #[test]
+    fn low_credibility_sources_are_marked_and_unreadable_hosts_named() {
+        let mut sources = vec![
+            rated(
+                "s1",
+                "archive.example",
+                Credibility::Low,
+                "AI-written archive",
+            ),
+            rated("s2", "forum.example", Credibility::Low, ""),
+            source("s3", "agency.gov"),
+        ];
+        for (i, host) in [
+            "blocked.org",
+            "js.example",
+            "blocked.org",
+            "a.net",
+            "b.net",
+            "c.net",
+        ]
+        .iter()
+        .enumerate()
+        {
+            sources.push(SourceRecord {
+                status: if i % 2 == 0 {
+                    ResearchSourceStatus::Failed
+                } else {
+                    ResearchSourceStatus::Empty
+                },
+                sub_question: Some(1),
+                ..source(&format!("f{i}"), host)
+            });
+        }
+        // A page that failed for an answered sub-question isn't named.
+        sources.push(SourceRecord {
+            status: ResearchSourceStatus::Failed,
+            ..source("f-other", "elsewhere.org")
+        });
+        let claims = vec![claim("c1", "s1", 0), claim("c3", "s3", 0)];
+        let labelled = label_claims(&claims, &sources, 2);
+        let draft = Draft {
+            summary: "Fact [C1]. Other [C2].".into(),
+            findings: HashMap::new(),
+            disagreements: None,
+        };
+        let r = render(&ReportInput {
+            brief: &one_question_brief(&["One?", "Two?"]),
+            date: "2026-10-06",
+            draft: &draft,
+            claims: &labelled,
+            sources: &sources,
+            unanswered: &[1],
+            note: None,
+        });
+        let md = &r.markdown;
+        // C1 is agency.gov (credible first), C2 the archive.
+        assert!(
+            md.contains(
+                "1. [Title s3](https://agency.gov/page) — agency.gov — fetched 2026-10-01\n"
+            ),
+            "{md}"
+        );
+        assert!(
+            md.contains("2. [Title s1](https://archive.example/page) — archive.example — fetched 2026-10-01 (low credibility: AI-written archive)\n"),
+            "{md}"
+        );
+        assert!(
+            md.contains(
+                "- [Title s2](https://forum.example/page) — forum.example (low credibility)"
+            ),
+            "{md}"
+        );
+        assert!(
+            md.contains("## Open questions\n\n- Two? (pages that could not be read: blocked.org, js.example, a.net, b.net)\n"),
+            "{md}"
+        );
+        assert!(!md.contains("elsewhere.org (pages"), "{md}");
+    }
+
+    fn fix(find: &str, replace: &str) -> Fix {
+        Fix {
+            find: find.into(),
+            replace: replace.into(),
+        }
+    }
+
+    #[test]
+    fn review_fixes_apply_only_when_exact_and_citing_real_labels() {
+        let sources = vec![source("s1", "a.com")];
+        let claims = vec![claim("c1", "s1", 0), claim("c2", "s1", 0)];
+        let labelled = label_claims(&claims, &sources, 2);
+        let mut draft = Draft {
+            summary: "Rates rose 5 percent [C1]. Rates are high. Costs fell [C2].".into(),
+            findings: HashMap::from([
+                (
+                    0,
+                    "- Rates rose 5 percent in 2025 [C1].\n- Costs fell [C2].".into(),
+                ),
+                (1, "Only sentence [C2].".into()),
+            ]),
+            disagreements: Some("Sources differ on rates [C1, C2].".into()),
+        };
+        let fixes = vec![
+            // Exact and unique: applied.
+            fix("Rates rose 5 percent [C1].", "Rates rose 4 percent [C1]."),
+            // An uncited sentence is deleted, with its space.
+            fix("Rates are high.", ""),
+            // In the draft twice: skipped.
+            fix("Costs fell [C2].", "Costs fell sharply [C2]."),
+            // Not in the draft: skipped.
+            fix("Rates doubled [C1].", ""),
+            // Cites a label that doesn't exist: skipped.
+            fix("Rates rose 5 percent in 2025 [C1].", "Rates rose [C7]."),
+            // Would empty a sub-question's findings: skipped.
+            fix("Only sentence [C2].", ""),
+            // The disagreements section may go entirely.
+            fix("Sources differ on rates", ""),
+            // A part of a sentence deletes the whole bullet.
+            fix("in 2025", ""),
+        ];
+        assert_eq!(apply_fixes(&mut draft, &fixes, &labelled), 4);
+        assert_eq!(draft.summary, "Rates rose 4 percent [C1]. Costs fell [C2].");
+        assert_eq!(draft.findings[&0], "- Costs fell [C2].");
+        assert_eq!(draft.findings[&1], "Only sentence [C2].");
+        assert_eq!(draft.disagreements, None);
+    }
+
+    #[test]
+    fn deleting_a_sentence_tidies_what_is_left() {
+        assert_eq!(
+            replace_once("A one [C1]. B two [C2]. C three.", "B two", ""),
+            "A one [C1]. C three."
+        );
+        assert_eq!(
+            replace_once("A one [C1]. B two.", "A one [C1].", ""),
+            "B two."
+        );
+        assert_eq!(replace_once("A one. [C1] B two.", "A one.", ""), "B two.");
+        assert_eq!(
+            replace_once(
+                "First para [C1].\n\nSecond para [C2].\n\nThird [C3].",
+                "Second para [C2].",
+                ""
+            ),
+            "First para [C1].\n\nThird [C3]."
+        );
+        assert_eq!(
+            replace_once(
+                "- Keep 1.5 percent [C1].\n- Drop me [C2]. And me.\n- Keep [C3].",
+                "Drop me",
+                ""
+            ),
+            "- Keep 1.5 percent [C1].\n- And me.\n- Keep [C3]."
+        );
+    }
+
+    #[test]
+    fn review_replies_are_read_leniently() {
+        let fixes = parse_fixes(&json!({ "fixes": [
+            { "find": " Old [C1]. ", "replace": "New [C1]." },
+            { "find": "No replace" },
+            { "find": "", "replace": "x" },
+            { "find": "Same", "replace": "Same" },
+            { "find": "Gone.", "replace": "" }
+        ]}))
+        .unwrap();
+        assert_eq!(fixes, vec![fix("Old [C1].", "New [C1]."), fix("Gone.", "")]);
+        assert_eq!(parse_fixes(&json!({ "nothing": 1 })), None);
+        let many: Vec<_> = (0..30)
+            .map(|i| json!({ "find": format!("s{i}"), "replace": "" }))
+            .collect();
+        assert_eq!(
+            parse_fixes(&json!({ "fixes": many })).unwrap().len(),
+            MAX_REVIEW_FIXES
+        );
     }
 }

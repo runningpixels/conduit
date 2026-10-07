@@ -359,7 +359,7 @@
   "chat.composer.knowledgeRef.pickerAriaLabel": "문서 참조",
   "chat.composer.placeholder": "{appName}에 메시지 보내기…",
   "chat.composer.plus.ariaLabel": "이 메시지에 추가",
-  "chat.composer.plus.attach": "이미지 첨부…",
+  "chat.composer.plus.attach": "파일 첨부…",
   "chat.composer.plus.chatSettings": "채팅 설정…",
   "chat.composer.plus.connectorPrompts": "커넥터 프롬프트…",
   "chat.composer.plus.connectorResources": "커넥터 리소스…",

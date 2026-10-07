@@ -392,7 +392,7 @@ describe('Composer "+" menu', () => {
     renderComposer();
     openPlusMenu();
     const labels = screen.getAllByRole('menuitem').map((item) => item.textContent);
-    expect(labels).toEqual(['Attach images…']);
+    expect(labels).toEqual(['Attach files…']);
     expect(screen.queryByRole('menuitemcheckbox')).toBeNull();
   });
 
@@ -414,7 +414,7 @@ describe('Composer "+" menu', () => {
       (item) => item.querySelector('span')?.textContent,
     );
     expect(labels).toEqual([
-      'Attach images…',
+      'Attach files…',
       'Web search',
       'Workspace folder…',
       'Documents…',
@@ -429,7 +429,7 @@ describe('Composer "+" menu', () => {
     const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
     renderComposer();
     openPlusMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Attach images…' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Attach files…' }));
     expect(click).toHaveBeenCalledTimes(1);
     click.mockRestore();
   });
@@ -437,7 +437,7 @@ describe('Composer "+" menu', () => {
   it('disables Attach when there is no conversation yet', () => {
     renderComposer({ conversationId: null });
     openPlusMenu();
-    expect(screen.getByRole('menuitem', { name: 'Attach images…' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Attach files…' })).toBeDisabled();
   });
 
   it('disables the + button while a reply streams', () => {
@@ -966,7 +966,7 @@ describe('Composer Research item', () => {
     const labels = Array.from(menu.querySelectorAll('[role^="menuitem"]')).map(
       (item) => item.querySelector('span')?.textContent,
     );
-    expect(labels).toEqual(['Attach images…', 'Web search', 'Research']);
+    expect(labels).toEqual(['Attach files…', 'Web search', 'Research']);
     const item = screen.getByRole('menuitemcheckbox', { name: /Research/ });
     expect(item).toHaveAttribute('aria-checked', 'false');
     expect(item).toBeEnabled();

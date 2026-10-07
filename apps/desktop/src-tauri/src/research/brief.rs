@@ -7,8 +7,11 @@ use serde_json::{json, Value};
 
 use super::{ask_json, clip, one_line, urls, ResearchIo};
 
-/// Most sub-questions a brief may have.
+/// Most sub-questions a brief may have (the user may add one to a plan).
 pub const MAX_SUB_QUESTIONS: usize = 6;
+/// Most sub-questions the planner is asked for: more only splits one
+/// question into slices that search for the same pages.
+const MAX_PLANNED_SUB_QUESTIONS: usize = 5;
 /// Longest question, sub-question and scope kept.
 pub const MAX_QUESTION_CHARS: usize = 2_000;
 pub const MAX_SUB_QUESTION_CHARS: usize = 300;
@@ -23,7 +26,7 @@ fn planner_schema() -> Value {
         "type": "object",
         "properties": {
             "subQuestions": {
-                "type": "array", "minItems": 1, "maxItems": MAX_SUB_QUESTIONS,
+                "type": "array", "minItems": 1, "maxItems": MAX_PLANNED_SUB_QUESTIONS,
                 "items": { "type": "string" }
             },
             "scope": { "type": ["string", "null"] },
@@ -35,12 +38,14 @@ fn planner_schema() -> Value {
     })
 }
 
-fn planner_prompt(question: &str) -> String {
+fn planner_prompt(question: &str, today: &str) -> String {
     format!(
-        "Plan research for this question:\n<question>\n{question}\n</question>\n\n\
-Write 2 to {MAX_SUB_QUESTIONS} short sub-questions that together answer it. Each one must be \
-answerable from web pages and work as a web search on its own.\n\
-scope: limits the question states or clearly implies (a place, a time span), else null.\n\
+        "Today is {today}.\n\nPlan research for this question:\n<question>\n{question}\n</question>\n\n\
+Write 2 to {MAX_PLANNED_SUB_QUESTIONS} short sub-questions that together answer it. Each one must \
+be answerable from web pages and work as a web search on its own. Each must ask something \
+different: never a slice, part or restatement of another.\n\
+scope: limits the question states or clearly implies (a place, a time span), else null. Judge \
+time from today's date: \"current\" or \"latest\" means as of {today}, never an earlier year.\n\
 preferDomains / avoidDomains: web sites the question asks to use or avoid (like \"who.int\"), \
 else empty lists.\n\
 depth: \"quick\" for a simple fact, \"standard\" for most questions, \"deep\" for a broad survey."
@@ -49,12 +54,16 @@ depth: \"quick\" for a simple fact, \"standard\" for most questions, \"deep\" fo
 
 /// Draft a brief for `question`. A reply that can't be read still gives a
 /// brief (the question as its one sub-question) for the user to edit; `Err`
-/// only when the model call itself failed.
-pub async fn plan(io: &dyn ResearchIo, question: &str) -> Result<ResearchBrief, String> {
+/// only when the model call itself failed. `today` is `YYYY-MM-DD`.
+pub async fn plan(
+    io: &dyn ResearchIo,
+    question: &str,
+    today: &str,
+) -> Result<ResearchBrief, String> {
     let data = ask_json(
         io,
         PLANNER_SYSTEM,
-        &planner_prompt(question),
+        &planner_prompt(question, today),
         &planner_schema(),
     )
     .await?;
@@ -179,6 +188,15 @@ mod tests {
         assert_eq!(ok.prefer_domains, vec!["who.int"]);
         assert!(checked(&brief(&["", " "])).is_err());
         assert!(checked(&brief(&["1", "2", "3", "4", "5", "6", "7"])).is_err());
+    }
+
+    #[test]
+    fn the_planner_is_told_today_and_asked_for_distinct_sub_questions() {
+        let prompt = planner_prompt("What changed?", "2026-10-06");
+        assert!(prompt.starts_with("Today is 2026-10-06."), "{prompt}");
+        assert!(prompt.contains("2 to 5 short sub-questions"), "{prompt}");
+        assert!(prompt.contains("never a slice"), "{prompt}");
+        assert!(prompt.contains("as of 2026-10-06"), "{prompt}");
     }
 
     #[test]

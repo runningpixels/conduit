@@ -79,10 +79,17 @@ impl Harness {
         out.output["error"].as_str().unwrap().to_string()
     }
 
+    /// Add a custom slide (the model writes its html).
     async fn add(&self, html: &str) -> String {
         let out = self
-            .ok(ADD_SLIDE_TOOL, json!({ "layout": "content", "html": html }))
+            .ok(ADD_SLIDE_TOOL, json!({ "layout": "custom", "html": html }))
             .await;
+        out["slide_id"].as_str().unwrap().to_string()
+    }
+
+    /// Add a slide built from fields.
+    async fn add_typed(&self, args: Value) -> String {
+        let out = self.ok(ADD_SLIDE_TOOL, args).await;
         out["slide_id"].as_str().unwrap().to_string()
     }
 }
@@ -137,7 +144,8 @@ async fn storyline_then_slides_then_outline() {
             ADD_SLIDE_TOOL,
             json!({
                 "layout": "title",
-                "html": "<h1 data-text=\"title\">Q3 &amp; beyond</h1><p data-text=\"sub\">Where we are</p>",
+                "headline": "Q3 & beyond",
+                "sub": "Where we are",
                 "notes": "Say hello",
             }),
         )
@@ -147,7 +155,7 @@ async fn storyline_then_slides_then_outline() {
     let second = h
         .ok(
             ADD_SLIDE_TOOL,
-            json!({ "layout": "content", "html": "<p>Revenue is up</p>", "after_slide_id": first["slide_id"] }),
+            json!({ "layout": "custom", "html": "<p>Revenue is up</p>", "after_slide_id": first["slide_id"] }),
         )
         .await;
     assert_eq!(second["position"], 1);
@@ -178,10 +186,19 @@ async fn storyline_then_slides_then_outline() {
         .ok(READ_DECK_TOOL, json!({ "slide_id": first["slide_id"] }))
         .await;
     assert_eq!(one["notes"], "Say hello");
-    assert!(one["html"]
-        .as_str()
-        .unwrap()
-        .contains("data-text=\"title\""));
+    assert_eq!(
+        one["fields"],
+        json!({ "headline": "Q3 &amp; beyond", "sub": "Where we are" })
+    );
+    assert!(
+        one.get("html").is_none(),
+        "a slide built from fields is read as fields"
+    );
+    let custom = h
+        .ok(READ_DECK_TOOL, json!({ "slide_id": second["slide_id"] }))
+        .await;
+    assert_eq!(custom["fields"], Value::Null);
+    assert_eq!(custom["html"], "<p>Revenue is up</p>");
     assert!(h
         .err(READ_DECK_TOOL, json!({ "slide_id": "nope" }))
         .await
@@ -248,7 +265,7 @@ async fn scripts_are_rejected_with_a_hint() {
     let err = h
         .err(
             ADD_SLIDE_TOOL,
-            json!({ "layout": "content", "html": "<p>x</p><SCRIPT>1</SCRIPT>" }),
+            json!({ "layout": "custom", "html": "<p>x</p><SCRIPT>1</SCRIPT>" }),
         )
         .await;
     assert_eq!(
@@ -283,7 +300,7 @@ async fn update_move_delete_and_theme() {
 
     h.ok(
         UPDATE_SLIDE_TOOL,
-        json!({ "slide_id": a, "html": "<p>A</p>", "layout": "title", "notes": "n" }),
+        json!({ "slide_id": a, "headline": "A", "layout": "title", "notes": "n" }),
     )
     .await;
     let moved = h
@@ -310,7 +327,10 @@ async fn update_move_delete_and_theme() {
     assert_eq!(deck.theme_name, "Custom");
     assert_eq!(deck.theme_css, ".slide{background:#000}");
     assert_eq!(deck.slides.len(), 2);
-    assert_eq!(deck.slides[0].html, "<p>A</p>");
+    assert_eq!(
+        deck.slides[0].html,
+        r#"<h1 class="headline" data-text="headline">A</h1>"#
+    );
     assert_eq!(deck.slides[0].layout, "title");
     assert_eq!(deck.slides[0].notes, "n");
     assert_eq!(deck.slides[1].id, c);
@@ -559,4 +579,324 @@ async fn replace_in_deck_reports_pinned_changes() {
         .err(REPLACE_IN_DECK_TOOL, json!({ "find": "", "replace": "x" }))
         .await
         .contains("find"));
+}
+
+// ---------------------------------------------------------------------------
+// Typed slides
+// ---------------------------------------------------------------------------
+
+async fn slide_of(h: &Harness, slide_id: &str) -> provider_core::schema::DeckSlide {
+    slides::get_slide(&h.pool, &h.enc, &h.deck_id, slide_id)
+        .await
+        .unwrap()
+        .unwrap()
+}
+
+fn bar_chart() -> Value {
+    json!({
+        "type": "bar",
+        "categories": ["Q1", "Q2", "Q3"],
+        "series": [{ "name": "Revenue", "values": [3.0, 5.0, 8.0] }],
+        "unit_prefix": "$",
+        "unit_suffix": "M",
+        "highlight": [2]
+    })
+}
+
+#[tokio::test]
+async fn add_slide_builds_typed_layouts() {
+    let h = Harness::bound().await;
+    let cases = [
+        json!({ "layout": "title", "kicker": "Q3", "headline": "We grew", "sub": "And kept margins" }),
+        json!({ "layout": "statement", "headline": "Ship less, better" }),
+        json!({ "layout": "bullets", "headline": "Why now", "bullets": ["One", "Two", "Three"] }),
+        json!({ "layout": "stat-row", "stats": [{ "value": "42%", "label": "faster builds" }, { "value": "3x", "label": "more teams" }] }),
+        json!({ "layout": "two-col", "headline": "Before and after", "columns": [{ "kicker": "Before", "body": "Slow" }, { "kicker": "After", "bullets": ["Fast", "Cheap"] }] }),
+        json!({ "layout": "quote", "quote": "Make it simple", "cite": "A. Person" }),
+        json!({ "layout": "section", "kicker": "Part 2", "headline": "The plan" }),
+        json!({ "layout": "image-left", "headline": "Reach", "body": "Two regions", "chart": bar_chart() }),
+        json!({ "layout": "chart", "headline": "Revenue tripled", "chart": bar_chart(), "footnote": "FY25" }),
+    ];
+    for args in cases {
+        let layout = args["layout"].as_str().unwrap().to_string();
+        let id = h.add_typed(args.clone()).await;
+        let slide = slide_of(&h, &id).await;
+        assert_eq!(slide.layout, layout);
+        let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": id })).await;
+        let mut expected = args.clone();
+        expected.as_object_mut().unwrap().remove("layout");
+        assert_eq!(one["fields"], expected, "{layout} reads back as its fields");
+    }
+    // Every text slot carries the builder's names.
+    let deck = slides::get(&h.pool, &h.enc, &h.deck_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let names: Vec<&str> = deck.slides[3]
+        .slots
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "stat-1-value",
+            "stat-1-label",
+            "stat-2-value",
+            "stat-2-label"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn add_slide_reports_every_budget_problem_at_once() {
+    let h = Harness::bound().await;
+    let err = h
+        .err(
+            ADD_SLIDE_TOOL,
+            json!({
+                "layout": "stat-row",
+                "headline": "Memory",
+                "stats": [{ "value": "16 B/param", "label": "weights" }, { "value": "2", "label": "x" }],
+                "bullets": ["a", "b", "c", "d", "e", "f", "g"],
+            }),
+        )
+        .await;
+    assert_eq!(
+        err,
+        "stat-row does not use bullets — leave it out. stats[0].value \"16 B/param\" is 10 characters; at most 6 — put the unit or context in the label."
+    );
+    let err = h
+        .err(
+            ADD_SLIDE_TOOL,
+            json!({ "layout": "bullets", "headline": "Too many", "bullets": ["a", "b", "c", "d", "e", "f", "g"] }),
+        )
+        .await;
+    assert_eq!(err, "bullets has 7 items; at most 5 — split the slide.");
+    let err = h
+        .err(
+            ADD_SLIDE_TOOL,
+            json!({ "layout": "stat-row", "html": "<div class=\"stat\">x</div>" }),
+        )
+        .await;
+    assert_eq!(
+        err,
+        "html is only for layout custom; for stat-row pass headline and stats."
+    );
+    let err = h
+        .err(
+            ADD_SLIDE_TOOL,
+            json!({ "layout": "agenda", "headline": "x" }),
+        )
+        .await;
+    assert!(
+        err.starts_with("layout \"agenda\" is not a layout"),
+        "{err}"
+    );
+    let deck = slides::get(&h.pool, &h.enc, &h.deck_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(deck.slides.is_empty(), "nothing is stored");
+}
+
+#[tokio::test]
+async fn update_slide_merges_fields() {
+    let h = Harness::bound().await;
+    let id = h
+        .add_typed(json!({ "layout": "title", "kicker": "Q3", "headline": "We grew", "sub": "Margins held" }))
+        .await;
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": id, "headline": "We grew 40%", "kicker": null }),
+    )
+    .await;
+    let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": id })).await;
+    assert_eq!(
+        one["fields"],
+        json!({ "headline": "We grew 40%", "sub": "Margins held" })
+    );
+
+    // A layout change carries fields by name and needs the new layout's own.
+    let err = h
+        .err(
+            UPDATE_SLIDE_TOOL,
+            json!({ "slide_id": id, "layout": "bullets" }),
+        )
+        .await;
+    assert_eq!(err, "bullets is required for layout bullets.");
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": id, "layout": "bullets", "bullets": ["Revenue", "Margin"] }),
+    )
+    .await;
+    let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": id })).await;
+    assert_eq!(one["layout"], "bullets");
+    assert_eq!(
+        one["fields"],
+        json!({ "headline": "We grew 40%", "bullets": ["Revenue", "Margin"] })
+    );
+
+    // A wording edit through update_slots keeps the slide readable as fields.
+    h.ok(
+        UPDATE_SLOTS_TOOL,
+        json!({ "edits": [{ "slide_id": id, "slot": "bullet-2", "html": "Gross <em>margin</em>" }] }),
+    )
+    .await;
+    let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": id })).await;
+    assert_eq!(
+        one["fields"]["bullets"],
+        json!(["Revenue", "Gross <em>margin</em>"])
+    );
+
+    // notes alone touch nothing else.
+    let before = slide_of(&h, &id).await.html;
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": id, "notes": "Pause here" }),
+    )
+    .await;
+    let after = slide_of(&h, &id).await;
+    assert_eq!((after.html, after.notes.as_str()), (before, "Pause here"));
+
+    // A chart is edited through its spec.
+    let chart = h
+        .add_typed(json!({ "layout": "chart", "headline": "Revenue", "chart": bar_chart() }))
+        .await;
+    let mut spec = bar_chart();
+    spec["series"][0]["values"] = json!([3, 5, 13]);
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": chart, "chart": spec }),
+    )
+    .await;
+    let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": chart })).await;
+    assert_eq!(
+        one["fields"]["chart"]["series"][0]["values"],
+        json!([3.0, 5.0, 13.0])
+    );
+    assert_eq!(one["fields"]["headline"], "Revenue");
+}
+
+#[tokio::test]
+async fn update_slide_keeps_pinned_slots_by_name() {
+    let h = Harness::bound().await;
+    let id = h
+        .add_typed(json!({ "layout": "bullets", "headline": "Mine", "bullets": ["a", "b"] }))
+        .await;
+    slides::set_slot_pinned(&h.pool, &h.enc, &h.deck_id, &id, 0, "headline", true)
+        .await
+        .unwrap();
+
+    let out = h
+        .ok(
+            UPDATE_SLIDE_TOOL,
+            json!({ "slide_id": id, "headline": "Theirs", "bullets": ["c", "d", "e"] }),
+        )
+        .await;
+    assert_eq!(out["kept_pinned"], json!(["headline"]));
+    let html = slide_of(&h, &id).await.html;
+    assert!(
+        html.contains(r#"<h2 class="headline" data-text="headline" data-owner="user">Mine</h2>"#),
+        "{html}"
+    );
+    assert!(html.contains(">e</li>"));
+
+    // A layout without that slot: release it or keep the layout.
+    let err = h
+        .err(
+            UPDATE_SLIDE_TOOL,
+            json!({ "slide_id": id, "layout": "quote", "quote": "Q" }),
+        )
+        .await;
+    assert!(
+        err.starts_with("Slot \"headline\" is pinned")
+            && err.contains("release_pinned: [\"headline\"]"),
+        "{err}"
+    );
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": id, "headline": "Theirs", "release_pinned": ["headline"] }),
+    )
+    .await;
+    let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": id })).await;
+    assert_eq!(one["fields"]["headline"], "Theirs");
+    assert_eq!(one["slots"][0]["pinned"], false);
+}
+
+#[tokio::test]
+async fn legacy_slides_need_every_field() {
+    let h = Harness::bound().await;
+    // An older slide: hand-written html under a typed layout name.
+    let (legacy, _) = slides::add_slide(
+        &h.pool,
+        &h.enc,
+        &h.deck_id,
+        "bullets",
+        r#"<h2 class="headline" data-text="title">Old</h2><ul><li data-text="b">x</li></ul>"#,
+        "",
+        None,
+    )
+    .await
+    .unwrap();
+    let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": legacy.id })).await;
+    assert_eq!(one["fields"], Value::Null);
+    assert!(one["html"].as_str().unwrap().contains("Old"));
+
+    let err = h
+        .err(
+            UPDATE_SLIDE_TOOL,
+            json!({ "slide_id": legacy.id, "headline": "New" }),
+        )
+        .await;
+    assert_eq!(
+        err,
+        "This slide was not built from fields, so pass every field for layout bullets. bullets is required for layout bullets."
+    );
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": legacy.id, "headline": "New", "bullets": ["a", "b"] }),
+    )
+    .await;
+    let one = h.ok(READ_DECK_TOOL, json!({ "slide_id": legacy.id })).await;
+    assert_eq!(
+        one["fields"],
+        json!({ "headline": "New", "bullets": ["a", "b"] })
+    );
+
+    // A layout name outside the typed set.
+    let (odd, _) = slides::add_slide(&h.pool, &h.enc, &h.deck_id, "agenda", "<p>x</p>", "", None)
+        .await
+        .unwrap();
+    let err = h
+        .err(
+            UPDATE_SLIDE_TOOL,
+            json!({ "slide_id": odd.id, "headline": "New" }),
+        )
+        .await;
+    assert!(
+        err.starts_with("This slide's layout \"agenda\" is not one of the layouts"),
+        "{err}"
+    );
+    // html on a typed layout is refused; with layout custom it is the slide.
+    let err = h
+        .err(
+            UPDATE_SLIDE_TOOL,
+            json!({ "slide_id": odd.id, "layout": "statement", "html": "<p>y</p>" }),
+        )
+        .await;
+    assert!(
+        err.contains("html is only for layout custom; for statement pass headline."),
+        "{err}"
+    );
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": odd.id, "layout": "custom", "html": "<p data-text=\"y\">y</p>" }),
+    )
+    .await;
+    let slide = slide_of(&h, &odd.id).await;
+    assert_eq!(
+        (slide.layout.as_str(), slide.html.as_str()),
+        ("custom", "<p data-text=\"y\">y</p>")
+    );
 }

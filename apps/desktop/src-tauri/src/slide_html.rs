@@ -18,7 +18,7 @@ const OWNER_ATTR: &str = "data-owner";
 const OWNER_USER: &str = "user";
 const SLOT_ATTR: &str = "data-text";
 
-fn is_void(name: &str) -> bool {
+pub(crate) fn is_void(name: &str) -> bool {
     VOID_ELEMENTS.contains(&name)
 }
 
@@ -31,18 +31,18 @@ fn is_inline_tag(name: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum TokKind {
+pub(crate) enum TokKind {
     Open { name: String, self_closing: bool },
     Close { name: String },
     Comment,
 }
 
 #[derive(Debug, Clone)]
-struct Tok {
-    range: Range<usize>,
-    kind: TokKind,
+pub(crate) struct Tok {
+    pub(crate) range: Range<usize>,
+    pub(crate) kind: TokKind,
     /// The text after this tag is raw (a `<style>` body) and is not content.
-    raw_after: bool,
+    pub(crate) raw_after: bool,
 }
 
 /// The end (exclusive) of the tag that starts at `from` (a `<`), honouring
@@ -92,7 +92,7 @@ fn find_ci(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
         .find(|&i| haystack[i..i + needle.len()].eq_ignore_ascii_case(needle))
 }
 
-fn scan(html: &str) -> Vec<Tok> {
+pub(crate) fn scan(html: &str) -> Vec<Tok> {
     let bytes = html.as_bytes();
     let mut toks = Vec::new();
     let mut i = 0;
@@ -177,15 +177,15 @@ fn text_ranges(html: &str, toks: &[Tok]) -> Vec<Range<usize>> {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-struct Attr {
-    name: String,
-    value: Option<String>,
+pub(crate) struct Attr {
+    pub(crate) name: String,
+    pub(crate) value: Option<String>,
     /// The whole attribute (name through closing quote) within the tag text.
-    range: Range<usize>,
+    pub(crate) range: Range<usize>,
 }
 
 /// The attributes of a start tag's text (`<name ...>`).
-fn parse_attrs(tag: &str) -> Vec<Attr> {
+pub(crate) fn parse_attrs(tag: &str) -> Vec<Attr> {
     let bytes = tag.as_bytes();
     let mut i = 1;
     while i < bytes.len() && !bytes[i].is_ascii_whitespace() && bytes[i] != b'>' && bytes[i] != b'/'
@@ -253,7 +253,7 @@ fn parse_attrs(tag: &str) -> Vec<Attr> {
     attrs
 }
 
-fn unescape_attr(value: &str) -> String {
+pub(crate) fn unescape_attr(value: &str) -> String {
     value
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
@@ -381,7 +381,7 @@ fn find_slot(html: &str, index: usize, name: &str) -> Result<ParsedSlot, String>
 
 /// Add `data-owner="user"` to the start tag at `range` (replacing another owner
 /// value if there is one).
-fn pin_tag(html: &mut String, range: Range<usize>) {
+pub(crate) fn pin_tag(html: &mut String, range: Range<usize>) {
     let tag = html[range.clone()].to_string();
     let attrs = parse_attrs(&tag);
     let marker = format!("{OWNER_ATTR}=\"{OWNER_USER}\"");
@@ -409,7 +409,7 @@ fn pin_tag(html: &mut String, range: Range<usize>) {
     html.insert_str(at, &insert);
 }
 
-fn unpin_tag(html: &mut String, range: Range<usize>) {
+pub(crate) fn unpin_tag(html: &mut String, range: Range<usize>) {
     let tag = html[range.clone()].to_string();
     let attrs = parse_attrs(&tag);
     let Some(attr) = attrs.iter().find(|a| a.name == OWNER_ATTR) else {

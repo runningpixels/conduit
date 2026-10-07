@@ -10,6 +10,7 @@ import { assembleArtifactDoc, type ArtifactColorScheme } from '../artifacts/Html
 import { useArtifactFrameSource } from '../artifacts/artifactFrameSource';
 import type { DeckDetail } from '../ipc/contracts';
 import { DECK_FRAME_HTML, cleanInlineHtml, deckMessage, parseDeckEvent } from './deckDocument';
+import type { SlideLayout } from './layoutReport';
 
 export interface DeckFrameProps {
   deck: DeckDetail;
@@ -25,7 +26,8 @@ export interface DeckFrameProps {
   /** `html` has already been through `cleanInlineHtml`. */
   onSlotEdit?: (slideId: string, index: number, name: string, html: string) => void;
   onKey?: (key: string) => void;
-  onOverflow?: (slides: Array<{ id: string; px: number }>) => void;
+  /** Stage only: the layout report, one entry per slide, whenever it changes. */
+  onLayout?: (slides: SlideLayout[]) => void;
 }
 
 export function DeckFrame({
@@ -39,13 +41,13 @@ export function DeckFrame({
   onSlotSelect,
   onSlotEdit,
   onKey,
-  onOverflow,
+  onLayout,
 }: DeckFrameProps) {
   const t = useT();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [readyCount, setReadyCount] = useState(0);
-  const handlers = useRef({ onSelect, onSlotSelect, onSlotEdit, onKey, onOverflow });
-  handlers.current = { onSelect, onSlotSelect, onSlotEdit, onKey, onOverflow };
+  const handlers = useRef({ onSelect, onSlotSelect, onSlotEdit, onKey, onLayout });
+  handlers.current = { onSelect, onSlotSelect, onSlotEdit, onKey, onLayout };
 
   const doc = useMemo(() => assembleArtifactDoc(DECK_FRAME_HTML, [], false, colorScheme), [colorScheme]);
   const source = useArtifactFrameSource(doc);
@@ -93,8 +95,8 @@ export function DeckFrame({
         case 'key':
           h.onKey?.(parsed.key);
           break;
-        case 'overflow':
-          h.onOverflow?.(parsed.slides);
+        case 'layout':
+          h.onLayout?.(parsed.slides);
           break;
       }
     };

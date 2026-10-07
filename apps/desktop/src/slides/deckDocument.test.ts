@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DECK_FRAME_HTML, cleanInlineHtml, deckMessage, parseDeckEvent } from './deckDocument';
 import { DECK_FIT_SCRIPT } from './deckFit';
+import { DECK_LAYOUT_SCRIPT } from './deckLayoutCheck';
+import { slideSignature } from './layoutReport';
 import { STARTER_THEMES, THEME_CONTRACT } from './themes';
 
 const deck = {
@@ -56,7 +58,9 @@ describe('deckMessage', () => {
     expect(msg.slides[0].html).not.toContain('<script');
     expect(msg.slides[0].html).not.toContain('onclick');
     expect(msg.slides[0].html).toContain('Hi');
-    expect(Object.keys(msg.slides[0]).sort()).toEqual(['html', 'id', 'layout']);
+    expect(Object.keys(msg.slides[0]).sort()).toEqual(['html', 'id', 'layout', 'sig']);
+    // Signed from the slide as stored, so the app can match a report to its deck.
+    expect(msg.slides[0].sig).toBe(slideSignature('title', deck.slides[0].html));
   });
 });
 
@@ -76,6 +80,9 @@ describe('DECK_FRAME_HTML', () => {
     expect(script).toContain(DECK_FIT_SCRIPT);
     expect(script).toContain('conduitFit.fitSlide');
     expect(script).toContain('conduitFit.overflow');
+    expect(script).toContain(DECK_LAYOUT_SCRIPT);
+    expect(script).toContain('conduitLayout.check(el)');
+    expect(script).toContain("post({ event: 'layout', slides: list });");
     // A committed slot is read through cleanSlotHtml, never raw innerHTML.
     expect(script).toContain('var html = conduitFit.cleanSlotHtml(e.el);');
     expect(script).not.toMatch(/html: e\.el\.innerHTML|var html = e\.el\.innerHTML/);
@@ -101,7 +108,7 @@ describe('parseDeckEvent', () => {
     expect(parseDeckEvent('x')).toBeNull();
   });
 
-  it('accepts the editing, key and overflow events', () => {
+  it('accepts the editing, key and layout events', () => {
     const e = (o: object) => parseDeckEvent({ type: 'conduit-deck-event', ...o });
     expect(e({ event: 'slot-select', slideId: 'a', index: 1, name: 'stat-2' })).toEqual({
       event: 'slot-select',
@@ -119,11 +126,13 @@ describe('parseDeckEvent', () => {
     expect(e({ event: 'slot-edit', slideId: 'a', index: 0, name: 'h' })).toBeNull();
     expect(e({ event: 'slot-select', slideId: 'a', index: -1, name: 'h' })).toBeNull();
     expect(e({ event: 'key', key: 'Home' })).toEqual({ event: 'key', key: 'Home' });
-    expect(e({ event: 'overflow', slides: [{ id: 'a', px: 140.4 }] })).toEqual({
-      event: 'overflow',
-      slides: [{ id: 'a', px: 140 }],
+    const slide = { id: 'a', sig: 'x.1', px: 140.4, dense: true, minFont: 30, issues: [] };
+    expect(e({ event: 'layout', slides: [slide] })).toEqual({
+      event: 'layout',
+      slides: [{ id: 'a', sig: 'x.1', px: 140, dense: true, minFont: 30, issues: [] }],
     });
-    expect(e({ event: 'overflow', slides: [{ id: 'a' }] })).toBeNull();
+    expect(e({ event: 'layout', slides: [{ id: 'a', px: 140 }] })).toBeNull();
+    expect(e({ event: 'overflow', slides: [{ id: 'a', px: 140 }] })).toBeNull();
   });
 });
 
@@ -182,8 +191,9 @@ describe('starter themes', () => {
       expect(theme.css).toContain('.slide > svg, .slide > figure > svg { width: 100%; height: auto; max-height: 600px;');
     }
     expect(THEME_CONTRACT).toContain(
-      '- chart: .headline, one <svg> chart or diagram drawn full width (1680 x up to 640), optional .footnote.',
+      '- chart: headline (≤ 12 words) and exactly one of chart or svg, drawn full width (1680 x up to 640); optional kicker, footnote.',
     );
+    expect(THEME_CONTRACT).toContain('drawn in an 820 x 600 box on the left');
   });
 
   it('keeps stat labels off spans inside the value, and the value inside its column', () => {

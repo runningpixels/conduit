@@ -285,8 +285,10 @@ interface ChatViewProps {
   onDeckChanged?: () => void;
   /// The deck tool the model is calling now, or null when it has finished.
   onDeckToolActivity?: (toolName: string | null) => void;
-  /// Slides whose text runs off the canvas (slide id → px), told to the model.
-  deckOverflow?: Record<string, number>;
+  /// Layout problems the deck frame measured (slide id → sentences), told to the model.
+  deckLayoutNotes?: Record<string, string>;
+  /// A note shown at the end of the thread, not sent (the layout check's leftovers).
+  threadNote?: string | null;
   /// The model turned this ordinary chat into a deck (start_deck succeeded).
   onDeckStarted?: () => void;
   /// The Writing draft this chat is bound to. Its turns get the draft tools
@@ -394,8 +396,8 @@ export interface ChatRequestOverrides {
   extraSystemSections?: string | null;
   /** The chat's Slides deck: deck prompts replace the document ones. */
   deck?: DeckDetail | null;
-  /** Per slide id, how far its text runs off the slide (px); 0 or absent fits. */
-  deckOverflow?: Record<string, number>;
+  /** Per slide id, the layout problems measured on it, as sentences for the model. */
+  deckLayoutNotes?: Record<string, string>;
   /** The chat's Writing draft: draft prompts replace the document ones. */
   draft?: DraftDetail | null;
   /** The sources this draft turn uses (the prompt rules for them). */
@@ -583,7 +585,7 @@ export function buildProviderRequest(
         readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
     },
   );
-  const deckDevPrompt = deck ? deckDeveloperPrompt(deck, chatOverrides?.deckOverflow) : undefined;
+  const deckDevPrompt = deck ? deckDeveloperPrompt(deck, chatOverrides?.deckLayoutNotes) : undefined;
   const draftDevPrompt = draft ? draftDeveloperPrompt(draft, chatOverrides?.draftResearch) : undefined;
   const developerPrompt =
     [
@@ -861,7 +863,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     deck = null,
     onDeckChanged,
     onDeckToolActivity,
-    deckOverflow,
+    deckLayoutNotes,
+    threadNote = null,
     onDeckStarted,
     draft = null,
     onDraftChanged,
@@ -1935,7 +1938,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         compactionSummary: activeCompaction?.summaryText ?? null,
         extraSystemSections,
         deck,
-        deckOverflow,
+        deckLayoutNotes,
         draft,
         draftSources: draftChat ? draftPromptSources() : undefined,
         draftResearch,
@@ -3468,6 +3471,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               conversationId={conversationId}
               documentWriteHeld={activeTurnDocumentWriteHeld}
             />
+          )}
+          {!threadLoading && threadNote && (
+            <article className="turn app-note" role="status">
+              <p className="app-note-text">{threadNote}</p>
+            </article>
           )}
         </div>
       </div>

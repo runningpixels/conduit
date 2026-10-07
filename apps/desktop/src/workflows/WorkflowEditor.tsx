@@ -31,12 +31,15 @@ import {
   removeStep,
   STEP_TYPES,
   updateStep,
+  withStepModel,
+  withWorkflowModel,
   valuesAt,
   type StepPath,
   type StepType,
   type ValueRef,
 } from './editorModel';
 import { agentToolText } from './permissionText';
+import { ProviderModelsProvider, WorkflowModelRow } from './WorkflowModelRow';
 
 export interface WorkflowDraft {
   name: string;
@@ -109,6 +112,7 @@ export function WorkflowEditor({
   const setInputs = (next: WorkflowInput[]) => setDefinition({ ...def, inputs: next });
 
   return (
+    <ProviderModelsProvider>
     <div className="wf-editor">
       <label className="wf-field">
         <span>{t('workspace.workflows.edit.name')}</span>
@@ -122,6 +126,17 @@ export function WorkflowEditor({
           onChange={(e) => onChange({ ...draft, description: e.target.value })}
         />
       </label>
+
+      <section className="grp" aria-label={t('workspace.workflows.model.label')}>
+        <div className="grp-label">{t('workspace.workflows.model.label')}</div>
+        <p className="wf-muted">{t('workspace.workflows.model.hint')}</p>
+        <WorkflowModelRow
+          kind="workflow"
+          idPrefix="wf-model"
+          model={def.model}
+          onChange={(model) => setDefinition(withWorkflowModel(def, model))}
+        />
+      </section>
 
       <section className="grp" aria-label={t('workspace.workflows.editor.inputs.title')}>
         <div className="grp-label">{t('workspace.workflows.editor.inputs.title')}</div>
@@ -166,6 +181,7 @@ export function WorkflowEditor({
         <StepListEditor def={def} steps={def.steps} parent={[]} setSteps={setSteps} />
       </section>
     </div>
+    </ProviderModelsProvider>
   );
 }
 
@@ -320,6 +336,12 @@ function StepCard({
             onChange={(v) => update((s) => (s.type === 'summarize' ? { ...s, input: v } : s))}
           />
           {step.schema ? <p className="wf-muted">{t('workspace.workflows.editor.summarize.schemaKept')}</p> : null}
+          <WorkflowModelRow
+            kind="step"
+            idPrefix={`wf-model-${step.id}`}
+            model={step.model}
+            onChange={(model) => update((s) => (s.type === 'summarize' ? withStepModel(s, model) : s))}
+          />
         </>
       );
       break;
@@ -447,6 +469,12 @@ function StepCard({
             ))}
           </fieldset>
           <p className="wf-muted">{t('workspace.workflows.editor.agent.hint')}</p>
+          <WorkflowModelRow
+            kind="step"
+            idPrefix={`wf-model-${step.id}`}
+            model={step.model}
+            onChange={(model) => update((s) => (s.type === 'agent' ? withStepModel(s, model) : s))}
+          />
         </>
       );
       break;

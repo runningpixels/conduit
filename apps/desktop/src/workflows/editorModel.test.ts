@@ -13,7 +13,10 @@ import {
   uniqueId,
   updateStep,
   valuesAt,
+  withStepModel,
+  withWorkflowModel,
 } from './editorModel';
+import { describeStep } from './describeStep';
 
 const def: WorkflowDefinition = {
   inputs: [{ id: 'site', label: 'Site', default: 'https://example.com' }],
@@ -127,5 +130,42 @@ describe('insertReference', () => {
   it('inserts at the caret, or at the end', () => {
     expect(insertReference('Hello !', 'inputs.name', 6)).toEqual({ text: 'Hello {{inputs.name}}!', caret: 21 });
     expect(insertReference('Hi ', 'run.date')).toEqual({ text: 'Hi {{run.date}}', caret: 15 });
+  });
+});
+
+describe('model choices', () => {
+  const glm = { provider: 'openrouter', model: 'z-ai/glm-5.3-flash' };
+
+  it('sets and clears the workflow default without leaving a key behind', () => {
+    const withModel = withWorkflowModel(def, glm);
+    expect(withModel.model).toEqual(glm);
+    const cleared = withWorkflowModel(withModel, null);
+    expect('model' in cleared).toBe(false);
+    expect(cleared).toEqual(def);
+  });
+
+  it('sets and clears a step model on summarize and agent only', () => {
+    const sum: WorkflowStep = { id: 's', type: 'summarize', prompt: 'p', input: 'i' };
+    const agent: WorkflowStep = { id: 'a', type: 'agent', prompt: 'p' };
+    const note: WorkflowStep = { id: 'n', type: 'notify', title: 't' };
+    expect(withStepModel(sum, glm)).toMatchObject({ model: glm });
+    expect('model' in withStepModel(withStepModel(sum, glm), null)).toBe(false);
+    expect(withStepModel(agent, glm)).toMatchObject({ model: glm });
+    expect(withStepModel(note, glm)).toBe(note);
+  });
+
+  it('round-trips through the JSON view', () => {
+    const sum: WorkflowStep = { id: 's', type: 'summarize', prompt: 'p', input: 'i', model: glm };
+    const full: WorkflowDefinition = { model: glm, steps: [sum, { id: 'a', type: 'agent', prompt: 'p', model: glm }] };
+    expect(JSON.parse(JSON.stringify(full, null, 2))).toEqual(full);
+  });
+
+  it("mentions a step's own model, and only then", () => {
+    const t = ((key: string, vars?: Record<string, unknown>) => `${key}|${JSON.stringify(vars ?? {})}`) as never;
+    const base: WorkflowStep = { id: 's', type: 'summarize', prompt: 'p', input: 'i' };
+    expect(describeStep(base, t)).not.toContain('usingModel');
+    expect(describeStep({ ...base, model: glm } as WorkflowStep, t)).toContain(
+      'workspace.workflows.step.usingModel|{"model":"z-ai/glm-5.3-flash"}',
+    );
   });
 });

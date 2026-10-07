@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **A model per workflow, and per step.** A workflow can use its own model
+  instead of the one picked in chat, and each summarize or agent step can
+  override it: a fast, cheap model for the bulk of the work and a stronger
+  one for the final write-up, or a local model for steps that touch private
+  data. Workflows with no model chosen keep following the chat model. Each
+  step's run shows the model it used. If a chosen provider isn't set up, the
+  step uses the chat model and says so; in local-only mode a step set to a
+  cloud provider stops with a plain message. A scheduled workflow asks again
+  before sending to a provider it hasn't been approved for.
+
 ### Fixed
 
 - **A dead site no longer breaks a workflow.** A step set to skip on error

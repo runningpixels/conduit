@@ -53,6 +53,10 @@ pub struct ProviderRoundBind<'a> {
     /// Single-round callers pass true. The agent loop registers once under the
     /// canonical id and cleans up after the last round, so it passes false.
     pub release_active: bool,
+    /// Run the round against this provider instead of the settings' active
+    /// one (a workflow step with its own model). `None` is the chat's
+    /// behaviour: the active provider.
+    pub provider_override: Option<&'a str>,
 }
 
 /// Outcome of a single provider streaming round.
@@ -1088,9 +1092,27 @@ impl StreamManager {
         request: ProviderRequest,
         channel: impl Into<EventSink<ProviderEvent>>,
     ) -> Result<StreamHandle, String> {
+        self.start_chat_stream_with(state, request, channel, None)
+            .await
+    }
+
+    /// [`Self::start_chat_stream`] against `provider_override` rather than the
+    /// active provider, for a caller that chose its own (workflow steps). The
+    /// request's `model_id` must be one of that provider's models. Everything
+    /// keyed on the provider (local-only check, credentials, output limits,
+    /// PDF support, usage and pricing) follows it.
+    pub async fn start_chat_stream_with(
+        &self,
+        state: &AppState,
+        request: ProviderRequest,
+        channel: impl Into<EventSink<ProviderEvent>>,
+        provider_override: Option<&str>,
+    ) -> Result<StreamHandle, String> {
         let channel: EventSink<ProviderEvent> = channel.into();
         let settings = state.settings()?;
-        let provider_id = settings.active_provider.clone();
+        let provider_id = provider_override
+            .map(str::to_string)
+            .unwrap_or_else(|| settings.active_provider.clone());
         let conversation_id = request.conversation_id.clone();
         let model_id = request.model_id.clone();
         let request_id = if request.request_id.trim().is_empty() {
@@ -1154,6 +1176,7 @@ impl StreamManager {
                 ProviderRoundBind {
                     persist_request_id: &request_id,
                     release_active: true,
+                    provider_override,
                 },
             )
             .await;
@@ -1334,7 +1357,10 @@ impl StreamManager {
                 };
             }
         };
-        let provider_id = settings.active_provider.clone();
+        let provider_id = bind
+            .provider_override
+            .map(str::to_string)
+            .unwrap_or_else(|| settings.active_provider.clone());
 
         let adapter = match (self.adapter_resolver)(&provider_id) {
             Some(a) => a,
@@ -2743,6 +2769,28 @@ impl StreamManager {
         channel: impl Into<EventSink<ProviderEvent>>,
         runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
     ) -> Result<StreamHandle, String> {
+        self.run_agent_turn_with(
+            state,
+            runtime,
+            initial_request,
+            channel,
+            runtime_channel,
+            None,
+        )
+        .await
+    }
+
+    /// [`Self::run_agent_turn`] against `provider_override` rather than the
+    /// active provider (see [`Self::start_chat_stream_with`]).
+    pub async fn run_agent_turn_with(
+        &self,
+        state: &AppState,
+        runtime: &crate::connector_runtime::ConnectorRuntimeManager,
+        initial_request: ProviderRequest,
+        channel: impl Into<EventSink<ProviderEvent>>,
+        runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
+        provider_override: Option<&str>,
+    ) -> Result<StreamHandle, String> {
         let channel: EventSink<ProviderEvent> = channel.into();
         let runtime_channel: EventSink<ConnectorRuntimeEvent> = runtime_channel.into();
         let request_id = if initial_request.request_id.trim().is_empty() {
@@ -2756,7 +2804,9 @@ impl StreamManager {
         // persisted or sent — the same rule the single-round path applies.
         {
             let settings = state.settings()?;
-            let provider_id = settings.active_provider.clone();
+            let provider_id = provider_override
+                .map(str::to_string)
+                .unwrap_or_else(|| settings.active_provider.clone());
             let adapter = (self.adapter_resolver)(&provider_id)
                 .ok_or_else(|| format!("Unknown provider: {provider_id}"))?;
             ensure_provider_allowed(&settings, adapter.as_ref(), &provider_id)?;
@@ -2899,6 +2949,7 @@ impl StreamManager {
                 ProviderRoundBind {
                     persist_request_id: &request_id,
                     release_active: false,
+                    provider_override,
                 },
             );
             let mut steered_during_round: Option<String> = None;
@@ -3570,7 +3621,7 @@ impl StreamManager {
                     &pool,
                     &request_id,
                     &conversation_id,
-                    &settings.active_provider,
+                    provider_override.unwrap_or(&settings.active_provider),
                     &active_model_id,
                     &usage,
                 )

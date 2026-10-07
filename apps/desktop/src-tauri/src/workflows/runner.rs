@@ -47,7 +47,8 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::ask::{PendingQuestion, Questions};
-use super::definition::{self, ArtifactFormat, OnError, SaveMode, Step, StepAction};
+use super::definition::{self, ArtifactFormat, ModelChoice, OnError, SaveMode, Step, StepAction};
+use super::models::{self, Resolved};
 use super::permissions::{self, Decision, PendingReview, Permission, Reviews};
 use super::{extract, template};
 use crate::artifact_network::AddressPolicy;
@@ -236,6 +237,7 @@ impl Runner<'_> {
             workflow_id: &workflow.id,
             workflow_name: &workflow.name,
             conversation_id: &conversation_id,
+            workflow_model: def.model.as_ref(),
             started: Instant::now(),
             waited: Mutex::new(Duration::ZERO),
             tokens: Mutex::new(0),
@@ -306,6 +308,8 @@ struct Exec<'a> {
     workflow_id: &'a str,
     workflow_name: &'a str,
     conversation_id: &'a str,
+    /// The workflow's default model for its summarize and agent steps.
+    workflow_model: Option<&'a ModelChoice>,
     started: Instant,
     /// Time spent waiting for the user, which the budget doesn't count.
     waited: Mutex<Duration>,
@@ -462,13 +466,28 @@ impl Exec<'_> {
                         "There was nothing to summarize: the input came out empty.".to_string()
                     );
                 }
-                let provider = self.runner.state.settings()?.active_provider;
-                self.allow(&step.id, Permission::Model { provider }, None)
-                    .await?;
+                let model = self.resolve_model(step)?;
+                self.allow(
+                    &step.id,
+                    Permission::Model {
+                        provider: model.provider.clone(),
+                    },
+                    None,
+                )
+                .await?;
                 let prompt = filled["prompt"].as_str().unwrap_or_default();
                 let input = filled["input"].as_str().unwrap_or_default();
-                self.summarize(&step.id, prompt, input, schema.as_ref(), retries_of(step))
-                    .await
+                let output = self
+                    .summarize(
+                        &step.id,
+                        prompt,
+                        input,
+                        schema.as_ref(),
+                        retries_of(step),
+                        &model,
+                    )
+                    .await?;
+                Ok(with_model(output, &model))
             }
             StepAction::Template { .. } => Ok(json!({ "text": filled["template"] })),
             StepAction::SaveArtifact { format, mode, .. } => {
@@ -479,9 +498,15 @@ impl Exec<'_> {
                 self.save_artifact(title, content, *format, *mode).await
             }
             StepAction::Agent { tools, .. } => {
-                let provider = self.runner.state.settings()?.active_provider;
-                self.allow(&step.id, Permission::Model { provider }, None)
-                    .await?;
+                let model = self.resolve_model(step)?;
+                self.allow(
+                    &step.id,
+                    Permission::Model {
+                        provider: model.provider.clone(),
+                    },
+                    None,
+                )
+                .await?;
                 if !tools.is_empty() {
                     let permission = Permission::AgentTools {
                         step_id: step.id.clone(),
@@ -491,7 +516,8 @@ impl Exec<'_> {
                 }
                 let prompt = filled["prompt"].as_str().unwrap_or_default();
                 let input = filled["input"].as_str().unwrap_or_default();
-                self.agent(prompt, input, tools).await
+                let output = self.agent(prompt, input, tools, &model).await?;
+                Ok(with_model(output, &model))
             }
             StepAction::Ask {
                 choices, default, ..
@@ -550,6 +576,35 @@ impl Exec<'_> {
                 Ok(json!({ "items": results }))
             }
         }
+    }
+
+    /// The model `step` calls: its own, the workflow's, or the active one
+    /// (see `models::resolve`). A cloud model in local-only mode is refused
+    /// here, in plain words, rather than swapped for another.
+    fn resolve_model(&self, step: &Step) -> Result<Resolved, String> {
+        let state = self.runner.state;
+        let streams = self.runner.streams;
+        let settings = state.settings()?;
+        let resolved = models::resolve(
+            step.model.as_ref(),
+            self.workflow_model,
+            &settings.active_provider,
+            &settings.active_model,
+            &|provider| crate::page_llm::provider_configured(state, streams, provider),
+        );
+        if resolved.chosen && settings.local_only {
+            let cloud = streams
+                .resolve_adapter(&resolved.provider)
+                .is_some_and(|adapter| !adapter.is_local());
+            if cloud {
+                return Err(format!(
+                    "This step uses {}, but {} is in local-only mode.",
+                    models::provider_label(&resolved.provider),
+                    crate::brand::app_name()
+                ));
+            }
+        }
+        Ok(resolved)
     }
 
     /// `work`, abandoned as soon as the run is stopped or out of time.
@@ -864,6 +919,7 @@ impl Exec<'_> {
         input: &str,
         schema: Option<&Value>,
         retries: u32,
+        model: &Resolved,
     ) -> Result<Value, String> {
         let mut text = format!("{prompt}\n\n<input>\n{input}\n</input>");
         if let Some(schema) = schema {
@@ -874,7 +930,7 @@ impl Exec<'_> {
         let mut turns = vec![(MessageRole::User, text)];
         let mut retry = 0;
         let reply = loop {
-            match self.complete(&turns).await {
+            match self.complete(&turns, model).await {
                 Err(e) if retry < retries && self.may_retry() => {
                     retry += 1;
                     tracing::info!(step = %step_id, retry, error = %e, "retrying a model call");
@@ -892,7 +948,7 @@ impl Exec<'_> {
         // Small models often wrap JSON in prose; asking once more usually fixes it.
         turns.push((MessageRole::Assistant, reply));
         turns.push((MessageRole::User, JSON_REPAIR.to_string()));
-        let repaired = self.complete(&turns).await?;
+        let repaired = self.complete(&turns, model).await?;
         let data = parse_json_reply(&repaired)
             .ok_or("The model's reply wasn't valid JSON, even when asked again.")?;
         Ok(json!({ "text": repaired, "data": data }))
@@ -900,14 +956,23 @@ impl Exec<'_> {
 
     /// One model call with no tools, in the workflow's conversation; the
     /// reply's text.
-    async fn complete(&self, turns: &[(MessageRole, String)]) -> Result<String, String> {
+    async fn complete(
+        &self,
+        turns: &[(MessageRole, String)],
+        model: &Resolved,
+    ) -> Result<String, String> {
         let state = self.runner.state;
-        let request = self.request(turns, SUMMARIZE_SYSTEM, Vec::new())?;
+        let request = self.request(turns, SUMMARIZE_SYSTEM, Vec::new(), model)?;
         let request_id = request.request_id.clone();
         let (sink, events) = event_sink::collector::<ProviderEvent>();
         self.until_done(
             &request_id,
-            self.runner.streams.start_chat_stream(state, request, sink),
+            self.runner.streams.start_chat_stream_with(
+                state,
+                request,
+                sink,
+                model.chosen.then_some(model.provider.as_str()),
+            ),
         )
         .await?;
         let events = events
@@ -919,7 +984,13 @@ impl Exec<'_> {
     /// An agent turn: the model may call `tools` (read-only built-ins) for a
     /// few rounds before answering. Returns its final answer and the tools it
     /// called, in order.
-    async fn agent(&self, prompt: &str, input: &str, tools: &[String]) -> Result<Value, String> {
+    async fn agent(
+        &self,
+        prompt: &str,
+        input: &str,
+        tools: &[String],
+        model: &Resolved,
+    ) -> Result<Value, String> {
         let state = self.runner.state;
         let connectors = self
             .runner
@@ -934,17 +1005,23 @@ impl Exec<'_> {
             .into_iter()
             .filter(|d| tools.contains(&d.name))
             .collect();
-        let request = self.request(&[(MessageRole::User, text)], AGENT_SYSTEM, definitions)?;
+        let request = self.request(
+            &[(MessageRole::User, text)],
+            AGENT_SYSTEM,
+            definitions,
+            model,
+        )?;
         let request_id = request.request_id.clone();
         let (sink, events) = event_sink::collector::<ProviderEvent>();
         self.until_done(
             &request_id,
-            self.runner.streams.run_agent_turn(
+            self.runner.streams.run_agent_turn_with(
                 state,
                 connectors,
                 request,
                 sink,
                 crate::event_sink::EventSink::discard(),
+                model.chosen.then_some(model.provider.as_str()),
             ),
         )
         .await?;
@@ -955,14 +1032,14 @@ impl Exec<'_> {
         Ok(json!({ "text": reply, "toolCalls": called }))
     }
 
-    /// A request in the workflow's conversation with the settings' model.
+    /// A request in the workflow's conversation with the step's model.
     fn request(
         &self,
         turns: &[(MessageRole, String)],
         system: &str,
         tool_definitions: Vec<provider_core::schema::ToolDefinition>,
+        model: &Resolved,
     ) -> Result<ProviderRequest, String> {
-        let settings = self.runner.state.settings()?;
         let now = now_iso8601();
         let messages = turns
             .iter()
@@ -998,7 +1075,7 @@ impl Exec<'_> {
         Ok(ProviderRequest {
             request_id: Uuid::new_v4().to_string(),
             conversation_id: self.conversation_id.to_string(),
-            model_id: settings.active_model.clone(),
+            model_id: model.model.clone(),
             messages,
             system_prompt: Some(system.to_string()),
             developer_prompt: None,
@@ -1145,6 +1222,17 @@ impl Exec<'_> {
         // The conversation too, so a run can open the document where it lives.
         Ok(json!({ "artifactId": id, "title": title, "conversationId": self.conversation_id }))
     }
+}
+
+/// `output` with the model the step used, and why it wasn't the chosen one.
+fn with_model(mut output: Value, model: &Resolved) -> Value {
+    if let Some(fields) = output.as_object_mut() {
+        fields.insert("model".to_string(), model.output());
+        if let Some(note) = &model.note {
+            fields.insert("modelNote".to_string(), json!(note));
+        }
+    }
+    output
 }
 
 /// Fill every template field of `action` from `ctx`. The result is what the

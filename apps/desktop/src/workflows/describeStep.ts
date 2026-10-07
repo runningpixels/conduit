@@ -18,7 +18,15 @@ function quote(text: string, labels: InputLabels = {}): string {
   return flat.length > MAX_QUOTE ? `${flat.slice(0, MAX_QUOTE - 1)}…` : flat;
 }
 
+/// The step's line, with a brief mention of its own model when it has one.
 export function describeStep(step: WorkflowStep, t: Translate, labels: InputLabels = {}): string {
+  const line = describeKind(step, t, labels);
+  return (step.type === 'summarize' || step.type === 'agent') && step.model
+    ? `${line} ${t('workspace.workflows.step.usingModel', { model: step.model.model })}`
+    : line;
+}
+
+function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels): string {
   const q = (text: string) => quote(text, labels);
   switch (step.type) {
     case 'fetch_page':

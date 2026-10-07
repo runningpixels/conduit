@@ -23,7 +23,9 @@ use conduit_desktop::{
     workflows::scheduler::{claim_due, run_claimed, run_due, to_iso, RunContext, RunningWorkflows},
 };
 use futures::stream::Stream;
-use provider_core::schema::{AppSettings, ProviderError, ProviderEvent, ProviderRequest};
+use provider_core::schema::{
+    AppSettings, KeychainMode, ProviderError, ProviderEvent, ProviderRequest,
+};
 use provider_core::{AdapterContext, ModelInfo, ProviderAdapter};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -49,6 +51,11 @@ struct EchoModel {
     failures: Arc<std::sync::atomic::AtomicUsize>,
     /// Call this tool (name, arguments) first; answer once a tool result is in.
     tool_call: Option<(&'static str, Value)>,
+    /// The provider id this copy was resolved for (set by the harness's
+    /// adapter resolver); cloud ones report `is_local() == false`.
+    tag: String,
+    /// (provider, model) of every call, shared by all copies.
+    calls: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl EchoModel {
@@ -91,7 +98,7 @@ impl ProviderAdapter for EchoModel {
         "Echo"
     }
     fn is_local(&self) -> bool {
-        true
+        !matches!(self.tag.as_str(), "openrouter" | "openai")
     }
     async fn validate_credentials(&self, _ctx: &AdapterContext) -> Result<(), ProviderError> {
         Ok(())
@@ -107,6 +114,10 @@ impl ProviderAdapter for EchoModel {
     ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError> {
         let reply = self.reply_for(&request);
         self.requests.lock().unwrap().push(request.clone());
+        self.calls
+            .lock()
+            .unwrap()
+            .push((self.tag.clone(), request.model_id.clone()));
         let r = request.request_id;
         // A compare-exchange loop rather than `fetch_update`, which newer
         // toolchains deprecate (renamed `try_update`) and older ones lack.
@@ -336,18 +347,43 @@ struct Harness {
 
 impl Harness {
     async fn new(model: EchoModel) -> Self {
+        Self::new_with(model, true, &[]).await
+    }
+
+    /// Active model ollama/echo; `keys` are cloud providers given a (fake) key.
+    /// Credentials live in a file store under the test's directory, never the
+    /// OS keychain.
+    async fn new_with(model: EchoModel, local_only: bool, keys: &[&str]) -> Self {
+        use base64::{engine::general_purpose::STANDARD, Engine};
         let pool = common::setup_pool().await;
         let dir = tempfile::tempdir().unwrap();
+        std::env::set_var(
+            conduit_desktop::credentials::FILE_KEY_ENV,
+            STANDARD.encode([7u8; 32]),
+        );
+        let store = conduit_desktop::credentials::CredentialStore::default_service()
+            .with_mode(KeychainMode::File)
+            .with_data_dir(dir.path());
+        for key in keys {
+            store
+                .save_provider_secret(key, "sk-test-not-a-real-key")
+                .unwrap();
+        }
         let settings = AppSettings {
             active_provider: "ollama".into(),
             active_model: "echo".into(),
-            local_only: true,
+            local_only,
+            keychain_mode: KeychainMode::File,
             ..AppSettings::default()
         };
         let state = AppState::test_instance_with_settings(pool, test_paths(dir.path()), settings);
         let resolver_model = model.clone();
-        let streams = StreamManager::with_adapter_resolver(Arc::new(move |_id: &str| {
-            Some(Box::new(resolver_model.clone()) as Box<dyn ProviderAdapter>)
+        let streams = StreamManager::with_adapter_resolver(Arc::new(move |id: &str| {
+            let tagged = EchoModel {
+                tag: id.to_string(),
+                ..resolver_model.clone()
+            };
+            Some(Box::new(tagged) as Box<dyn ProviderAdapter>)
         }));
         Self {
             state,
@@ -638,6 +674,8 @@ impl Harness {
             &permissions::Context {
                 search_backend: "duckduckgo",
                 provider: "ollama",
+                model: "echo",
+                configured: None,
             },
         )
     }
@@ -2131,4 +2169,227 @@ async fn an_agent_step_without_a_tool_loop_fails_and_needs_approval_unattended()
         detail.steps[0].error.as_deref(),
         Some("You didn't allow this.")
     );
+}
+
+// ── A model per step ────────────────────────────────────────────────────────
+
+fn sum_step(id: &str, model: Option<Value>) -> Value {
+    let mut step = json!({
+        "id": id, "type": "summarize", "prompt": "Sum up", "input": "some text"
+    });
+    if let Some(model) = model {
+        step["model"] = model;
+    }
+    step
+}
+
+fn model_of(run: &repo::WorkflowRunDetail, id: &str) -> Value {
+    step(run, id, None).output.as_ref().unwrap()["model"].clone()
+}
+
+fn calls(h: &Harness) -> Vec<(String, String)> {
+    h.model.calls.lock().unwrap().clone()
+}
+
+fn pair(provider: &str, model: &str) -> (String, String) {
+    (provider.to_string(), model.to_string())
+}
+
+#[tokio::test]
+async fn a_step_beats_the_workflow_beats_the_chat_model_and_the_request_goes_there() {
+    let model = EchoModel {
+        usage: Some(10),
+        ..EchoModel::default()
+    };
+    let h = Harness::new_with(model, false, &["openrouter"]).await;
+    let id = h
+        .save(json!({
+            "model": { "provider": "lmstudio", "model": "wf-model" },
+            "steps": [
+                sum_step("a", None),
+                sum_step("b", Some(json!({ "provider": "openrouter", "model": "or-model" }))),
+                sum_step("c", None),
+            ]
+        }))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+
+    // The adapter that answered, and the model it was asked for, per call.
+    assert_eq!(
+        calls(&h),
+        vec![
+            pair("lmstudio", "wf-model"),
+            pair("openrouter", "or-model"),
+            pair("lmstudio", "wf-model"),
+        ]
+    );
+    assert_eq!(
+        model_of(&run, "a"),
+        json!({ "provider": "lmstudio", "model": "wf-model" })
+    );
+    assert_eq!(
+        model_of(&run, "b"),
+        json!({ "provider": "openrouter", "model": "or-model" })
+    );
+    assert!(step(&run, "b", None).output.as_ref().unwrap()["modelNote"].is_null());
+
+    // Usage rows name the provider and model each call really used.
+    let mut rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT provider_id, model_id FROM usage_summary")
+            .fetch_all(&h.state.db)
+            .await
+            .unwrap();
+    rows.sort();
+    assert_eq!(
+        rows,
+        vec![
+            pair("lmstudio", "wf-model"),
+            pair("lmstudio", "wf-model"),
+            pair("openrouter", "or-model"),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_workflow_without_a_model_uses_the_chat_model_as_before() {
+    let model = EchoModel {
+        usage: Some(10),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h.save(json!({ "steps": [sum_step("a", None)] })).await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert_eq!(calls(&h), vec![pair("ollama", "echo")]);
+    let out = step(&run, "a", None).output.as_ref().unwrap();
+    assert_eq!(
+        out["model"],
+        json!({ "provider": "ollama", "model": "echo" })
+    );
+    assert!(out["modelNote"].is_null());
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT provider_id, model_id FROM usage_summary")
+            .fetch_all(&h.state.db)
+            .await
+            .unwrap();
+    assert_eq!(rows, vec![pair("ollama", "echo")]);
+}
+
+#[tokio::test]
+async fn a_provider_that_is_not_set_up_falls_back_to_the_chat_model_with_a_note() {
+    // No OpenRouter key stored.
+    let h = Harness::new_with(EchoModel::default(), false, &[]).await;
+    let id = h
+        .save(json!({ "steps": [
+            sum_step("a", Some(json!({ "provider": "openrouter", "model": "gone" }))),
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert_eq!(calls(&h), vec![pair("ollama", "echo")]);
+    let out = step(&run, "a", None).output.as_ref().unwrap();
+    assert_eq!(
+        out["model"],
+        json!({ "provider": "ollama", "model": "echo" })
+    );
+    assert_eq!(
+        out["modelNote"],
+        "OpenRouter isn't set up, so the chat model was used."
+    );
+}
+
+#[tokio::test]
+async fn a_cloud_step_in_local_only_mode_fails_in_plain_words() {
+    let h = Harness::new_with(EchoModel::default(), true, &["openrouter"]).await;
+    let id = h
+        .save(json!({ "steps": [
+            sum_step("a", Some(json!({ "provider": "openrouter", "model": "m" }))),
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "failed");
+    assert_eq!(
+        step(&run, "a", None).error.as_deref(),
+        Some("This step uses OpenRouter, but Conduit is in local-only mode.")
+    );
+    assert!(calls(&h).is_empty(), "nothing was sent");
+}
+
+#[tokio::test]
+async fn a_scheduled_run_pauses_when_a_step_moves_to_a_new_provider() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            sum_step("a", None),
+            sum_step("b", Some(json!({ "provider": "lmstudio", "model": "other" }))),
+        ]}))
+        .await;
+    // Approved for the chat's provider only.
+    let runner = h.unattended_runner(
+        vec![Permission::Model {
+            provider: "ollama".into(),
+        }],
+        CancellationToken::new(),
+    );
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(review.step_id, "b");
+        assert_eq!(
+            review.permission.permission,
+            Permission::Model {
+                provider: "lmstudio".into()
+            }
+        );
+        h.reviews.answer(&review.run_id, Decision::AllowOnce);
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
+    assert_eq!(
+        calls(&h),
+        vec![pair("ollama", "echo"), pair("lmstudio", "other")]
+    );
+}
+
+#[tokio::test]
+async fn an_agent_step_runs_every_round_on_its_own_model() {
+    let model = EchoModel {
+        tool_call: Some(("calculator", json!({ "expression": "6*7" }))),
+        usage: Some(10),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "think", "type": "agent", "prompt": "Work it out", "input": "6*7?",
+              "tools": ["calculator"], "model": { "provider": "lmstudio", "model": "agent-model" } },
+        ]}))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert_eq!(
+        calls(&h),
+        vec![
+            pair("lmstudio", "agent-model"),
+            pair("lmstudio", "agent-model")
+        ]
+    );
+    assert_eq!(
+        model_of(&detail, "think"),
+        json!({ "provider": "lmstudio", "model": "agent-model" })
+    );
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT provider_id, model_id FROM usage_summary")
+            .fetch_all(&h.state.db)
+            .await
+            .unwrap();
+    assert!(!rows.is_empty());
+    assert!(rows.iter().all(|r| *r == pair("lmstudio", "agent-model")));
 }

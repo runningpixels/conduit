@@ -4,6 +4,7 @@
 //! - `definition`: the stored format and its validation
 //! - `template`: `{{steps.x.y}}` / `{{#each}}` filling
 //! - `extract`: readable text from fetched pages
+//! - `models`: which model each summarize/agent step calls
 //! - `runner`: runs a workflow and records every step
 //! - `ask`: "Ask me" steps, which wait for the user's answer
 //! - `waiting`: what runs wait on, and answering it
@@ -13,6 +14,7 @@
 pub mod ask;
 pub mod definition;
 pub mod extract;
+pub mod models;
 pub mod permissions;
 pub mod runner;
 pub mod schedule;

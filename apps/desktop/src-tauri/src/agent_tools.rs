@@ -1144,7 +1144,8 @@ pub async fn execute_builtin_tool(
             set_storyline(ctx, input).await
         }
         ADD_SLIDE_TOOL => {
-            let input: AddSlideInput = parse_args(tool_name, arguments)?;
+            let args = crate::slide_layouts::without_placeholder_fields(arguments);
+            let input: AddSlideInput = parse_args(tool_name, &args)?;
             add_slide(ctx, input).await
         }
         UPDATE_SLIDE_TOOL => {

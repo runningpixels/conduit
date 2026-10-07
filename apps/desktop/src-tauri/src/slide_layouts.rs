@@ -914,6 +914,25 @@ pub fn reconstruct(layout_name: &str, html: &str) -> Option<SlideFields> {
 /// Merge `changes` (field name to value, as the model sent them) onto `base`.
 /// Only fields `target` uses carry over from `base`; a `null`, blank string or
 /// empty list in `changes` removes the field.
+/// The word a weak model writes for a field it means to leave out or remove:
+/// live, `"kicker": "null"` put a literal "NULL" on a slide.
+pub fn is_placeholder_text(value: &Value) -> bool {
+    matches!(value, Value::String(s)
+        if matches!(s.trim().to_ascii_lowercase().as_str(), "null" | "none" | "undefined" | "n/a"))
+}
+
+/// `args` with every slide field written as a placeholder word left out, as if
+/// the model had not passed it.
+pub fn without_placeholder_fields(args: &Value) -> Value {
+    let mut args = args.clone();
+    if let Value::Object(map) = &mut args {
+        map.retain(|key, value| {
+            !(FIELD_NAMES.contains(&key.as_str()) && is_placeholder_text(value))
+        });
+    }
+    args
+}
+
 pub fn merge_fields(
     base: &SlideFields,
     target: Layout,
@@ -927,7 +946,7 @@ pub fn merge_fields(
     for (key, value) in changes {
         let empty = match value {
             Value::Null => true,
-            Value::String(s) => s.trim().is_empty(),
+            Value::String(s) => s.trim().is_empty() || is_placeholder_text(value),
             Value::Array(a) => a.is_empty(),
             _ => false,
         };
@@ -1316,6 +1335,26 @@ mod tests {
         assert_eq!(merged.footnote.as_deref(), Some("F"));
         assert!(merged.bullets.is_none());
         assert!(validate(Layout::StatRow, &merged).is_ok());
+    }
+
+    #[test]
+    fn the_word_null_removes_a_field_instead_of_printing_it() {
+        // Live: a model dropping a kicker sent "kicker": "null" and the slide
+        // read "NULL".
+        let base = fields(json!({ "headline": "H", "kicker": "K", "footnote": "F" }));
+        let changes = json!({ "kicker": "null", "footnote": " None " });
+        let merged = merge_fields(&base, Layout::Chart, changes.as_object().unwrap()).unwrap();
+        assert!(merged.kicker.is_none());
+        assert!(merged.footnote.is_none());
+        assert_eq!(merged.headline.as_deref(), Some("H"));
+        // On add, a placeholder field is as if it were not passed; real text
+        // that merely contains the word stays.
+        let args = json!({ "layout": "title", "headline": "Null hypothesis", "kicker": "NULL", "sub": "n/a" });
+        let kept = without_placeholder_fields(&args);
+        assert_eq!(
+            kept,
+            json!({ "layout": "title", "headline": "Null hypothesis" })
+        );
     }
 
     #[test]

@@ -42,6 +42,13 @@ describe('SlidesPage', () => {
     expect(onOpenDeck).toHaveBeenCalledWith(deck);
   });
 
+  it('reads the list again when a workflow changed a deck', async () => {
+    const view = render(<SlidesPage onOpenDeck={() => {}} onStartDeck={vi.fn()} refreshKey={0} />);
+    await waitFor(() => expect(ipc.listDecks).toHaveBeenCalledTimes(1));
+    view.rerender(<SlidesPage onOpenDeck={() => {}} onStartDeck={vi.fn()} refreshKey={1} />);
+    await waitFor(() => expect(ipc.listDecks).toHaveBeenCalledTimes(2));
+  });
+
   it('shows the empty state', async () => {
     ipc.listDecks.mockResolvedValue([]);
     render(<SlidesPage onOpenDeck={() => {}} onStartDeck={vi.fn()} />);

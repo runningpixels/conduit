@@ -22,6 +22,8 @@ export const STEP_TYPES: readonly StepType[] = [
   'parse_data',
   'summarize',
   'agent',
+  'edit_deck',
+  'edit_draft',
   'template',
   'for_each',
   'save_artifact',
@@ -30,10 +32,13 @@ export const STEP_TYPES: readonly StepType[] = [
   'condition',
 ];
 
-/// The kinds offered in a list: a condition (like `onlyIfChanged`) only works
-/// at the top level, so a loop's body doesn't offer it.
+/// The kinds offered in a list: a condition (like `onlyIfChanged`) and the
+/// steps that change a saved deck or draft only work at the top level, so a
+/// loop's body doesn't offer them.
 export function stepTypesFor(nested: boolean): readonly StepType[] {
-  return nested ? STEP_TYPES.filter((type) => type !== 'condition') : STEP_TYPES;
+  return nested
+    ? STEP_TYPES.filter((type) => type !== 'condition' && type !== 'edit_deck' && type !== 'edit_draft')
+    : STEP_TYPES;
 }
 
 /// The tests a condition step offers, in menu order.
@@ -74,6 +79,8 @@ export function defaultRetries(type: StepType): number | null {
     case 'web_search':
       return 2;
     case 'summarize':
+    case 'edit_deck':
+    case 'edit_draft':
       return 1;
     default:
       return null;
@@ -83,7 +90,7 @@ export function defaultRetries(type: StepType): number | null {
 /// Step kinds that call a model, and so may pick their own (the backend only
 /// accepts `model` on these).
 export function stepTakesModel(type: StepType): boolean {
-  return type === 'summarize' || type === 'agent';
+  return type === 'summarize' || type === 'agent' || type === 'edit_deck' || type === 'edit_draft';
 }
 
 /// `def` with its default model set to `model`; `null` removes the key, so a
@@ -96,7 +103,9 @@ export function withWorkflowModel(def: WorkflowDefinition, model: WorkflowModel 
 /// `step` with its own model set to `model`; `null` removes the key. Other
 /// step kinds come back unchanged.
 export function withStepModel(step: WorkflowStep, model: WorkflowModel | null): WorkflowStep {
-  if (step.type !== 'summarize' && step.type !== 'agent') return step;
+  if (step.type !== 'summarize' && step.type !== 'agent' && step.type !== 'edit_deck' && step.type !== 'edit_draft') {
+    return step;
+  }
   const { model: _drop, ...rest } = step;
   return (model ? { ...rest, model } : rest) as WorkflowStep;
 }
@@ -123,6 +132,8 @@ const ID_PREFIX: Record<StepType, string> = {
   for_each: 'each',
   save_artifact: 'save',
   agent: 'agent',
+  edit_deck: 'update_deck',
+  edit_draft: 'update_draft',
   ask: 'ask',
   notify: 'notify',
   condition: 'check',
@@ -169,6 +180,10 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, title: '', content: '', format: 'markdown', mode: 'update' };
     case 'agent':
       return { id, type, prompt: '', input: '', tools: ['web_search', 'web_fetch'] };
+    case 'edit_deck':
+      return { id, type, deck: '', instructions: '' };
+    case 'edit_draft':
+      return { id, type, draft: '', instructions: '' };
     case 'ask':
       return { id, type, question: '', choices: [] };
     case 'notify':
@@ -304,6 +319,7 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
     case 'fetch_page':
       return [
         { field: 'text', list: false },
+        { field: 'pages.0.text', list: false },
         { field: 'pages.0.title', list: false },
         { field: 'pages', list: true },
         { field: 'pages.0.links', list: true },
@@ -334,6 +350,13 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       return [
         { field: 'text', list: false },
         { field: 'toolCalls', list: true },
+      ];
+    case 'edit_deck':
+    case 'edit_draft':
+      return [
+        { field: 'reply', list: false },
+        { field: 'title', list: false },
+        { field: 'changed', list: true },
       ];
     case 'ask':
       return [{ field: 'answer', list: false }];
@@ -385,4 +408,34 @@ export function insertReference(text: string, path: string, caret?: number): { t
   const at = caret == null || caret < 0 || caret > text.length ? text.length : caret;
   const token = `{{${path}}}`;
   return { text: text.slice(0, at) + token + text.slice(at), caret: at + token.length };
+}
+
+/// A step that changes a saved deck or draft.
+export function isDocumentEdit(step: WorkflowStep): step is Extract<WorkflowStep, { type: 'edit_deck' | 'edit_draft' }> {
+  return step.type === 'edit_deck' || step.type === 'edit_draft';
+}
+
+/// The deck or draft id a document step targets (blank until one is picked).
+export function documentTarget(step: Extract<WorkflowStep, { type: 'edit_deck' | 'edit_draft' }>): string {
+  return step.type === 'edit_deck' ? step.deck : step.draft;
+}
+
+/// `step` pointed at the deck or draft `id`.
+export function withDocumentTarget(step: WorkflowStep, id: string): WorkflowStep {
+  if (step.type === 'edit_deck') return { ...step, deck: id };
+  if (step.type === 'edit_draft') return { ...step, draft: id };
+  return step;
+}
+
+/// `step` with its optional `input` set; blank removes the key (the step then
+/// works from its instructions alone).
+export function withOptionalInput(step: WorkflowStep, input: string): WorkflowStep {
+  if (step.type !== 'edit_deck' && step.type !== 'edit_draft') return step;
+  const { input: _drop, ...rest } = step;
+  return (input === '' ? rest : { ...rest, input }) as WorkflowStep;
+}
+
+/// True when any top-level step still needs its deck or draft picked.
+export function needsDocumentTarget(def: WorkflowDefinition): boolean {
+  return def.steps.some((step) => isDocumentEdit(step) && documentTarget(step).trim() === '');
 }

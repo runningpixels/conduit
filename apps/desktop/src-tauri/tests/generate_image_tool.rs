@@ -111,6 +111,7 @@ async fn generate_image_writes_image_artifact() {
     };
 
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -189,6 +190,7 @@ async fn generate_image_without_provider_support_fails_clearly_and_writes_nothin
     let conv = conversations::create(&pool, None).await.unwrap();
 
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -245,6 +247,7 @@ async fn generate_image_provider_error_fails_clearly_and_writes_nothing() {
     };
 
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),

@@ -181,7 +181,7 @@ pub async fn fetch(
 /// Whether a response is data to pass on untouched: by its media type, or,
 /// when the site sent none (or a generic download type), by the file
 /// extension in the URL.
-fn is_data(media_type: &str, url: &str) -> bool {
+pub(crate) fn is_data(media_type: &str, url: &str) -> bool {
     match media_type {
         "text/csv"
         | "text/tab-separated-values"

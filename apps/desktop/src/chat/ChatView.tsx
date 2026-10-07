@@ -71,6 +71,7 @@ import { AssistantMessage } from './AssistantMessage';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { BotGlyph, CopyIcon, ForkIcon, PencilIcon, RetryIcon } from '../icons';
 import { TurnModelLine, shouldShowModelLine } from './TurnModelLine';
+import { isWorkflowBusyRefusal } from './turnRefusal';
 import { InterruptedBanner } from './InterruptedBanner';
 import { providerHueId } from '../lib/providerIdentity';
 import { ChatMessageContent } from './ChatMessageContent';
@@ -289,6 +290,10 @@ interface ChatViewProps {
   deckLayoutNotes?: Record<string, string>;
   /// A note shown at the end of the thread, not sent (the layout check's leftovers).
   threadNote?: string | null;
+  /// A button beside the thread note (a workflow's update: "Reload").
+  threadAction?: { label: string; onClick: () => void } | null;
+  /// Bump to read the thread again (a workflow added messages to this chat).
+  threadRefresh?: number;
   /// The model turned this ordinary chat into a deck (start_deck succeeded).
   onDeckStarted?: () => void;
   /// The Writing draft this chat is bound to. Its turns get the draft tools
@@ -865,6 +870,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onDeckToolActivity,
     deckLayoutNotes,
     threadNote = null,
+    threadAction = null,
+    threadRefresh = 0,
     onDeckStarted,
     draft = null,
     onDraftChanged,
@@ -1297,6 +1304,29 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       cancelled = true;
     };
   }, [conversationId, pendingSendText]);
+
+  // A workflow added messages to this chat while it is open: read them. Not
+  // while a reply is streaming (the stream owns the thread then).
+  const lastThreadRefreshRef = useRef(threadRefresh);
+  useEffect(() => {
+    if (threadRefresh === lastThreadRefreshRef.current) return;
+    lastThreadRefreshRef.current = threadRefresh;
+    if (!conversationId || activeRequestRef.current) return;
+    let cancelled = false;
+    void getConversationMessages(conversationId)
+      .then((messages) => Promise.all(messages.map((m) => hydrateAssistantTurn(m))))
+      .then((hydrated) => {
+        if (!cancelled && !activeRequestRef.current) {
+          setTurns(hydrated.filter((turn): turn is ChatTurn => turn !== null));
+        }
+      })
+      .catch(() => {
+        // The next open of this chat shows them.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [threadRefresh, conversationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2147,6 +2177,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         // before any event. Surface it and resolve so the finally block
         // finalizes the turn with the error rather than hanging on `streamDone`.
         terminalError = describeInvokeError(error);
+        if (isWorkflowBusyRefusal(terminalError)) {
+          // A workflow holds this conversation: nothing was stored, so the
+          // message goes back to the composer instead of staying in the thread.
+          setTurns((current) => current.filter((turn) => turn.id !== userTurn.id));
+          if (currentConversationIdRef.current === conversationId) {
+            setPrompt((current) => (current.trim() === '' ? trimmed : current));
+          }
+        }
         finish();
       });
     });
@@ -2858,12 +2896,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     > = {};
     let lastProvider: string | undefined;
     let lastModel: string | undefined;
+    // A workflow records the model it resolved on the message it sent; the
+    // assistant turn that answers it ran with that one.
+    let workflowAsked: { provider: string; model: string } | undefined;
     for (const turn of turns) {
-      if (turn.role !== 'assistant') continue;
+      if (turn.role !== 'assistant') {
+        workflowAsked = turn.workflowModel;
+        continue;
+      }
+      const ran = turn.workflowModel ?? workflowAsked;
+      workflowAsked = undefined;
       const session = sessionTurnProviders.get(turn.id);
       const provider =
-        session?.provider ?? convoProviders[conversationId ?? ''] ?? settings.activeProvider;
-      const model = session?.model ?? turn.modelId ?? settings.activeModel;
+        session?.provider ?? ran?.provider ?? convoProviders[conversationId ?? ''] ?? settings.activeProvider;
+      const model = session?.model ?? ran?.model ?? turn.modelId ?? settings.activeModel;
       const prev =
         lastProvider !== undefined && lastModel !== undefined
           ? { provider: lastProvider, model: lastModel }
@@ -3179,6 +3225,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             // A message the app sent for the user ("Build slides"): a short
             // note in the thread, not a bubble of text they never typed.
             const appLabel = turn.role === 'user' ? appPromptLabel(turn.content) : null;
+            if (turn.role === 'user' && turn.workflowName && !appLabel) {
+              return withDay(
+                <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
+                  <p className="app-note-text">{t('chat.turn.fromWorkflow', { name: turn.workflowName })}</p>
+                </article>,
+              );
+            }
             if (appLabel) {
               return withDay(
                 <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
@@ -3475,6 +3528,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           {!threadLoading && threadNote && (
             <article className="turn app-note" role="status">
               <p className="app-note-text">{threadNote}</p>
+              {threadAction ? (
+                <button type="button" className="act" onClick={threadAction.onClick}>
+                  {threadAction.label}
+                </button>
+              ) : null}
             </article>
           )}
         </div>

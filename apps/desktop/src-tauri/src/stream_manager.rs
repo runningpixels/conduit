@@ -984,6 +984,68 @@ pub struct StreamManager {
     /// The built-in provider registry in production. Tests substitute a
     /// scripted adapter so the agent loop can run end to end without a network.
     adapter_resolver: AdapterResolver,
+    /// Conversations with an agent turn in progress, by conversation id.
+    turns: Arc<Mutex<HashMap<String, TurnOwner>>>,
+}
+
+/// Who holds a conversation's turn (see [`StreamManager::try_begin_turn`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnOwner {
+    /// A chat message (or any turn that isn't a workflow's update).
+    Chat,
+    /// A workflow updating a deck or draft; the workflow's name.
+    Workflow(String),
+}
+
+/// A conversation's turn, held until dropped. Dropping releases it on every
+/// exit path: finished, failed, cancelled or panicked.
+#[derive(Debug)]
+pub struct TurnGuard {
+    turns: Arc<Mutex<HashMap<String, TurnOwner>>>,
+    conversation_id: String,
+}
+
+impl Drop for TurnGuard {
+    fn drop(&mut self) {
+        // A poisoned lock still has to release the conversation.
+        let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
+        turns.remove(&self.conversation_id);
+    }
+}
+
+impl TurnOwner {
+    /// The plain-words reason a conversation can't take another turn while
+    /// `self` holds it, from the point of view of `wanted`.
+    pub fn busy_message(&self, wanted: &TurnOwner) -> String {
+        match (self, wanted) {
+            (TurnOwner::Chat, TurnOwner::Chat) => {
+                "This conversation is already working on a reply. Wait for it to finish, or stop it first."
+                    .to_string()
+            }
+            (TurnOwner::Workflow(name), TurnOwner::Chat) => format!(
+                "The workflow \u{201c}{name}\u{201d} is updating this right now. Try again when it has finished."
+            ),
+            (TurnOwner::Chat, TurnOwner::Workflow(_)) => {
+                "It was being worked on in chat, so the update didn't run.".to_string()
+            }
+            (TurnOwner::Workflow(name), TurnOwner::Workflow(_)) => format!(
+                "The workflow \u{201c}{name}\u{201d} was already updating it, so this update didn't run."
+            ),
+        }
+    }
+}
+
+/// How an agent turn differs from a chat message.
+#[derive(Debug, Default)]
+pub struct TurnOptions<'a> {
+    /// Nobody is watching: deck and draft tools ignore `release_pinned`, so a
+    /// model can't be talked into changing the user's own text.
+    pub headless: bool,
+    /// The conversation's turn, already taken by the caller (a workflow that
+    /// snapshots before and after the turn holds it across all three, and
+    /// keeps the guard). When `None`, the turn takes it and fails if the
+    /// conversation is busy.
+    pub held: Option<&'a TurnGuard>,
 }
 
 impl StreamManager {
@@ -999,7 +1061,36 @@ impl StreamManager {
             active: Arc::new(Mutex::new(HashMap::new())),
             ask_user_pending: Arc::new(Mutex::new(HashMap::new())),
             adapter_resolver: resolver,
+            turns: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Take `conversation_id`'s turn: one agent turn at a time per
+    /// conversation, whether a chat message or a workflow's update started it.
+    /// `Err` names who holds it. The turn is released when the guard drops.
+    pub fn try_begin_turn(
+        &self,
+        conversation_id: &str,
+        owner: TurnOwner,
+    ) -> Result<TurnGuard, TurnOwner> {
+        let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(holder) = turns.get(conversation_id) {
+            return Err(holder.clone());
+        }
+        turns.insert(conversation_id.to_string(), owner);
+        Ok(TurnGuard {
+            turns: self.turns.clone(),
+            conversation_id: conversation_id.to_string(),
+        })
+    }
+
+    /// Who holds `conversation_id`'s turn, if anyone.
+    pub fn turn_holder(&self, conversation_id: &str) -> Option<TurnOwner> {
+        self.turns
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(conversation_id)
+            .cloned()
     }
 
     pub fn build_adapter_context(
@@ -1692,6 +1783,7 @@ impl StreamManager {
         rejected: &HashMap<String, String>,
         cancel: &CancellationToken,
         user_wait_ms: &std::sync::atomic::AtomicU64,
+        headless: bool,
     ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
@@ -1777,6 +1869,7 @@ impl StreamManager {
                 searxng_base_url: settings.web_search.searxng_base_url.clone(),
             },
             image,
+            headless,
         };
         let sink = runtime_channel.map(|channel| {
             let channel = channel.clone();
@@ -2791,6 +2884,32 @@ impl StreamManager {
         runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
         provider_override: Option<&str>,
     ) -> Result<StreamHandle, String> {
+        self.run_agent_turn_opts(
+            state,
+            runtime,
+            initial_request,
+            channel,
+            runtime_channel,
+            provider_override,
+            TurnOptions::default(),
+        )
+        .await
+    }
+
+    /// [`Self::run_agent_turn_with`] with `options`. The conversation's turn
+    /// is taken first (refused in plain words when something else holds it)
+    /// and held until this returns, on every path.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn run_agent_turn_opts(
+        &self,
+        state: &AppState,
+        runtime: &crate::connector_runtime::ConnectorRuntimeManager,
+        initial_request: ProviderRequest,
+        channel: impl Into<EventSink<ProviderEvent>>,
+        runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
+        provider_override: Option<&str>,
+        options: TurnOptions<'_>,
+    ) -> Result<StreamHandle, String> {
         let channel: EventSink<ProviderEvent> = channel.into();
         let runtime_channel: EventSink<ConnectorRuntimeEvent> = runtime_channel.into();
         let request_id = if initial_request.request_id.trim().is_empty() {
@@ -2799,6 +2918,22 @@ impl StreamManager {
             initial_request.request_id.clone()
         };
         let conversation_id = initial_request.conversation_id.clone();
+
+        // One turn per conversation: a second chat message, or a workflow's
+        // update, must not interleave with a turn in progress. Taken before
+        // anything is persisted so a refused message leaves no trace.
+        let _turn = match options.held {
+            Some(held) if held.conversation_id == conversation_id => None,
+            Some(_) => {
+                return Err(
+                    "The turn held for this update belongs to another conversation.".to_string(),
+                )
+            }
+            None => Some(
+                self.try_begin_turn(&conversation_id, TurnOwner::Chat)
+                    .map_err(|holder| holder.busy_message(&TurnOwner::Chat))?,
+            ),
+        };
 
         // Refuse a cloud provider under `local_only` before anything is
         // persisted or sent — the same rule the single-round path applies.
@@ -3415,6 +3550,7 @@ impl StreamManager {
                 &rejected_calls,
                 &tools_cancel,
                 &user_wait_ms,
+                options.headless,
             );
             let mut steered_during_tools: Option<String> = None;
             let tally = tokio::select! {

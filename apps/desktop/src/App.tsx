@@ -89,6 +89,14 @@ import {
   useWorkflowReviewEvents,
   useWorkflowRunEvents,
 } from './workflows/workflowRunEvents';
+import {
+  deckEditInProgress,
+  documentUpdateAction,
+  draftEditInProgress,
+  useLayoutFollowUp,
+  useWorkflowDocumentEvents,
+} from './workflows/documentUpdates';
+import { WorkflowUpdateBanner } from './workflows/WorkflowUpdateBanner';
 import { useTrayLabels } from './shell/useTrayLabels';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
@@ -1944,6 +1952,101 @@ export default function App() {
     }
   }, [reloadActiveDraft, t]);
 
+  // ── A workflow changed a deck or draft ────────────────────────────────────
+  // Reload it when it is open and nobody is editing it; otherwise say so and
+  // let the user choose the moment. Slides and Writing re-read their lists.
+  const [workflowDocsVersion, setWorkflowDocsVersion] = useState(0);
+  const [threadRefresh, setThreadRefresh] = useState(0);
+  const [workflowUpdate, setWorkflowUpdate] = useState<{ kind: 'deck' | 'draft'; id: string; workflow: string } | null>(
+    null,
+  );
+  useWorkflowDocumentEvents(
+    (event) => {
+      setWorkflowDocsVersion((v) => v + 1);
+      const open = activeDeckRef.current?.id === event.deckId;
+      const action = documentUpdateAction(open, deckEditInProgress());
+      if (action === 'reload') {
+        setWorkflowUpdate(null);
+        setThreadRefresh((n) => n + 1);
+        void reloadActiveDeck().then(() => setDeckHistoryRevision((n) => n + 1));
+      } else if (action === 'note') {
+        setWorkflowUpdate({ kind: 'deck', id: event.deckId, workflow: event.workflowName });
+      }
+    },
+    (event) => {
+      setWorkflowDocsVersion((v) => v + 1);
+      const open = activeDraftRef.current?.id === event.draftId;
+      const action = documentUpdateAction(open, draftEditInProgress(event.draftId, editedDraftIdRef.current));
+      if (action === 'reload') {
+        setWorkflowUpdate(null);
+        setThreadRefresh((n) => n + 1);
+        void reloadActiveDraft().then(() => {
+          setDraftResetToken((n) => n + 1);
+          setDraftHistoryRevision((n) => n + 1);
+        });
+      } else if (action === 'note') {
+        setWorkflowUpdate({ kind: 'draft', id: event.draftId, workflow: event.workflowName });
+      }
+    },
+  );
+  /** The note's "Reload": keep what was typed as a version first (drafts), then read it again. */
+  const reloadWorkflowUpdate = useCallback(async () => {
+    const note = workflowUpdate;
+    setWorkflowUpdate(null);
+    if (!note) return;
+    setThreadRefresh((n) => n + 1);
+    if (note.kind === 'deck') {
+      await reloadActiveDeck();
+      setDeckHistoryRevision((n) => n + 1);
+    } else {
+      await flushEditedSnapshot();
+      await reloadActiveDraft();
+      setDraftResetToken((n) => n + 1);
+      setDraftHistoryRevision((n) => n + 1);
+    }
+  }, [workflowUpdate, reloadActiveDeck, reloadActiveDraft, flushEditedSnapshot]);
+  /** "Undo this update" on a run: restore the saved entry and, if the document is open, show it. */
+  const restoreWorkflowDocument = useCallback(
+    async (kind: 'deck' | 'draft', id: string, snapshotId: string) => {
+      if (kind === 'deck') {
+        const restored = await restoreDeckSnapshot(id, snapshotId);
+        if (activeDeckRef.current?.id === id) {
+          setActiveDeck(restored);
+          setDeckHistoryRevision((n) => n + 1);
+        }
+      } else {
+        const open = activeDraftRef.current?.id === id;
+        // Keep what was typed since the last version before replacing it.
+        if (open) await flushEditedSnapshot();
+        const restored = await restoreDraftSnapshot(id, snapshotId);
+        if (open) {
+          setActiveDraft(restored);
+          setDraftResetToken((n) => n + 1);
+          setDraftHistoryRevision((n) => n + 1);
+        }
+      }
+      setWorkflowDocsVersion((v) => v + 1);
+      setWorkflowUpdate(null);
+    },
+    [flushEditedSnapshot],
+  );
+  // The note belongs to the document it was about.
+  useEffect(() => {
+    setWorkflowUpdate((note) =>
+      note && (note.kind === 'deck' ? activeDeck?.id : activeDraft?.id) === note.id ? note : null,
+    );
+  }, [activeDeck?.id, activeDraft?.id]);
+
+  // Layout follow-up: Rust cannot measure slides, so a deck whose newest
+  // history entry is a workflow's edit gets one layout check the next time it
+  // is open in the studio (remembered per entry, so it runs once).
+  useLayoutFollowUp({
+    deck: activeDeck,
+    active: studio,
+    isBusy: () => runningRef.current,
+    check: (deck, slideIds) => void runLayoutCheck(deck, slideIds, 'turn', 'completed'),
+  });
+
   const handleRenameDraft = useCallback(
     async (title: string) => {
       const draft = activeDraftRef.current;
@@ -3531,7 +3634,19 @@ export default function App() {
             onWriteFromReport={handleWriteFromReport}
             compact={anyStudio}
             deckLayoutNotes={deckLayoutNotes}
-            threadNote={deckLayoutNote?.conversationId === activeConversationId ? deckLayoutNote.text : null}
+            threadNote={
+              workflowUpdate
+                ? t('workspace.workflows.documentUpdated', { name: workflowUpdate.workflow })
+                : deckLayoutNote?.conversationId === activeConversationId
+                  ? deckLayoutNote.text
+                  : null
+            }
+            threadAction={
+              workflowUpdate
+                ? { label: t('workspace.workflows.documentReload'), onClick: () => void reloadWorkflowUpdate() }
+                : null
+            }
+            threadRefresh={threadRefresh}
             onDocumentToolActivity={routeDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onEditForked={handleEditForked}
@@ -3668,6 +3783,7 @@ export default function App() {
                 onStartDeck={handleStartDeck}
                 onStatus={setStatusMessage}
                 prefill={slidesPrefill}
+                refreshKey={workflowDocsVersion}
               />
             )}
             {destination === 'writing' && (
@@ -3675,12 +3791,16 @@ export default function App() {
                 onOpenDraft={(id) => void handleOpenDraft(id)}
                 onStartDraft={handleStartDraft}
                 onStatus={setStatusMessage}
+                refreshKey={workflowDocsVersion}
               />
             )}
             {destination === 'workflows' && (
               <WorkflowsPage
                 onStatus={setStatusMessage}
                 onOpenDocument={openWorkflowDocument}
+                onOpenDeck={(id) => void handleOpenDeck(id)}
+                onOpenDraft={(id) => void handleOpenDraft(id)}
+                onRestoreDocument={restoreWorkflowDocument}
                 refreshKey={workflowRunsVersion}
                 startNew={workflowsStartNew}
                 focus={workflowsFocus}
@@ -3706,6 +3826,9 @@ export default function App() {
 
         {writingStudio && activeDraft ? (
           <section className="doc-panel draft-panel" aria-label={t('writing.studio.ariaLabel')}>
+            {workflowUpdate && (
+              <WorkflowUpdateBanner workflow={workflowUpdate.workflow} onReload={() => void reloadWorkflowUpdate()} />
+            )}
             <WritingStudio
               draft={activeDraft}
               busyTool={draftBusyTool}
@@ -3725,6 +3848,9 @@ export default function App() {
           </section>
         ) : studio && activeDeck ? (
           <section className="doc-panel deck-panel" aria-label={t('slides.workspace.ariaLabel')}>
+            {workflowUpdate && (
+              <WorkflowUpdateBanner workflow={workflowUpdate.workflow} onReload={() => void reloadWorkflowUpdate()} />
+            )}
             <DeckWorkspace
               layout="studio"
               onBack={() => setStudioDeckId(null)}

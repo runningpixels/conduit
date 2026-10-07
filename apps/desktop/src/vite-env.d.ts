@@ -1,6 +1,12 @@
 // Side-effect CSS imports from packages/ui resolve through the vite alias;
 // declare the module so tsc -b typechecks clean. (Vite handles these at build.)
 declare module '*.css';
+// Static prompt text shared with the Rust workflow runner (`src/prompts/*.md`),
+// imported as a string by Vite's `?raw`.
+declare module '*.md?raw' {
+  const text: string;
+  export default text;
+}
 // Minimal node:fs surface for tests that read repo files (no @types/node
 // in the desktop app). Kept to exactly what tests use.
 declare module 'node:fs' {

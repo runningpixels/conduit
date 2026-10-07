@@ -34,7 +34,7 @@ export function describeStep(step: WorkflowStep, t: Translate, labels: InputLabe
     (step.type === 'notify' || step.type === 'save_artifact') && step.onlyIfChanged
       ? `${line} (${t('workspace.workflows.step.onlyIfChanged')})`
       : line;
-  return (step.type === 'summarize' || step.type === 'agent') && step.model
+  return (step.type === 'summarize' || step.type === 'agent' || step.type === 'edit_deck' || step.type === 'edit_draft') && step.model
     ? `${line} ${t('workspace.workflows.step.usingModel', { model: step.model.model })}`
     : only;
 }
@@ -67,6 +67,10 @@ function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels): st
         : t('workspace.workflows.step.saveMarkdown', { title: q(step.title) });
     case 'agent':
       return t('workspace.workflows.step.agent', { prompt: q(step.prompt) });
+    case 'edit_deck':
+      return t('workspace.workflows.step.editDeck', { instructions: q(step.instructions) });
+    case 'edit_draft':
+      return t('workspace.workflows.step.editDraft', { instructions: q(step.instructions) });
     case 'ask':
       return t('workspace.workflows.step.ask', { question: q(step.question) });
     case 'notify':

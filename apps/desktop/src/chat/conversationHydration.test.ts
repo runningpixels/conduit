@@ -373,3 +373,25 @@ describe('messageToDisplayTurn researchRunId', () => {
     ).not.toHaveProperty('researchRunId');
   });
 });
+
+describe('workflowModelOf', () => {
+  it('reads the provider and model a workflow ran a message with', () => {
+    const turn = messageToDisplayTurn(
+      makeMessage({
+        role: 'user',
+        metadata: { workflow: { id: 'w', name: 'Weekly', model: { provider: 'openai', model: 'gpt-4.1-mini' } } },
+        parts: [textPart('Update it')],
+      }),
+    );
+    expect(turn?.workflowModel).toEqual({ provider: 'openai', model: 'gpt-4.1-mini' });
+  });
+
+  it('ignores a model that is incomplete or not an object', () => {
+    for (const model of [{ provider: 'openai' }, { model: 'x' }, 'gpt', null, { provider: '', model: 'x' }]) {
+      const turn = messageToDisplayTurn(
+        makeMessage({ role: 'user', metadata: { workflow: { name: 'W', model } }, parts: [textPart('hi')] }),
+      );
+      expect(turn).not.toHaveProperty('workflowModel');
+    }
+  });
+});

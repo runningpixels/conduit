@@ -766,8 +766,26 @@ export type WorkflowStep = {
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
   | { type: 'agent'; prompt: string; input?: string; tools?: string[]; model?: WorkflowModel }
   | { type: 'read_file'; path: string }
+  | { type: 'edit_deck'; deck: string; instructions: string; input?: string; model?: WorkflowModel }
+  | { type: 'edit_draft'; draft: string; instructions: string; input?: string; model?: WorkflowModel }
   | { type: 'parse_data'; input: string; format: DataFormat }
 );
+
+/** What an `edit_deck` / `edit_draft` step records (Rust `workflows::runner`). */
+export interface WorkflowDocumentEditOutput {
+  deckId?: string;
+  draftId?: string;
+  title: string;
+  /** Ids of the slides or blocks the step changed. */
+  changed: string[];
+  /** Pinned text the step left alone: `{slideId, slot}` for decks, `{blockId}` or `{heading}` for drafts. */
+  skippedPinned: ({ slideId: string; slot: string } | { blockId: string } | { heading: string })[];
+  /** The model's one-sentence account of what it changed. */
+  reply: string;
+  /** Decks only: false until the deck is next opened. */
+  layoutChecked?: boolean;
+  model?: WorkflowModel;
+}
 
 export type WorkflowRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';
 
@@ -812,7 +830,9 @@ export type WorkflowPermission =
   | { kind: 'model'; provider: string }
   | { kind: 'saveDocuments' }
   | { kind: 'readFolder'; path: string }
-  | { kind: 'agentTools'; stepId: string; tools: string[] };
+  | { kind: 'agentTools'; stepId: string; tools: string[] }
+  /** Change a saved deck or draft (Rust `Permission::EditDocument`); `documentKind` is the tag's payload name, since `kind` is taken. */
+  | { kind: 'editDocument'; documentKind: 'deck' | 'draft'; id: string; title: string };
 
 /** A permission with its display name (provider, search backend) and, for a model, where it runs. */
 export type WorkflowPermissionView = WorkflowPermission & { label: string | null; local: boolean | null };

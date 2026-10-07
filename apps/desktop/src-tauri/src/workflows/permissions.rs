@@ -48,6 +48,23 @@ pub enum Permission {
     AgentTools { step_id: String, tools: Vec<String> },
     /// Read files inside this folder (the workflow's own folder).
     ReadFolder { path: String },
+    /// Change this saved deck or draft (`document_kind` is `deck` or
+    /// `draft`). Its title is part of the permission so the question can name
+    /// the document; a document renamed since it was allowed asks again.
+    EditDocument {
+        document_kind: String,
+        id: String,
+        title: String,
+    },
+}
+
+/// The permission to change the saved deck or draft `id` titled `title`.
+pub fn edit_document(document_kind: &str, id: &str, title: &str) -> Permission {
+    Permission::EditDocument {
+        document_kind: document_kind.to_string(),
+        id: id.to_string(),
+        title: title.to_string(),
+    }
 }
 
 /// The permission to read files in `folder`: the folder as written, without
@@ -111,6 +128,11 @@ pub fn view(permission: Permission) -> PermissionView {
             ),
             None,
         ),
+        Permission::EditDocument {
+            document_kind,
+            title,
+            ..
+        } => (Some(format!("Change the {document_kind} “{title}”")), None),
         _ => (None, None),
     };
     PermissionView {
@@ -231,6 +253,14 @@ fn collect(
             | StepAction::Notify { .. }
             | StepAction::Ask { .. }
             | StepAction::Condition { .. } => {}
+            // The model, now. Which document is only known when the step
+            // runs (its title is part of the permission), so a scheduled run
+            // asks about each one the first time.
+            StepAction::EditDeck { .. } | StepAction::EditDraft { .. } => {
+                set.insert(Permission::Model {
+                    provider: ctx.provider_for(workflow_model, step),
+                });
+            }
             StepAction::Agent { tools, .. } => {
                 set.insert(Permission::Model {
                     provider: ctx.provider_for(workflow_model, step),
@@ -450,6 +480,20 @@ mod tests {
         assert_eq!(
             serde_json::to_value(read_folder("C:\\Reports\\")).unwrap(),
             json!({ "kind": "readFolder", "path": "C:\\Reports" })
+        );
+        assert_eq!(
+            serde_json::to_value(edit_document("deck", "d1", "Weekly numbers")).unwrap(),
+            json!({
+                "kind": "editDocument", "documentKind": "deck", "id": "d1", "title": "Weekly numbers"
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(view(edit_document("draft", "w1", "Monthly report"))).unwrap(),
+            json!({
+                "kind": "editDocument", "documentKind": "draft", "id": "w1",
+                "title": "Monthly report",
+                "label": "Change the draft “Monthly report”", "local": null
+            })
         );
         let back: Permission =
             serde_json::from_value(json!({ "kind": "host", "host": "bbc.com" })).unwrap();

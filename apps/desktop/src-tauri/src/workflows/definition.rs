@@ -104,6 +104,11 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 ///   (why it passed or stopped the run)
 /// - `ask`: `answer`
 /// - `agent`: `text` (its answer) and `toolCalls` (the tools it called)
+/// - `edit_deck`: `deckId`, `title`, `changed` (slide ids), `skippedPinned`,
+///   `reply` (the model's one sentence), `layoutChecked` (always false: the
+///   layout is checked when the deck is next opened) and `model`
+/// - `edit_draft`: `draftId`, `title`, `changed` (block ids), `skippedPinned`,
+///   `reply` and `model`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -193,6 +198,29 @@ pub enum StepAction {
         /// in plain words by [`validate`].
         format: String,
     },
+    /// Update a saved deck with an agent turn in the deck's own chat: change
+    /// what `instructions` ask for, keep the user's pinned text. Top-level
+    /// steps only.
+    EditDeck {
+        /// The deck's id.
+        deck: String,
+        /// What to change ("Update slide 3's chart with these numbers"); a template.
+        instructions: String,
+        /// The data the instructions work on, usually an earlier step's
+        /// output; a template. When set but empty, the step fails without
+        /// asking a model.
+        #[serde(default)]
+        input: Option<String>,
+    },
+    /// Update a saved draft the same way. A section that isn't in the draft
+    /// yet is added at the end. Top-level steps only.
+    EditDraft {
+        /// The draft's id.
+        draft: String,
+        instructions: String,
+        #[serde(default)]
+        input: Option<String>,
+    },
     Condition {
         /// A template: the text to test.
         value: String,
@@ -236,6 +264,9 @@ impl StepAction {
         match self {
             StepAction::FetchPage { .. } | StepAction::WebSearch { .. } => 2,
             StepAction::Summarize { .. } => 1,
+            // Only a conversation that is busy is tried again; a model that
+            // already changed the document is never asked twice.
+            StepAction::EditDeck { .. } | StepAction::EditDraft { .. } => 1,
             _ => 0,
         }
     }
@@ -338,6 +369,8 @@ fn action_keys(step_type: &str) -> &'static [&'static str] {
         "condition" => &["value", "is", "text"],
         "read_file" => &["path"],
         "parse_data" => &["input", "format"],
+        "edit_deck" => &["deck", "instructions", "input", "model"],
+        "edit_draft" => &["draft", "instructions", "input", "model"],
         _ => &[],
     }
 }
@@ -540,10 +573,13 @@ fn check_steps(
         if let Some(model) = &step.model {
             if !matches!(
                 step.action,
-                StepAction::Summarize { .. } | StepAction::Agent { .. }
+                StepAction::Summarize { .. }
+                    | StepAction::Agent { .. }
+                    | StepAction::EditDeck { .. }
+                    | StepAction::EditDraft { .. }
             ) {
                 problems.push(format!(
-                    "Step \"{name}\" can't choose a model: only summarize and agent steps use one."
+                    "Step \"{name}\" can't choose a model: only summarize, agent, edit_deck and edit_draft steps use one."
                 ));
             }
             check_model(model, &format!("Step \"{name}\"'s model"), problems);
@@ -687,6 +723,36 @@ fn check_steps(
                 }
                 texts.push(input);
             }
+            StepAction::EditDeck {
+                deck,
+                instructions,
+                input,
+            } => {
+                check_update(
+                    ("deck", deck),
+                    instructions,
+                    input.as_deref(),
+                    &scope,
+                    name,
+                    problems,
+                    &mut texts,
+                );
+            }
+            StepAction::EditDraft {
+                draft,
+                instructions,
+                input,
+            } => {
+                check_update(
+                    ("draft", draft),
+                    instructions,
+                    input.as_deref(),
+                    &scope,
+                    name,
+                    problems,
+                    &mut texts,
+                );
+            }
             StepAction::Condition { value, is, text } => {
                 if scope.in_loop {
                     problems.push(format!(
@@ -745,6 +811,35 @@ fn check_steps(
             }
         }
         scope.steps.push(step.id.clone());
+    }
+}
+
+/// The checks `edit_deck` and `edit_draft` share. `target` is the kind ("deck"
+/// or "draft") and the id chosen.
+fn check_update<'a>(
+    target: (&str, &str),
+    instructions: &'a str,
+    input: Option<&'a str>,
+    scope: &Scope<'_>,
+    name: &str,
+    problems: &mut Vec<String>,
+    texts: &mut Vec<&'a str>,
+) {
+    let (kind, id) = target;
+    if id.trim().is_empty() {
+        problems.push(format!("Step \"{name}\" needs a {kind} to update."));
+    }
+    if instructions.trim().is_empty() {
+        problems.push(format!("Step \"{name}\" needs instructions."));
+    }
+    if scope.in_loop {
+        problems.push(format!(
+            "Step \"{name}\" updates a saved {kind}, which only works on the steps at the top level, not inside a repeated step."
+        ));
+    }
+    texts.push(instructions);
+    if let Some(input) = input {
+        texts.push(input);
     }
 }
 
@@ -1084,7 +1179,7 @@ mod tests {
         let problems = validate(&def(raw.clone())).unwrap_err();
         assert_eq!(
             problems,
-            vec!["Step \"t\" can't choose a model: only summarize and agent steps use one."]
+            vec!["Step \"t\" can't choose a model: only summarize, agent, edit_deck and edit_draft steps use one."]
         );
         // And the editor's unknown-setting check names it too.
         assert_eq!(
@@ -1334,6 +1429,68 @@ mod tests {
         assert!(
             err.ends_with("A step is missing its \"format\" setting."),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn update_steps_need_a_document_and_instructions_and_stay_at_the_top_level() {
+        let fine = def(json!({ "steps": [
+            { "id": "d", "type": "edit_deck", "deck": "deck-1", "instructions": "Update slide 3",
+              "input": "{{inputs.q}}", "model": { "provider": "ollama", "model": "m" } },
+            { "id": "w", "type": "edit_draft", "draft": "draft-1", "instructions": "Add a section" },
+        ], "inputs": [{ "id": "q", "label": "Q" }]}));
+        assert!(validate(&fine).is_ok(), "{:?}", validate(&fine));
+        assert_eq!(fine.steps[0].action.default_retries(), 1);
+        let StepAction::EditDeck { deck, input, .. } = &fine.steps[0].action else {
+            panic!("an edit_deck step");
+        };
+        assert_eq!(
+            (deck.as_str(), input.as_deref()),
+            ("deck-1", Some("{{inputs.q}}"))
+        );
+
+        let bad = def(json!({ "steps": [
+            { "id": "d", "type": "edit_deck", "deck": " ", "instructions": "" },
+            { "id": "w", "type": "edit_draft", "draft": "", "instructions": "Go" },
+            { "id": "each", "type": "for_each", "items": "steps.d.text", "steps": [
+                { "id": "in", "type": "edit_deck", "deck": "x", "instructions": "Go" }
+            ]},
+        ]}));
+        let problems = validate(&bad).unwrap_err().join("\n");
+        assert!(
+            problems.contains("Step \"d\" needs a deck to update."),
+            "{problems}"
+        );
+        assert!(
+            problems.contains("Step \"d\" needs instructions."),
+            "{problems}"
+        );
+        assert!(
+            problems.contains("Step \"w\" needs a draft to update."),
+            "{problems}"
+        );
+        assert!(
+            problems.contains(
+                "Step \"in\" updates a saved deck, which only works on the steps at the top level"
+            ),
+            "{problems}"
+        );
+        let missing =
+            parse(r#"{"steps":[{"id":"d","type":"edit_deck","instructions":"Go"}]}"#).unwrap_err();
+        assert!(
+            missing.ends_with("A step is missing its \"deck\" setting."),
+            "{missing}"
+        );
+
+        let raw = json!({ "steps": [
+            { "id": "d", "type": "edit_deck", "deck": "x", "instructions": "Go", "Input": "y" },
+        ]});
+        assert_eq!(
+            unknown_settings(&raw),
+            vec![
+                "Step \"d\": unknown setting \"Input\" \u{2014} did you mean \"input\"?"
+                    .to_string()
+            ]
         );
     }
 }

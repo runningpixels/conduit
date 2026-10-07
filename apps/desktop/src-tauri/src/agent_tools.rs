@@ -142,6 +142,84 @@ pub struct AgentToolContext<'a> {
     /// (t0-8 M3). `None` makes `generate_image` fail with a clear error
     /// instead of silently doing nothing — see [`ImageToolConfig`].
     pub image: Option<ImageToolConfig>,
+    /// Nobody is watching this turn (a workflow updating a deck or draft).
+    /// The deck and draft tools then ignore `release_pinned`, whatever the
+    /// model sends: text the user wrote is never changed, and a draft's
+    /// `write_section` may add a section that isn't in the outline yet.
+    pub headless: bool,
+}
+
+/// The deck tools a workflow's `edit_deck` step offers.
+pub const DECK_UPDATE_TOOLS: &[&str] = &[
+    READ_DECK_TOOL,
+    UPDATE_SLOTS_TOOL,
+    UPDATE_SLIDE_TOOL,
+    ADD_SLIDE_TOOL,
+    DELETE_SLIDE_TOOL,
+    MOVE_SLIDE_TOOL,
+];
+
+/// The draft tools a workflow's `edit_draft` step offers.
+pub const DRAFT_UPDATE_TOOLS: &[&str] = &[READ_DRAFT_TOOL, EDIT_BLOCKS_TOOL, WRITE_SECTION_TOOL];
+
+/// `names` from the built-in tools, as offered to a turn nobody is watching:
+/// no `release_pinned` argument and no sentence telling the model it may be
+/// used (it is ignored there), and `write_section` says it adds a new section.
+pub fn headless_tool_definitions(names: &[&str]) -> Vec<ToolDefinition> {
+    builtin_tool_definitions()
+        .into_iter()
+        .filter(|d| names.contains(&d.name.as_str()))
+        .map(|mut d| {
+            if let Some(props) = d
+                .input_schema
+                .get_mut("properties")
+                .and_then(Value::as_object_mut)
+            {
+                props.remove("release_pinned");
+            }
+            match d.name.as_str() {
+                UPDATE_SLIDE_TOOL => {
+                    d.description = format!(
+                        "{} Never change pinned text; say in your reply that you kept it.",
+                        d.description
+                            .split(" Pass release_pinned")
+                            .next()
+                            .unwrap_or_default()
+                    );
+                }
+                EDIT_BLOCKS_TOOL => {
+                    d.description = format!(
+                        "{} Edits to pinned blocks (text the user wrote) are always rejected.",
+                        d.description
+                            .split(" Edits to pinned blocks")
+                            .next()
+                            .unwrap_or_default()
+                    );
+                }
+                WRITE_SECTION_TOOL => {
+                    d.description.push_str(
+                        " A heading that isn't in the outline yet adds a new section at the end of the draft.",
+                    );
+                }
+                DELETE_SLIDE_TOOL => {
+                    d.description.push_str(
+                        " A slide that holds pinned text (text the user wrote) can't be deleted.",
+                    );
+                }
+                _ => {}
+            }
+            d
+        })
+        .collect()
+}
+
+/// The pinned names the model may release: none in a turn nobody is watching.
+fn released_names(ctx: &AgentToolContext<'_>, asked: Option<Vec<String>>) -> Vec<String> {
+    if ctx.headless {
+        Vec::new()
+    } else {
+        asked.unwrap_or_default()
+    }
 }
 
 /// Resolved image-generation support for the turn's active provider (t0-8
@@ -2480,7 +2558,7 @@ async fn update_slide(
         .iter()
         .find(|s| s.id == input.slide_id)
         .ok_or_else(|| slide_not_found(&input.slide_id))?;
-    let released = input.release_pinned.unwrap_or_default();
+    let released = released_names(ctx, input.release_pinned);
     let mut changes_to_store = slides::SlideChanges {
         notes: input.notes,
         ..Default::default()
@@ -2572,11 +2650,8 @@ async fn patch_slide(ctx: &AgentToolContext<'_>, input: PatchSlideInput) -> Resu
         .find(|s| s.id == input.slide_id)
         .ok_or_else(|| slide_not_found(&input.slide_id))?;
     let patched = apply_document_edits(&slide.html, &input.edits)?;
-    let patched = slide_html::check_pinned_kept(
-        &slide.html,
-        &patched,
-        input.release_pinned.as_deref().unwrap_or(&[]),
-    )?;
+    let released = released_names(ctx, input.release_pinned);
+    let patched = slide_html::check_pinned_kept(&slide.html, &patched, &released)?;
     let kept_pinned = pinned_slot_names(&patched);
     slides::update_slide(
         ctx.db,
@@ -2616,6 +2691,17 @@ async fn delete_slide(
     input: DeleteSlideInput,
 ) -> Result<Value, String> {
     let deck = deck_for_chat(ctx).await?;
+    if ctx.headless {
+        // Deleting a slide would delete the user's text on it.
+        if let Some(slide) = deck.slides.iter().find(|s| s.id == input.slide_id) {
+            if slide.slots.iter().any(|slot| slot.pinned) {
+                return Err(format!(
+                    "Slide '{}' holds text the user wrote, so it can't be deleted in an automated update. Leave it and say so in your reply.",
+                    slide.id
+                ));
+            }
+        }
+    }
     let slide_count = slides::delete_slide(ctx.db, &deck.id, &input.slide_id)
         .await
         .map_err(slides::user_message)?;
@@ -2935,12 +3021,13 @@ async fn write_section(
     input: WriteSectionInput,
 ) -> Result<Value, String> {
     let draft = draft_for_chat(ctx).await?;
-    let written = drafts::model_write_section(
+    let written = drafts::model_write_section_with(
         ctx.db,
         ctx.encryption,
         &draft,
         &input.heading,
         &input.markdown,
+        ctx.headless,
     )
     .await
     .map_err(drafts::user_message)?;
@@ -2963,7 +3050,7 @@ async fn edit_blocks(ctx: &AgentToolContext<'_>, input: EditBlocksInput) -> Resu
         ctx.encryption,
         &draft,
         &edits,
-        input.release_pinned.as_deref().unwrap_or(&[]),
+        &released_names(ctx, input.release_pinned),
     )
     .await
     .map_err(drafts::user_message)?;

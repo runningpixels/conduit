@@ -321,6 +321,8 @@ pub struct RunContext<'a> {
     pub running: &'a Arc<RunningWorkflows>,
     pub reviews: &'a Reviews,
     pub questions: &'a Questions,
+    /// Tells the page about decks and drafts a run changed; `None` in tests.
+    pub documents: Option<&'a super::documents::DocumentChanges>,
     /// Runs agent steps' tool loops; `None` in tests without one.
     pub connectors: Option<&'a crate::connector_runtime::ConnectorRuntimeManager>,
     /// `AddressPolicy::APP` in the app; tests allow a local server.
@@ -356,6 +358,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         running,
         reviews,
         questions,
+        documents,
         connectors,
         fetch_policy,
         notify,
@@ -400,6 +403,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         notify,
         questions: Some(questions),
         connectors,
+        documents,
     };
     let outcome = runner.run(&workflow_id, &HashMap::new(), &trigger).await;
     drop(guard);
@@ -435,6 +439,7 @@ pub async fn run_due<Tz: TimeZone>(
         running,
         reviews,
         questions: &questions,
+        documents: None,
         connectors: None,
         fetch_policy,
         notify: None,
@@ -490,6 +495,7 @@ pub async fn scheduler_loop(app: AppHandle) {
                     running: &app.state::<Arc<RunningWorkflows>>(),
                     reviews: &app.state::<Reviews>(),
                     questions: &app.state::<Questions>(),
+                    documents: Some(&app.state::<super::documents::DocumentChanges>()),
                     connectors: Some(
                         &app.state::<crate::connector_runtime::ConnectorRuntimeManager>(),
                     ),

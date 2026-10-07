@@ -19,6 +19,12 @@ export interface ChatTurn {
   /** Set on the assistant turn of a Research run (the message's
    *  `metadata.researchRunId`): the turn renders as a ResearchRunCard. */
   researchRunId?: string;
+  /** Set on a user turn a workflow sent (the message's `metadata.workflow.name`):
+   *  the thread shows "From <name>" instead of the text. */
+  workflowName?: string;
+  /** The provider and model a workflow resolved for this message (`metadata.workflow.model`):
+   *  the chat's model line shows what actually ran instead of the current setting. */
+  workflowModel?: { provider: string; model: string };
 }
 
 const DISPLAY_PART_KINDS = new Set(['text', 'reasoning']);
@@ -73,6 +79,26 @@ function knowledgeRefsFromMessage(message: Message): KnowledgeRef[] {
   return out;
 }
 
+/** The workflow that wrote a user message (`metadata.workflow = {id, runId, name}`), if any. */
+export function workflowNameOf(metadata: Record<string, unknown> | undefined | null): string | undefined {
+  const workflow = metadata?.workflow;
+  if (!workflow || typeof workflow !== 'object') return undefined;
+  const name = (workflow as Record<string, unknown>).name;
+  return typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined;
+}
+
+/** The provider and model a workflow ran this message with (`metadata.workflow.model = {provider, model}`), if recorded. */
+export function workflowModelOf(
+  metadata: Record<string, unknown> | undefined | null,
+): { provider: string; model: string } | undefined {
+  const workflow = metadata?.workflow;
+  if (!workflow || typeof workflow !== 'object') return undefined;
+  const used = (workflow as Record<string, unknown>).model;
+  if (!used || typeof used !== 'object') return undefined;
+  const { provider, model } = used as Record<string, unknown>;
+  return typeof provider === 'string' && provider && typeof model === 'string' && model ? { provider, model } : undefined;
+}
+
 /** Map a persisted message to a chat-thread turn, or skip non-displayable roles. */
 export function messageToDisplayTurn(message: Message): ChatTurn | null {
   if (message.role === 'tool' || message.role === 'system' || message.role === 'developer') {
@@ -91,6 +117,9 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
   const runId = message.role === 'assistant' ? message.metadata?.researchRunId : undefined;
   const researchRunId = typeof runId === 'string' && runId.trim() !== '' ? runId : undefined;
 
+  const workflowName = message.role === 'user' ? workflowNameOf(message.metadata) : undefined;
+  const workflowModel = workflowModelOf(message.metadata);
+
   return {
     id: message.id,
     role: message.role === 'assistant' ? 'assistant' : 'user',
@@ -100,6 +129,8 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
     ...(knowledgeRefs && knowledgeRefs.length > 0 ? { knowledgeRefs } : {}),
     ...(researchRunId ? { researchRunId } : {}),
+    ...(workflowName ? { workflowName } : {}),
+    ...(workflowModel ? { workflowModel } : {}),
   };
 }
 

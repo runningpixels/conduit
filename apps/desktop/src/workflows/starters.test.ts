@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowStep } from '../ipc/contracts';
+import { documentTarget, isDocumentEdit, needsDocumentTarget, valuesAt } from './editorModel';
 import { STARTER_WORKFLOWS } from './starters';
 
 const briefing = STARTER_WORKFLOWS.find((s) => s.id === 'briefing')!;
@@ -53,6 +54,42 @@ describe('starters', () => {
         expect(watch.definition.inputs?.some((i) => i.id === m[1])).toBe(true);
       }
       ids.add(step.id);
+    }
+  });
+
+  it('weekly numbers deck reads a CSV table and updates a deck the user still has to pick', () => {
+    const starter = STARTER_WORKFLOWS.find((x) => x.id === 'weekly-numbers-deck')!;
+    const steps = starter.definition.steps;
+    expect(steps.map((x) => x.type)).toEqual(['fetch_page', 'parse_data', 'edit_deck']);
+    expect(steps[1]).toMatchObject({ type: 'parse_data', input: '{{steps.fetch.pages.0.text}}', format: 'csv' });
+    const edit = steps[2];
+    expect(edit).toMatchObject({ type: 'edit_deck', deck: '', input: '{{steps.data.text}}' });
+    expect(edit.type === 'edit_deck' && edit.instructions).toMatch(/chart/);
+    // Nothing is chosen for the user: the editor flags the empty deck.
+    expect(needsDocumentTarget(starter.definition)).toBe(true);
+  });
+
+  it('monthly report section fetches, summarizes and adds a section to a draft the user still has to pick', () => {
+    const starter = STARTER_WORKFLOWS.find((x) => x.id === 'monthly-report-section')!;
+    const steps = starter.definition.steps;
+    expect(steps.map((x) => x.type)).toEqual(['fetch_page', 'summarize', 'edit_draft']);
+    expect(steps[2]).toMatchObject({ type: 'edit_draft', draft: '', input: '{{steps.summary.text}}' });
+    expect(needsDocumentTarget(starter.definition)).toBe(true);
+  });
+
+  it('every other starter can be saved as it is, and every reference in the new ones resolves', () => {
+    for (const starter of STARTER_WORKFLOWS) {
+      const edits = starter.definition.steps.filter(isDocumentEdit);
+      expect(needsDocumentTarget(starter.definition)).toBe(edits.some((e) => documentTarget(e) === ''));
+      // Documents are never chosen on the user's behalf.
+      for (const e of edits) expect(documentTarget(e)).toBe('');
+      starter.definition.steps.forEach((step, index) => {
+        const known = new Set(valuesAt(starter.definition, [index]).map((r) => r.path));
+        for (const m of JSON.stringify(step).matchAll(/\{\{\s*([a-z0-9_.]+)\s*\}\}/g)) {
+          if (m[1].startsWith('item') || m[1] === 'index') continue;
+          expect(known.has(m[1]), `${starter.id}: ${m[1]}`).toBe(true);
+        }
+      });
     }
   });
 });

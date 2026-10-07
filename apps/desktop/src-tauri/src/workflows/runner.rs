@@ -25,6 +25,12 @@
 //!   `StreamManager::run_agent_turn`, limited to a few read-only built-in
 //!   tools (search, read pages, time, arithmetic) that never stop to ask for
 //!   approval; the settings' agent step limit applies.
+//! - An `edit_deck` / `edit_draft` step updates a saved deck or draft with an
+//!   agent turn in the document's own chat (`edit_document`): it takes the
+//!   conversation's turn (so a chat message can't interleave), snapshots
+//!   "Before <workflow>", runs the model with only the deck or draft tools and
+//!   with pinned text out of its reach, snapshots "Workflow: <workflow>" if
+//!   anything changed, and announces the change to the page.
 //! - A run can start partway (`run_from`): the top-level steps before the
 //!   chosen one aren't run again; their outputs come from an earlier run and
 //!   are recorded as `reused`, so fixing a template doesn't re-fetch pages or
@@ -63,9 +69,11 @@ use crate::db::repository::conversations;
 use crate::db::repository::workflows::{
     self as repo, WorkflowRecord, WorkflowRunDetail, WorkflowRunStep,
 };
+use crate::db::repository::{drafts, slides, tool_calls};
+use crate::document_prompts;
 use crate::event_sink;
 use crate::state::AppState;
-use crate::stream_manager::StreamManager;
+use crate::stream_manager::{StreamManager, TurnGuard, TurnOptions, TurnOwner};
 use crate::time::now_iso8601;
 use crate::web_page;
 
@@ -120,6 +128,9 @@ pub struct Runner<'a> {
     pub questions: Option<&'a Questions>,
     /// Runs agent steps' tool loops; `None` where they can't run (the step fails).
     pub connectors: Option<&'a crate::connector_runtime::ConnectorRuntimeManager>,
+    /// Where decks and drafts a run changed are announced; `None` where no
+    /// page listens (the change is saved either way).
+    pub documents: Option<&'a super::documents::DocumentChanges>,
 }
 
 /// What an unattended run may do, and where it asks for more.
@@ -159,6 +170,10 @@ pub struct RunBudget {
     pub wall_clock: Duration,
     /// Model tokens, input and output, across the whole run.
     pub max_tokens: u64,
+    /// How long an update step waits for a deck's or draft's chat to be free.
+    pub busy_wait: Duration,
+    /// How often a waiting update step looks again.
+    pub busy_poll: Duration,
 }
 
 impl Default for RunBudget {
@@ -166,6 +181,8 @@ impl Default for RunBudget {
         Self {
             wall_clock: Duration::from_secs(30 * 60),
             max_tokens: 500_000,
+            busy_wait: Duration::from_secs(60),
+            busy_poll: Duration::from_secs(2),
         }
     }
 }
@@ -334,6 +351,193 @@ struct Exec<'a> {
     tokens: Mutex<u64>,
     /// Set when a budget is exceeded; the run ends with this reason.
     over_budget: Mutex<Option<String>>,
+}
+
+/// Which kind of saved document an update step changes.
+#[derive(Debug, Clone, Copy)]
+enum DocKind {
+    Deck,
+    Draft,
+}
+
+impl DocKind {
+    /// `deck` or `draft`: the word in messages, and the step's setting that holds the id.
+    fn word(self) -> &'static str {
+        match self {
+            DocKind::Deck => "deck",
+            DocKind::Draft => "draft",
+        }
+    }
+}
+
+/// Why an update step records a history entry.
+#[derive(Clone, Copy)]
+enum SnapshotCause {
+    /// Before the turn, so it can be undone.
+    Manual,
+    /// After a turn that changed something.
+    AiTurn,
+}
+
+/// A saved deck or draft, as loaded for an update.
+enum Document {
+    Deck(Box<provider_core::schema::DeckDetail>),
+    Draft(Box<drafts::Loaded>),
+}
+
+impl Document {
+    fn title(&self) -> &str {
+        match self {
+            Document::Deck(d) => &d.title,
+            Document::Draft(d) => &d.title,
+        }
+    }
+
+    /// An outline can't be updated: its slides or sections aren't made yet.
+    fn ready(&self) -> Result<(), String> {
+        match self {
+            Document::Deck(d) if d.stage != provider_core::schema::DeckStage::Slides => Err(
+                format!(
+                    "The deck \u{201c}{}\u{201d} is still an outline; finish it in Slides first.",
+                    d.title
+                ),
+            ),
+            Document::Draft(d) if d.stage != provider_core::schema::DraftStage::Draft => Err(
+                format!(
+                    "The draft \u{201c}{}\u{201d} is still an outline; approve the outline in Writing first.",
+                    d.title
+                ),
+            ),
+            _ => Ok(()),
+        }
+    }
+
+    /// The chat the document is edited in.
+    fn conversation_id(&self) -> Result<String, String> {
+        let found = match self {
+            Document::Deck(d) => d.conversation_id.clone(),
+            Document::Draft(d) => Some(d.conversation_id.clone()),
+        };
+        found
+            .filter(|c| !c.is_empty())
+            .ok_or_else(|| "That document has no chat to update it in.".to_string())
+    }
+
+    /// The system prompt, the per-turn developer prompt, the tools offered and
+    /// the generation controls of an update turn.
+    fn prompts(
+        &self,
+    ) -> (
+        String,
+        String,
+        Vec<provider_core::schema::ToolDefinition>,
+        Option<provider_core::schema::GenerationControls>,
+    ) {
+        use crate::agent_tools::{
+            headless_tool_definitions, DECK_UPDATE_TOOLS, DRAFT_UPDATE_TOOLS,
+        };
+        match self {
+            Document::Deck(d) => (
+                document_prompts::deck_update_system(),
+                document_prompts::deck_developer_prompt(d, &Default::default()),
+                headless_tool_definitions(DECK_UPDATE_TOOLS),
+                None,
+            ),
+            Document::Draft(d) => (
+                document_prompts::draft_update_system(),
+                document_prompts::draft_developer_prompt(&d.detail()),
+                headless_tool_definitions(DRAFT_UPDATE_TOOLS),
+                // One section per response, as in a draft chat, so each lands
+                // in the draft before the next is written.
+                Some(provider_core::schema::GenerationControls {
+                    temperature: None,
+                    top_p: None,
+                    max_tokens: None,
+                    stop_sequences: None,
+                    tool_choice: None,
+                    reasoning_effort: None,
+                    parallel_tool_calls: Some(false),
+                }),
+            ),
+        }
+    }
+
+    /// Record the document's current state in its history; the id of the
+    /// snapshot that holds it. When the newest snapshot already holds exactly
+    /// this state, nothing is added and that one's id is returned.
+    async fn snapshot(
+        &self,
+        state: &AppState,
+        cause: SnapshotCause,
+        label: &str,
+    ) -> Result<Option<String>, String> {
+        use provider_core::schema::{DeckSnapshotCause, DraftSnapshotCause};
+        match self {
+            Document::Deck(d) => {
+                let cause = match cause {
+                    SnapshotCause::Manual => DeckSnapshotCause::Manual,
+                    SnapshotCause::AiTurn => DeckSnapshotCause::AiTurn,
+                };
+                let made = slides::snapshot(&state.db, &state.encryption, &d.id, cause, label)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                match made {
+                    Some(made) => Ok(Some(made.id)),
+                    None => Ok(slides::list_snapshots(&state.db, &d.id)
+                        .await
+                        .map_err(|e| e.to_string())?
+                        .into_iter()
+                        .next()
+                        .map(|s| s.id)),
+                }
+            }
+            Document::Draft(d) => {
+                let cause = match cause {
+                    SnapshotCause::Manual => DraftSnapshotCause::Manual,
+                    SnapshotCause::AiTurn => DraftSnapshotCause::AiTurn,
+                };
+                let made =
+                    drafts::snapshot(&state.db, &state.encryption, &d.id, cause, Some(label))
+                        .await
+                        .map_err(|e| e.to_string())?;
+                match made {
+                    Some(made) => Ok(Some(made.id)),
+                    None => Ok(drafts::list_snapshots(&state.db, &d.id)
+                        .await
+                        .map_err(|e| e.to_string())?
+                        .into_iter()
+                        .next()
+                        .map(|s| s.id)),
+                }
+            }
+        }
+    }
+
+    /// Ids of what `after` changed compared with this earlier state.
+    fn changed(&self, after: &Document) -> Vec<String> {
+        match (self, after) {
+            (Document::Deck(b), Document::Deck(a)) => super::edit::changed_slides(b, a),
+            (Document::Draft(b), Document::Draft(a)) => super::edit::changed_blocks(b, a),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The headings of the draft's sections that `after` changed (a new
+    /// section counts once); empty for a deck.
+    fn changed_sections(&self, after: &Document) -> Vec<String> {
+        match (self, after) {
+            (Document::Draft(b), Document::Draft(a)) => super::edit::changed_sections(b, a),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Pinned text the turn's tool calls tried to change and were refused.
+    fn skipped_pinned(&self, calls: &[provider_core::schema::ToolCallRecord]) -> Vec<Value> {
+        match self {
+            Document::Deck(_) => super::edit::skipped_pinned_slots(calls),
+            Document::Draft(d) => super::edit::skipped_pinned_blocks(calls, d),
+        }
+    }
 }
 
 /// What a step tells the steps after it.
@@ -580,6 +784,8 @@ impl Exec<'_> {
                 let output = self.agent(prompt, input, tools, &model).await?;
                 Ok(with_model(output, &model))
             }
+            StepAction::EditDeck { .. } => self.edit_document(step, filled, DocKind::Deck).await,
+            StepAction::EditDraft { .. } => self.edit_document(step, filled, DocKind::Draft).await,
             StepAction::Ask {
                 choices, default, ..
             } => {
@@ -1007,7 +1213,7 @@ impl Exec<'_> {
         Ok(json!({
             "url": page.url,
             "title": page.title,
-            "lookedEmpty": extract::looked_empty(&page.text),
+            "lookedEmpty": looked_empty(&page),
             "text": page.text,
             "links": page.links,
             "contentType": page.content_type,
@@ -1160,6 +1366,231 @@ impl Exec<'_> {
         Ok(json!({ "text": reply, "toolCalls": called }))
     }
 
+    /// Update a saved deck or draft: see the module notes. `filled` holds the
+    /// step's `deck`/`draft` id, `instructions` and optional `input`.
+    async fn edit_document(
+        &self,
+        step: &Step,
+        filled: &Value,
+        kind: DocKind,
+    ) -> Result<Value, String> {
+        let state = self.runner.state;
+        let word = kind.word();
+        let instructions = filled["instructions"].as_str().unwrap_or_default().trim();
+        if instructions.is_empty() {
+            return Err("The instructions came out empty.".to_string());
+        }
+        // Data the step was given but that came out empty: no point asking a
+        // model (or the user's leave to) to update from nothing.
+        let input = filled["input"].as_str();
+        if input.is_some_and(|i| i.trim().is_empty()) {
+            return Err(format!(
+                "There was nothing to update the {word} with: the input came out empty."
+            ));
+        }
+        let id = filled[word].as_str().unwrap_or_default().trim().to_string();
+        let doc = self.load_document(kind, &id).await?;
+        doc.ready()?;
+        let model = self.resolve_model(step)?;
+        self.allow(
+            &step.id,
+            Permission::Model {
+                provider: model.provider.clone(),
+            },
+            None,
+        )
+        .await?;
+        self.allow(
+            &step.id,
+            permissions::edit_document(word, &id, doc.title()),
+            None,
+        )
+        .await?;
+        let connectors = self.runner.connectors.ok_or("This step can't run here.")?;
+        let conversation_id = doc.conversation_id()?;
+
+        // One turn per conversation: wait a moment for a chat reply to finish.
+        let turn = self.take_turn(&conversation_id, word).await?;
+        // The chat may have changed or deleted it while we waited.
+        let before = self.load_document(kind, &id).await?;
+        before.ready()?;
+
+        let name = self.workflow_name;
+        // The safety net first: if it can't be made, nothing changes.
+        let before_snapshot_id = before
+            .snapshot(state, SnapshotCause::Manual, &format!("Before {name}"))
+            .await?;
+
+        let (system, developer, definitions, controls) = before.prompts();
+        let mut request = self.request(
+            &[(
+                MessageRole::User,
+                document_prompts::update_message(instructions, input.unwrap_or_default()),
+            )],
+            &system,
+            definitions,
+            &model,
+        )?;
+        request.conversation_id = conversation_id.clone();
+        request.developer_prompt = Some(developer);
+        request.generation_controls = controls;
+        let marker = json!({
+            "workflow": {
+                "id": self.workflow_id, "runId": self.run_id, "name": name,
+                "model": { "provider": model.provider, "model": model.model },
+            }
+        });
+        let turn_started = now_iso8601();
+        for message in &mut request.messages {
+            message.conversation_id = conversation_id.clone();
+            message.metadata = Some(marker.clone());
+        }
+        let request_id = request.request_id.clone();
+        let (sink, events) = event_sink::collector::<ProviderEvent>();
+        let ran = self
+            .until_done(
+                &request_id,
+                self.runner.streams.run_agent_turn_opts(
+                    state,
+                    connectors,
+                    request,
+                    sink,
+                    crate::event_sink::EventSink::discard(),
+                    model.chosen.then_some(model.provider.as_str()),
+                    TurnOptions {
+                        headless: true,
+                        held: Some(&turn),
+                    },
+                ),
+            )
+            .await;
+
+        // The chat names the model that wrote the replies.
+        if let Err(e) = crate::db::repository::messages::set_assistant_model_since(
+            &state.db,
+            &conversation_id,
+            &turn_started,
+            &model.provider,
+            &model.model,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "could not record the model on the update's replies");
+        }
+
+        // Whatever the turn did before it ended is kept, and undoable.
+        let after = self.load_document(kind, &id).await?;
+        after
+            .snapshot(state, SnapshotCause::AiTurn, &format!("Workflow: {name}"))
+            .await?;
+        let changed = before.changed(&after);
+        if !changed.is_empty() {
+            self.announce(kind, &id);
+        }
+        ran?;
+        let reply = {
+            let events = events
+                .lock()
+                .map_err(|_| "the reply could not be read".to_string())?;
+            self.read_reply_with(&events, true)?.0
+        };
+        let calls = tool_calls::list_tool_calls_by_request(&state.db, &request_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        drop(turn);
+        let mut output = json!({
+            "title": after.title(),
+            "changed": changed,
+            "beforeSnapshotId": before_snapshot_id,
+            "skippedPinned": before.skipped_pinned(&calls),
+            "reply": reply,
+        });
+        match kind {
+            DocKind::Deck => {
+                output["deckId"] = json!(id);
+                output["layoutChecked"] = json!(false);
+            }
+            DocKind::Draft => {
+                output["draftId"] = json!(id);
+                output["changedSections"] = json!(before.changed_sections(&after));
+            }
+        }
+        Ok(with_model(output, &model))
+    }
+
+    /// The deck or draft `id`, or why this step can't update it.
+    async fn load_document(&self, kind: DocKind, id: &str) -> Result<Document, String> {
+        let state = self.runner.state;
+        let found = match kind {
+            DocKind::Deck => slides::get(&state.db, &state.encryption, id)
+                .await
+                .map_err(|e| e.to_string())?
+                .map(|d| Document::Deck(Box::new(d))),
+            DocKind::Draft => drafts::load(&state.db, &state.encryption, id)
+                .await
+                .map_err(|e| e.to_string())?
+                .map(|d| Document::Draft(Box::new(d))),
+        };
+        found.ok_or_else(|| format!("The {} this step updates was deleted.", kind.word()))
+    }
+
+    /// Take the conversation's turn. When a chat reply or another workflow has
+    /// it, look again every couple of seconds for up to a minute; Stop and
+    /// the run's time limit end the wait.
+    async fn take_turn(&self, conversation_id: &str, word: &str) -> Result<TurnGuard, String> {
+        let budget = self.runner.budget;
+        let began = Instant::now();
+        loop {
+            let owner = TurnOwner::Workflow(self.workflow_name.to_string());
+            let holder = match self.runner.streams.try_begin_turn(conversation_id, owner) {
+                Ok(turn) => return Ok(turn),
+                Err(holder) => holder,
+            };
+            if began.elapsed() >= budget.busy_wait {
+                return Err(match holder {
+                    TurnOwner::Chat => format!(
+                        "The {word} was busy in chat for over a minute, so the update didn't run."
+                    ),
+                    TurnOwner::Workflow(other) => format!(
+                        "The workflow \u{201c}{other}\u{201d} was still updating the {word} after a minute, so this update didn't run."
+                    ),
+                });
+            }
+            tracing::info!(%word, "the conversation is busy; waiting");
+            let wait = budget
+                .busy_poll
+                .min(budget.busy_wait.saturating_sub(began.elapsed()));
+            tokio::select! {
+                _ = tokio::time::sleep(wait) => {}
+                _ = self.runner.stop.cancelled() => return Err(STOPPED.to_string()),
+                _ = tokio::time::sleep(self.time_left()) => {
+                    return Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()));
+                }
+            }
+        }
+    }
+
+    /// Tell the page `kind` `id` changed.
+    fn announce(&self, kind: DocKind, id: &str) {
+        use super::documents::{DeckChanged, DocumentChange, DraftChanged};
+        let Some(documents) = self.runner.documents else {
+            return;
+        };
+        let (workflow_name, run_id) = (self.workflow_name.to_string(), self.run_id.to_string());
+        documents.announce(match kind {
+            DocKind::Deck => DocumentChange::Deck(DeckChanged {
+                deck_id: id.to_string(),
+                workflow_name,
+                run_id,
+            }),
+            DocKind::Draft => DocumentChange::Draft(DraftChanged {
+                draft_id: id.to_string(),
+                workflow_name,
+                run_id,
+            }),
+        });
+    }
+
     /// A request in the workflow's conversation with the step's model.
     fn request(
         &self,
@@ -1258,6 +1689,16 @@ impl Exec<'_> {
     /// The answer in a stream's events (the text after the last tool call),
     /// and the tools it called; counts the tokens it used.
     fn read_reply(&self, events: &[ProviderEvent]) -> Result<(String, Vec<String>), String> {
+        self.read_reply_with(events, false)
+    }
+
+    /// [`Self::read_reply`]; with `allow_empty`, a turn that ends with no
+    /// words (after tool calls that did the work) is an empty answer, not an error.
+    fn read_reply_with(
+        &self,
+        events: &[ProviderEvent],
+        allow_empty: bool,
+    ) -> Result<(String, Vec<String>), String> {
         let mut reply = String::new();
         let mut called = Vec::new();
         let mut used = 0;
@@ -1280,7 +1721,7 @@ impl Exec<'_> {
             return Err(reason);
         }
         let reply = reply.trim().to_string();
-        if reply.is_empty() {
+        if reply.is_empty() && !allow_empty {
             return Err("The model returned nothing.".to_string());
         }
         Ok((reply, called))
@@ -1411,6 +1852,28 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "prompt": cap_text(&render(prompt)?, MAX_MODEL_TEXT_CHARS),
             "input": cap_text(&render(input)?, MAX_MODEL_TEXT_CHARS),
             "tools": tools,
+        }),
+        StepAction::EditDeck {
+            deck,
+            instructions,
+            input,
+        } => json!({
+            "type": "edit_deck",
+            "deck": deck,
+            "instructions": cap_text(&render(instructions)?, MAX_MODEL_TEXT_CHARS),
+            "input": input.as_deref().map(render).transpose()?
+                .map(|text| cap_text(&text, MAX_MODEL_TEXT_CHARS)),
+        }),
+        StepAction::EditDraft {
+            draft,
+            instructions,
+            input,
+        } => json!({
+            "type": "edit_draft",
+            "draft": draft,
+            "instructions": cap_text(&render(instructions)?, MAX_MODEL_TEXT_CHARS),
+            "input": input.as_deref().map(render).transpose()?
+                .map(|text| cap_text(&text, MAX_MODEL_TEXT_CHARS)),
         }),
         StepAction::Ask {
             question,
@@ -1553,6 +2016,16 @@ fn cap_text(text: &str, max: usize) -> String {
     format!("{}\n[\u{2026} cut: {rest} more characters]", &text[..end])
 }
 
+/// Whether a fetched page has nothing worth reading. A data file (CSV, JSON,
+/// plain text) is short on purpose, so only an empty one counts.
+fn looked_empty(page: &web_page::Page) -> bool {
+    if web_page::is_data(&page.content_type, &page.url) {
+        page.text.trim().is_empty()
+    } else {
+        extract::looked_empty(&page.text)
+    }
+}
+
 /// The readable pages as one text, each under its heading, small enough for
 /// a model step's input: every page gets the same share of `max` (or a page's
 /// own limit, if smaller) and a page that doesn't fit says how much was cut,
@@ -1560,6 +2033,13 @@ fn cap_text(text: &str, max: usize) -> String {
 fn join_pages(pages: &[(String, String)], max: usize) -> String {
     if pages.is_empty() {
         return String::new();
+    }
+    // One page needs no heading to tell it from the others.
+    if let [(_, text)] = pages {
+        let limit = MAX_PAGE_CHARS
+            .min(max.saturating_sub(CUT_MARKER_ROOM))
+            .max(1);
+        return cap_text(text, limit);
     }
     // Room for the headings and the cut markers, which aren't page text.
     let overhead: usize = pages
@@ -1600,6 +2080,8 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::ForEach { .. } => "for_each",
         StepAction::SaveArtifact { .. } => "save_artifact",
         StepAction::Agent { .. } => "agent",
+        StepAction::EditDeck { .. } => "edit_deck",
+        StepAction::EditDraft { .. } => "edit_draft",
         StepAction::Ask { .. } => "ask",
         StepAction::Notify { .. } => "notify",
         StepAction::Condition { .. } => "condition",

@@ -3,7 +3,14 @@ import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import {
   allStepIds,
   conditionNeedsText,
+  defaultRetries,
+  documentTarget,
+  needsDocumentTarget,
+  stepOutputs,
+  stepTakesModel,
   stepTypesFor,
+  withDocumentTarget,
+  withOptionalInput,
   withConditionTest,
   withFolder,
   withOnlyIfChanged,
@@ -92,6 +99,7 @@ describe('valuesAt', () => {
       'steps.fetch.pages.0.links',
       'steps.fetch.pages',
       'steps.fetch.pages.0.title',
+      'steps.fetch.pages.0.text',
       'steps.fetch.text',
     ]);
   });
@@ -110,6 +118,7 @@ describe('valuesAt', () => {
       'steps.fetch.pages.0.links',
       'steps.fetch.pages',
       'steps.fetch.pages.0.title',
+      'steps.fetch.pages.0.text',
       'steps.fetch.text',
     ]);
     expect(inner).not.toContain('steps.line.text');
@@ -257,5 +266,65 @@ describe('data steps', () => {
     const t = ((key: string, vars?: Record<string, unknown>) => `${key}|${JSON.stringify(vars ?? {})}`) as never;
     expect(describeStep(def.steps[0], t)).toContain('workspace.workflows.step.readFile|{"path":"metrics.csv"}');
     expect(describeStep(def.steps[1], t)).toContain('workspace.workflows.step.parseData|{"format":"CSV"}');
+  });
+});
+
+describe('document steps', () => {
+  it('start empty, take a model and the usual single retry, and stay at the top level', () => {
+    const deck = newStep('edit_deck', new Set());
+    const draft = newStep('edit_draft', new Set(['update_draft']));
+    expect(deck).toEqual({ id: 'update_deck', type: 'edit_deck', deck: '', instructions: '' });
+    expect(draft).toEqual({ id: 'update_draft_2', type: 'edit_draft', draft: '', instructions: '' });
+    expect(stepTakesModel('edit_deck')).toBe(true);
+    expect(stepTakesModel('edit_draft')).toBe(true);
+    expect(defaultRetries('edit_deck')).toBe(1);
+    expect(stepTypesFor(false)).toEqual(expect.arrayContaining(['edit_deck', 'edit_draft']));
+    expect(stepTypesFor(true)).not.toContain('edit_deck');
+    expect(stepTypesFor(true)).not.toContain('edit_draft');
+  });
+
+  it('points a step at a document, sets and clears its input and model', () => {
+    let step: WorkflowStep = newStep('edit_deck', new Set());
+    step = withDocumentTarget(step, 'deck-1');
+    expect(documentTarget(step as never)).toBe('deck-1');
+    step = withOptionalInput(step, '{{steps.data.text}}');
+    expect(step).toMatchObject({ input: '{{steps.data.text}}' });
+    expect('input' in withOptionalInput(step, '')).toBe(false);
+    step = withStepModel(step, { provider: 'openrouter', model: 'glm-flash' });
+    expect(step).toMatchObject({ model: { provider: 'openrouter', model: 'glm-flash' } });
+    expect('model' in withStepModel(step, null)).toBe(false);
+    const draft = withDocumentTarget(newStep('edit_draft', new Set()), 'draft-1');
+    expect(draft).toMatchObject({ type: 'edit_draft', draft: 'draft-1' });
+  });
+
+  it('knows when a definition still needs its deck or draft picked', () => {
+    const picked = withDocumentTarget(newStep('edit_deck', new Set()), 'deck-1');
+    expect(needsDocumentTarget({ steps: [newStep('edit_deck', new Set())] })).toBe(true);
+    expect(needsDocumentTarget({ steps: [picked] })).toBe(false);
+    expect(needsDocumentTarget({ steps: [newStep('fetch_page', new Set())] })).toBe(false);
+  });
+
+  it('offers the reply, title and changed items to later steps, and describes the step', () => {
+    const def: WorkflowDefinition = {
+      steps: [withDocumentTarget({ ...newStep('edit_deck', new Set()), id: 'deck' }, 'deck-1'), newStep('notify', new Set())],
+    };
+    expect(valuesAt(def, [1]).map((r) => r.path)).toEqual(
+      expect.arrayContaining(['steps.deck.reply', 'steps.deck.title', 'steps.deck.changed']),
+    );
+    const t = ((key: string, vars?: Record<string, unknown>) => `${key}|${JSON.stringify(vars ?? {})}`) as never;
+    const step = { ...def.steps[0], instructions: 'Update the chart' } as WorkflowStep;
+    expect(describeStep(step, t)).toBe('workspace.workflows.step.editDeck|{"instructions":"Update the chart"}');
+    const modelled = withStepModel(step, { provider: 'p', model: 'm1' });
+    expect(describeStep(modelled, t)).toContain('workspace.workflows.step.usingModel|{"model":"m1"}');
+    expect(describeStep({ id: 'd', type: 'edit_draft', draft: 'x', instructions: 'Add a section' }, t)).toBe(
+      'workspace.workflows.step.editDraft|{"instructions":"Add a section"}',
+    );
+  });
+});
+
+describe('a fetch step offers the first page', () => {
+  it('offers its text on its own, for steps that read a single page (data files)', () => {
+    const outputs = stepOutputs({ id: 'fetch', type: 'fetch_page', urls: ['{{inputs.url}}'] });
+    expect(outputs).toContainEqual({ field: 'pages.0.text', list: false });
   });
 });

@@ -17,6 +17,9 @@ use conduit_desktop::{
     updater::*,
     webview_args,
     workflows::ask::Questions,
+    workflows::documents::{
+        DocumentChange, DocumentChanges, DECK_CHANGED_EVENT, DRAFT_CHANGED_EVENT,
+    },
     workflows::permissions::Reviews,
     workflows::scheduler::{
         scheduler_loop, RunningWorkflows, SchedulerWake, RUNS_CHANGED_EVENT, RUN_PAUSED_EVENT,
@@ -93,6 +96,7 @@ fn main() {
         .manage(Reviews::default())
         // Runs waiting at an "Ask me" step.
         .manage(Questions::default())
+        .manage(DocumentChanges::default())
         // Research runs planning or running, each with its stop token.
         .manage(ResearchRuns::default())
         .register_uri_scheme_protocol(artifact_frames::SCHEME, |ctx, request| {
@@ -428,6 +432,14 @@ fn main() {
             let handle = app.handle().clone();
             app.state::<Questions>().set_listener(move |question| {
                 let _ = handle.emit(RUN_QUESTION_EVENT, question);
+            });
+            // A workflow changed a saved deck or draft: an open view reloads it.
+            let handle = app.handle().clone();
+            app.state::<DocumentChanges>().set_listener(move |change| {
+                let _ = match change {
+                    DocumentChange::Deck(payload) => handle.emit(DECK_CHANGED_EVENT, payload),
+                    DocumentChange::Draft(payload) => handle.emit(DRAFT_CHANGED_EVENT, payload),
+                };
             });
             // Scheduled workflows run from here, independent of the window.
             tauri::async_runtime::spawn(scheduler_loop(app.handle().clone()));

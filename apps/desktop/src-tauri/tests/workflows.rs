@@ -51,6 +51,13 @@ struct EchoModel {
     failures: Arc<std::sync::atomic::AtomicUsize>,
     /// Call this tool (name, arguments) first; answer once a tool result is in.
     tool_call: Option<(&'static str, Value)>,
+    /// Call all of these tools in one round (name, arguments), then answer
+    /// once their results are in. Used instead of `tool_call` when set.
+    tool_calls: Vec<(&'static str, Value)>,
+    /// Text replaced in the scripted tool calls' arguments when they are sent
+    /// (ids that exist only once the test has made its document), shared by
+    /// all copies.
+    subs: Arc<Mutex<Vec<(&'static str, String)>>>,
     /// The provider id this copy was resolved for (set by the harness's
     /// adapter resolver); cloud ones report `is_local() == false`.
     tag: String,
@@ -134,13 +141,18 @@ impl ProviderAdapter for EchoModel {
                 }
             }
         };
-        if let Some((name, arguments)) = &self.tool_call {
+        let scripted: Vec<(&'static str, Value)> = if self.tool_calls.is_empty() {
+            self.tool_call.iter().cloned().collect()
+        } else {
+            self.tool_calls.clone()
+        };
+        if !scripted.is_empty() {
             let answered = request
                 .messages
                 .iter()
                 .any(|m| m.role == provider_core::schema::MessageRole::Tool);
             if !answered {
-                return Ok(Box::pin(futures::stream::iter(vec![
+                let mut events = vec![
                     ProviderEvent::MessageStart {
                         request_id: r.clone(),
                         index: 0,
@@ -151,25 +163,36 @@ impl ProviderAdapter for EchoModel {
                         index: 1,
                         content: "Let me check.".into(),
                     },
-                    ProviderEvent::ToolCallStart {
+                ];
+                let mut index = 2;
+                for (n, (name, arguments)) in scripted.iter().enumerate() {
+                    let call_id = format!("call-{}", n + 1);
+                    let mut text = arguments.to_string();
+                    for (from, to) in self.subs.lock().unwrap().iter() {
+                        text = text.replace(from, to);
+                    }
+                    let arguments: Value = serde_json::from_str(&text).unwrap();
+                    events.push(ProviderEvent::ToolCallStart {
                         request_id: r.clone(),
-                        tool_call_id: "call-1".into(),
-                        index: 2,
+                        tool_call_id: call_id.clone(),
+                        index,
                         tool_id: (*name).into(),
                         name: (*name).into(),
-                    },
-                    ProviderEvent::ToolCallComplete {
+                    });
+                    events.push(ProviderEvent::ToolCallComplete {
                         request_id: r.clone(),
-                        tool_call_id: "call-1".into(),
-                        index: 3,
+                        tool_call_id: call_id,
+                        index: index + 1,
                         arguments: arguments.clone(),
-                    },
-                    ProviderEvent::MessageComplete {
-                        request_id: r,
-                        index: 4,
-                        finish_reason: "tool_calls".into(),
-                    },
-                ])));
+                    });
+                    index += 2;
+                }
+                events.push(ProviderEvent::MessageComplete {
+                    request_id: r,
+                    index,
+                    finish_reason: "tool_calls".into(),
+                });
+                return Ok(Box::pin(futures::stream::iter(events)));
             }
         }
         if failing {
@@ -418,6 +441,7 @@ impl Harness {
             notify: None,
             questions: None,
             connectors: None,
+            documents: None,
         };
         runner
             .run(id, &HashMap::new(), "manual")
@@ -622,6 +646,7 @@ async fn an_invalid_definition_does_not_start_a_run() {
         notify: None,
         questions: None,
         connectors: None,
+        documents: None,
     };
     let err = runner
         .run(&id, &HashMap::new(), "manual")
@@ -879,6 +904,7 @@ impl Harness {
             notify: None,
             questions: None,
             connectors: None,
+            documents: None,
         };
         let no_inputs = HashMap::new();
         let stopper = async {
@@ -1050,6 +1076,7 @@ impl Harness {
             notify: None,
             questions: None,
             connectors: None,
+            documents: None,
         }
     }
 
@@ -1273,6 +1300,7 @@ async fn going_over_the_time_budget_fails_the_run_even_when_the_step_may_fail() 
         notify: None,
         questions: None,
         connectors: None,
+        documents: None,
     };
     let detail = tokio::time::timeout(
         std::time::Duration::from_secs(10),
@@ -1320,6 +1348,7 @@ async fn going_over_the_token_budget_fails_the_run() {
         notify: None,
         questions: None,
         connectors: None,
+        documents: None,
     };
     let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
     assert_eq!(detail.run.status, "failed");
@@ -1383,6 +1412,7 @@ async fn a_run_waiting_for_an_answer_holds_up_no_other_scheduled_run() {
         reviews: &h.reviews,
         questions: &questions,
         connectors: None,
+        documents: None,
         fetch_policy: AddressPolicy { public_only: false },
         notify: None,
     };
@@ -1552,6 +1582,7 @@ async fn a_notify_step_shows_its_filled_in_text() {
         notify: Some(&notify),
         questions: None,
         connectors: None,
+        documents: None,
     };
     let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
     assert_eq!(detail.run.status, "completed");
@@ -1585,6 +1616,7 @@ impl Harness {
             notify: None,
             questions: None,
             connectors: None,
+            documents: None,
         }
     }
 
@@ -1663,7 +1695,7 @@ async fn a_rerun_from_a_step_reuses_what_came_before_it() {
     );
     assert_eq!(
         again.steps[2].output.as_ref().unwrap()["text"],
-        "New: SUMMARY: ## Weather"
+        "New: SUMMARY: Sunny all week."
     );
     // A rerun of a rerun reuses the reused steps too.
     let third = h.rerun(&again, "doc").await.unwrap();
@@ -1960,6 +1992,7 @@ impl Harness {
         Runner {
             questions: Some(questions),
             connectors: None,
+            documents: None,
             stop,
             ..self.manual_runner()
         }
@@ -2971,6 +3004,7 @@ async fn read_file_refusals_fail_the_step_in_plain_words() {
         notify: None,
         questions: None,
         connectors: None,
+        documents: None,
     };
     let error = runner
         .run(&id, &HashMap::new(), "manual")
@@ -3025,5 +3059,1067 @@ async fn a_scheduled_run_pauses_for_a_new_folder() {
     assert_eq!(
         detail.steps[0].error.as_deref(),
         Some("You didn't allow this.")
+    );
+}
+
+// ── Updating a saved deck or draft ──────────────────────────────────────────
+
+use conduit_desktop::agent_tools::{
+    EDIT_BLOCKS_TOOL, READ_DECK_TOOL, UPDATE_SLIDE_TOOL, UPDATE_SLOTS_TOOL, WRITE_SECTION_TOOL,
+};
+use conduit_desktop::db::repository::{drafts, messages, slides};
+use conduit_desktop::stream_manager::TurnOwner;
+use conduit_desktop::workflows::documents::{DocumentChange, DocumentChanges};
+use provider_core::schema::{
+    DeckSnapshotCause, DeckStage, DraftSnapshotCause, DraftStage, OutlineSection,
+};
+
+/// A slide with two slots the model may change and one the user wrote (pinned).
+const WEEKLY_SLIDE: &str = r#"<h1 data-text="title">Revenue</h1><p data-text="number">10</p><p data-text="note" data-owner="user">Written by me</p>"#;
+
+struct SavedDeck {
+    id: String,
+    conversation_id: String,
+    slide_id: String,
+}
+
+async fn saved_deck(h: &Harness) -> SavedDeck {
+    let (pool, enc) = (&h.state.db, &h.state.encryption);
+    let chat = conversations::create(pool, None).await.unwrap();
+    let deck = slides::create(
+        pool,
+        enc,
+        "Weekly numbers",
+        "ink",
+        ".slide{}",
+        Some(&chat.id),
+    )
+    .await
+    .unwrap();
+    slides::set_stage(pool, enc, &deck.id, DeckStage::Slides)
+        .await
+        .unwrap();
+    let (slide, _) = slides::add_slide(pool, enc, &deck.id, "custom", WEEKLY_SLIDE, "", None)
+        .await
+        .unwrap();
+    SavedDeck {
+        id: deck.id,
+        conversation_id: chat.id,
+        slide_id: slide.id,
+    }
+}
+
+/// A draft with an "Intro" section of two paragraphs, the second one the
+/// user's own (pinned).
+struct SavedDraft {
+    id: String,
+    conversation_id: String,
+    /// The model's paragraph ("Tea is a leaf.").
+    ai_block: String,
+    /// The user's paragraph.
+    mine: String,
+}
+
+fn block_with(draft: &provider_core::schema::DraftDetail, text: &str) -> String {
+    draft
+        .blocks
+        .iter()
+        .find(|b| draft.markdown[b.start as usize..b.end as usize].contains(text))
+        .unwrap_or_else(|| panic!("no block holds {text:?}"))
+        .id
+        .clone()
+}
+
+async fn saved_draft(h: &Harness) -> SavedDraft {
+    let (pool, enc) = (&h.state.db, &h.state.encryption);
+    let draft = drafts::create(pool, enc, "Monthly report for the team")
+        .await
+        .unwrap();
+    drafts::set_outline(
+        pool,
+        enc,
+        &draft.id,
+        vec![OutlineSection {
+            heading: "Intro".into(),
+            intent: String::new(),
+            target_words: None,
+        }],
+        false,
+    )
+    .await
+    .unwrap();
+    drafts::set_stage(pool, enc, &draft.id, DraftStage::Draft)
+        .await
+        .unwrap();
+    let loaded = drafts::require(pool, enc, &draft.id).await.unwrap();
+    drafts::model_write_section(pool, enc, &loaded, "Intro", "Tea is a leaf.\n\nIt is old.")
+        .await
+        .unwrap();
+    let written = drafts::get(pool, enc, &draft.id).await.unwrap().unwrap();
+    // The user types over the second paragraph: theirs, and pinned.
+    let edited = written
+        .markdown
+        .replace("It is old.", "It is very old, says me.");
+    let now = drafts::save_markdown(pool, enc, &draft.id, &edited)
+        .await
+        .unwrap();
+    SavedDraft {
+        id: draft.id,
+        conversation_id: draft.conversation_id,
+        ai_block: block_with(&now, "Tea is a leaf."),
+        mine: block_with(&now, "says me"),
+    }
+}
+
+fn deck_workflow(deck_id: &str) -> Value {
+    json!({ "steps": [
+        { "id": "data", "type": "template", "template": "1,2\n3,4" },
+        { "id": "deck", "type": "edit_deck", "deck": deck_id,
+          "instructions": "Update the number.", "input": "{{steps.data.text}}" },
+    ]})
+}
+
+fn draft_workflow(draft_id: &str) -> Value {
+    json!({ "steps": [
+        { "id": "data", "type": "template", "template": "Sales rose 12%." },
+        { "id": "draft", "type": "edit_draft", "draft": draft_id,
+          "instructions": "Add a section 'This week' with these results.", "input": "{{steps.data.text}}" },
+    ]})
+}
+
+/// Records what a run announces about decks and drafts.
+fn listening() -> (DocumentChanges, Arc<Mutex<Vec<DocumentChange>>>) {
+    let changes = DocumentChanges::default();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    changes.set_listener(move |change| sink.lock().unwrap().push(change.clone()));
+    (changes, seen)
+}
+
+fn offered(request: &ProviderRequest) -> Vec<String> {
+    let mut names: Vec<String> = request
+        .tool_definitions
+        .iter()
+        .map(|d| d.name.clone())
+        .collect();
+    names.sort();
+    names
+}
+
+async fn deck_snapshots(h: &Harness, deck_id: &str) -> Vec<(DeckSnapshotCause, String)> {
+    slides::list_snapshots(&h.state.db, deck_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|s| (s.cause, s.label))
+        .collect()
+}
+
+/// `h` with a model that makes these tool calls (once) before answering.
+async fn with_tool_calls(h: Harness, tool_calls: Vec<(&'static str, Value)>) -> Harness {
+    let model = EchoModel {
+        tool_calls,
+        subs: h.model.subs.clone(),
+        requests: h.model.requests.clone(),
+        calls: h.model.calls.clone(),
+        ..EchoModel::default()
+    };
+    let resolver_model = model.clone();
+    Harness {
+        model,
+        streams: StreamManager::with_adapter_resolver(Arc::new(move |id: &str| {
+            Some(Box::new(EchoModel {
+                tag: id.to_string(),
+                ..resolver_model.clone()
+            }) as Box<dyn ProviderAdapter>)
+        })),
+        ..h
+    }
+}
+
+#[tokio::test]
+async fn edit_deck_changes_an_unpinned_slot_and_refuses_a_pinned_one() {
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    *h.model.subs.lock().unwrap() = vec![("@slide@", deck.slide_id.clone())];
+    let h = with_tool_calls(
+        h,
+        vec![
+            (
+                UPDATE_SLOTS_TOOL,
+                json!({ "edits": [
+                    { "slide_id": "@slide@", "slot": "number", "html": "42" },
+                    { "slide_id": "@slide@", "slot": "note", "html": "Overwritten" },
+                ] }),
+            ),
+            // The model tries to release the user's text. Headless, it can't.
+            (
+                UPDATE_SLIDE_TOOL,
+                json!({ "slide_id": "@slide@", "layout": "custom", "release_pinned": ["note"],
+                    "html": r#"<h1 data-text="title">Revenue</h1><p data-text="number">42</p><p data-text="note" data-owner="user">Overwritten</p>"# }),
+            ),
+        ],
+    )
+    .await;
+    let id = h.save(deck_workflow(&deck.id)).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let (changes, seen) = listening();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        documents: Some(&changes),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+
+    // The output the page shows.
+    let out = step(&detail, "deck", None).output.clone().unwrap();
+    assert_eq!(out["deckId"], deck.id.as_str());
+    assert_eq!(out["title"], "Weekly numbers");
+    assert_eq!(out["changed"], json!([deck.slide_id]));
+    assert_eq!(
+        out["skippedPinned"],
+        json!([{ "slideId": deck.slide_id, "slot": "note" }])
+    );
+    assert_eq!(out["layoutChecked"], false);
+    assert!(
+        out["reply"].as_str().unwrap().starts_with("SUMMARY:"),
+        "{out}"
+    );
+    assert_eq!(
+        out["model"],
+        json!({ "provider": "ollama", "model": "echo" })
+    );
+
+    // The slot changed; the user's text did not, in either tool.
+    let now = slides::get(&h.state.db, &h.state.encryption, &deck.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        now.slides[0].html,
+        r#"<h1 data-text="title">Revenue</h1><p data-text="number">42</p><p data-text="note" data-owner="user">Written by me</p>"#
+    );
+
+    // Only the deck tools, with the words for a turn nobody watches.
+    let requests = h.model.requests.lock().unwrap().clone();
+    assert_eq!(
+        offered(&requests[0]),
+        [
+            "add_slide",
+            "delete_slide",
+            "move_slide",
+            "read_deck",
+            "update_slide",
+            "update_slots"
+        ]
+    );
+    let update_slide = requests[0]
+        .tool_definitions
+        .iter()
+        .find(|d| d.name == "update_slide")
+        .unwrap();
+    assert!(update_slide.input_schema["properties"]["release_pinned"].is_null());
+    assert!(!update_slide.description.contains("release_pinned"));
+    let system = requests[0].system_prompt.as_deref().unwrap();
+    assert!(system.contains("nobody is watching") && system.contains("Slide canvas"));
+    let developer = requests[0].developer_prompt.as_deref().unwrap();
+    assert!(developer.contains("Deck \"Weekly numbers\"") && developer.contains("[pinned: note]"));
+    let user = requests[0].messages.last().unwrap().parts[0]
+        .content
+        .clone()
+        .unwrap();
+    assert_eq!(user, "Update the number.\n\n<input>\n1,2\n3,4\n</input>");
+    assert!(requests[0].generation_controls.is_none());
+
+    // The deck's own chat holds the workflow's message, labelled by metadata.
+    let chat = messages::load_conversation_messages(&h.state.db, &deck.conversation_id)
+        .await
+        .unwrap();
+    let from_workflow: Vec<_> = chat
+        .iter()
+        .filter(|m| {
+            m.metadata
+                .as_ref()
+                .is_some_and(|v| v.get("workflow").is_some())
+        })
+        .collect();
+    assert_eq!(from_workflow.len(), 1);
+    assert_eq!(
+        from_workflow[0].metadata,
+        Some(
+            json!({ "workflow": { "id": id, "runId": detail.run.id, "name": "Morning briefing",
+                "model": { "provider": "ollama", "model": "echo" } } })
+        )
+    );
+    // The replies say which model wrote them.
+    let replies: Vec<_> = chat
+        .iter()
+        .filter(|m| m.role == provider_core::schema::MessageRole::Assistant)
+        .collect();
+    assert!(!replies.is_empty());
+    for reply in replies {
+        assert_eq!(
+            reply.metadata.as_ref().map(|m| m["model"].clone()),
+            Some(json!({ "provider": "ollama", "model": "echo" }))
+        );
+    }
+
+    // History: before (manual) and after (ai turn), and before restores the old deck.
+    assert_eq!(
+        deck_snapshots(&h, &deck.id).await,
+        vec![
+            (
+                DeckSnapshotCause::AiTurn,
+                "Workflow: Morning briefing".to_string()
+            ),
+            (
+                DeckSnapshotCause::Manual,
+                "Before Morning briefing".to_string()
+            ),
+        ]
+    );
+    let history = slides::list_snapshots(&h.state.db, &deck.id).await.unwrap();
+    assert_eq!(out["beforeSnapshotId"], history[1].id.as_str());
+    let restored =
+        slides::restore_snapshot(&h.state.db, &h.state.encryption, &deck.id, &history[1].id)
+            .await
+            .unwrap();
+    assert_eq!(restored.slides[0].html, WEEKLY_SLIDE);
+
+    // The page was told, once.
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![DocumentChange::Deck(
+            conduit_desktop::workflows::documents::DeckChanged {
+                deck_id: deck.id.clone(),
+                workflow_name: "Morning briefing".into(),
+                run_id: detail.run.id.clone(),
+            }
+        )]
+    );
+    assert!(h.streams.turn_holder(&deck.conversation_id).is_none());
+}
+
+#[tokio::test]
+async fn edit_deck_with_nothing_to_change_still_completes_and_says_nothing_changed() {
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    let id = h.save(deck_workflow(&deck.id)).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let (changes, seen) = listening();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        documents: Some(&changes),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = step(&detail, "deck", None).output.clone().unwrap();
+    assert_eq!(out["changed"], json!([]));
+    assert_eq!(out["skippedPinned"], json!([]));
+    assert_eq!(out["reply"], "SUMMARY: 1,2");
+    // Nothing changed: no second history entry, and nobody is told.
+    assert_eq!(
+        deck_snapshots(&h, &deck.id).await,
+        vec![(
+            DeckSnapshotCause::Manual,
+            "Before Morning briefing".to_string()
+        )]
+    );
+    assert!(seen.lock().unwrap().is_empty());
+
+    // The "before" snapshot is the one made now; run again and it matches that
+    // one, which is then the one to go back to.
+    let first = slides::list_snapshots(&h.state.db, &deck.id).await.unwrap();
+    assert_eq!(out["beforeSnapshotId"], first[0].id.as_str());
+    let again = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    let out = step(&again, "deck", None).output.clone().unwrap();
+    assert_eq!(out["beforeSnapshotId"], first[0].id.as_str());
+    assert_eq!(
+        slides::list_snapshots(&h.state.db, &deck.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn edit_draft_edits_a_block_adds_a_section_and_keeps_the_users_paragraph() {
+    let h = Harness::new(EchoModel::default()).await;
+    let draft = saved_draft(&h).await;
+    *h.model.subs.lock().unwrap() = vec![
+        ("@ai@", draft.ai_block.clone()),
+        ("@mine@", draft.mine.clone()),
+    ];
+    let h = with_tool_calls(
+        h,
+        vec![
+            (
+                EDIT_BLOCKS_TOOL,
+                json!({ "edits": [{ "block_id": "@ai@", "markdown": "Tea is a leaf, picked by hand." }] }),
+            ),
+            (
+                EDIT_BLOCKS_TOOL,
+                json!({ "edits": [{ "block_id": "@mine@", "markdown": "Overwritten" }],
+                    "release_pinned": ["@mine@"] }),
+            ),
+            (
+                WRITE_SECTION_TOOL,
+                json!({ "heading": "This week", "markdown": "Sales rose 12%." }),
+            ),
+        ],
+    )
+    .await;
+    let id = h.save(draft_workflow(&draft.id)).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let (changes, seen) = listening();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        documents: Some(&changes),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+
+    let now = drafts::get(&h.state.db, &h.state.encryption, &draft.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        now.markdown,
+        "## Intro\n\nTea is a leaf, picked by hand.\n\nIt is very old, says me.\n\n## This week\n\nSales rose 12%.\n"
+    );
+    // The new section is in the outline; the old one is untouched.
+    let headings: Vec<&str> = now.outline.iter().map(|s| s.heading.as_str()).collect();
+    assert_eq!(headings, ["Intro", "This week"]);
+
+    let out = step(&detail, "draft", None).output.clone().unwrap();
+    assert_eq!(out["draftId"], draft.id.as_str());
+    assert_eq!(out["title"], now.title.as_str());
+    assert_eq!(out["skippedPinned"], json!([{ "blockId": draft.mine }]));
+    let changed: Vec<&str> = out["changed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(changed.contains(&draft.ai_block.as_str()), "{changed:?}");
+    assert!(!changed.contains(&draft.mine.as_str()), "{changed:?}");
+    assert_eq!(
+        changed.len(),
+        3,
+        "the edited block, the new heading and paragraph"
+    );
+    assert!(out.get("layoutChecked").is_none());
+    // Sections, not blocks: the edited one, and the new one once.
+    assert_eq!(out["changedSections"], json!(["Intro", "This week"]));
+
+    let requests = h.model.requests.lock().unwrap().clone();
+    assert_eq!(
+        offered(&requests[0]),
+        ["edit_blocks", "read_draft", "write_section"]
+    );
+    let edit = requests[0]
+        .tool_definitions
+        .iter()
+        .find(|d| d.name == "edit_blocks")
+        .unwrap();
+    assert!(edit.input_schema["properties"]["release_pinned"].is_null());
+    assert_eq!(
+        requests[0]
+            .generation_controls
+            .as_ref()
+            .and_then(|c| c.parallel_tool_calls),
+        Some(false)
+    );
+    let developer = requests[0].developer_prompt.as_deref().unwrap();
+    assert!(developer.contains("Blocks (block_id") && developer.contains("pinned"));
+
+    let history = drafts::list_snapshots(&h.state.db, &draft.id)
+        .await
+        .unwrap();
+    let labels: Vec<_> = history
+        .iter()
+        .take(2)
+        .map(|s| (s.cause, s.label.clone()))
+        .collect();
+    assert_eq!(
+        labels,
+        [
+            (
+                DraftSnapshotCause::AiTurn,
+                Some("Workflow: Morning briefing".to_string())
+            ),
+            (
+                DraftSnapshotCause::Manual,
+                Some("Before Morning briefing".to_string())
+            ),
+        ]
+    );
+    assert_eq!(out["beforeSnapshotId"], history[1].id.as_str());
+    // Undo puts the old text and the old outline back.
+    let back =
+        drafts::restore_snapshot(&h.state.db, &h.state.encryption, &draft.id, &history[1].id)
+            .await
+            .unwrap();
+    assert!(back.markdown.contains("Tea is a leaf.") && !back.markdown.contains("This week"));
+    assert_eq!(back.outline.len(), 1);
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert!(matches!(&seen[0], DocumentChange::Draft(d) if d.draft_id == draft.id));
+    assert!(h.streams.turn_holder(&draft.conversation_id).is_none());
+}
+
+fn quick_wait() -> RunBudget {
+    RunBudget {
+        busy_wait: std::time::Duration::from_millis(400),
+        busy_poll: std::time::Duration::from_millis(50),
+        ..RunBudget::default()
+    }
+}
+
+#[tokio::test]
+async fn an_update_waits_for_a_chat_turn_and_fails_plainly_when_it_never_ends() {
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    let draft = saved_draft(&h).await;
+    let deck_id = h.save(deck_workflow(&deck.id)).await;
+    let draft_id = h.save(draft_workflow(&draft.id)).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        budget: quick_wait(),
+        ..h.manual_runner()
+    };
+    // A chat message is being answered in the deck's conversation.
+    let chat_turn = h
+        .streams
+        .try_begin_turn(&deck.conversation_id, TurnOwner::Chat)
+        .unwrap();
+    let began = std::time::Instant::now();
+    let detail = runner
+        .run(&deck_id, &HashMap::new(), "manual")
+        .await
+        .unwrap();
+    assert!(began.elapsed() >= std::time::Duration::from_millis(400));
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        step(&detail, "deck", None).error.as_deref(),
+        Some("The deck was busy in chat for over a minute, so the update didn't run.")
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty(), "no model call");
+    assert!(
+        deck_snapshots(&h, &deck.id).await.is_empty(),
+        "nothing was snapshotted or changed"
+    );
+
+    // The same for a draft.
+    let _draft_turn = h
+        .streams
+        .try_begin_turn(&draft.conversation_id, TurnOwner::Chat)
+        .unwrap();
+    let detail = runner
+        .run(&draft_id, &HashMap::new(), "manual")
+        .await
+        .unwrap();
+    assert_eq!(
+        step(&detail, "draft", None).error.as_deref(),
+        Some("The draft was busy in chat for over a minute, so the update didn't run.")
+    );
+
+    // The chat reply finishes while the update waits: it gets through, with no
+    // retry setting involved.
+    let release = async {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        drop(chat_turn);
+    };
+    let no_inputs = HashMap::new();
+    let (detail, ()) = tokio::join!(runner.run(&deck_id, &no_inputs, "manual"), release);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+}
+
+#[tokio::test]
+async fn a_waiting_update_ends_on_stop_and_on_the_time_limit() {
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    let id = h.save(deck_workflow(&deck.id)).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let _chat_turn = h
+        .streams
+        .try_begin_turn(&deck.conversation_id, TurnOwner::Chat)
+        .unwrap();
+    // A wait much longer than the test: only stop or the time limit can end it.
+    let long = RunBudget {
+        busy_wait: std::time::Duration::from_secs(60),
+        busy_poll: std::time::Duration::from_millis(50),
+        ..RunBudget::default()
+    };
+
+    let stop = CancellationToken::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        budget: long,
+        stop: stop.clone(),
+        ..h.manual_runner()
+    };
+    let stopper = async {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        stop.cancel();
+    };
+    let no_inputs = HashMap::new();
+    let (detail, ()) = tokio::join!(runner.run(&id, &no_inputs, "manual"), stopper);
+    assert_eq!(detail.unwrap().run.status, "stopped");
+
+    let runner = Runner {
+        connectors: Some(&connectors),
+        budget: RunBudget {
+            wall_clock: std::time::Duration::from_millis(300),
+            ..long
+        },
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &no_inputs, "manual").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert!(
+        detail.run.error.as_deref().unwrap().contains("time limit"),
+        "{:?}",
+        detail.run.error
+    );
+}
+
+#[tokio::test]
+async fn a_single_fetched_page_is_the_text_with_no_heading_and_data_is_not_empty() {
+    let base = serve_typed(vec![
+        ("/sales.csv", "text/csv", SALES_CSV),
+        ("/empty.csv", "text/csv", ""),
+        ("/page", "text/html; charset=utf-8", PAGE_A),
+    ])
+    .await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "one", "type": "fetch_page", "urls": [format!("{base}/sales.csv")] },
+            { "id": "mixed", "type": "fetch_page", "urls": [
+                format!("{base}/sales.csv"), format!("{base}/nothing-here"),
+            ], "onError": "skip" },
+            { "id": "two", "type": "fetch_page", "urls": [
+                format!("{base}/sales.csv"), format!("{base}/page"),
+            ]},
+            { "id": "empty", "type": "fetch_page", "urls": [format!("{base}/empty.csv")] },
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let one = step(&run, "one", None).output.as_ref().unwrap();
+    assert_eq!(one["text"], SALES_CSV, "{one}");
+    assert_eq!(one["pages"][0]["lookedEmpty"], false);
+    // One readable page among a failure: still no heading.
+    let mixed = step(&run, "mixed", None).output.as_ref().unwrap();
+    assert_eq!(mixed["text"], SALES_CSV, "{mixed}");
+    // Several pages join under their headings, as before.
+    let two = step(&run, "two", None).output.as_ref().unwrap();
+    let text = two["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("## ") && text.contains("Week,Revenue"),
+        "{text}"
+    );
+    // An empty data file is still empty.
+    let empty = step(&run, "empty", None).output.as_ref().unwrap();
+    assert_eq!(empty["pages"][0]["lookedEmpty"], true);
+}
+
+fn chat_request(conversation_id: &str) -> ProviderRequest {
+    use provider_core::schema::{Message, MessagePart, MessagePartKind, MessageRole};
+    let now = "2026-10-07T10:00:00.000Z".to_string();
+    ProviderRequest {
+        request_id: "chat-1".into(),
+        conversation_id: conversation_id.into(),
+        model_id: "echo".into(),
+        messages: vec![Message {
+            id: "chat-m1".into(),
+            conversation_id: conversation_id.into(),
+            role: MessageRole::User,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: None,
+            parts: vec![MessagePart {
+                id: "chat-m1/p0".into(),
+                message_id: "chat-m1".into(),
+                index: 0,
+                kind: MessagePartKind::Text,
+                content: Some("Make the title shorter".into()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: now.clone(),
+            }],
+            created_at: now,
+        }],
+        system_prompt: None,
+        developer_prompt: None,
+        attachments: None,
+        tool_definitions: conduit_desktop::agent_tools::builtin_tool_definitions()
+            .into_iter()
+            .filter(|d| d.name == READ_DECK_TOOL)
+            .collect(),
+        generation_controls: None,
+        response_format: None,
+        web_search: None,
+    }
+}
+
+/// A chat message in `conversation_id`, as the app sends it.
+async fn send_chat(
+    h: &Harness,
+    connectors: &conduit_desktop::connector_runtime::ConnectorRuntimeManager,
+    conversation_id: &str,
+) -> Result<(), String> {
+    let (sink, _) = conduit_desktop::event_sink::collector::<ProviderEvent>();
+    h.streams
+        .run_agent_turn(
+            &h.state,
+            connectors,
+            chat_request(conversation_id),
+            sink,
+            conduit_desktop::event_sink::EventSink::discard(),
+        )
+        .await
+        .map(|_| ())
+}
+
+#[tokio::test]
+async fn a_chat_message_is_refused_while_a_workflow_holds_the_conversation_and_works_after() {
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let update = h
+        .streams
+        .try_begin_turn(
+            &deck.conversation_id,
+            TurnOwner::Workflow("Weekly numbers".into()),
+        )
+        .unwrap();
+    let err = send_chat(&h, &connectors, &deck.conversation_id)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err,
+        "The workflow \u{201c}Weekly numbers\u{201d} is updating this right now. Try again when it has finished."
+    );
+    // Refused before anything was saved or sent.
+    assert!(
+        messages::load_conversation_messages(&h.state.db, &deck.conversation_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty());
+
+    // Two chat turns don't overlap either.
+    drop(update);
+    let chat = h
+        .streams
+        .try_begin_turn(&deck.conversation_id, TurnOwner::Chat)
+        .unwrap();
+    let err = send_chat(&h, &connectors, &deck.conversation_id)
+        .await
+        .unwrap_err();
+    assert!(err.contains("already working on a reply"), "{err}");
+
+    // Free again: the same message goes through, and releases the conversation.
+    drop(chat);
+    send_chat(&h, &connectors, &deck.conversation_id)
+        .await
+        .unwrap();
+    assert!(h.streams.turn_holder(&deck.conversation_id).is_none());
+}
+
+#[tokio::test]
+async fn the_conversation_is_released_after_a_failed_stopped_or_timed_out_update() {
+    // A model error mid-turn.
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    let id = h.save(deck_workflow(&deck.id)).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    h.model
+        .failures
+        .store(1, std::sync::atomic::Ordering::SeqCst);
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        step(&detail, "deck", None).error.as_deref(),
+        Some("The model is busy.")
+    );
+    assert!(h.streams.turn_holder(&deck.conversation_id).is_none());
+
+    // A model that never finishes, against a short time limit.
+    let h = Harness::new(EchoModel {
+        hang: true,
+        ..EchoModel::default()
+    })
+    .await;
+    let deck = saved_deck(&h).await;
+    let id = h.save(deck_workflow(&deck.id)).await;
+    let runner = Runner {
+        connectors: Some(&connectors),
+        budget: RunBudget {
+            wall_clock: std::time::Duration::from_millis(400),
+            ..RunBudget::default()
+        },
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert!(
+        detail.run.error.as_deref().unwrap().contains("time limit"),
+        "{:?}",
+        detail.run.error
+    );
+    assert!(h.streams.turn_holder(&deck.conversation_id).is_none());
+    // The safety net was made before the model started; nothing else.
+    assert_eq!(
+        deck_snapshots(&h, &deck.id).await,
+        vec![(
+            DeckSnapshotCause::Manual,
+            "Before Morning briefing".to_string()
+        )]
+    );
+
+    // Stopped.
+    let stop = CancellationToken::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        stop: stop.clone(),
+        ..h.manual_runner()
+    };
+    let stopper = async {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        stop.cancel();
+    };
+    let no_inputs = HashMap::new();
+    let (detail, ()) = tokio::join!(runner.run(&id, &no_inputs, "manual"), stopper);
+    assert_eq!(detail.unwrap().run.status, "stopped");
+    assert!(h.streams.turn_holder(&deck.conversation_id).is_none());
+}
+
+#[tokio::test]
+async fn a_deleted_deck_or_draft_fails_the_step_without_a_model_call() {
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    let draft = saved_draft(&h).await;
+    slides::delete(&h.state.db, &deck.id).await.unwrap();
+    drafts::delete(&h.state.db, &draft.id).await.unwrap();
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let id = h.save(deck_workflow(&deck.id)).await;
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(
+        step(&detail, "deck", None).error.as_deref(),
+        Some("The deck this step updates was deleted.")
+    );
+    let id = h.save(draft_workflow(&draft.id)).await;
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(
+        step(&detail, "draft", None).error.as_deref(),
+        Some("The draft this step updates was deleted.")
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_outline_cannot_be_updated() {
+    let h = Harness::new(EchoModel::default()).await;
+    let (pool, enc) = (&h.state.db, &h.state.encryption);
+    let chat = conversations::create(pool, None).await.unwrap();
+    let deck = slides::create(pool, enc, "Plan", "ink", ".slide{}", Some(&chat.id))
+        .await
+        .unwrap();
+    let draft = drafts::create(pool, enc, "Notes for next week")
+        .await
+        .unwrap();
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let id = h.save(deck_workflow(&deck.id)).await;
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(
+        step(&detail, "deck", None).error.as_deref(),
+        Some("The deck \u{201c}Plan\u{201d} is still an outline; finish it in Slides first.")
+    );
+    let id = h.save(draft_workflow(&draft.id)).await;
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert!(step(&detail, "draft", None)
+        .error
+        .as_deref()
+        .unwrap()
+        .contains("is still an outline; approve the outline in Writing first."));
+    assert!(h.model.requests.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_update_given_empty_data_fails_without_asking_a_model() {
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "data", "type": "template", "template": "   " },
+            { "id": "deck", "type": "edit_deck", "deck": deck.id,
+              "instructions": "Update the number.", "input": "{{steps.data.text}}" },
+        ]}))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        step(&detail, "deck", None).error.as_deref(),
+        Some("There was nothing to update the deck with: the input came out empty.")
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty());
+    assert!(deck_snapshots(&h, &deck.id).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_scheduled_update_pauses_for_each_new_document_and_remembers_the_answer() {
+    let h = Harness::new(EchoModel::default()).await;
+    let deck = saved_deck(&h).await;
+    let id = h.save(deck_workflow(&deck.id)).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    // Turning the schedule on approves the model; the document is asked about at run time.
+    let required = h.required(&id).await;
+    assert_eq!(
+        required,
+        vec![Permission::Model {
+            provider: "ollama".into()
+        }]
+    );
+
+    // Not allowed: nothing is called, snapshotted or changed.
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.unattended_runner(required.clone(), CancellationToken::new())
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(review.step_id, "deck");
+        assert_eq!(
+            serde_json::to_value(&review.permission).unwrap(),
+            json!({
+                "kind": "editDocument", "documentKind": "deck", "id": deck.id,
+                "title": "Weekly numbers",
+                "label": "Change the deck \u{201c}Weekly numbers\u{201d}", "local": null,
+            })
+        );
+        assert!(h.reviews.answer(&review.run_id, Decision::Deny));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        step(&detail, "deck", None).error.as_deref(),
+        Some("You didn't allow this.")
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty());
+    assert!(deck_snapshots(&h, &deck.id).await.is_empty());
+
+    // Approved for this deck: it runs without asking.
+    let mut approved = required;
+    approved.push(permissions::edit_document(
+        "deck",
+        &deck.id,
+        "Weekly numbers",
+    ));
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.unattended_runner(approved.clone(), CancellationToken::new())
+    };
+    let detail = runner.run(&id, &no_inputs, "schedule").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert!(h.reviews.list().is_empty());
+
+    // Renamed since: it asks again.
+    slides::rename(&h.state.db, &deck.id, "Weekly figures")
+        .await
+        .unwrap();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.unattended_runner(approved, CancellationToken::new())
+    };
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(
+            review.permission.label.as_deref(),
+            Some("Change the deck \u{201c}Weekly figures\u{201d}")
+        );
+        assert!(h.reviews.answer(&review.run_id, Decision::AllowOnce));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
+}
+
+#[tokio::test]
+async fn an_update_uses_the_steps_model_and_records_its_usage_there() {
+    let h = Harness::new(EchoModel {
+        usage: Some(10),
+        ..EchoModel::default()
+    })
+    .await;
+    let deck = saved_deck(&h).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "deck", "type": "edit_deck", "deck": deck.id, "instructions": "Update it.",
+              "model": { "provider": "lmstudio", "model": "deck-model" } },
+        ]}))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert_eq!(calls(&h), vec![pair("lmstudio", "deck-model")]);
+    assert_eq!(
+        model_of(&detail, "deck"),
+        json!({ "provider": "lmstudio", "model": "deck-model" })
+    );
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT provider_id, model_id FROM usage_summary")
+            .fetch_all(&h.state.db)
+            .await
+            .unwrap();
+    assert!(!rows.is_empty());
+    assert!(rows.iter().all(|r| *r == pair("lmstudio", "deck-model")));
+    // No input given: the message is just the instructions.
+    let requests = h.model.requests.lock().unwrap().clone();
+    assert_eq!(
+        requests[0].messages.last().unwrap().parts[0]
+            .content
+            .as_deref(),
+        Some("Update it.")
     );
 }

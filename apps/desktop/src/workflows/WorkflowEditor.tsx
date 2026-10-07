@@ -35,6 +35,8 @@ import {
   removeStep,
   stepTypesFor,
   updateStep,
+  withDocumentTarget,
+  withOptionalInput,
   withConditionTest,
   withFolder,
   withOnlyIfChanged,
@@ -45,6 +47,7 @@ import {
   type StepType,
   type ValueRef,
 } from './editorModel';
+import { DocumentPicker } from './DocumentPicker';
 import { agentToolText } from './permissionText';
 import { ProviderModelsProvider, WorkflowModelRow } from './WorkflowModelRow';
 
@@ -66,6 +69,8 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   notify: 'workspace.workflows.editor.type.notify',
   ask: 'workspace.workflows.editor.type.ask',
   agent: 'workspace.workflows.editor.type.agent',
+  edit_deck: 'workspace.workflows.editor.type.editDeck',
+  edit_draft: 'workspace.workflows.editor.type.editDraft',
   condition: 'workspace.workflows.editor.type.condition',
 };
 
@@ -88,6 +93,7 @@ const CONDITION_TEST_KEY = {
 const FIELD_KEY: Record<string, string> = {
   text: 'workspace.workflows.editor.field.text',
   pages: 'workspace.workflows.editor.field.pages',
+  'pages.0.text': 'workspace.workflows.editor.field.firstPageText',
   'pages.0.title': 'workspace.workflows.editor.field.firstPageTitle',
   'pages.0.links': 'workspace.workflows.editor.field.firstPageLinks',
   results: 'workspace.workflows.editor.field.results',
@@ -107,6 +113,8 @@ const FIELD_KEY: Record<string, string> = {
   rows: 'workspace.workflows.editor.field.rows',
   count: 'workspace.workflows.editor.field.rowCount',
   columns: 'workspace.workflows.editor.field.columns',
+  reply: 'workspace.workflows.editor.field.reply',
+  changed: 'workspace.workflows.editor.field.changed',
 };
 
 export function refLabel(ref: ValueRef, t: Translate): string {
@@ -595,6 +603,41 @@ function StepCard({
             idPrefix={`wf-model-${step.id}`}
             model={step.model}
             onChange={(model) => update((s) => (s.type === 'agent' ? withStepModel(s, model) : s))}
+          />
+        </>
+      );
+      break;
+    case 'edit_deck':
+    case 'edit_draft':
+      body = (
+        <>
+          <DocumentPicker
+            kind={step.type === 'edit_deck' ? 'deck' : 'draft'}
+            value={step.type === 'edit_deck' ? step.deck : step.draft}
+            onChange={(id) => update((s) => withDocumentTarget(s, id))}
+          />
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.editDoc.instructions')}
+            value={step.instructions}
+            refs={refs}
+            onChange={(v) =>
+              update((s) => (s.type === 'edit_deck' || s.type === 'edit_draft' ? { ...s, instructions: v } : s))
+            }
+          />
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.summarize.input')}
+            value={step.input ?? ''}
+            refs={refs}
+            onChange={(v) => update((s) => withOptionalInput(s, v))}
+          />
+          <p className="wf-muted">{t('workspace.workflows.editor.editDoc.hint')}</p>
+          <WorkflowModelRow
+            kind="step"
+            idPrefix={`wf-model-${step.id}`}
+            model={step.model}
+            onChange={(model) => update((s) => withStepModel(s, model))}
           />
         </>
       );

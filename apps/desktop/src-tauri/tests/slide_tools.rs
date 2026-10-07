@@ -51,7 +51,13 @@ impl Harness {
     }
 
     async fn run(&self, tool: &str, args: Value) -> AgentToolExecution {
+        self.run_as(false, tool, args).await
+    }
+
+    /// `run`, as a turn nobody is watching when `headless`.
+    async fn run_as(&self, headless: bool, tool: &str, args: Value) -> AgentToolExecution {
         let ctx = AgentToolContext {
+            headless,
             db: &self.pool,
             artifacts_dir: self.artifacts.path(),
             exports_dir: self.exports.path(),
@@ -899,4 +905,71 @@ async fn legacy_slides_need_every_field() {
         (slide.layout.as_str(), slide.html.as_str()),
         ("custom", "<p data-text=\"y\">y</p>")
     );
+}
+
+#[tokio::test]
+async fn headless_turns_ignore_release_pinned_and_keep_slides_with_pinned_text() {
+    let h = Harness::bound().await;
+    let id = h.add(PINNED_SLIDE).await;
+    let changed =
+        r#"<h1 data-text="title">Revenue</h1><p data-text="note" data-owner="user">Rewritten</p>"#;
+
+    // Released by the model, as a person watching would allow: refused here.
+    let out = h
+        .run_as(
+            true,
+            UPDATE_SLIDE_TOOL,
+            json!({ "slide_id": id, "html": changed, "release_pinned": ["note"] }),
+        )
+        .await;
+    assert!(out.is_error, "{}", out.output);
+    assert!(out.output["error"].as_str().unwrap().contains("pinned"));
+    assert_eq!(html_of(&h, &id).await, PINNED_SLIDE);
+
+    let out = h
+        .run_as(
+            true,
+            PATCH_SLIDE_TOOL,
+            json!({
+                "slide_id": id,
+                "edits": [{ "old_text": "Written by me", "new_text": "Mine" }],
+                "release_pinned": ["note"],
+            }),
+        )
+        .await;
+    assert!(out.is_error, "{}", out.output);
+    assert_eq!(html_of(&h, &id).await, PINNED_SLIDE);
+
+    // Unpinned text still changes.
+    let out = h
+        .run_as(
+            true,
+            UPDATE_SLOTS_TOOL,
+            json!({ "edits": [{ "slide_id": id, "slot": "title", "html": "Sales" }] }),
+        )
+        .await;
+    assert!(!out.is_error, "{}", out.output);
+
+    // A slide holding the user's text can't be deleted; one without can.
+    let out = h
+        .run_as(true, DELETE_SLIDE_TOOL, json!({ "slide_id": id }))
+        .await;
+    assert!(out.is_error);
+    assert!(out.output["error"]
+        .as_str()
+        .unwrap()
+        .contains("holds text the user wrote"));
+    let plain = h.add(r#"<p data-text="line">x</p>"#).await;
+    let out = h
+        .run_as(true, DELETE_SLIDE_TOOL, json!({ "slide_id": plain }))
+        .await;
+    assert!(!out.is_error, "{}", out.output);
+
+    // The same release works when someone is watching.
+    h.ok(
+        UPDATE_SLIDE_TOOL,
+        json!({ "slide_id": id, "html": changed, "release_pinned": ["note"] }),
+    )
+    .await;
+    assert_eq!(html_of(&h, &id).await, changed);
 }

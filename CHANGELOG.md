@@ -33,6 +33,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   or JSON into rows and columns that later steps can use or loop over. Web
   addresses that return CSV, JSON or plain text are now kept as they are
   instead of being read like an article.
+- **Workflows update your decks and drafts.** "Update a deck" and "Update a
+  draft" steps change a saved Slides deck or Writing draft from data or
+  instructions: new numbers in a chart, a new "This week" section. Text you
+  wrote yourself is never changed, the edit runs in the document's own chat
+  (marked as coming from the workflow), and a version is kept before and after
+  so "Undo this update" in the run, or History, puts it back. An open deck or
+  draft reloads by itself, or offers to when you are typing in it; a deck's
+  layout is checked the next time you open it. A workflow and a chat never
+  edit the same document at once. Two starters: "Weekly numbers deck" and
+  "Monthly report section".
 
 ### Fixed
 

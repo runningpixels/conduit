@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **A dead site no longer breaks a workflow.** A step set to skip on error
+  now really lets the run go on: later steps see it as skipped with empty
+  text, a page with no title no longer stops a template, and a summary of an
+  empty input is skipped without calling the model. When a later step does
+  need what a skipped step would have made, the error says which step was
+  skipped and why. The Morning briefing starter heads each site with its
+  address and shows a site that couldn't be read as one line.
+- **Home opens the workflow that needs you.** Answer and Review on Home now
+  open Workflows on that workflow with its question or review in view.
+- **Workflows remember a run when you come back.** Leaving the page during a
+  run and returning keeps Run now off and Stop available, and the run's
+  detail keeps updating.
+- **An answer that is too long keeps your text.** The answer box stops at
+  2,000 characters with a counter, and a refused answer stays on screen with
+  the reason.
+- **Many pages fit fairly.** When a step reads several pages, each page gets
+  a fair share of what the model is sent (150,000 characters in all), with a
+  marker where text was cut, and the run shows what the model received.
+- **`run.date` and `run.time` are your local date and time**, not UTC.
+- **Clearer workflow errors.** A misspelled setting such as `on_error` is
+  named with the right spelling instead of being ignored; JSON mistakes give
+  a line and column; an unknown step type lists the valid ones; network errors
+  drop the operating system's error codes. `\{{` writes a literal `{{`, and
+  template syntax errors say so. Skipped steps read "Skipped" in a run.
+
 ## [1.0.0-rc.9] - 2026-10-07
 
 ### Added

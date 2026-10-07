@@ -40,9 +40,18 @@ fn checked_name(name: &str) -> Result<String, String> {
 
 /// Parse and validate a definition sent by the renderer.
 fn checked_definition(definition: &Value) -> Result<(), String> {
-    let parsed: definition::WorkflowDefinition = serde_json::from_value(definition.clone())
-        .map_err(|e| format!("The workflow definition can't be read: {e}"))?;
-    definition::validate(&parsed).map_err(|problems| problems.join("\n"))
+    let parsed: definition::WorkflowDefinition =
+        serde_json::from_value(definition.clone()).map_err(|e| definition::unreadable(&e))?;
+    // Loading ignores settings it doesn't know; saving does not.
+    let mut problems = definition::unknown_settings(definition);
+    if let Err(more) = definition::validate(&parsed) {
+        problems.extend(more);
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems.join("\n"))
+    }
 }
 
 /// Everything wrong with a definition, in plain English; empty when it can
@@ -319,6 +328,23 @@ mod tests {
         let problems = validate_workflow(bad);
         assert_eq!(problems.len(), 2, "{problems:?}");
         assert!(validate_workflow(json!({ "steps": "nope" }))[0].contains("can't be read"));
+    }
+
+    #[test]
+    fn validate_workflow_rejects_unknown_settings_and_explains_step_types() {
+        let wrong_case = json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": ["https://a.test"], "on_error": "skip" }
+        ]});
+        assert_eq!(
+            validate_workflow(wrong_case),
+            vec!["Step \"fetch\": unknown setting \"on_error\" \u{2014} did you mean \"onError\"?"]
+        );
+        let bad_type = json!({ "steps": [{ "id": "a", "type": "condition" }] });
+        let problems = validate_workflow(bad_type);
+        assert!(problems[0].contains("\"condition\" isn't a step type. Use one of: fetch_page"));
+        let escaped =
+            json!({ "steps": [{ "id": "a", "type": "template", "template": "{{ \"x\" }}" }] });
+        assert!(validate_workflow(escaped)[0].contains("put a backslash before it"));
     }
 }
 

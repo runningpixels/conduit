@@ -34,10 +34,22 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
           type: 'for_each',
           items: 'steps.fetch.pages',
           steps: [
+            // Names the site first, so every section says where it came from.
+            // `error` is empty unless the page could not be fetched, so a dead
+            // site shows as a heading and a short line instead of vanishing.
+            // One newline, not a blank line, so the summary (or nothing, when
+            // the summary is skipped for a dead site) follows without a gap.
+            {
+              id: 'heading',
+              type: 'template',
+              template: '## {{item.url}}\n{{item.error}}',
+            },
             {
               id: 'summary',
               type: 'summarize',
               prompt: 'List the three most important stories on this page, one line each.',
+              // Blank for a page that could not be fetched: the step then refuses (and
+              // is skipped) without calling the model.
               input: '{{item.title}}\n\n{{item.text}}',
               onError: 'skip',
             },
@@ -47,7 +59,7 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
           id: 'briefing',
           type: 'template',
           template:
-            '# Briefing for {{run.date}}\n\n{{#each steps.each_site.items}}{{item.summary.text}}\n\n{{/each}}',
+            '# Briefing for {{run.date}}\n\n{{#each steps.each_site.items}}{{item.heading.text}}{{item.summary.text}}\n\n{{/each}}',
         },
         { id: 'save', type: 'save_artifact', title: 'Morning briefing', content: '{{steps.briefing.text}}' },
       ],

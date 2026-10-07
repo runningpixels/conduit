@@ -1702,6 +1702,215 @@ async fn a_step_allowed_to_fail_is_reused_with_its_error() {
         .starts_with("Fetch said: None of the pages could be fetched."));
 }
 
+// ── Live-test fixes ──────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn a_briefing_with_a_missing_page_and_a_failed_summary_still_completes() {
+    let base = serve(vec![("/a", PAGE_A)]).await;
+    // The first summary has nothing to work on and fails (no model call),
+    // the second works.
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/gone"), format!("{base}/a")] },
+            { "id": "each_page", "type": "for_each", "items": "steps.fetch.pages", "steps": [
+                { "id": "sum", "type": "summarize", "prompt": "Summarize.", "retries": 0,
+                  "onError": "skip", "input": "{{item.title}}\n{{item.text}}" }
+            ]},
+            { "id": "doc", "type": "template",
+              "template": "{{#each steps.each_page.items}}[{{item.sum.text}}]{{/each}}" }
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+
+    // The missing page is reported inside `pages`, with a null title.
+    let pages = &step(&run, "fetch", None).output.as_ref().unwrap()["pages"];
+    assert_eq!(pages[0]["title"], Value::Null);
+    assert_eq!(pages[0]["text"], "");
+    assert!(pages[0]["error"].as_str().unwrap().contains("404"));
+
+    // The skipped step keeps its shape: empty text, a marker and the reason.
+    let skipped = step(&run, "sum", Some(0));
+    assert_eq!(skipped.status, "skipped");
+    let out = &step(&run, "each_page", None).output.as_ref().unwrap()["items"][0]["sum"];
+    assert_eq!(out["skipped"], true);
+    assert_eq!(out["text"], "");
+    assert!(out["error"]
+        .as_str()
+        .unwrap()
+        .starts_with("There was nothing to summarize"));
+    assert_eq!(h.model.requests.lock().unwrap().len(), 1);
+
+    let doc = step(&run, "doc", None).output.as_ref().unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(doc.starts_with("[]["), "{doc}");
+    assert!(doc.contains("SUMMARY: Rust news"), "{doc}");
+}
+
+#[tokio::test]
+async fn reading_through_a_skipped_step_says_it_was_skipped() {
+    let base = serve(vec![]).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/gone")], "onError": "skip" },
+            { "id": "doc", "type": "template", "template": "{{steps.fetch.pages}}" }
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "failed");
+    let error = run.run.error.unwrap();
+    assert!(
+        error.contains("Step \"fetch\" was skipped (None of the pages could be fetched")
+            && error.contains("so {{steps.fetch.pages}} has nothing to show."),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn run_date_and_time_use_the_local_clock() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "doc", "type": "template", "template": "{{run.date}}|{{run.time}}" }
+        ]}))
+        .await;
+    let before = chrono::Local::now();
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let text = step(&run, "doc", None).output.as_ref().unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (date, time) = text.split_once('|').unwrap();
+    let parsed = chrono::DateTime::parse_from_rfc3339(time).expect("ISO 8601 with an offset");
+    assert_eq!(
+        parsed.offset().local_minus_utc(),
+        before.offset().local_minus_utc()
+    );
+    assert_eq!(date, parsed.format("%Y-%m-%d").to_string());
+}
+
+#[tokio::test]
+async fn text_sent_to_the_model_is_cut_with_a_marker() {
+    let page: &'static str = Box::leak(
+        format!(
+            "<html><body><main><p>{}</p></main></body></html>",
+            "word ".repeat(30_000)
+        )
+        .into_boxed_str(),
+    );
+    let base = serve(vec![("/big", page)]).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": [format!("{base}/big")] },
+            { "id": "sum", "type": "summarize", "prompt": "Summarize.",
+              "input": "{{steps.fetch.text}}{{steps.fetch.text}}{{steps.fetch.text}}{{steps.fetch.text}}" }
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let requests = h.model.requests.lock().unwrap().clone();
+    let sent = requests[0].messages.last().unwrap().parts[0]
+        .content
+        .clone()
+        .unwrap();
+    assert!(sent.contains("[\u{2026} cut: "), "marker missing");
+    assert!(sent.contains("more characters]"));
+    assert!(
+        sent.chars().count() < 150_000 + 200,
+        "{}",
+        sent.chars().count()
+    );
+}
+
+#[tokio::test]
+async fn a_summary_of_nothing_fails_without_asking_the_model() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "blank", "type": "template", "template": "  " },
+            { "id": "sum", "type": "summarize", "prompt": "Summarize.", "input": "{{steps.blank.text}}\n" }
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "failed");
+    assert_eq!(
+        run.run.error.as_deref(),
+        Some("Step \"sum\" failed: There was nothing to summarize: the input came out empty.")
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty());
+
+    // Allowed to fail, the run goes on and the step is skipped.
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "blank", "type": "template", "template": "" },
+            { "id": "sum", "type": "summarize", "prompt": "Summarize.", "input": "{{steps.blank.text}}",
+              "onError": "skip" }
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert!(h.model.requests.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn every_page_gets_a_fair_share_of_what_the_model_can_take() {
+    let mut paths = Vec::new();
+    for n in 0..8 {
+        let page: &'static str = Box::leak(
+            format!(
+                "<html><head><title>Page {n}</title></head><body><main><p>{}</p></main></body></html>",
+                format!("m{n} ").repeat(30_000)
+            )
+            .into_boxed_str(),
+        );
+        let path: &'static str = Box::leak(format!("/p{n}").into_boxed_str());
+        paths.push((path, page));
+    }
+    let base = serve(paths).await;
+    let urls: Vec<String> = (0..8).map(|n| format!("{base}/p{n}")).collect();
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": urls },
+            { "id": "sum", "type": "summarize", "prompt": "Summarize.", "input": "{{steps.fetch.text}}" }
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let requests = h.model.requests.lock().unwrap().clone();
+    let sent = requests[0].messages.last().unwrap().parts[0]
+        .content
+        .clone()
+        .unwrap();
+    for n in 0..8 {
+        assert!(sent.contains(&format!("## Page {n}")), "page {n} missing");
+        assert!(
+            sent.contains(&format!("m{n} m{n} ")),
+            "page {n} text missing"
+        );
+    }
+    // Each page is cut on its own, and the whole stays within the cap.
+    assert_eq!(sent.matches("more characters]").count(), 8);
+    assert!(
+        sent.chars().count() < 150_000 + 200,
+        "{}",
+        sent.chars().count()
+    );
+    // The run detail shows what the model received, not the uncut text.
+    let recorded = step(&run, "sum", None).input.as_ref().unwrap()["input"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(recorded.matches("more characters]").count(), 8);
+    assert!(recorded.chars().count() < 150_000);
+}
+
 // ── Ask me ──────────────────────────────────────────────────────────────────
 
 impl Harness {

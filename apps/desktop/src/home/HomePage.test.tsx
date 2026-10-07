@@ -219,6 +219,20 @@ describe('HomePage needs you', () => {
     ]);
   });
 
+  it('hands the waiting workflow and run to the shell, for a review and for a question', async () => {
+    vi.mocked(listWorkflowReviews).mockResolvedValue([
+      { runId: 'rr', workflowId: 'wr', workflowName: 'Review me' } as never,
+    ]);
+    vi.mocked(listWorkflowQuestions).mockResolvedValue([
+      { runId: 'rq', workflowId: 'wq', workflowName: 'Ask me' } as never,
+    ]);
+    const { p } = await renderHome();
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
+    expect(p.onAction).toHaveBeenNthCalledWith(1, 'open-reviews', { workflowId: 'wr', runId: 'rr' });
+    expect(p.onAction).toHaveBeenNthCalledWith(2, 'open-reviews', { workflowId: 'wq', runId: 'rq' });
+  });
+
   it('counts questions from several workflows', async () => {
     vi.mocked(listWorkflowQuestions).mockResolvedValue([
       { workflowName: 'A' } as never,

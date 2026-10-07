@@ -194,7 +194,7 @@ impl Runner<'_> {
             .ok_or_else(|| "That workflow no longer exists.".to_string())?;
         let def: definition::WorkflowDefinition =
             serde_json::from_value(workflow.definition.clone())
-                .map_err(|e| format!("The workflow definition can't be read: {e}"))?;
+                .map_err(|e| definition::unreadable(&e))?;
         definition::validate(&def).map_err(|problems| problems.join(" "))?;
         let (start, reused) = match resume {
             Some(resume) => reusable(&def.steps, resume)?,
@@ -218,11 +218,16 @@ impl Runner<'_> {
         repo::set_run_inputs(pool, enc, &run.id, &Value::Object(input_values.clone()))
             .await
             .map_err(|e| e.to_string())?;
-        let now = now_iso8601();
+        // The user's own clock: a briefing run at 9 pm is dated today, not tomorrow.
+        let local = chrono::Local::now();
         let mut ctx = json!({
             "inputs": input_values,
             "steps": {},
-            "run": { "id": run.id, "date": &now[..10.min(now.len())], "time": now },
+            "run": {
+                "id": run.id,
+                "date": local.format("%Y-%m-%d").to_string(),
+                "time": local.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+            },
         });
 
         let exec = Exec {
@@ -377,12 +382,19 @@ impl Exec<'_> {
                 Err(reason)
             }
             Err(error) => {
-                repo::finish_step(pool, enc, &row, "failed", None, Some(&error))
+                let error = plain_error(&error);
+                // A step allowed to fail is recorded as skipped, not failed:
+                // the run carried on without it.
+                let status = match step.on_error {
+                    OnError::Skip => "skipped",
+                    OnError::Fail => "failed",
+                };
+                repo::finish_step(pool, enc, &row, status, None, Some(&error))
                     .await
                     .map_err(|e| e.to_string())?;
                 match step.on_error {
                     OnError::Skip => {
-                        set_step_output(ctx, &step.id, json!({ "error": error }));
+                        set_step_output(ctx, &step.id, skipped_output(&error));
                         Ok(())
                     }
                     OnError::Fail => Err(format!("Step \"{}\" failed: {error}", step.id)),
@@ -439,6 +451,17 @@ impl Exec<'_> {
                 .await
             }
             StepAction::Summarize { schema, .. } => {
+                // No point asking a model (or the user's leave to) about nothing.
+                if filled["input"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty()
+                {
+                    return Err(
+                        "There was nothing to summarize: the input came out empty.".to_string()
+                    );
+                }
                 let provider = self.runner.state.settings()?.active_provider;
                 self.allow(&step.id, Permission::Model { provider }, None)
                     .await?;
@@ -738,7 +761,7 @@ impl Exec<'_> {
 
     async fn fetch_pages(&self, urls: &[String], retries: u32) -> Result<Value, String> {
         let mut pages = Vec::new();
-        let mut joined = String::new();
+        let mut readable: Vec<(String, String)> = Vec::new();
         let mut failures = Vec::new();
         for url in urls.iter().map(|u| u.trim()).filter(|u| !u.is_empty()) {
             let mut retry = 0;
@@ -760,7 +783,7 @@ impl Exec<'_> {
                         .unwrap_or(url);
                     let text = page["text"].as_str().unwrap_or_default();
                     if !text.is_empty() {
-                        joined.push_str(&format!("## {heading}\n\n{text}\n\n"));
+                        readable.push((heading.to_string(), text.to_string()));
                     }
                     pages.push(page);
                 }
@@ -782,7 +805,8 @@ impl Exec<'_> {
                 failures.join("; ")
             ));
         }
-        Ok(json!({ "pages": pages, "text": joined.trim_end() }))
+        let joined = join_pages(&readable, MAX_MODEL_TEXT_CHARS);
+        Ok(json!({ "pages": pages, "text": joined }))
     }
 
     async fn fetch_page(&self, url: &str) -> Result<Value, Failed> {
@@ -793,9 +817,9 @@ impl Exec<'_> {
                 // A network failure, server error or "slow down" may pass;
                 // "not found" won't.
                 if e.is_transient() {
-                    Failed::transient(e.to_string())
+                    Failed::transient(plain_error(&e.to_string()))
                 } else {
-                    Failed::lasting(e.to_string())
+                    Failed::lasting(plain_error(&e.to_string()))
                 }
             })?;
         Ok(json!({
@@ -826,7 +850,9 @@ impl Exec<'_> {
             api_key,
             searxng_base_url: settings.web_search.searxng_base_url.clone(),
         };
-        let mut results = crate::search::search(&config, query).await?;
+        let mut results = crate::search::search(&config, query)
+            .await
+            .map_err(|e| plain_error(&e))?;
         results.truncate(max_results as usize);
         Ok(json!({ "results": results }))
     }
@@ -1137,7 +1163,14 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             input,
             schema,
         } => {
-            json!({ "type": "summarize", "prompt": render(prompt)?, "input": render(input)?, "schema": schema })
+            let (prompt, input) = (render(prompt)?, render(input)?);
+            // What the model is sent (and what the run detail shows) is capped.
+            json!({
+                "type": "summarize",
+                "prompt": cap_text(&prompt, MAX_MODEL_TEXT_CHARS),
+                "input": cap_text(&input, MAX_MODEL_TEXT_CHARS),
+                "schema": schema,
+            })
         }
         StepAction::Template { template } => {
             json!({ "type": "template", "template": render(template)? })
@@ -1157,7 +1190,10 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             input,
             tools,
         } => json!({
-            "type": "agent", "prompt": render(prompt)?, "input": render(input)?, "tools": tools,
+            "type": "agent",
+            "prompt": cap_text(&render(prompt)?, MAX_MODEL_TEXT_CHARS),
+            "input": cap_text(&render(input)?, MAX_MODEL_TEXT_CHARS),
+            "tools": tools,
         }),
         StepAction::Ask {
             question,
@@ -1170,6 +1206,68 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "type": "notify", "title": render(title)?, "body": render(body)?,
         }),
     })
+}
+
+/// What a step that failed under `onError: skip` leaves behind. `text` is
+/// empty so `{{steps.id.text}}` still renders; `error` is kept for the runs
+/// view and older workflows; `skipped` lets a template say why a field that
+/// would have come from the step isn't there.
+fn skipped_output(error: &str) -> Value {
+    json!({ "skipped": true, "error": error, "text": "" })
+}
+
+/// Most characters one model step is sent per field (instruction, input).
+/// The same as one attached document in the chat, so a long page or a joined
+/// set of pages is cut the way the chat cuts it rather than overflowing the
+/// model's context.
+const MAX_MODEL_TEXT_CHARS: usize = crate::attachment_documents::DOCUMENT_TEXT_MAX_CHARS;
+
+/// `text`, cut at a character boundary to `max` characters with a marker
+/// saying how much was left out.
+fn cap_text(text: &str, max: usize) -> String {
+    let Some((end, _)) = text.char_indices().nth(max) else {
+        return text.to_string();
+    };
+    let rest = text[end..].chars().count();
+    format!("{}\n[\u{2026} cut: {rest} more characters]", &text[..end])
+}
+
+/// The readable pages as one text, each under its heading, small enough for
+/// a model step's input: every page gets the same share of `max` (or a page's
+/// own limit, if smaller) and a page that doesn't fit says how much was cut,
+/// so a late page isn't the one that disappears.
+fn join_pages(pages: &[(String, String)], max: usize) -> String {
+    if pages.is_empty() {
+        return String::new();
+    }
+    // Room for the headings and the cut markers, which aren't page text.
+    let overhead: usize = pages
+        .iter()
+        .map(|(heading, _)| heading.chars().count() + 8 + CUT_MARKER_ROOM)
+        .sum();
+    let share = max.saturating_sub(overhead) / pages.len();
+    let limit = MAX_PAGE_CHARS.min(share).max(1);
+    let mut joined = String::new();
+    for (heading, text) in pages {
+        joined.push_str(&format!("## {heading}\n\n{}\n\n", cap_text(text, limit)));
+    }
+    joined.trim_end().to_string()
+}
+
+/// Room kept per page for `[… cut: N more characters]`.
+const CUT_MARKER_ROOM: usize = 40;
+
+/// An error message without the operating system's numeric code, which
+/// means nothing to the reader: `... (os error 11001)` becomes `...`.
+fn plain_error(message: &str) -> String {
+    let mut out = message.to_string();
+    while let Some(start) = out.find(" (os error ") {
+        match out[start..].find(')') {
+            Some(len) => out.replace_range(start..start + len + 1, ""),
+            None => break,
+        }
+    }
+    out
 }
 
 fn step_type(action: &StepAction) -> &'static str {
@@ -1259,7 +1357,9 @@ fn reusable(steps: &[Step], resume: &Resume) -> Result<(usize, Vec<Reused>), Str
         let output = match (row.status.as_str(), &row.output) {
             ("completed" | "reused", Some(output)) => output.clone(),
             // A step allowed to fail carried on with its error as its output.
-            ("failed", _) if step.on_error == OnError::Skip => json!({ "error": row.error }),
+            ("failed" | "skipped", _) if step.on_error == OnError::Skip => {
+                skipped_output(row.error.as_deref().unwrap_or_default())
+            }
             _ => {
                 return Err(format!(
                     "Step \"{}\" didn't finish last time, so the run can't start after it.",
@@ -1369,5 +1469,30 @@ mod tests {
             template: "{{steps.gone.text}}".into(),
         };
         assert!(fill(&missing, &ctx).is_err());
+    }
+
+    #[test]
+    fn long_text_is_cut_at_a_character_boundary_with_a_marker() {
+        assert_eq!(cap_text("short", 10), "short");
+        assert_eq!(cap_text("abcde", 5), "abcde");
+        let cut = cap_text("h\u{e9}llo w\u{f6}rld", 4);
+        assert_eq!(cut, "h\u{e9}ll\n[\u{2026} cut: 7 more characters]");
+    }
+
+    #[test]
+    fn os_error_codes_are_dropped_from_messages() {
+        assert_eq!(
+            plain_error("dns error: No such host is known. (os error 11001)"),
+            "dns error: No such host is known."
+        );
+        assert_eq!(plain_error("plain"), "plain");
+    }
+
+    #[test]
+    fn a_skipped_step_leaves_empty_text_and_its_error() {
+        assert_eq!(
+            skipped_output("boom"),
+            json!({ "skipped": true, "error": "boom", "text": "" })
+        );
     }
 }

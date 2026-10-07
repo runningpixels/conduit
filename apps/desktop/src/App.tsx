@@ -70,7 +70,7 @@ import { Sidebar } from './shell/Sidebar';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
 import { Rail, type Destination } from './shell/Rail';
-import { HomePage, type HomeAction } from './home/HomePage';
+import { HomePage, type HomeAction, type WorkflowTarget } from './home/HomePage';
 import { researchUnavailableReasonId } from './chat/researchAvailability';
 import { InspectorTabs, type InspectorTab } from './inspector/InspectorTabs';
 import { ActivityView } from './inspector/ActivityView';
@@ -352,8 +352,14 @@ export default function App() {
   const [destination, setDestination] = useState<Destination>('home');
   // Home's "New workflow" opens the Workflows page on its picker.
   const [workflowsStartNew, setWorkflowsStartNew] = useState(false);
+  // Home's "Answer"/"Review" opens the Workflows page on the waiting workflow.
+  // `nonce` makes a second request for the same workflow count as a new one.
+  const [workflowsFocus, setWorkflowsFocus] = useState<{ workflowId: string; runId: string; nonce: number } | null>(null);
   useEffect(() => {
-    if (destination !== 'workflows') setWorkflowsStartNew(false);
+    if (destination !== 'workflows') {
+      setWorkflowsStartNew(false);
+      setWorkflowsFocus(null);
+    }
   }, [destination]);
   // Apps: the one open app (null = the list), the saved apps for the
   // new-chat row, and the Save as app / edit dialog.
@@ -3032,7 +3038,7 @@ export default function App() {
     [navigateTo, openSlidesList, openWritingList],
   );
   const handleHomeAction = useCallback(
-    (action: HomeAction) => {
+    (action: HomeAction, target?: WorkflowTarget) => {
       switch (action) {
         case 'new-chat':
           void openFreshChat();
@@ -3060,6 +3066,7 @@ export default function App() {
           setDestination('memory');
           break;
         case 'open-reviews':
+          setWorkflowsFocus(target ? { ...target, nonce: Date.now() } : null);
           setDestination('workflows');
           break;
       }
@@ -3676,6 +3683,7 @@ export default function App() {
                 onOpenDocument={openWorkflowDocument}
                 refreshKey={workflowRunsVersion}
                 startNew={workflowsStartNew}
+                focus={workflowsFocus}
               />
             )}
           </div>

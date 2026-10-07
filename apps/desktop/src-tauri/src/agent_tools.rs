@@ -18,6 +18,7 @@ use crate::{
     },
     encryption::Encryption,
     slide_html,
+    slide_layouts::{self, Layout, SlideFields},
     time::now_iso8601,
 };
 
@@ -1143,12 +1144,13 @@ pub async fn execute_builtin_tool(
             set_storyline(ctx, input).await
         }
         ADD_SLIDE_TOOL => {
-            let input: AddSlideInput = parse_args(tool_name, arguments)?;
+            let args = crate::slide_layouts::without_placeholder_fields(arguments);
+            let input: AddSlideInput = parse_args(tool_name, &args)?;
             add_slide(ctx, input).await
         }
         UPDATE_SLIDE_TOOL => {
             let input: UpdateSlideInput = parse_args(tool_name, arguments)?;
-            update_slide(ctx, input).await
+            update_slide(ctx, input, arguments).await
         }
         PATCH_SLIDE_TOOL => {
             let input: PatchSlideInput = parse_args(tool_name, arguments)?;
@@ -2002,14 +2004,14 @@ fn ensure_kind(artifact: &Artifact, expected: &str) -> Result<(), String> {
 // Deck tools
 // -----------------------------------------------------------------------------
 
-const READ_DECK_DESCRIPTION: &str = "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's full inner HTML, notes and slots. A pinned slot holds text the user wrote. Read a slide before you change it.";
+const READ_DECK_DESCRIPTION: &str = "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's notes, slots and fields (its layout's fields when it was built from fields, otherwise null), plus its full inner html for custom and older slides. A pinned slot holds text the user wrote. Read a slide before you change it.";
 const SET_STORYLINE_DESCRIPTION: &str = "Write the deck's storyline: one short line per planned slide, in order. Replaces the whole storyline. The user reviews and edits it before any slides are built. Always pass title on the first storyline (a short name for the deck, 120 characters at most). Pass assumptions when the user did not say who the deck is for or what they should do: one or two sentences stating what you assumed about audience, goal and length (400 characters at most; an empty string clears it).";
 const START_DECK_DESCRIPTION: &str = "Start a slide deck from this chat. Call it when the user asks for slides, a deck or a presentation, then stop and reply in one short sentence: the app opens the deck in Slides and asks you for the storyline there. title is a short name for the deck.";
-const ADD_SLIDE_DESCRIPTION: &str = "Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. layout is a layout name from the theme (lowercase, e.g. \"title\"). html is the slide's INNER html: the app wraps it in <section class=\"slide\" data-layout=\"LAYOUT\">, so do not include that section yourself. Put every piece of text in an element with data-text=\"slot-name\", style with the theme's classes and color tokens (never hard-coded colors), draw charts as inline SVG, and never include scripts or external URLs. notes is optional speaker notes.";
-const UPDATE_SLIDE_DESCRIPTION: &str = "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
-const PATCH_SLIDE_DESCRIPTION: &str = "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
+const ADD_SLIDE_DESCRIPTION: &str = "Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. Pick a layout and pass only that layout's fields; the app builds the slide in the theme. Fields and limits per layout (counts are visible words unless noted):\n- title: headline (≤10), sub (≤20), kicker.\n- statement: headline (≤14), sub (≤20).\n- bullets: headline (≤10), bullets (2-5 items, each ≤14), kicker.\n- stat-row: stats (2-4 items, each a value of ≤6 characters such as \"$28.6M\" and a label of ≤8 words that carries the unit or context), headline (≤10, optional), kicker.\n- two-col: headline (≤10), columns (exactly 2, each a kicker ≤4 plus body ≤30 or bullets of 2-4 items ≤10), kicker.\n- quote: quote (≤30), cite (≤8).\n- section: headline (≤8), kicker.\n- image-left: headline (≤10), body (≤30) or bullets (2-3 items, each ≤12), and chart or svg for the picture.\n- chart: headline (≤12), chart or svg, kicker.\n- custom: html only, when no other layout fits; its layout is checked after the turn.\nkicker is always ≤4. Every layout except title, section and custom also takes footnote (≤20). Text fields are plain text plus span, em, strong, b, i, u, br, sub, sup, small and mark tags. For numbers prefer chart: the app draws it from your data. Use svg only for a diagram. A call that breaks a limit is rejected with every problem listed: fix them all and call again with the same after_slide_id, so the slide keeps its place. notes is optional speaker notes.";
+const UPDATE_SLIDE_DESCRIPTION: &str = "Restructure one slide: pass slide_id and the fields to change. They merge onto the slide's current fields; null or an empty value removes an optional field. Layouts, fields and limits are as in add_slide. To switch layout pass layout and the new layout's fields; fields with the same name carry over. A custom slide, or an older slide not built from fields, needs every field for its layout, or html with layout custom. notes alone changes only the speaker notes. For a wording change use update_slots instead. Pinned slots (text the user wrote) keep their text and are listed in kept_pinned. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
+const PATCH_SLIDE_DESCRIPTION: &str = "Change part of the inner html of a custom slide, or of an older slide not built from fields, by exact text replacement. On slides built from fields use update_slots for wording and update_slide for structure. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.";
 const REPLACE_IN_DECK_DESCRIPTION: &str = "Swap an exact word or phrase everywhere in the deck's text and speaker notes in one step; markup is never touched. Use it only for an exact swap the user asked for across the deck. It also changes pinned slots, because the user named the word, and reports them in pinned_changed. match_case and whole_word default to false.";
-const UPDATE_SLOTS_DESCRIPTION: &str = "Set the text of slots (elements with data-text) on one or more slides in one call. Use it for judgment edits across slides, such as sentence-casing every headline or saying customers instead of users. Each edit gives slide_id, the slot name and the new inline html: text plus only span, em, strong, b, i, u, br, sub, sup, small and mark tags, with no attributes except class. index picks one of several slots with the same name (0-based, default the first). Pinned slots (text the user wrote) are skipped and listed in skipped_pinned. For an exact word swap use replace_in_deck.";
+const UPDATE_SLOTS_DESCRIPTION: &str = "Set the text of slots (elements with data-text) on one or more slides in one call. This is the way to change wording on slides built from fields, whose slots are kicker, headline, sub, body, bullet-N, stat-N-value, stat-N-label, col-N-kicker, col-N-body, col-N-bullet-M, quote, cite and footnote (numbered from 1). Use it also for judgment edits across slides, such as sentence-casing every headline or saying customers instead of users. Each edit gives slide_id, the slot name and the new inline html: text plus only span, em, strong, b, i, u, br, sub, sup, small and mark tags, with no attributes except class. index picks one of several slots with the same name (0-based, default the first). Pinned slots (text the user wrote) are skipped and listed in skipped_pinned. For an exact word swap use replace_in_deck.";
 const MOVE_SLIDE_DESCRIPTION: &str =
     "Move a slide to a new 0-based position in the deck (clamped to the last slide).";
 const DELETE_SLIDE_DESCRIPTION: &str = "Delete one slide from the deck.";
@@ -2049,40 +2051,136 @@ fn set_storyline_schema() -> Value {
     })
 }
 
-fn add_slide_schema() -> Value {
-    serde_json::json!({
-        "type": "object",
-        "properties": {
-            "layout": {
-                "type": "string",
-                "description": "Layout name from the theme, lowercase letters, digits and hyphens."
-            },
-            "html": {
-                "type": "string",
-                "description": "The slide's inner HTML (no outer section). Text in data-text=\"slot\" elements; no scripts."
-            },
-            "notes": { "type": "string", "description": "Optional speaker notes." },
-            "after_slide_id": {
-                "type": "string",
-                "description": "Insert after this slide; omit to append."
-            },
+/// The typed slide fields shared by add_slide and update_slide, keyed by
+/// name. Mirrored exactly in agentTools.ts (agentToolsParity checks it).
+fn slide_field_properties() -> serde_json::Map<String, Value> {
+    let props = serde_json::json!({
+        "kicker": { "type": "string", "description": "Small label above the headline, at most 4 words (title, section, bullets, two-col, stat-row, chart)." },
+        "headline": { "type": "string", "description": "The slide's main line (every layout except quote and custom)." },
+        "sub": { "type": "string", "description": "One supporting line, at most 20 words (title, statement)." },
+        "body": { "type": "string", "description": "A short paragraph, at most 30 words (image-left)." },
+        "bullets": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Bullet points: 2 to 5 of at most 14 words (bullets), or 2 to 3 of at most 12 words (image-left)."
         },
-        "required": ["layout", "html"],
-    })
+        "stats": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "value": { "type": "string", "description": "The number, at most 6 characters, such as \"$28.6M\" or \"118%\"." },
+                    "label": { "type": "string", "description": "What it measures, at most 8 words; units and context go here." },
+                },
+                "required": ["value", "label"],
+            },
+            "description": "2 to 4 figures (stat-row)."
+        },
+        "columns": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kicker": { "type": "string", "description": "The column's label, at most 4 words." },
+                    "body": { "type": "string", "description": "A paragraph, at most 30 words." },
+                    "bullets": { "type": "array", "items": { "type": "string" }, "description": "2 to 4 points, each at most 10 words." },
+                },
+                "required": ["kicker"],
+            },
+            "description": "Exactly 2 columns, each with body or bullets (two-col)."
+        },
+        "quote": { "type": "string", "description": "The quotation, at most 30 words (quote)." },
+        "cite": { "type": "string", "description": "Who said it, at most 8 words (quote)." },
+        "chart": {
+            "type": "object",
+            "description": "A chart the app draws from your data (chart, image-left). Bar: {\"type\": \"bar\", \"categories\": [\"Q1\", \"Q2\"], \"series\": [{\"name\": \"Revenue\", \"values\": [12, 18]}], \"unit_prefix\": \"$\", \"unit_suffix\": \"M\", \"highlight\": [1]}, up to 12 categories and 3 series. Line: the same with \"type\": \"line\", up to 24 categories and 4 series. Funnel: {\"type\": \"funnel\", \"stages\": [{\"label\": \"Visits\", \"value\": 48000}, {\"label\": \"Signups\", \"value\": 3100}]}, 2 to 7 stages. Labels at most 4 words.",
+            "properties": {
+                "type": { "type": "string", "enum": ["bar", "line", "funnel"] },
+                "categories": { "type": "array", "items": { "type": "string" }, "description": "Labels along the bottom (bar, line)." },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string", "description": "Shown in the legend when there is more than one series." },
+                            "values": { "type": "array", "items": { "type": "number" }, "description": "One number per category." },
+                        },
+                        "required": ["values"],
+                    },
+                    "description": "The data (bar, line)."
+                },
+                "stages": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": { "type": "string" },
+                            "value": { "type": "number" },
+                        },
+                        "required": ["label", "value"],
+                    },
+                    "description": "Funnel stages, largest first (funnel)."
+                },
+                "unit_prefix": { "type": "string", "description": "Shown before every number, such as \"$\"." },
+                "unit_suffix": { "type": "string", "description": "Shown after every number, such as \"%\" or \"K\"." },
+                "highlight": { "type": "array", "items": { "type": "integer" }, "description": "0-based indexes of the categories to draw in the accent color (bar)." },
+                "y_label": { "type": "string", "description": "What the numbers measure, at most 4 words (bar, line)." },
+            },
+            "required": ["type"],
+        },
+        "svg": { "type": "string", "description": "One <svg> element with a viewBox, for a diagram that chart cannot draw (chart, image-left). Colors only from var(--ink), var(--ink-2), var(--accent), var(--surface); no scripts, event attributes or external links. Use a viewBox about as wide as its box (1680 for chart, 820 for image-left) and font-size of at least 24." },
+        "footnote": { "type": "string", "description": "A small source or note at the bottom, at most 20 words (every layout except title, section and custom)." },
+        "html": { "type": "string", "description": "The slide's inner HTML, only for layout custom: every piece of text in an element with data-text=\"slot-name\", the theme's classes and color tokens, no scripts or external URLs." },
+    });
+    match props {
+        Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    }
+}
+
+fn add_slide_schema() -> Value {
+    let mut props = serde_json::Map::new();
+    props.insert(
+        "layout".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "enum": slide_layouts::LAYOUT_NAMES,
+            "description": "The slide's layout; it decides which fields the slide takes."
+        }),
+    );
+    props.extend(slide_field_properties());
+    props.insert(
+        "notes".to_string(),
+        serde_json::json!({ "type": "string", "description": "Optional speaker notes." }),
+    );
+    props.insert(
+        "after_slide_id".to_string(),
+        serde_json::json!({ "type": "string", "description": "Insert after this slide; omit to append." }),
+    );
+    serde_json::json!({ "type": "object", "properties": props, "required": ["layout"] })
 }
 
 fn update_slide_schema() -> Value {
-    serde_json::json!({
-        "type": "object",
-        "properties": {
-            "slide_id": { "type": "string" },
-            "html": { "type": "string", "description": "The slide's full new inner HTML." },
-            "layout": { "type": "string" },
-            "notes": { "type": "string" },
-            "release_pinned": release_pinned_schema(),
-        },
-        "required": ["slide_id"],
-    })
+    let mut props = serde_json::Map::new();
+    props.insert(
+        "slide_id".to_string(),
+        serde_json::json!({ "type": "string" }),
+    );
+    props.insert(
+        "layout".to_string(),
+        serde_json::json!({
+            "type": "string",
+            "enum": slide_layouts::LAYOUT_NAMES,
+            "description": "A new layout for the slide; omit to keep its layout."
+        }),
+    );
+    props.extend(slide_field_properties());
+    props.insert(
+        "notes".to_string(),
+        serde_json::json!({ "type": "string", "description": "New speaker notes." }),
+    );
+    props.insert("release_pinned".to_string(), release_pinned_schema());
+    serde_json::json!({ "type": "object", "properties": props, "required": ["slide_id"] })
 }
 
 fn release_pinned_schema() -> Value {
@@ -2195,14 +2293,21 @@ async fn read_deck(ctx: &AgentToolContext<'_>, input: ReadDeckInput) -> Result<V
             .iter()
             .find(|s| s.id == slide_id)
             .ok_or_else(|| slide_not_found(&slide_id))?;
-        return Ok(serde_json::json!({
+        // A slide built from fields is read as its fields; its html would
+        // only cost tokens. Custom and older slides come with their html.
+        let fields = slide_layouts::reconstruct(&slide.layout, &slide.html);
+        let mut out = serde_json::json!({
             "slide_id": slide.id,
             "position": slide.position,
             "layout": slide.layout,
-            "html": slide.html,
             "notes": slide.notes,
             "slots": slot_summaries(slide, usize::MAX),
-        }));
+            "fields": fields,
+        });
+        if fields.is_none() {
+            out["html"] = Value::String(slide.html.clone());
+        }
+        return Ok(out);
     }
     let outline: Vec<Value> = deck
         .slides
@@ -2318,12 +2423,16 @@ async fn start_deck(ctx: &AgentToolContext<'_>, input: StartDeckInput) -> Result
 
 async fn add_slide(ctx: &AgentToolContext<'_>, input: AddSlideInput) -> Result<Value, String> {
     let deck = deck_for_chat(ctx).await?;
+    let layout =
+        Layout::parse(&input.layout).ok_or_else(|| slide_layouts::unknown_layout(&input.layout))?;
+    let fields = slide_layouts::validate(layout, &input.fields)?;
+    let html = slide_layouts::render(layout, &fields)?;
     let (slide, slide_count) = slides::add_slide(
         ctx.db,
         ctx.encryption,
         &deck.id,
-        &input.layout,
-        &input.html,
+        layout.name(),
+        &html,
         input.notes.as_deref().unwrap_or(""),
         input.after_slide_id.as_deref(),
     )
@@ -2342,39 +2451,97 @@ async fn add_slide(ctx: &AgentToolContext<'_>, input: AddSlideInput) -> Result<V
     }))
 }
 
+/// update_slide: the typed fields the call sent, as sent (a `null` removes a
+/// field, so the raw arguments are read rather than the parsed input).
+fn sent_fields(arguments: &Value) -> serde_json::Map<String, Value> {
+    arguments
+        .as_object()
+        .map(|args| {
+            args.iter()
+                .filter(|(k, _)| slide_layouts::FIELD_NAMES.contains(&k.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 async fn update_slide(
     ctx: &AgentToolContext<'_>,
     input: UpdateSlideInput,
+    arguments: &Value,
 ) -> Result<Value, String> {
-    if input.html.is_none() && input.layout.is_none() && input.notes.is_none() {
-        return Err("update_slide needs at least one of html, layout or notes.".to_string());
+    let changes = sent_fields(arguments);
+    if input.layout.is_none() && changes.is_empty() && input.notes.is_none() {
+        return Err("update_slide needs at least one field, layout or notes.".to_string());
     }
     let deck = deck_for_chat(ctx).await?;
-    let html = match input.html {
-        Some(html) => {
-            let current = deck
-                .slides
-                .iter()
-                .find(|s| s.id == input.slide_id)
-                .ok_or_else(|| slide_not_found(&input.slide_id))?;
-            Some(slide_html::check_pinned_kept(
+    let current = deck
+        .slides
+        .iter()
+        .find(|s| s.id == input.slide_id)
+        .ok_or_else(|| slide_not_found(&input.slide_id))?;
+    let released = input.release_pinned.unwrap_or_default();
+    let mut changes_to_store = slides::SlideChanges {
+        notes: input.notes,
+        ..Default::default()
+    };
+    if input.layout.is_some() || !changes.is_empty() {
+        let target_name = input.layout.unwrap_or_else(|| current.layout.clone());
+        let target = Layout::parse(&target_name).ok_or_else(|| {
+            if target_name == current.layout {
+                format!(
+                    "This slide's layout \"{target_name}\" is not one of the layouts; pass layout (one of {}) with all its fields, or change its html with patch_slide.",
+                    slide_layouts::LAYOUT_NAMES.join(", ")
+                )
+            } else {
+                slide_layouts::unknown_layout(&target_name)
+            }
+        })?;
+        let html = if target == Layout::Custom {
+            let fields: SlideFields = serde_json::from_value(Value::Object(changes))
+                .map_err(|e| format!("invalid arguments for update_slide: {e}"))?;
+            if fields.present_names().is_empty() && current.layout == target.name() {
+                None
+            } else {
+                let fields = slide_layouts::validate(target, &fields)?;
+                let html = fields.html.unwrap_or_default();
+                Some(slide_html::check_pinned_kept(
+                    &current.html,
+                    &html,
+                    &released,
+                )?)
+            }
+        } else {
+            let base = slide_layouts::reconstruct(&current.layout, &current.html);
+            let from_fields = base.is_some();
+            let merged = slide_layouts::merge_fields(&base.unwrap_or_default(), target, &changes)?;
+            let fields = slide_layouts::validate(target, &merged).map_err(|e| {
+                if from_fields {
+                    e
+                } else {
+                    format!(
+                        "This slide was not built from fields, so pass every field for layout {}. {e}",
+                        target.name()
+                    )
+                }
+            })?;
+            let html = slide_layouts::render(target, &fields)?;
+            Some(slide_layouts::carry_pinned(
                 &current.html,
                 &html,
-                input.release_pinned.as_deref().unwrap_or(&[]),
+                &released,
+                target.name(),
             )?)
-        }
-        None => None,
-    };
+        };
+        changes_to_store.layout = Some(target.name().to_string());
+        changes_to_store.html = html;
+    }
     let slide = slides::update_slide(
         ctx.db,
         ctx.encryption,
         &deck.id,
         &input.slide_id,
-        slides::SlideChanges {
-            layout: input.layout,
-            html,
-            notes: input.notes,
-        },
+        changes_to_store,
     )
     .await
     .map_err(slides::user_message)?;
@@ -2923,15 +3090,17 @@ struct StartDeckInput {
 #[derive(Debug, Deserialize)]
 struct AddSlideInput {
     layout: String,
-    html: String,
     notes: Option<String>,
     after_slide_id: Option<String>,
+    #[serde(flatten)]
+    fields: SlideFields,
 }
 
+/// update_slide's own arguments; its slide fields are read from the raw
+/// arguments (see `sent_fields`).
 #[derive(Debug, Deserialize)]
 struct UpdateSlideInput {
     slide_id: String,
-    html: Option<String>,
     layout: Option<String>,
     notes: Option<String>,
     release_pinned: Option<Vec<String>>,
@@ -3676,6 +3845,62 @@ mod tests {
                 .count(),
             names.len()
         );
+    }
+
+    /// The deck tools' descriptions and schemas, exactly as the TS mirror
+    /// (agentTools.ts) must have them. The provider receives the TS copy, so
+    /// agentToolsParity.test.ts checks it against the same fixture. Run with
+    /// UPDATE_DECK_TOOL_FIXTURE=1 to rewrite the fixture after a change here.
+    #[test]
+    fn deck_tool_schemas_match_the_shared_fixture() {
+        let mut map = serde_json::Map::new();
+        for def in builtin_tool_definitions()
+            .into_iter()
+            .filter(|d| d.display_group.as_deref() == Some("Slides"))
+        {
+            map.insert(
+                def.name.clone(),
+                serde_json::json!({ "description": def.description, "input_schema": def.input_schema }),
+            );
+        }
+        let actual = Value::Object(map);
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/chat/__fixtures__/deckToolSchemas.json");
+        if std::env::var_os("UPDATE_DECK_TOOL_FIXTURE").is_some() {
+            let text = serde_json::to_string_pretty(&actual).unwrap() + "\n";
+            std::fs::write(&path, text).unwrap();
+        }
+        let expected: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            actual, expected,
+            "deck tool descriptions or schemas drifted from {}; rerun with UPDATE_DECK_TOOL_FIXTURE=1 and make agentTools.ts match",
+            path.display()
+        );
+    }
+
+    #[test]
+    fn layout_enum_matches_the_builder() {
+        let schema = add_slide_schema();
+        let names: Vec<&str> = schema["properties"]["layout"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(names, slide_layouts::LAYOUT_NAMES);
+        for name in names {
+            assert!(Layout::parse(name).is_some(), "{name}");
+            assert!(slides::validate_layout(name).is_ok(), "{name}");
+        }
+        let props = schema["properties"].as_object().unwrap();
+        for field in slide_layouts::FIELD_NAMES {
+            assert!(props.contains_key(field), "add_slide schema lacks {field}");
+            assert!(
+                update_slide_schema()["properties"].get(field).is_some(),
+                "update_slide schema lacks {field}"
+            );
+        }
     }
 
     #[test]

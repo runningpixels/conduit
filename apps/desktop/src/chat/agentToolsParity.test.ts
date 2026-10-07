@@ -194,3 +194,31 @@ describe('TS builtin tool definitions match Rust definition metadata (consistenc
     expect(mismatched, `TS/Rust definition mismatch(es):\n  ${mismatched.join('\n  ')}`).toEqual([]);
   });
 });
+
+/**
+ * The deck tools' descriptions and schemas must match Rust's word for word:
+ * the provider receives this TS copy, and the Rust handlers enforce the
+ * limits the descriptions state. Rust's `deck_tool_schemas_match_the_shared_fixture`
+ * test writes/checks the same fixture (UPDATE_DECK_TOOL_FIXTURE=1 rewrites it),
+ * so a change on one side fails until the other side matches.
+ */
+describe('deck tool descriptions and schemas match Rust (via the shared fixture)', () => {
+  const fixtureFile = join(here, '__fixtures__', 'deckToolSchemas.json');
+  const fixture = JSON.parse(readFileSync(fixtureFile, 'utf8')) as Record<
+    string,
+    { description: string; input_schema: Record<string, unknown> }
+  >;
+  const deckTools = builtinToolDefinitions().filter((t) => t.displayGroup === 'Slides');
+
+  it('covers the same deck tools', () => {
+    expect(deckTools.map((t) => t.name).sort()).toEqual(Object.keys(fixture).sort());
+  });
+
+  for (const tool of deckTools) {
+    it(`${tool.name}: description and input schema are identical`, () => {
+      expect(fixture[tool.name], `${tool.name} is missing from the fixture`).toBeDefined();
+      expect(tool.description).toBe(fixture[tool.name].description);
+      expect(tool.inputSchema).toEqual(fixture[tool.name].input_schema);
+    });
+  }
+});

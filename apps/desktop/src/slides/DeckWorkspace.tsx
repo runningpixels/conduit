@@ -22,6 +22,7 @@ import { ScriptPanel, type ScriptFocusRequest } from './ScriptPanel';
 import { StudioHeader, type DeckExportKind } from './StudioHeader';
 import { StudioTips } from './StudioTips';
 import { buildThemeChoices } from './themeChoices';
+import { overflowOf, type SlideLayout } from './layoutReport';
 
 export interface DeckWorkspaceProps {
   deck: DeckDetail | null;
@@ -54,8 +55,8 @@ export interface DeckWorkspaceProps {
   onInsertBullet?: (slideId: string, index: number, name: string) => Promise<string | null>;
   onRemoveBullet?: (slideId: string, index: number, name: string) => Promise<void>;
   onAskToFix?: (prompt: string) => void;
-  /** Slide id to pixels of overflow, only slides that overflow. */
-  onOverflowChange?: (overflow: Record<string, number>) => void;
+  /** The stage's layout report (one entry per slide), whenever it changes. */
+  onLayoutChange?: (slides: SlideLayout[]) => void;
   /** 'panel' (default) is the drawer layout beside a chat; 'studio' is the
    *  full-column layout whose Script and History live in the dock. */
   layout?: 'panel' | 'studio';
@@ -111,7 +112,7 @@ export function DeckWorkspace({
   onInsertBullet,
   onRemoveBullet,
   onAskToFix,
-  onOverflowChange,
+  onLayoutChange,
   layout = 'panel',
   onBack,
   madeFromChat = false,
@@ -131,8 +132,8 @@ export function DeckWorkspace({
   const [focusRequest, setFocusRequest] = useState<ScriptFocusRequest | null>(null);
   const [findToken, setFindToken] = useState(0);
   const nonce = useRef(0);
-  const overflowCb = useRef(onOverflowChange);
-  overflowCb.current = onOverflowChange;
+  const layoutCb = useRef(onLayoutChange);
+  layoutCb.current = onLayoutChange;
   const studio = layout === 'studio';
   const scriptAvailable = onEditWords != null && onSetPinned != null && onReplace != null;
   const [titleDraft, setTitleDraft] = useState(deck?.title ?? '');
@@ -219,11 +220,9 @@ export function DeckWorkspace({
     else navigate(key);
   };
 
-  const onOverflow = (list: Array<{ id: string; px: number }>) => {
-    const next: Record<string, number> = {};
-    for (const { id, px } of list) if (px > 0) next[id] = px;
-    setOverflow(next);
-    overflowCb.current?.(next);
+  const onLayout = (list: SlideLayout[]) => {
+    setOverflow(overflowOf(Object.fromEntries(list.map((slide) => [slide.id, slide]))));
+    layoutCb.current?.(list);
   };
 
   const onSlotSelect = (slideId: string, slotIndex: number, name: string) => {
@@ -423,7 +422,7 @@ export function DeckWorkspace({
                     onSlotSelect={onSlotSelect}
                     onSlotEdit={onSlotEdit}
                     onKey={onFrameKey}
-                    onOverflow={onOverflow}
+                    onLayout={onLayout}
                   />
                 </div>
                 {slides[current] && overflow[slides[current].id] > 0 && (

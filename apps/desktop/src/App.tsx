@@ -138,7 +138,18 @@ import { STARTER_THEMES } from './slides/themes';
 import { DeckDock, type DockTab } from './slides/DeckDock';
 import { ScriptPanel, type ScriptFocusRequest } from './slides/ScriptPanel';
 import { DeckHistory } from './slides/DeckHistory';
-import { deckContinuationMessage, deckTurnEnd, type DeckBuildPhase } from './slides/buildContinuation';
+import { deckContinuationMessage, deckTurnEnd, type DeckBuildPhase, type DeckTurnEnd } from './slides/buildContinuation';
+import {
+  changedSlides,
+  layoutCheckDecision,
+  layoutNotesBySlide,
+  overflowOf,
+  reportIsCurrent,
+  slideSignatures,
+  type DeckLayoutReport,
+  type LayoutCheckPhase,
+  type SlideLayout,
+} from './slides/layoutReport';
 import { appPrompt, appPromptLabel } from './chat/appPrompt';
 import type { DeckDetail, SlideTheme, SlotEdit, StorylineItem } from './ipc/contracts';
 import {
@@ -197,6 +208,9 @@ import {
 
 /** How long the user's typing must pause before it is saved as an "Edited by you" version. */
 const DRAFT_EDIT_SESSION_IDLE_MS = 120_000;
+
+/** How long the layout check waits for the stage to measure the deck after a turn. */
+const LAYOUT_REPORT_WAIT_MS = 3_000;
 
 /* Dev-only (`?route=gallery`, see `devRoute.ts`): the theming project's
  * component gallery. Lazy so its fixtures and every component it renders
@@ -488,11 +502,21 @@ export default function App() {
   // Which app-sent build turn is running: "Build slides", then at most one
   // automatic continuation. Null for every ordinary turn.
   const deckBuildPhaseRef = useRef<DeckBuildPhase | null>(null);
+  // The layout check after a deck turn: each slide's signature before the
+  // turn's first change (to find the slides it changed), whether the running
+  // turn is the automatic layout check, and the slides a later turn should
+  // check as well (a build's continuation, or the check turn itself).
+  const deckBeforeTurnRef = useRef<Map<string, string> | null>(null);
+  const layoutCheckPhaseRef = useRef<'check' | null>(null);
+  const layoutCheckSlidesRef = useRef<string[]>([]);
   useEffect(() => {
     let cancelled = false;
     setDeckBusyTool(null);
     deckChangedThisTurnRef.current = false;
     deckBuildPhaseRef.current = null;
+    deckBeforeTurnRef.current = null;
+    layoutCheckPhaseRef.current = null;
+    layoutCheckSlidesRef.current = [];
     if (!activeConversationId) {
       setActiveDeck(null);
       return;
@@ -1261,15 +1285,106 @@ export default function App() {
   }, []);
 
   const handleDeckChanged = useCallback(() => {
+    // The first change of a turn: the deck in hand is still the one before it.
+    if (!deckChangedThisTurnRef.current && activeDeckRef.current) {
+      deckBeforeTurnRef.current = slideSignatures(activeDeckRef.current.slides);
+    }
     deckChangedThisTurnRef.current = true;
     setDeckBusyTool(null);
     void reloadActiveDeck();
   }, [reloadActiveDeck]);
 
+  // The stage frame's layout report: what it measured on each slide. The
+  // model reads it in the developer prompt; after a deck turn the app waits
+  // for a report of the deck as the turn left it.
+  const [deckLayout, setDeckLayout] = useState<DeckLayoutReport>({});
+  const deckLayoutRef = useRef<DeckLayoutReport>({});
+  const layoutWaitersRef = useRef(new Set<() => void>());
+  useEffect(() => {
+    deckLayoutRef.current = {};
+    setDeckLayout({});
+  }, [activeDeckId]);
+  const handleDeckLayout = useCallback((slides: SlideLayout[]) => {
+    const next: DeckLayoutReport = Object.fromEntries(slides.map((slide) => [slide.id, slide]));
+    deckLayoutRef.current = next;
+    setDeckLayout(next);
+    for (const wake of [...layoutWaitersRef.current]) wake();
+  }, []);
+  const deckOverflow = useMemo(() => overflowOf(deckLayout), [deckLayout]);
+  const deckLayoutNotes = useMemo(() => layoutNotesBySlide(deckLayout, t), [deckLayout, t]);
+
+  /** The report once it describes `slides` as they are in `deck`; null when
+   *  none arrives in time (the stage is not showing, say). */
+  const waitForDeckLayout = useCallback(
+    (deck: DeckDetail, slides: readonly string[]) =>
+      new Promise<DeckLayoutReport | null>((resolve) => {
+        const waiters = layoutWaitersRef.current;
+        let timer = 0;
+        const wake = () => {
+          if (!reportIsCurrent(deckLayoutRef.current, deck.slides, slides)) return;
+          waiters.delete(wake);
+          window.clearTimeout(timer);
+          resolve(deckLayoutRef.current);
+        };
+        timer = window.setTimeout(() => {
+          waiters.delete(wake);
+          resolve(null);
+        }, LAYOUT_REPORT_WAIT_MS);
+        waiters.add(wake);
+        wake();
+      }),
+    [],
+  );
+
+  // What the layout check left unfixed, shown at the end of the thread until
+  // the next turn starts.
+  const [deckLayoutNote, setDeckLayoutNote] = useState<{ conversationId: string; text: string } | null>(null);
+  const runningRef = useRef(false);
+  // Counts turn starts, so a check that waited can tell a new turn began.
+  const runStartsRef = useRef(0);
+  useEffect(() => {
+    const running = runStatus != null;
+    if (running && !runningRef.current) {
+      runStartsRef.current += 1;
+      setDeckLayoutNote(null);
+    }
+    runningRef.current = running;
+  }, [runStatus]);
+
+  /** After a deck turn: one automatic layout-check turn for the slides it
+   *  changed, or, after that check, a note for what is still wrong. */
+  const runLayoutCheck = useCallback(
+    async (deck: DeckDetail, slideIds: string[], phase: LayoutCheckPhase, turnEnd: DeckTurnEnd) => {
+      if (slideIds.length === 0 || turnEnd === 'stopped') return;
+      const starts = runStartsRef.current;
+      const report = await waitForDeckLayout(deck, slideIds);
+      const conversationId = deck.conversationId;
+      if (!conversationId || activeDeckRef.current?.conversationId !== conversationId) return;
+      // The user started another turn meanwhile: that one gets the report in its prompt.
+      if (runStartsRef.current !== starts) return;
+      const decision = layoutCheckDecision({ phase, turnEnd, slideIds, slides: deck.slides, report }, t);
+      if (decision.action === 'send') {
+        layoutCheckPhaseRef.current = 'check';
+        layoutCheckSlidesRef.current = slideIds;
+        nextDeckTurnLabelRef.current = t('slides.history.layoutCheck');
+        setPendingSendText(appPrompt(t('slides.note.layoutCheck'), decision.text));
+      } else if (decision.action === 'note') {
+        setDeckLayoutNote({ conversationId, text: decision.text });
+      }
+    },
+    [t, waitForDeckLayout],
+  );
+
   /** One history entry per AI turn that changed the deck, named by the prompt. */
   const finishDeckTurn = useCallback(
     async (state: AssistantStreamState) => {
       setDeckBusyTool(null);
+      const before = deckBeforeTurnRef.current;
+      deckBeforeTurnRef.current = null;
+      const layoutPhase: LayoutCheckPhase = layoutCheckPhaseRef.current ?? 'turn';
+      layoutCheckPhaseRef.current = null;
+      const carried = layoutCheckSlidesRef.current;
+      layoutCheckSlidesRef.current = [];
       if (startedDeckThisTurnRef.current) {
         startedDeckThisTurnRef.current = false;
         deckChangedThisTurnRef.current = false;
@@ -1296,34 +1411,46 @@ export default function App() {
         }
         await reloadActiveDeck();
       }
+      // Read the deck again: the one in hand may predate the turn's last
+      // slides. Only a build, or a turn that changed slides, needs it.
+      const deckConversationId = deck?.conversationId;
+      if (!deckConversationId) return;
+      if (buildPhase !== 'build' && before === null && carried.length === 0) return;
+      let fresh: DeckDetail | null;
+      try {
+        fresh = await getDeckForConversation(deckConversationId);
+      } catch {
+        return;
+      }
+      if (!fresh || activeDeckRef.current?.conversationId !== deckConversationId) return;
+      const turnEnd = deckTurnEnd(state);
+      const changed = [...new Set([...carried, ...(before ? changedSlides(before, fresh.slides) : [])])];
       // A build that ended short (a model that stops after a few slides, or a
       // turn that hit its time limit) is picked up once, here, rather than
-      // leaving the user to find out and ask. Read the deck again: the one in
-      // hand may predate the turn's last slides.
-      const deckConversationId = deck?.conversationId;
-      if (!deckConversationId || buildPhase !== 'build') return;
-      try {
-        const fresh = await getDeckForConversation(deckConversationId);
-        if (!fresh || activeDeckRef.current?.conversationId !== deckConversationId) return;
+      // leaving the user to find out and ask. The layout check then waits for
+      // the whole build.
+      if (buildPhase === 'build') {
         const message = deckContinuationMessage(
           {
             phase: buildPhase,
             stage: fresh.stage,
             storyline: fresh.storyline,
             slideCount: fresh.slides.length,
-            turnEnd: deckTurnEnd(state),
+            turnEnd,
           },
           (lines) => t('slides.prompt.continueBuild', { lines }),
         );
-        if (message === null) return;
-        deckBuildPhaseRef.current = 'continuation';
-        nextDeckTurnLabelRef.current = t('slides.history.built');
-        setPendingSendText(appPrompt(t('slides.note.continueBuild'), message));
-      } catch {
-        // The deck stays as it is; the user can ask for the rest.
+        if (message !== null) {
+          deckBuildPhaseRef.current = 'continuation';
+          nextDeckTurnLabelRef.current = t('slides.history.built');
+          layoutCheckSlidesRef.current = changed;
+          setPendingSendText(appPrompt(t('slides.note.continueBuild'), message));
+          return;
+        }
       }
+      await runLayoutCheck(fresh, changed, layoutPhase, turnEnd);
     },
-    [reloadActiveDeck, openDeckStartedInChat, t],
+    [reloadActiveDeck, openDeckStartedInChat, runLayoutCheck, t],
   );
 
   // Export: the documents are built here, Rust asks for the path and writes
@@ -1529,8 +1656,6 @@ export default function App() {
     [reloadActiveDeck, t],
   );
 
-  const [deckOverflow, setDeckOverflow] = useState<Record<string, number>>({});
-  useEffect(() => setDeckOverflow({}), [activeDeckId]);
 
   const handleListDeckSnapshots = useCallback(async () => {
     const deck = activeDeckRef.current;
@@ -3398,7 +3523,8 @@ export default function App() {
             onOpenDraftSources={() => setDraftDockTab('sources')}
             onWriteFromReport={handleWriteFromReport}
             compact={anyStudio}
-            deckOverflow={deckOverflow}
+            deckLayoutNotes={deckLayoutNotes}
+            threadNote={deckLayoutNote?.conversationId === activeConversationId ? deckLayoutNote.text : null}
             onDocumentToolActivity={routeDocumentToolActivity}
             onForkConversation={(convId, msgId) => void handleForkConversation(convId, msgId)}
             onEditForked={handleEditForked}
@@ -3629,7 +3755,7 @@ export default function App() {
               onRemoveBullet={handleRemoveBullet}
               onReplace={handleReplaceInDeck}
               onAskToFix={(prompt) => setPendingSendText(appPrompt(t('slides.note.fixOverflow'), prompt))}
-              onOverflowChange={setDeckOverflow}
+              onLayoutChange={handleDeckLayout}
             />
           </section>
         ) : (

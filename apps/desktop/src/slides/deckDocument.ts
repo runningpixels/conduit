@@ -8,17 +8,22 @@
 /// Frame to parent (all `{type:'conduit-deck-event', event, ...}`): `ready` once
 /// loaded; `select {slideId}` on a click; in an editable stage `slot-select
 /// {slideId,index,name}`, `slot-edit {slideId,index,name,html}` (commit of an
-/// in-place edit), `key {key}` for navigation keys, and `overflow
-/// {slides:[{id,px}]}` (stage only, only when the measurement changed).
+/// in-place edit), `key {key}` for navigation keys, and `layout {slides}`: one
+/// `SlideLayout` per slide (`layoutReport.ts`; stage only, whenever a slide or
+/// its measurement changed). Every posted slide carries `sig`
+/// (`slideSignature`), which the report echoes.
 /// Parent to frame: `deckMessage(...)`. The frame validates the shape, strips
 /// scripts and inline handlers again (the sandbox is the boundary, this is
 /// depth), and rebuilds only the slides whose HTML or layout changed. Each
 /// built slide is auto-fitted (`deckFit.ts`) in every mode; fitted sizes stay
-/// in the frame and never reach a `slot-edit`.
+/// in the frame and never reach a `slot-edit`. The stage then measures each
+/// fitted slide (`deckLayoutCheck.ts`).
 
 import { withoutScripts } from '../artifacts/LiveDocumentPreview';
 import type { DeckDetail } from '../ipc/contracts';
 import { DECK_FIT_SCRIPT } from './deckFit';
+import { DECK_LAYOUT_SCRIPT } from './deckLayoutCheck';
+import { parseSlideLayout, slideSignature, type SlideLayout } from './layoutReport';
 
 export const DECK_MESSAGE_TYPE = 'conduit-deck';
 export const DECK_EVENT_TYPE = 'conduit-deck-event';
@@ -37,7 +42,7 @@ export interface DeckView {
 export interface DeckMessage {
   type: typeof DECK_MESSAGE_TYPE;
   themeCss: string;
-  slides: Array<{ id: string; layout: string; html: string }>;
+  slides: Array<{ id: string; layout: string; html: string; sig: string }>;
   view: Required<Omit<DeckView, 'present'>> & { present?: true };
 }
 
@@ -47,13 +52,18 @@ export type DeckFrameEvent =
   | { event: 'slot-select'; slideId: string; index: number; name: string }
   | { event: 'slot-edit'; slideId: string; index: number; name: string; html: string }
   | { event: 'key'; key: string }
-  | { event: 'overflow'; slides: Array<{ id: string; px: number }> };
+  | { event: 'layout'; slides: SlideLayout[] };
 
 export function deckMessage(deck: Pick<DeckDetail, 'themeCss' | 'slides'>, view: DeckView): DeckMessage {
   return {
     type: DECK_MESSAGE_TYPE,
     themeCss: deck.themeCss,
-    slides: deck.slides.map((s) => ({ id: s.id, layout: s.layout, html: withoutScripts(s.html) })),
+    slides: deck.slides.map((s) => ({
+      id: s.id,
+      layout: s.layout,
+      html: withoutScripts(s.html),
+      sig: slideSignature(s.layout, s.html),
+    })),
     view: { mode: view.mode, index: view.index, editable: view.mode === 'stage' && view.editable === true,
       ...(view.mode === 'stage' && view.present === true ? { present: true as const } : {}),
     },
@@ -80,15 +90,14 @@ export function parseDeckEvent(data: unknown): DeckFrameEvent | null {
     return { event: 'slot-edit', slideId: d.slideId, index: d.index, name: d.name, html: d.html };
   }
   if (d.event === 'key' && typeof d.key === 'string') return { event: 'key', key: d.key };
-  if (d.event === 'overflow' && Array.isArray(d.slides)) {
-    const slides: Array<{ id: string; px: number }> = [];
+  if (d.event === 'layout' && Array.isArray(d.slides)) {
+    const slides: SlideLayout[] = [];
     for (const s of d.slides) {
-      if (!s || typeof s !== 'object') return null;
-      const { id, px } = s as Record<string, unknown>;
-      if (typeof id !== 'string' || typeof px !== 'number' || !Number.isFinite(px)) return null;
-      slides.push({ id, px: Math.max(0, Math.round(px)) });
+      const slide = parseSlideLayout(s);
+      if (!slide) return null;
+      slides.push(slide);
     }
-    return { event: 'overflow', slides };
+    return { event: 'layout', slides };
   }
   return null;
 }
@@ -179,7 +188,7 @@ const FRAME_SCRIPT = `
   // The slot being edited: {slideId, index, name, el, original}. While set,
   // incoming renders leave that slide's node alone.
   var editing = null;
-  var lastOverflow = null;
+  var lastReport = null;
 
   function post(payload) {
     payload.type = 'conduit-deck-event';
@@ -202,6 +211,7 @@ const FRAME_SCRIPT = `
     for (var i = 0; i < m.slides.length; i++) {
       var s = m.slides[i];
       if (!s || typeof s.id !== 'string' || typeof s.layout !== 'string' || typeof s.html !== 'string') return false;
+      if (s.sig != null && typeof s.sig !== 'string') return false;
     }
     return true;
   }
@@ -225,7 +235,7 @@ const FRAME_SCRIPT = `
     el.setAttribute('data-layout', slide.layout);
     el.innerHTML = slide.html;
     scrub(el);
-    return { el: el, layout: slide.layout, html: slide.html, px: null, fitted: false };
+    return { el: el, layout: slide.layout, html: slide.html, sig: slide.sig || '', px: null, report: null, fitted: false };
   }
 
   // Slots in document order; a slot inside another slot does not count.
@@ -276,7 +286,7 @@ const FRAME_SCRIPT = `
     var html = conduitFit.cleanSlotHtml(e.el);
     if (html !== e.original) post({ event: 'slot-edit', slideId: e.slideId, index: e.index, name: e.name, html: html });
     refit(nodes[e.slideId]);
-    reportOverflow();
+    reportLayout();
   }
 
   function startEdit(slot) {
@@ -303,10 +313,16 @@ const FRAME_SCRIPT = `
     }
   }
 
-  // Overflow: how far a slide's content runs past 1920x1080, on any side
-  // (see conduitFit.overflow).
+  // Overflow (how far a slide's content runs past 1920x1080, on any side; see
+  // conduitFit.overflow) and the layout check, on the fitted slide. Cached on
+  // the node until it is fitted again; not cached while it is not laid out.
   function measure(node) {
-    return laidOut(node, conduitFit.overflow);
+    if (node.px !== null && node.report) return true;
+    var m = laidOut(node, function (el) { return { px: conduitFit.overflow(el), report: conduitLayout.check(el) }; });
+    if (!m.report) return false;
+    node.px = m.px;
+    node.report = m.report;
+    return true;
   }
 
   // Auto-fit once per built slide, in every mode, so thumbnails and the
@@ -316,7 +332,7 @@ const FRAME_SCRIPT = `
     if (!node || node.fitted) return;
     var done = false;
     try { done = laidOut(node, conduitFit.fitSlide); } catch (e) { /* never block rendering */ }
-    if (done) { node.fitted = true; node.px = null; }
+    if (done) { node.fitted = true; node.px = null; node.report = null; }
   }
 
   function refit(node) {
@@ -341,22 +357,27 @@ const FRAME_SCRIPT = `
     document.fonts.ready.then(function () {
       fontsPending = false;
       fitAll(true);
-      reportOverflow();
+      reportLayout();
     });
   }
 
-  function reportOverflow() {
+  // One report for the whole deck, posted when any slide or measurement
+  // changed. Nothing is posted while the frame is not laid out.
+  function reportLayout() {
     if (mode !== 'stage' || editing) return;
     var list = [];
     for (var i = 0; i < order.length; i++) {
       var node = nodes[order[i]];
-      if (node.px === null) node.px = measure(node);
-      list.push({ id: order[i], px: node.px });
+      var ok = false;
+      try { ok = measure(node); } catch (e) { /* never block rendering */ }
+      if (!ok) return;
+      list.push({ id: order[i], sig: node.sig, px: node.px, dense: node.report.dense,
+        minFont: node.report.minFont, issues: node.report.issues });
     }
     var key = JSON.stringify(list);
-    if (key === lastOverflow) return;
-    lastOverflow = key;
-    post({ event: 'overflow', slides: list });
+    if (key === lastReport) return;
+    lastReport = key;
+    post({ event: 'layout', slides: list });
   }
 
   function apply(m) {
@@ -386,7 +407,7 @@ const FRAME_SCRIPT = `
       var prev = nodes[s.id];
       var keep = prev && ((editing && editing.slideId === s.id) || (prev.layout === s.layout && prev.html === s.html));
       var node = keep ? prev : build(s);
-      if (themeChanged) node.px = null;
+      if (themeChanged) { node.px = null; node.report = null; }
       next[s.id] = node;
       ids.push(s.id);
     }
@@ -413,7 +434,7 @@ const FRAME_SCRIPT = `
     }
     if (editing && order[index] !== editing.slideId) commitEdit();
     fit();
-    reportOverflow();
+    reportLayout();
   }
 
   window.addEventListener('message', function (event) {
@@ -425,7 +446,7 @@ const FRAME_SCRIPT = `
     fit();
     // A frame first laid out at zero size fits its slides now.
     fitAll(false);
-    reportOverflow();
+    reportLayout();
   });
   deck.addEventListener('click', function (event) {
     var t = event.target;
@@ -482,4 +503,4 @@ const FRAME_SCRIPT = `
 export const DECK_FRAME_HTML =
   `<style>${FRAME_STYLE}</style>` +
   `<div class="deck-viewport"><div class="deck" id="deck"></div></div>` +
-  `<script>${DECK_FIT_SCRIPT}${FRAME_SCRIPT}</script>`;
+  `<script>${DECK_FIT_SCRIPT}${DECK_LAYOUT_SCRIPT}${FRAME_SCRIPT}</script>`;

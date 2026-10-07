@@ -148,10 +148,10 @@ describe('DeckWorkspace', () => {
     expect(stageCol.contains(screen.getByRole('button', { name: 'Next slide' }))).toBe(true);
   });
 
-  it('marks overflowing slides with a dot and a caption, and reports them', async () => {
-    const onOverflowChange = vi.fn();
+  it('marks overflowing slides with a dot and a caption, and reports the layout', async () => {
+    const onLayoutChange = vi.fn();
     const onAskToFix = vi.fn();
-    const { container } = render(<DeckWorkspace {...props({ onOverflowChange, onAskToFix })} />);
+    const { container } = render(<DeckWorkspace {...props({ onLayoutChange, onAskToFix })} />);
     await waitFor(() => expect(container.querySelector('.deck-stage iframe')).toBeTruthy());
     const frame = container.querySelector('.deck-stage iframe') as HTMLIFrameElement;
     act(() => {
@@ -160,16 +160,19 @@ describe('DeckWorkspace', () => {
           source: frame.contentWindow,
           data: {
             type: 'conduit-deck-event',
-            event: 'overflow',
+            event: 'layout',
             slides: [
-              { id: 'a', px: 0 },
-              { id: 'b', px: 90 },
+              { id: 'a', sig: 'x', px: 0, dense: false, minFont: 40, issues: [] },
+              { id: 'b', sig: 'y', px: 90, dense: true, minFont: 30, issues: [] },
             ],
           },
         }),
       );
     });
-    expect(onOverflowChange).toHaveBeenCalledWith({ b: 90 });
+    expect(onLayoutChange).toHaveBeenCalledWith([
+      { id: 'a', sig: 'x', px: 0, dense: false, minFont: 40, issues: [] },
+      { id: 'b', sig: 'y', px: 90, dense: true, minFont: 30, issues: [] },
+    ]);
     expect(screen.getAllByRole('img', { name: 'Text runs off slide 2' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Ask to fix' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Next slide' }));

@@ -23,6 +23,125 @@ const RELEASE_PINNED_SCHEMA = {
     'Names of pinned slots you may change. Only when the user asked you to change that text.',
 };
 
+/** Slide layouts, in the order the tools list them (slide_layouts.rs LAYOUT_NAMES). */
+const SLIDE_LAYOUTS = [
+  'title',
+  'statement',
+  'bullets',
+  'stat-row',
+  'two-col',
+  'quote',
+  'section',
+  'image-left',
+  'chart',
+  'custom',
+];
+
+/**
+ * The typed slide fields shared by add_slide and update_slide. Mirrors
+ * `slide_field_properties()` in agent_tools.rs exactly; agentToolsParity
+ * checks both against src/chat/__fixtures__/deckToolSchemas.json.
+ */
+function slideFieldProperties(): Record<string, unknown> {
+  return {
+    kicker: {
+      type: 'string',
+      description: 'Small label above the headline, at most 4 words (title, section, bullets, two-col, stat-row, chart).',
+    },
+    headline: { type: 'string', description: "The slide's main line (every layout except quote and custom)." },
+    sub: { type: 'string', description: 'One supporting line, at most 20 words (title, statement).' },
+    body: { type: 'string', description: 'A short paragraph, at most 30 words (image-left).' },
+    bullets: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Bullet points: 2 to 5 of at most 14 words (bullets), or 2 to 3 of at most 12 words (image-left).',
+    },
+    stats: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          value: { type: 'string', description: 'The number, at most 6 characters, such as "$28.6M" or "118%".' },
+          label: { type: 'string', description: 'What it measures, at most 8 words; units and context go here.' },
+        },
+        required: ['value', 'label'],
+      },
+      description: '2 to 4 figures (stat-row).',
+    },
+    columns: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          kicker: { type: 'string', description: "The column's label, at most 4 words." },
+          body: { type: 'string', description: 'A paragraph, at most 30 words.' },
+          bullets: { type: 'array', items: { type: 'string' }, description: '2 to 4 points, each at most 10 words.' },
+        },
+        required: ['kicker'],
+      },
+      description: 'Exactly 2 columns, each with body or bullets (two-col).',
+    },
+    quote: { type: 'string', description: 'The quotation, at most 30 words (quote).' },
+    cite: { type: 'string', description: 'Who said it, at most 8 words (quote).' },
+    chart: {
+      type: 'object',
+      description:
+        'A chart the app draws from your data (chart, image-left). Bar: {"type": "bar", "categories": ["Q1", "Q2"], "series": [{"name": "Revenue", "values": [12, 18]}], "unit_prefix": "$", "unit_suffix": "M", "highlight": [1]}, up to 12 categories and 3 series. Line: the same with "type": "line", up to 24 categories and 4 series. Funnel: {"type": "funnel", "stages": [{"label": "Visits", "value": 48000}, {"label": "Signups", "value": 3100}]}, 2 to 7 stages. Labels at most 4 words.',
+      properties: {
+        type: { type: 'string', enum: ['bar', 'line', 'funnel'] },
+        categories: { type: 'array', items: { type: 'string' }, description: 'Labels along the bottom (bar, line).' },
+        series: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Shown in the legend when there is more than one series.' },
+              values: { type: 'array', items: { type: 'number' }, description: 'One number per category.' },
+            },
+            required: ['values'],
+          },
+          description: 'The data (bar, line).',
+        },
+        stages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string' },
+              value: { type: 'number' },
+            },
+            required: ['label', 'value'],
+          },
+          description: 'Funnel stages, largest first (funnel).',
+        },
+        unit_prefix: { type: 'string', description: 'Shown before every number, such as "$".' },
+        unit_suffix: { type: 'string', description: 'Shown after every number, such as "%" or "K".' },
+        highlight: {
+          type: 'array',
+          items: { type: 'integer' },
+          description: '0-based indexes of the categories to draw in the accent color (bar).',
+        },
+        y_label: { type: 'string', description: 'What the numbers measure, at most 4 words (bar, line).' },
+      },
+      required: ['type'],
+    },
+    svg: {
+      type: 'string',
+      description:
+        'One <svg> element with a viewBox, for a diagram that chart cannot draw (chart, image-left). Colors only from var(--ink), var(--ink-2), var(--accent), var(--surface); no scripts, event attributes or external links. Use a viewBox about as wide as its box (1680 for chart, 820 for image-left) and font-size of at least 24.',
+    },
+    footnote: {
+      type: 'string',
+      description: 'A small source or note at the bottom, at most 20 words (every layout except title, section and custom).',
+    },
+    html: {
+      type: 'string',
+      description:
+        'The slide\'s inner HTML, only for layout custom: every piece of text in an element with data-text="slot-name", the theme\'s classes and color tokens, no scripts or external URLs.',
+    },
+  };
+}
+
 function schema(fields: Array<{ name: string; type: string; required?: boolean }>): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
@@ -466,7 +585,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'read_deck',
     name: 'read_deck',
     description:
-      "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's full inner HTML, notes and slots. A pinned slot holds text the user wrote. Read a slide before you change it.",
+      "Read the deck you are building. With no slide_id it returns the title, theme, stage, storyline and an outline of every slide (slide_id, position, layout, visible text, and its text slots with each slot's name, text and pinned flag). With a slide_id it returns that slide's notes, slots and fields (its layout's fields when it was built from fields, otherwise null), plus its full inner html for custom and older slides. A pinned slot holds text the user wrote. Read a slide before you change it.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -512,26 +631,34 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'add_slide',
     name: 'add_slide',
     description:
-      'Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. layout is a layout name from the theme (lowercase, e.g. "title"). html is the slide\'s INNER html: the app wraps it in <section class="slide" data-layout="LAYOUT">, so do not include that section yourself. Put every piece of text in an element with data-text="slot-name", style with the theme\'s classes and color tokens (never hard-coded colors), draw charts as inline SVG, and never include scripts or external URLs. notes is optional speaker notes.',
+      'Add ONE slide to the deck (call once per slide), at the end or after after_slide_id. Pick a layout and pass only that layout\'s fields; the app builds the slide in the theme. Fields and limits per layout (counts are visible words unless noted):\n' +
+      '- title: headline (≤10), sub (≤20), kicker.\n' +
+      '- statement: headline (≤14), sub (≤20).\n' +
+      '- bullets: headline (≤10), bullets (2-5 items, each ≤14), kicker.\n' +
+      '- stat-row: stats (2-4 items, each a value of ≤6 characters such as "$28.6M" and a label of ≤8 words that carries the unit or context), headline (≤10, optional), kicker.\n' +
+      '- two-col: headline (≤10), columns (exactly 2, each a kicker ≤4 plus body ≤30 or bullets of 2-4 items ≤10), kicker.\n' +
+      '- quote: quote (≤30), cite (≤8).\n' +
+      '- section: headline (≤8), kicker.\n' +
+      '- image-left: headline (≤10), body (≤30) or bullets (2-3 items, each ≤12), and chart or svg for the picture.\n' +
+      '- chart: headline (≤12), chart or svg, kicker.\n' +
+      '- custom: html only, when no other layout fits; its layout is checked after the turn.\n' +
+      'kicker is always ≤4. Every layout except title, section and custom also takes footnote (≤20). Text fields are plain text plus span, em, strong, b, i, u, br, sub, sup, small and mark tags. For numbers prefer chart: the app draws it from your data. Use svg only for a diagram. A call that breaks a limit is rejected with every problem listed: fix them all and call again with the same after_slide_id, so the slide keeps its place. notes is optional speaker notes.',
     inputSchema: {
       type: 'object',
       properties: {
         layout: {
           type: 'string',
-          description: 'Layout name from the theme, lowercase letters, digits and hyphens.',
+          enum: SLIDE_LAYOUTS,
+          description: "The slide's layout; it decides which fields the slide takes.",
         },
-        html: {
-          type: 'string',
-          description:
-            'The slide\'s inner HTML (no outer section). Text in data-text="slot" elements; no scripts.',
-        },
+        ...slideFieldProperties(),
         notes: { type: 'string', description: 'Optional speaker notes.' },
         after_slide_id: {
           type: 'string',
           description: 'Insert after this slide; omit to append.',
         },
       },
-      required: ['layout', 'html'],
+      required: ['layout'],
     },
     permissionLevel: 'sideEffectful',
     displayGroup: DECK_TOOL_GROUP,
@@ -540,14 +667,18 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'update_slide',
     name: 'update_slide',
     description:
-      "Replace parts of one existing slide: html (the full inner html, same rules as add_slide), layout and/or notes. Pass at least one. For a small wording change prefer patch_slide. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content and marker: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.",
+      "Restructure one slide: pass slide_id and the fields to change. They merge onto the slide's current fields; null or an empty value removes an optional field. Layouts, fields and limits are as in add_slide. To switch layout pass layout and the new layout's fields; fields with the same name carry over. A custom slide, or an older slide not built from fields, needs every field for its layout, or html with layout custom. notes alone changes only the speaker notes. For a wording change use update_slots instead. Pinned slots (text the user wrote) keep their text and are listed in kept_pinned. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.",
     inputSchema: {
       type: 'object',
       properties: {
         slide_id: { type: 'string' },
-        html: { type: 'string', description: "The slide's full new inner HTML." },
-        layout: { type: 'string' },
-        notes: { type: 'string' },
+        layout: {
+          type: 'string',
+          enum: SLIDE_LAYOUTS,
+          description: 'A new layout for the slide; omit to keep its layout.',
+        },
+        ...slideFieldProperties(),
+        notes: { type: 'string', description: 'New speaker notes.' },
         release_pinned: RELEASE_PINNED_SCHEMA,
       },
       required: ['slide_id'],
@@ -559,7 +690,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'patch_slide',
     name: 'patch_slide',
     description:
-      "Change part of one slide's inner html by exact text replacement. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.",
+      "Change part of the inner html of a custom slide, or of an older slide not built from fields, by exact text replacement. On slides built from fields use update_slots for wording and update_slide for structure. Each old_text must occur exactly once in the slide; read the slide first and quote enough surrounding text. Edits apply in order, all or nothing. Pinned slots (text the user wrote, data-owner=\"user\") must keep their exact content: the call is rejected otherwise. Pass release_pinned with a pinned slot's name only when the user's message names that specific text (for example \"change my headline to ...\"). A request to rewrite, restyle, shorten or redo the slide or the deck does not name it: keep pinned text word for word and say in your reply that you kept it.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -635,7 +766,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     toolId: 'update_slots',
     name: 'update_slots',
     description:
-      'Set the text of slots (elements with data-text) on one or more slides in one call. Use it for judgment edits across slides, such as sentence-casing every headline or saying customers instead of users. Each edit gives slide_id, the slot name and the new inline html: text plus only span, em, strong, b, i, u, br, sub, sup, small and mark tags, with no attributes except class. index picks one of several slots with the same name (0-based, default the first). Pinned slots (text the user wrote) are skipped and listed in skipped_pinned. For an exact word swap use replace_in_deck.',
+      'Set the text of slots (elements with data-text) on one or more slides in one call. This is the way to change wording on slides built from fields, whose slots are kicker, headline, sub, body, bullet-N, stat-N-value, stat-N-label, col-N-kicker, col-N-body, col-N-bullet-M, quote, cite and footnote (numbered from 1). Use it also for judgment edits across slides, such as sentence-casing every headline or saying customers instead of users. Each edit gives slide_id, the slot name and the new inline html: text plus only span, em, strong, b, i, u, br, sub, sup, small and mark tags, with no attributes except class. index picks one of several slots with the same name (0-based, default the first). Pinned slots (text the user wrote) are skipped and listed in skipped_pinned. For an exact word swap use replace_in_deck.',
     inputSchema: {
       type: 'object',
       properties: {

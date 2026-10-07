@@ -188,9 +188,140 @@ pub enum SaveMode {
     Create,
 }
 
-/// Parse a stored definition.
+/// Parse a stored definition. Lenient: keys it doesn't know are ignored, so a
+/// stored workflow always loads; [`unknown_settings`] is what flags them.
 pub fn parse(json: &str) -> Result<WorkflowDefinition, String> {
-    serde_json::from_str(json).map_err(|e| format!("The workflow definition can't be read: {e}"))
+    serde_json::from_str(json).map_err(|e| unreadable(&e))
+}
+
+/// "The workflow definition can't be read: ..." with serde's wording made plain.
+pub fn unreadable(error: &serde_json::Error) -> String {
+    format!(
+        "The workflow definition can't be read: {}",
+        plain_parse_error(&error.to_string())
+    )
+}
+
+/// serde's message, minus its position suffix, with an unknown step type
+/// spelled out ("\"condition\" isn't a step type. Use one of: ...").
+fn plain_parse_error(message: &str) -> String {
+    let message = match message.rfind(" at line ") {
+        Some(at) if message[at..].contains(" column ") => &message[..at],
+        _ => message,
+    };
+    if let Some(rest) = message.strip_prefix("unknown variant `") {
+        if let Some((name, expected)) = rest.split_once("`, expected ") {
+            let list = expected
+                .strip_prefix("one of ")
+                .unwrap_or(expected)
+                .replace('`', "");
+            return format!("\"{name}\" isn't a step type. Use one of: {list}");
+        }
+    }
+    message.to_string()
+}
+
+const DEFINITION_KEYS: &[&str] = &["inputs", "steps"];
+const INPUT_KEYS: &[&str] = &["id", "label", "default"];
+const STEP_KEYS: &[&str] = &["id", "type", "onError", "retries"];
+
+/// The settings a step of this type reads, besides [`STEP_KEYS`].
+fn action_keys(step_type: &str) -> &'static [&'static str] {
+    match step_type {
+        "fetch_page" => &["urls"],
+        "web_search" => &["query", "maxResults"],
+        "summarize" => &["prompt", "input", "schema"],
+        "template" => &["template"],
+        "for_each" => &["items", "steps"],
+        "save_artifact" => &["title", "content", "format", "mode"],
+        "agent" => &["prompt", "input", "tools"],
+        "ask" => &["question", "choices", "default"],
+        "notify" => &["title", "body"],
+        _ => &[],
+    }
+}
+
+/// Settings in a raw definition that nothing reads (a wrong-case `on_error`, a
+/// misspelt key), in plain English. Loading ignores them so stored workflows
+/// still run; saving reports them, since the user meant something by each.
+pub fn unknown_settings(raw: &Value) -> Vec<String> {
+    let mut problems = Vec::new();
+    let Some(def) = raw.as_object() else {
+        return problems;
+    };
+    for key in def.keys() {
+        if !DEFINITION_KEYS.contains(&key.as_str()) {
+            problems.push(format!(
+                "Unknown setting \"{key}\" in the workflow{}",
+                suggestion(key, DEFINITION_KEYS)
+            ));
+        }
+    }
+    for input in def
+        .get("inputs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(input) = input.as_object() else {
+            continue;
+        };
+        let id = input
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("(unnamed)");
+        for key in input.keys() {
+            if !INPUT_KEYS.contains(&key.as_str()) {
+                problems.push(format!(
+                    "Input \"{id}\": unknown setting \"{key}\"{}",
+                    suggestion(key, INPUT_KEYS)
+                ));
+            }
+        }
+    }
+    unknown_step_settings(def.get("steps"), &mut problems);
+    problems
+}
+
+fn unknown_step_settings(steps: Option<&Value>, problems: &mut Vec<String>) {
+    for step in steps.and_then(Value::as_array).into_iter().flatten() {
+        let Some(step) = step.as_object() else {
+            continue;
+        };
+        let id = step
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .unwrap_or("(unnamed)");
+        let kind = step.get("type").and_then(Value::as_str).unwrap_or_default();
+        let own = action_keys(kind);
+        for key in step.keys() {
+            if !STEP_KEYS.contains(&key.as_str()) && !own.contains(&key.as_str()) {
+                let known: Vec<&str> = STEP_KEYS.iter().chain(own).copied().collect();
+                problems.push(format!(
+                    "Step \"{id}\": unknown setting \"{key}\"{}",
+                    suggestion(key, &known)
+                ));
+            }
+        }
+        unknown_step_settings(step.get("steps"), problems);
+    }
+}
+
+/// ` — did you mean "onError"?` when `key` is a known one in another spelling
+/// (case, `_` or `-`), else just a full stop.
+fn suggestion(key: &str, known: &[&str]) -> String {
+    let squash = |s: &str| {
+        s.chars()
+            .filter(|c| *c != '_' && *c != '-')
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
+    };
+    let wanted = squash(key);
+    match known.iter().find(|k| squash(k) == wanted) {
+        Some(k) => format!(" \u{2014} did you mean \"{k}\"?"),
+        None => ".".to_string(),
+    }
 }
 
 /// Every problem with `def`, in plain English, or `Ok` when it can run.
@@ -613,6 +744,50 @@ mod tests {
             { "id": "a", "type": "agent", "prompt": "Go", "tools": ["web_fetch", "calculator"] },
         ]}));
         assert!(validate(&fine).is_ok());
+    }
+
+    #[test]
+    fn unknown_settings_are_named_with_a_suggestion() {
+        let raw = json!({
+            "inputs": [{ "id": "q", "label": "Q", "defualt": "x" }],
+            "steps": [
+                { "id": "fetch", "type": "fetch_page", "urls": ["https://a.test"], "on_error": "skip" },
+                { "id": "find", "type": "web_search", "query": "x", "max_results": 3 },
+                { "id": "each", "type": "for_each", "items": "steps.fetch.pages", "steps": [
+                    { "id": "sum", "type": "summarize", "prompt": "p", "input": "i", "Retries": 1, "colour": 1 }
+                ]}
+            ],
+            "name": "x"
+        });
+        assert_eq!(
+            unknown_settings(&raw),
+            vec![
+                "Unknown setting \"name\" in the workflow.".to_string(),
+                "Input \"q\": unknown setting \"defualt\".".to_string(),
+                "Step \"fetch\": unknown setting \"on_error\" \u{2014} did you mean \"onError\"?".to_string(),
+                "Step \"find\": unknown setting \"max_results\" \u{2014} did you mean \"maxResults\"?".to_string(),
+                "Step \"sum\": unknown setting \"Retries\" \u{2014} did you mean \"retries\"?".to_string(),
+                "Step \"sum\": unknown setting \"colour\".".to_string(),
+            ]
+        );
+        assert!(unknown_settings(&briefing()).is_empty());
+        // Loading stays lenient.
+        assert!(parse(
+            r#"{"steps":[{"id":"a","type":"template","template":"x","on_error":"skip"}]}"#
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn an_unknown_step_type_is_explained_in_plain_text() {
+        let err = parse(r#"{"steps":[{"id":"a","type":"condition"}]}"#).unwrap_err();
+        assert!(
+            err.starts_with(
+                "The workflow definition can't be read: \"condition\" isn't a step type. Use one of: fetch_page, web_search,"
+            ),
+            "{err}"
+        );
+        assert!(!err.contains('`') && !err.contains("line 1"), "{err}");
     }
 
     #[test]

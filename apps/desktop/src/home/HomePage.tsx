@@ -25,12 +25,13 @@ import type { Destination } from '../shell/Rail';
 import { Areas } from './Areas';
 import { AskBox } from './AskBox';
 import { EMPTY_COUNTS, type AreaCounts, type HomeAction } from './areaInfo';
-import { NO_NEEDS, NeedsYou, hasNeeds, type NeedsYouState } from './NeedsYou';
+import { NO_NEEDS, NeedsYou, hasNeeds, type NeedsYouState, type WorkflowTarget } from './NeedsYou';
 import { PickUp } from './PickUp';
 import { TryIdeas } from './TryIdeas';
 import { buildPickUp, isStartedChat } from './pickUpItems';
 
 export type { HomeAction } from './areaInfo';
+export type { WorkflowTarget } from './NeedsYou';
 
 export interface HomePageProps {
   /** The shell's chat list (ordinary chats only; deck chats are left out). */
@@ -52,7 +53,7 @@ export interface HomePageProps {
   onOpenDraft?: (draftId: string) => void;
   onOpenApp: (appId: string) => void;
   onNavigate: (area: Destination) => void;
-  onAction: (action: HomeAction) => void;
+  onAction: (action: HomeAction, target?: WorkflowTarget) => void;
   onTryIdea: (idea: Idea) => void;
   onMoreIdeas: () => void;
   /** The hour (0-23) for the greeting; the clock by default. For tests. */
@@ -145,8 +146,8 @@ export function HomePage({
       listOr(() => listMemoryItems('pending')),
     ]);
     return {
-      reviews: (reviews ?? []).map((r) => r.workflowName),
-      questions: (questions ?? []).map((q) => q.workflowName),
+      reviews: (reviews ?? []).map((r) => ({ name: r.workflowName, workflowId: r.workflowId, runId: r.runId })),
+      questions: (questions ?? []).map((q) => ({ name: q.workflowName, workflowId: q.workflowId, runId: q.runId })),
       memory: (pending ?? []).length,
     } satisfies NeedsYouState;
   }, []);

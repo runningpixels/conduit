@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { WorkflowRecord, WorkflowRunDetail, WorkflowSummary } from '../ipc/contracts';
 import { STARTER_WORKFLOWS } from '../workflows/starters';
 import { WorkflowsPage } from './WorkflowsPage';
@@ -258,6 +258,22 @@ describe('WorkflowsPage', () => {
     expect(within(after).getByText('Reused')).toBeInTheDocument();
   });
 
+  it('calls a step that was allowed to fail "Skipped", not "Failed"', async () => {
+    const done: WorkflowRunDetail = {
+      run: { ...finishedRun.run, status: 'completed', error: null },
+      steps: [{ ...finishedRun.steps[0], status: 'skipped', error: 'There was nothing to summarize: the input came out empty.' }],
+    };
+    ipc.listWorkflowRuns.mockResolvedValue([done.run]);
+    ipc.getWorkflowRun.mockResolvedValue(done);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Finished/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    expect(within(detail).getByText('Skipped')).toBeInTheDocument();
+    expect(within(detail).queryByText('Failed')).not.toBeInTheDocument();
+    expect(detail).toHaveTextContent('There was nothing to summarize');
+  });
+
   it('answers a question with a choice, or with typed text', async () => {
     const base = {
       runId: 'r7',
@@ -317,7 +333,7 @@ describe('WorkflowsPage', () => {
 
     // Unreadable JSON is reported as you type, and saving waits for a fix.
     fireEvent.change(box, { target: { value: '{ not json' } });
-    expect(await screen.findByText(/That isn't valid JSON/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Line 1, column 3: expected a quoted name/)).toBeInTheDocument();
     expect(save()).toBeDisabled();
 
     // The backend's validation is shown too.
@@ -383,5 +399,157 @@ describe('WorkflowsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(ipc.deleteWorkflow).toHaveBeenCalledWith('w1'));
     expect(confirmSpy).toHaveBeenCalledTimes(2);
+  });
+  describe('opened from Home', () => {
+    const other: WorkflowSummary = { ...summary, id: 'w2', name: 'Topic watch' };
+    const otherRecord: WorkflowRecord = { ...record, id: 'w2', name: 'Topic watch', description: null };
+    const question = {
+      runId: 'r7',
+      workflowId: 'w2',
+      workflowName: 'Topic watch',
+      stepId: 'ask',
+      question: 'Which topic?',
+      choices: [],
+      default: null,
+      requestedAt: '2026-09-29T06:00:00.000Z',
+      expiresAt: '2026-09-30T06:00:00.000Z',
+    };
+
+    beforeEach(() => {
+      ipc.listWorkflows.mockResolvedValue([summary, other]);
+      ipc.getWorkflow.mockImplementation(async (id: string) => (id === 'w2' ? otherRecord : record));
+      ipc.listWorkflowQuestions.mockResolvedValue([question]);
+    });
+
+    it('selects the workflow that is waiting, not the first one', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} focus={{ workflowId: 'w2', runId: 'r7' }} />);
+      expect(await screen.findByRole('heading', { name: 'Topic watch' })).toBeInTheDocument();
+      expect(ipc.getWorkflow).not.toHaveBeenCalledWith('w1');
+      expect(await screen.findByRole('group', { name: 'Waiting for you' })).toHaveTextContent('Which topic?');
+    });
+
+    it('brings the waiting panel into view', async () => {
+      const scroll = vi.fn();
+      Element.prototype.scrollIntoView = scroll;
+      render(<WorkflowsPage onStatus={vi.fn()} focus={{ workflowId: 'w2', runId: 'r7' }} />);
+      await screen.findByRole('group', { name: 'Waiting for you' });
+      await waitFor(() => expect(scroll).toHaveBeenCalled());
+      expect((scroll.mock.contexts[0] as HTMLElement).dataset.runId).toBe('r7');
+    });
+
+    it('keeps the first workflow when nothing is asked for', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      expect(await screen.findByRole('heading', { name: 'Morning briefing' })).toBeInTheDocument();
+    });
+  });
+
+  it('keeps an over-long answer, and says why it was refused', async () => {
+    const question = {
+      runId: 'r7',
+      workflowId: 'w1',
+      workflowName: 'Morning briefing',
+      stepId: 'ask',
+      question: 'Anything to add?',
+      choices: [],
+      default: null,
+      requestedAt: '2026-09-29T06:00:00.000Z',
+      expiresAt: '2026-09-30T06:00:00.000Z',
+    };
+    ipc.listWorkflowQuestions.mockResolvedValue([question]);
+    ipc.answerWorkflowQuestion.mockRejectedValueOnce(new Error('The answer is too long (2001 characters; the limit is 2000).'));
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const panel = await screen.findByRole('group', { name: 'Waiting for you' });
+    const box = within(panel).getByRole('textbox', { name: 'Your answer' });
+    expect(box).toHaveAttribute('maxlength', '2000');
+    expect(within(panel).queryByText(/characters$/)).not.toBeInTheDocument();
+    const text = 'x'.repeat(1900);
+    fireEvent.change(box, { target: { value: text } });
+    expect(within(panel).getByText('1900 / 2000 characters')).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send answer' }));
+    const alert = await within(panel).findByRole('alert');
+    expect(alert).toHaveTextContent('The answer is too long');
+    // Still here, with the text, ready to be shortened and sent again.
+    expect(screen.getByRole('group', { name: 'Waiting for you' })).toBe(panel);
+    expect(box).toHaveValue(text);
+    expect(within(panel).getByRole('button', { name: 'Send answer' })).toBeEnabled();
+
+    ipc.answerWorkflowQuestion.mockResolvedValueOnce(true);
+    ipc.listWorkflowQuestions.mockResolvedValue([]);
+    fireEvent.change(box, { target: { value: 'short' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send answer' }));
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Waiting for you' })).not.toBeInTheDocument());
+  });
+
+  it('keeps a review on screen when the answer is refused', async () => {
+    const review = {
+      runId: 'r9',
+      workflowId: 'w1',
+      workflowName: 'Morning briefing',
+      stepId: 'fetch',
+      permission: { kind: 'host', host: 'bbc.com', label: null, local: null },
+      url: 'https://bbc.com/news',
+      requestedAt: '2026-09-29T06:00:00.000Z',
+      expiresAt: '2026-09-30T06:00:00.000Z',
+    } as const;
+    ipc.listWorkflowReviews.mockResolvedValue([review]);
+    ipc.answerWorkflowReview.mockRejectedValueOnce(new Error('database is locked'));
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const panel = await screen.findByRole('group', { name: 'Waiting for you' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Allow once' }));
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('database is locked');
+    expect(within(panel).getByRole('button', { name: 'Allow once' })).toBeEnabled();
+  });
+
+  describe('a run that is still going', () => {
+    const live = { ...finishedRun.run, id: 'r5', status: 'running' as const, error: null, finishedAt: null };
+    const liveDetail: WorkflowRunDetail = { run: live, steps: [] };
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('is picked up from the backend: Run now is off, Stop is on, the run is shown', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([live]);
+      ipc.getWorkflowRun.mockResolvedValue(liveDetail);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      expect(await screen.findByRole('button', { name: 'Running…' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
+      expect(await screen.findByRole('region', { name: 'What this run did' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    });
+
+    it('follows the run until it ends, then offers Run now again', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([live]);
+      ipc.getWorkflowRun.mockResolvedValue(liveDetail);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      await screen.findByRole('button', { name: 'Running…' });
+      await screen.findByRole('region', { name: 'What this run did' });
+
+      const done = { ...live, status: 'completed' as const, finishedAt: '2026-09-28T08:00:09Z' };
+      ipc.listWorkflowRuns.mockResolvedValue([done]);
+      ipc.getWorkflowRun.mockResolvedValue({ run: done, steps: [] });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2100);
+      });
+      expect(await screen.findByRole('button', { name: 'Run now' })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
+      expect(screen.getByRole('region', { name: 'What this run did' })).toHaveTextContent('Finished');
+    });
+
+    it('treats a run paused for approval as still going', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([{ ...live, status: 'paused' as const }]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      expect(await screen.findByRole('button', { name: 'Running…' })).toBeDisabled();
+    });
+
+    it('ignores a live run of another workflow', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([{ ...live, workflowId: 'other' }]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      expect(await screen.findByRole('button', { name: 'Run now' })).toBeEnabled();
+    });
   });
 });

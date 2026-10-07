@@ -9,7 +9,7 @@
 /// New workflows start from a ready-made one; editing is a checked JSON editor
 /// for now (the backend validates every save).
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import {
@@ -44,6 +44,7 @@ import type {
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
 import { newStep } from '../workflows/editorModel';
+import { describeJsonError } from '../workflows/jsonError';
 import { reviewText } from '../workflows/permissionText';
 import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
 import { STARTER_WORKFLOWS, type StarterWorkflow } from '../workflows/starters';
@@ -56,6 +57,7 @@ const STATUS_CLASS: Record<string, string> = {
   running: 'wf-status wf-status-running',
   paused: 'wf-status wf-status-paused',
   reused: 'wf-status wf-status-reused',
+  skipped: 'wf-status wf-status-skipped',
   stopped: 'wf-status wf-status-stopped',
 };
 
@@ -71,6 +73,15 @@ function errorText(e: unknown): string {
   return String(e);
 }
 
+/** The longest answer the engine accepts to a question. */
+export const MAX_ANSWER_CHARS = 2000;
+/** The counter shows once the answer is this close to the limit. */
+const COUNTER_FROM = 1800;
+/** How often a running workflow's runs are re-read. */
+const RUN_POLL_MS = 2000;
+
+const isLive = (status: string) => status === 'running' || status === 'paused';
+
 function durationMs(start: string, end: string | null): number | null {
   if (!end) return null;
   const ms = Date.parse(end) - Date.parse(start);
@@ -82,6 +93,7 @@ export function WorkflowsPage({
   onOpenDocument,
   refreshKey,
   startNew = false,
+  focus = null,
 }: {
   onStatus: (message: string) => void;
   /** Open a document a run saved, in its conversation's document panel. */
@@ -90,21 +102,34 @@ export function WorkflowsPage({
   refreshKey?: number;
   /** Open on the "new workflow" picker (Home's "New workflow"). */
   startNew?: boolean;
+  /** Open on this workflow, with its waiting panel in view (Home's "Answer"/"Review"). */
+  focus?: { workflowId: string; runId?: string; nonce?: number } | null;
 }) {
   const t = useT();
   const fmt = useFormatters();
   const [summaries, setSummaries] = useState<WorkflowSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(focus?.workflowId ?? null);
   const [record, setRecord] = useState<WorkflowRecord | null>(null);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [openRun, setOpenRun] = useState<WorkflowRunDetail | null>(null);
+  const openRunRef = useRef<WorkflowRunDetail | null>(null);
+  openRunRef.current = openRun;
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<Mode>(startNew ? { kind: 'new' } : { kind: 'view' });
-  const [running, setRunning] = useState(false);
+  /// This page started a run and is waiting for it to end.
+  const [started, setStarted] = useState(false);
+  /// Reviews the backend has not accepted an answer to yet.
+  const [answering, setAnswering] = useState<Set<string>>(new Set());
+  const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({});
+  const detailRef = useRef<HTMLDivElement | null>(null);
   const [stopping, setStopping] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  // The backend is the truth about whether a run is going: it survives leaving
+  // this page and coming back, and covers runs the scheduler started.
+  const liveRun = runs.find((r) => r.workflowId === selectedId && isLive(r.status)) ?? null;
+  const running = started || liveRun != null;
   const [problems, setProblems] = useState<string[]>([]);
   /// Scheduled runs waiting for an answer (any workflow).
   const [reviews, setReviews] = useState<WorkflowReview[]>([]);
@@ -124,7 +149,7 @@ export function WorkflowsPage({
       try {
         definition = JSON.parse(draftJson) as WorkflowDefinition;
       } catch (e) {
-        setProblems([t('workspace.workflows.edit.invalidJson', { error: errorText(e) })]);
+        setProblems([jsonProblem(draftJson, e)]);
         return;
       }
     }
@@ -143,6 +168,11 @@ export function WorkflowsPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftDefinition, draftJson]);
+
+  /// Why this text isn't JSON, in plain words with a line and column.
+  function jsonProblem(text: string, e: unknown): string {
+    return describeJsonError(text, e, t) ?? t('workspace.workflows.edit.invalidJson', { error: errorText(e) });
+  }
 
   const refreshList = useCallback(async () => {
     try {
@@ -170,6 +200,24 @@ export function WorkflowsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
 
+  // Home sent us to a particular workflow: show it, not the previous selection.
+  useEffect(() => {
+    if (!focus) return;
+    setMode({ kind: 'view' });
+    setSelectedId(focus.workflowId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.workflowId, focus?.runId, focus?.nonce]);
+
+  // Once the focused workflow's waiting panel is on screen, bring it into view.
+  useEffect(() => {
+    if (!focus || !record || record.id !== focus.workflowId) return;
+    const root = detailRef.current;
+    if (!root) return;
+    const panels = Array.from(root.querySelectorAll<HTMLElement>('[data-run-id]'));
+    const panel = panels.find((el) => el.dataset.runId === focus.runId) ?? panels[0];
+    panel?.scrollIntoView?.({ block: 'center' });
+  }, [focus, record, reviews, questions]);
+
   // What scheduled runs are waiting for.
   useEffect(() => {
     let cancelled = false;
@@ -190,30 +238,50 @@ export function WorkflowsPage({
     };
   }, [refreshKey]);
 
+  function markAnswering(runId: string, on: boolean) {
+    setAnswering((current) => {
+      const next = new Set(current);
+      if (on) next.add(runId);
+      else next.delete(runId);
+      return next;
+    });
+  }
+
+  /// The panel stays until the backend takes the answer; a refusal is shown in it.
   async function answer(review: WorkflowReview, decision: WorkflowReviewDecision) {
-    setReviews((current) => current.filter((r) => r.runId !== review.runId));
+    markAnswering(review.runId, true);
+    setReviewErrors((current) => {
+      const { [review.runId]: _cleared, ...rest } = current;
+      return rest;
+    });
     try {
       const taken = await answerWorkflowReview(review.runId, decision);
       if (!taken) onStatus(t('workspace.workflows.review.gone'));
     } catch (e) {
-      onStatus(t('workspace.workflows.status.actionFailed', { error: errorText(e) }));
+      setReviewErrors((current) => ({
+        ...current,
+        [review.runId]: t('workspace.workflows.status.actionFailed', { error: errorText(e) }),
+      }));
+      markAnswering(review.runId, false);
+      return;
     }
+    markAnswering(review.runId, false);
     setReviews(await listWorkflowReviews().catch(() => []));
     if (selectedId) setRuns(await listWorkflowRuns(selectedId, 20).catch(() => runs));
   }
 
-  async function reply(question: WorkflowQuestion, text: string) {
-    // Gone at once, so it can't sit beside the run's next question.
-    setQuestions((current) => current.filter((q) => q.runId !== question.runId));
+  /// Resolves to why the answer was refused, or `null` once it was taken.
+  async function reply(question: WorkflowQuestion, text: string): Promise<string | null> {
     try {
       const taken = await answerWorkflowQuestion(question.runId, text);
       if (!taken) onStatus(t('workspace.workflows.review.gone'));
     } catch (e) {
-      onStatus(t('workspace.workflows.question.failed', { error: errorText(e) }));
-      setQuestions((current) => (current.some((q) => q.runId === question.runId) ? current : [question, ...current]));
-      return;
+      return t('workspace.workflows.question.failed', { error: errorText(e) });
     }
+    // Gone only now, so a refused answer keeps its panel and the typed text.
+    setQuestions((current) => current.filter((q) => q.runId !== question.runId));
     setQuestions(await listWorkflowQuestions().catch(() => []));
+    return null;
   }
 
   // Load the selected workflow and its runs.
@@ -230,6 +298,16 @@ export function WorkflowsPage({
         if (cancelled) return;
         setRecord(nextRecord);
         setRuns(nextRuns);
+        // A run still going (left and come back): show it, live.
+        const live = nextRuns.find((r) => isLive(r.status));
+        if (live) {
+          void getWorkflowRun(live.id).then(
+            (detail) => {
+              if (!cancelled) setOpenRun(detail);
+            },
+            () => {},
+          );
+        }
         setInputs(
           Object.fromEntries((nextRecord.definition.inputs ?? []).map((i) => [i.id, i.default ?? ''])),
         );
@@ -243,6 +321,41 @@ export function WorkflowsPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  // While a run is going, follow it: the list, and the detail being shown.
+  useEffect(() => {
+    if (!running || !selectedId) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const next = await listWorkflowRuns(selectedId, 20);
+          if (cancelled) return;
+          setRuns(next);
+          const live = next.find((r) => isLive(r.status));
+          const shown = openRunRef.current;
+          const target =
+            live && (!shown || shown.run.id === live.id)
+              ? live.id
+              : shown && isLive(shown.run.status)
+                ? shown.run.id
+                : null;
+          if (target) {
+            const detail = await getWorkflowRun(target);
+            if (!cancelled) setOpenRun(detail);
+          }
+          if (!live) void refreshList();
+        } catch {
+          // The next tick tries again.
+        }
+      })();
+    }, RUN_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, selectedId]);
 
   async function startFrom(starter: StarterWorkflow) {
     setBusy(true);
@@ -263,7 +376,7 @@ export function WorkflowsPage({
   /// what it did.
   async function run(start: () => Promise<WorkflowRunDetail> = () => runWorkflow(record!.id, inputs)) {
     if (!record) return;
-    setRunning(true);
+    setStarted(true);
     setStopping(false);
     setOpenRun(null);
     try {
@@ -281,7 +394,7 @@ export function WorkflowsPage({
     } catch (e) {
       onStatus(t('workspace.workflows.status.actionFailed', { error: errorText(e) }));
     } finally {
-      setRunning(false);
+      setStarted(false);
       setStopping(false);
     }
   }
@@ -312,7 +425,7 @@ export function WorkflowsPage({
     try {
       return JSON.parse(m.json) as WorkflowDefinition;
     } catch (e) {
-      setEditError(t('workspace.workflows.edit.invalidJson', { error: errorText(e) }));
+      setEditError(jsonProblem(m.json, e));
       return null;
     }
   }
@@ -397,7 +510,9 @@ export function WorkflowsPage({
             ? t('workspace.workflows.run.paused')
             : status === 'reused'
               ? t('workspace.workflows.run.reused')
-              : t('workspace.workflows.run.running');
+              : status === 'skipped'
+                ? t('workspace.workflows.run.skipped')
+                : t('workspace.workflows.run.running');
 
   const list = summaries.map((w) => (
     <PageListItem
@@ -504,7 +619,7 @@ export function WorkflowsPage({
   } else {
     const workflowInputs = record.definition.inputs ?? [];
     detail = (
-      <div className="wf-detail">
+      <div className="wf-detail" ref={detailRef}>
         <header className="wf-detail-head">
           <div>
             <h3 className="wf-name">{record.name}</h3>
@@ -541,6 +656,7 @@ export function WorkflowsPage({
               className="wf-offer wf-review"
               role="group"
               aria-label={t('workspace.workflows.review.title')}
+              data-run-id={review.runId}
             >
               <b>{t('workspace.workflows.review.title')}</b>
               <p className="wf-review-what">{reviewText(review, t)}</p>
@@ -550,16 +666,36 @@ export function WorkflowsPage({
                 })}
               </p>
               <div className="wf-offer-actions">
-                <button type="button" className="btn primary" onClick={() => void answer(review, 'allowOnce')}>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={answering.has(review.runId)}
+                  onClick={() => void answer(review, 'allowOnce')}
+                >
                   {t('workspace.workflows.review.allowOnce')}
                 </button>
-                <button type="button" className="btn" onClick={() => void answer(review, 'alwaysAllow')}>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={answering.has(review.runId)}
+                  onClick={() => void answer(review, 'alwaysAllow')}
+                >
                   {t('workspace.workflows.review.alwaysAllow')}
                 </button>
-                <button type="button" className="btn ghost" onClick={() => void answer(review, 'deny')}>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={answering.has(review.runId)}
+                  onClick={() => void answer(review, 'deny')}
+                >
                   {t('workspace.workflows.review.deny')}
                 </button>
               </div>
+              {reviewErrors[review.runId] ? (
+                <p className="wf-error" role="alert">
+                  {reviewErrors[review.runId]}
+                </p>
+              ) : null}
             </section>
           ))}
 
@@ -775,21 +911,37 @@ function QuestionPanel({
 }: {
   question: WorkflowQuestion;
   expires: string;
-  onAnswer: (answer: string) => Promise<void>;
+  /// Resolves to why the answer was refused, or `null` when it was taken.
+  onAnswer: (answer: string) => Promise<string | null>;
 }) {
   const t = useT();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const send = async (answer: string) => {
     setSending(true);
+    setRefused(null);
     try {
-      await onAnswer(answer);
+      const why = await onAnswer(answer);
+      if (why && alive.current) setRefused(why);
     } finally {
-      setSending(false);
+      if (alive.current) setSending(false);
     }
   };
   return (
-    <section className="wf-offer wf-review" role="group" aria-label={t('workspace.workflows.review.title')}>
+    <section
+      className="wf-offer wf-review"
+      role="group"
+      aria-label={t('workspace.workflows.review.title')}
+      data-run-id={question.runId}
+    >
       <b>{t('workspace.workflows.review.title')}</b>
       <p className="wf-review-what">{question.question}</p>
       {question.choices.length > 0 ? (
@@ -810,13 +962,29 @@ function QuestionPanel({
         >
           <label className="wf-field">
             <span>{t('workspace.workflows.question.answerLabel')}</span>
-            <textarea className="mem-input" rows={2} value={text} onChange={(e) => setText(e.target.value)} />
+            <textarea
+              className="mem-input"
+              rows={2}
+              maxLength={MAX_ANSWER_CHARS}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
           </label>
+          {text.length >= COUNTER_FROM ? (
+            <p className="wf-muted wf-counter">
+              {t('workspace.workflows.question.counter', { count: text.length, max: MAX_ANSWER_CHARS })}
+            </p>
+          ) : null}
           <button type="submit" className="btn primary" disabled={sending || !text.trim()}>
             {t('workspace.workflows.question.send')}
           </button>
         </form>
       )}
+      {refused ? (
+        <p className="wf-error" role="alert">
+          {refused}
+        </p>
+      ) : null}
       <p className="wf-muted">
         {question.default != null
           ? t('workspace.workflows.question.expiresDefault', { when: expires, answer: question.default })

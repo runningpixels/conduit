@@ -58,6 +58,7 @@
 .wf-status-stopped { color: var(--ink-3); }
 .wf-status-paused { color: var(--warn); }
 .wf-status-reused { color: var(--ink-3); }
+.wf-status-skipped { color: var(--ink-3); }
 .wf-rerun { margin: var(--sp-2) 10px 0; }
 
 .wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-3); font-size: var(--fs-lg); }

@@ -25,6 +25,12 @@ pub enum TemplateError {
     NotAList(String),
     /// Unbalanced or malformed tags, with a short description.
     Syntax(String),
+    /// A `{{path}}` that goes through a step that was skipped after an error.
+    Skipped {
+        step: String,
+        reason: String,
+        path: String,
+    },
 }
 
 impl std::fmt::Display for TemplateError {
@@ -33,6 +39,10 @@ impl std::fmt::Display for TemplateError {
             TemplateError::Missing(path) => write!(f, "Nothing called {path} yet"),
             TemplateError::NotAList(path) => write!(f, "{path} is not a list"),
             TemplateError::Syntax(msg) => write!(f, "Template syntax error: {msg}"),
+            TemplateError::Skipped { step, reason, path } => write!(
+                f,
+                "Step \"{step}\" was skipped ({reason}), so {{{{{path}}}}} has nothing to show."
+            ),
         }
     }
 }
@@ -47,12 +57,22 @@ enum Tag<'a> {
     EachOpen(&'a str),
     /// `{{/each}}`
     EachClose,
+    /// An escaped brace pair (`\{{` or `\}}`), rendered as the braces alone.
+    Literal(&'static str),
+}
+
+/// Appended to errors that a literal `{{` in the text may have caused.
+const ESCAPE_HINT: &str = "To write {{ as text, put a backslash before it: \\{{";
+
+/// The 1-based character position of byte offset `byte` in `template`.
+fn char_position(template: &str, byte: usize) -> usize {
+    template[..byte].chars().count() + 1
 }
 
 /// Find the next `{{ ... }}` tag starting at or after `from`. Returns the
 /// tag's parsed contents plus the byte range of the whole `{{...}}` span.
 /// A stray unmatched `{` or `}` (not part of a `{{`/`}}` pair) is not a tag
-/// and is treated as plain text.
+/// and is treated as plain text. `\{{` and `\}}` escape literal braces.
 fn next_tag(
     template: &str,
     from: usize,
@@ -60,15 +80,31 @@ fn next_tag(
     let bytes = template.as_bytes();
     let mut i = from;
     while i + 1 < template.len() {
+        if bytes[i] == b'\\' && i + 2 < template.len() {
+            if bytes[i + 1] == b'{' && bytes[i + 2] == b'{' {
+                return Ok(Some((Tag::Literal("{{"), i..i + 3)));
+            }
+            if bytes[i + 1] == b'}' && bytes[i + 2] == b'}' {
+                return Ok(Some((Tag::Literal("}}"), i..i + 3)));
+            }
+        }
         if bytes[i] == b'{' && bytes[i + 1] == b'{' {
             let close = template[i + 2..]
                 .find("}}")
                 .map(|p| p + i + 2)
-                .ok_or_else(|| TemplateError::Syntax(format!("unclosed {{{{ at byte {i}")))?;
+                .ok_or_else(|| {
+                    TemplateError::Syntax(format!(
+                        "unclosed {{{{ at character {}. {ESCAPE_HINT}",
+                        char_position(template, i)
+                    ))
+                })?;
             let inner = template[i + 2..close].trim();
             let end = close + 2;
             if inner.is_empty() {
-                return Err(TemplateError::Syntax("empty {{}} tag".to_string()));
+                return Err(TemplateError::Syntax(format!(
+                    "empty {{{{}}}} tag at character {}. {ESCAPE_HINT}",
+                    char_position(template, i)
+                )));
             }
             let tag = if let Some(path) = inner.strip_prefix("#each") {
                 let path = path.trim();
@@ -77,7 +113,8 @@ fn next_tag(
                 }
                 if !is_valid_path(path) {
                     return Err(TemplateError::Syntax(format!(
-                        "invalid path in {{{{#each {path}}}}}"
+                        "invalid path in {{{{#each {path}}}}} at character {}",
+                        char_position(template, i)
                     )));
                 }
                 Tag::EachOpen(path)
@@ -85,12 +122,14 @@ fn next_tag(
                 Tag::EachClose
             } else if inner.starts_with('#') || inner.starts_with('/') {
                 return Err(TemplateError::Syntax(format!(
-                    "unknown tag {{{{{inner}}}}}"
+                    "unknown tag {{{{{inner}}}}} at character {}. The supported tags are {{{{path}}}}, {{{{#each path}}}} and {{{{/each}}}}. {ESCAPE_HINT}",
+                    char_position(template, i)
                 )));
             } else {
                 if !is_valid_path(inner) {
                     return Err(TemplateError::Syntax(format!(
-                        "invalid path {{{{{inner}}}}}"
+                        "invalid path {{{{{inner}}}}} at character {}. {ESCAPE_HINT}",
+                        char_position(template, i)
                     )));
                 }
                 Tag::Var(inner)
@@ -128,9 +167,43 @@ fn resolve<'a>(ctx: &'a Value, path: &str) -> Option<&'a Value> {
     Some(cur)
 }
 
-fn value_to_text(path: &str, value: Option<&Value>) -> Result<String, TemplateError> {
-    match value {
-        None | Some(Value::Null) => Err(TemplateError::Missing(path.to_string())),
+/// The error for a path that resolves to nothing: when the path runs through
+/// an object marked `"skipped": true` (a step that failed and was skipped),
+/// that is the reason; otherwise the plain "nothing called".
+fn missing(ctx: &Value, path: &str) -> TemplateError {
+    let mut cur = ctx;
+    for seg in path.split('.') {
+        cur = match cur {
+            Value::Object(map) => match map.get(seg) {
+                Some(v) => v,
+                None => break,
+            },
+            Value::Array(items) => match seg.parse::<usize>().ok().and_then(|i| items.get(i)) {
+                Some(v) => v,
+                None => break,
+            },
+            _ => break,
+        };
+        if cur.get("skipped") == Some(&Value::Bool(true)) {
+            let reason = cur
+                .get("error")
+                .and_then(Value::as_str)
+                .filter(|r| !r.is_empty())
+                .unwrap_or("it failed");
+            return TemplateError::Skipped {
+                step: seg.to_string(),
+                reason: reason.to_string(),
+                path: path.to_string(),
+            };
+        }
+    }
+    TemplateError::Missing(path.to_string())
+}
+
+fn value_to_text(ctx: &Value, path: &str) -> Result<String, TemplateError> {
+    match resolve(ctx, path) {
+        None => Err(missing(ctx, path)),
+        Some(Value::Null) => Ok(String::new()),
         Some(Value::String(s)) => Ok(s.clone()),
         Some(v @ (Value::Number(_) | Value::Bool(_))) => Ok(v.to_string()),
         Some(v @ (Value::Object(_) | Value::Array(_))) => {
@@ -148,16 +221,15 @@ fn render_inner(template: &str, ctx: &Value) -> Result<String, TemplateError> {
         out.push_str(&template[pos..span.start]);
         match tag {
             Tag::Var(path) => {
-                out.push_str(&value_to_text(path, resolve(ctx, path))?);
+                out.push_str(&value_to_text(ctx, path)?);
                 pos = span.end;
             }
             Tag::EachOpen(path) => {
                 let (body, after) = find_each_body(template, span.end)?;
                 let list = resolve(ctx, path);
                 let list = match list {
-                    None | Some(Value::Null) => {
-                        return Err(TemplateError::Missing(path.to_string()))
-                    }
+                    None => return Err(missing(ctx, path)),
+                    Some(Value::Null) => return Err(TemplateError::Missing(path.to_string())),
                     Some(Value::Array(arr)) => arr,
                     Some(_) => return Err(TemplateError::NotAList(path.to_string())),
                 };
@@ -176,6 +248,10 @@ fn render_inner(template: &str, ctx: &Value) -> Result<String, TemplateError> {
                 return Err(TemplateError::Syntax(
                     "{{/each}} without a matching {{#each}}".to_string(),
                 ));
+            }
+            Tag::Literal(text) => {
+                out.push_str(text);
+                pos = span.end;
             }
         }
     }
@@ -203,7 +279,7 @@ fn find_each_body(template: &str, from: usize) -> Result<(&str, usize), Template
                     return Ok((&template[from..span.start], span.end));
                 }
             }
-            Tag::Var(_) => {}
+            Tag::Var(_) | Tag::Literal(_) => {}
         }
         pos = span.end;
     }
@@ -251,6 +327,7 @@ fn collect_references(
                 }
                 pos = collect_references(template, span.end, true, out)?;
             }
+            Tag::Literal(_) => pos = span.end,
             Tag::EachClose => {
                 if in_loop {
                     return Ok(span.end);
@@ -306,12 +383,76 @@ mod tests {
     }
 
     #[test]
-    fn null_path_is_missing() {
-        let ctx = json!({ "x": null });
+    fn null_value_renders_empty_but_absent_key_is_missing() {
+        let ctx = json!({ "x": null, "o": { "t": null } });
+        assert_eq!(render("[{{x}}][{{o.t}}]", &ctx).unwrap(), "[][]");
         assert_eq!(
-            render("{{x}}", &ctx).unwrap_err(),
-            TemplateError::Missing("x".to_string())
+            render("{{o.nope}}", &ctx).unwrap_err(),
+            TemplateError::Missing("o.nope".to_string())
         );
+    }
+
+    #[test]
+    fn a_path_through_a_skipped_step_says_why() {
+        let ctx = json!({
+            "steps": { "fetch": { "skipped": true, "error": "no network", "text": "" } },
+            "item": { "summary": { "skipped": true, "error": "model said no", "text": "" } },
+        });
+        assert_eq!(
+            render("{{steps.fetch.pages}}", &ctx).unwrap_err().to_string(),
+            "Step \"fetch\" was skipped (no network), so {{steps.fetch.pages}} has nothing to show."
+        );
+        assert_eq!(
+            render("{{item.summary.data.x}}", &ctx)
+                .unwrap_err()
+                .to_string(),
+            "Step \"summary\" was skipped (model said no), so {{item.summary.data.x}} has nothing to show."
+        );
+        assert_eq!(
+            render("{{#each steps.fetch.pages}}x{{/each}}", &ctx)
+                .unwrap_err()
+                .to_string(),
+            "Step \"fetch\" was skipped (no network), so {{steps.fetch.pages}} has nothing to show."
+        );
+        // The text of a skipped step is empty, not missing.
+        assert_eq!(render("[{{item.summary.text}}]", &ctx).unwrap(), "[]");
+    }
+
+    #[test]
+    fn a_backslash_writes_literal_braces() {
+        let ctx = json!({ "n": 1 });
+        assert_eq!(
+            render(r"say \{{name}} and {{n}} \}}", &ctx).unwrap(),
+            "say {{name}} and 1 }}"
+        );
+        assert_eq!(references(r"\{{a}} {{b}}").unwrap(), vec!["b".to_string()]);
+        assert_eq!(
+            render(r"{{#each l}}\{{{{item}}{{/each}}", &json!({ "l": [1] })).unwrap(),
+            "{{1"
+        );
+    }
+
+    #[test]
+    fn syntax_errors_use_character_positions_and_mention_the_escape() {
+        let err = render("h\u{e9}llo w\u{f6}rld {{name", &json!({}))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "Template syntax error: unclosed {{ at character 13. To write {{ as text, put a backslash before it: \\{{"
+        );
+        let err = render("{{#if x}}y{{/if}}", &json!({}))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown tag {{#if x}}"), "{err}");
+        assert!(
+            err.contains("{{path}}, {{#each path}} and {{/each}}"),
+            "{err}"
+        );
+        let err = render(r#"{"a": {{ "b": 1 }}}"#, &json!({}))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("\\{{"), "{err}");
     }
 
     #[test]

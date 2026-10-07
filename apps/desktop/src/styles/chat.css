@@ -120,6 +120,28 @@
   background: var(--card);
 }
 
+.turn-attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-lg);
+}
+.turn-attachment-file svg { width: 14px; height: 14px; flex: none; }
+.turn-attachment-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+  color: var(--ink);
+}
+.turn-attachment-file-meta { color: var(--ink-3); font: 500 var(--fs-sm)/1 var(--font-mono); white-space: nowrap; }
+
 /* t1-6: which knowledge base documents this turn's retrieval drew on. */
 .turn-citations {
   display: flex;

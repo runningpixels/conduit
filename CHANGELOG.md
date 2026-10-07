@@ -62,9 +62,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Security
 
-- Patched `lodash-es` (bundled with the diagram renderer) and `undici` (test
-  tooling only) for the advisories Dependabot reported, including three rated
-  high.
+- Patched `lodash-es` (bundled with the diagram renderer), `undici` (test
+  tooling only) and `source-map-js` (build tooling only) for the advisories
+  Dependabot reported, including four rated high. Still open: `katex` 0.16
+  inside the diagram renderer (low; moving it is a major upgrade for Mermaid)
+  and `glib` 0.18 (Linux only, pinned by Tauri's GTK stack).
 
 ## [1.0.0-rc.8] - 2026-10-06
 

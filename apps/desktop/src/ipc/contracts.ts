@@ -737,6 +737,18 @@ export interface WorkflowDefinition {
   steps: WorkflowStep[];
 }
 
+/** What drafting a workflow from a description (or a chat) returns: an unsaved definition. */
+export interface WorkflowDraftResult {
+  name: string;
+  description: string;
+  definition: WorkflowDefinition;
+  /** Plain-English problems the checker still finds (shown in the editor). */
+  problems: string[];
+  attempts: number;
+  /** Things only the user can fill in ("Pick the deck to update"). */
+  notes: string[];
+}
+
 export interface WorkflowInput {
   id: string;
   label: string;

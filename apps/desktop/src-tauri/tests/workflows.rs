@@ -63,10 +63,27 @@ struct EchoModel {
     tag: String,
     /// (provider, model) of every call, shared by all copies.
     calls: Arc<Mutex<Vec<(String, String)>>>,
+    /// Replies to workflow-drafting requests, in order (the last repeats),
+    /// shared by all copies.
+    drafts: Arc<Mutex<Vec<String>>>,
 }
 
 impl EchoModel {
     fn reply_for(&self, request: &ProviderRequest) -> String {
+        if request
+            .system_prompt
+            .as_deref()
+            .is_some_and(|s| s.contains("You design workflows"))
+        {
+            let mut drafts = self.drafts.lock().unwrap();
+            if !drafts.is_empty() {
+                return if drafts.len() > 1 {
+                    drafts.remove(0)
+                } else {
+                    drafts[0].clone()
+                };
+            }
+        }
         let text = request
             .messages
             .last()
@@ -4122,4 +4139,397 @@ async fn an_update_uses_the_steps_model_and_records_its_usage_there() {
             .as_deref(),
         Some("Update it.")
     );
+}
+
+// ── Drafting a workflow from words ───────────────────────────────────────────
+
+mod drafting {
+    use super::*;
+    use conduit_desktop::db::repository::{messages, tool_calls};
+    use conduit_desktop::workflows::author::{self, DraftRequest};
+    use provider_core::schema::{
+        Message, MessagePart, MessagePartKind, MessageRole, ToolCallRecord, ToolCallStatus,
+    };
+
+    fn valid_reply() -> String {
+        json!({
+            "name": "Page summary",
+            "description": "Summarize a page.",
+            "notes": [],
+            "definition": {
+                "inputs": [{ "id": "page", "label": "Page", "default": "https://example.com" }],
+                "steps": [
+                    { "id": "fetch", "type": "fetch_page", "urls": ["{{inputs.page}}"] },
+                    { "id": "sum", "type": "summarize", "prompt": "Summarize.", "input": "{{steps.fetch.text}}" },
+                    { "id": "save", "type": "save_artifact", "title": "Summary", "content": "{{steps.sum.text}}" }
+                ]
+            }
+        })
+        .to_string()
+    }
+
+    fn broken_reply() -> String {
+        json!({
+            "name": "Broken",
+            "definition": { "steps": [
+                { "id": "a", "type": "notify", "title": "Hi", "body": "{{steps.later.text}}" }
+            ]}
+        })
+        .to_string()
+    }
+
+    const BROKEN_PROBLEM: &str =
+        "Step \"a\" reads steps.later.text, which doesn't exist at that point.";
+
+    fn with_drafts(replies: Vec<String>) -> EchoModel {
+        EchoModel {
+            drafts: Arc::new(Mutex::new(replies)),
+            usage: Some(100),
+            ..EchoModel::default()
+        }
+    }
+
+    fn ask(description: &str) -> DraftRequest {
+        DraftRequest {
+            description: description.to_string(),
+            transcript: None,
+        }
+    }
+
+    fn last_text(request: &ProviderRequest) -> String {
+        request.messages.last().unwrap().parts[0]
+            .content
+            .clone()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_description_becomes_a_valid_draft() {
+        let h = Harness::new(with_drafts(vec![valid_reply()])).await;
+        let draft = author::draft(&h.state, &h.streams, ask("Summarize a page I choose"))
+            .await
+            .unwrap();
+        assert_eq!(draft.name, "Page summary");
+        assert_eq!(draft.description, "Summarize a page.");
+        assert_eq!(draft.attempts, 1);
+        assert!(draft.problems.is_empty(), "{:?}", draft.problems);
+        assert!(draft.notes.is_empty());
+        assert_eq!(draft.definition["steps"][1]["id"], "sum");
+        let wire = serde_json::to_value(&draft).unwrap();
+        for key in [
+            "name",
+            "description",
+            "definition",
+            "problems",
+            "attempts",
+            "notes",
+        ] {
+            assert!(wire.get(key).is_some(), "{key}");
+        }
+
+        let requests = h.model.requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 1);
+        let request = &requests[0];
+        assert_eq!(request.model_id, "echo");
+        assert!(request.tool_definitions.is_empty());
+        let system = request.system_prompt.clone().unwrap();
+        assert!(system.contains("fetch_page") && system.contains("edit_deck"));
+        assert!(last_text(request).contains("Summarize a page I choose"));
+        // Not a chat: hidden, and its usage is recorded.
+        assert!(conversations::list(&h.state.db).await.unwrap().is_empty());
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT provider_id, model_id FROM usage_summary")
+                .fetch_all(&h.state.db)
+                .await
+                .unwrap();
+        assert_eq!(rows, vec![("ollama".to_string(), "echo".to_string())]);
+        // Nothing saved.
+        assert!(repo::list(&h.state.db).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn problems_are_sent_back_and_a_fixed_reply_is_used() {
+        let h = Harness::new(with_drafts(vec![broken_reply(), valid_reply()])).await;
+        let draft = author::draft(&h.state, &h.streams, ask("Do it"))
+            .await
+            .unwrap();
+        assert_eq!(draft.attempts, 2);
+        assert!(draft.problems.is_empty(), "{:?}", draft.problems);
+        assert_eq!(draft.name, "Page summary");
+        let requests = h.model.requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 2);
+        let sent = last_text(&requests[1]);
+        assert!(
+            sent.starts_with("Fix these problems and reply with the whole JSON again:"),
+            "{sent}"
+        );
+        assert!(sent.contains(BROKEN_PROBLEM), "{sent}");
+        // The model sees its own reply and the problems.
+        assert_eq!(requests[1].messages.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_draft_still_wrong_after_two_rounds_is_returned_with_its_problems() {
+        let h = Harness::new(with_drafts(vec![broken_reply()])).await;
+        let draft = author::draft(&h.state, &h.streams, ask("Do it"))
+            .await
+            .unwrap();
+        assert_eq!(draft.attempts, 3);
+        assert_eq!(h.model.requests.lock().unwrap().len(), 3);
+        assert_eq!(draft.problems, vec![BROKEN_PROBLEM]);
+        assert_eq!(draft.definition["steps"][0]["id"], "a");
+    }
+
+    #[tokio::test]
+    async fn a_reply_with_no_json_is_asked_again_and_then_given_up_on() {
+        let h = Harness::new(with_drafts(vec!["Sure, I can help!".into(), valid_reply()])).await;
+        let draft = author::draft(&h.state, &h.streams, ask("Do it"))
+            .await
+            .unwrap();
+        assert_eq!(draft.attempts, 2);
+        let requests = h.model.requests.lock().unwrap().clone();
+        assert!(last_text(&requests[1]).contains("wasn't valid JSON"));
+
+        let h = Harness::new(with_drafts(vec!["No.".into()])).await;
+        let error = author::draft(&h.state, &h.streams, ask("Do it"))
+            .await
+            .unwrap_err();
+        assert_eq!(error, author::NOTHING_RETURNED);
+        assert_eq!(h.model.requests.lock().unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn ids_the_model_cannot_know_are_left_empty_and_noted() {
+        let reply = json!({
+            "name": "Weekly deck",
+            "notes": ["Pick the deck to update."],
+            "definition": {
+                "folder": "C:\\Users\\me\\Documents",
+                "model": { "provider": "openai", "model": "gpt-x" },
+                "steps": [
+                    { "id": "read", "type": "read_file", "path": "numbers.csv" },
+                    { "id": "deck", "type": "edit_deck", "deck": "deck-1234",
+                      "instructions": "Update the numbers.", "input": "{{steps.read.text}}" }
+                ]
+            }
+        })
+        .to_string();
+        let h = Harness::new(with_drafts(vec![reply])).await;
+        let draft = author::draft(&h.state, &h.streams, ask("Weekly numbers into my deck"))
+            .await
+            .unwrap();
+        // Only the user's own choices are missing, so nothing is sent back.
+        assert_eq!(draft.attempts, 1);
+        assert_eq!(draft.definition["steps"][1]["deck"], "");
+        assert!(draft.definition.get("folder").is_none());
+        assert!(draft.definition.get("model").is_none());
+        assert_eq!(
+            draft.notes,
+            vec![
+                "Pick the deck to update.",
+                "Choose the folder the workflow reads from."
+            ]
+        );
+        assert!(draft
+            .problems
+            .iter()
+            .any(|p| p.contains("needs a deck to update")));
+        assert!(draft
+            .problems
+            .iter()
+            .any(|p| p.contains("choose the workflow's folder first")));
+    }
+
+    #[tokio::test]
+    async fn drafting_that_runs_too_long_is_stopped() {
+        let h = Harness::new(EchoModel {
+            hang: true,
+            ..EchoModel::default()
+        })
+        .await;
+        let started = std::time::Instant::now();
+        let error = author::draft_within(
+            &h.state,
+            &h.streams,
+            ask("Do it"),
+            &CancellationToken::new(),
+            std::time::Duration::from_millis(300),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("took too long"), "{error}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[tokio::test]
+    async fn drafting_can_be_cancelled() {
+        let h = Harness::new(EchoModel {
+            hang: true,
+            ..EchoModel::default()
+        })
+        .await;
+        let stop = CancellationToken::new();
+        let later = stop.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            later.cancel();
+        });
+        let error = author::draft_within(
+            &h.state,
+            &h.streams,
+            ask("Do it"),
+            &stop,
+            std::time::Duration::from_secs(60),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error, "Drafting was stopped.");
+    }
+
+    #[tokio::test]
+    async fn an_empty_description_is_refused() {
+        let h = Harness::new(with_drafts(vec![valid_reply()])).await;
+        let error = author::draft(&h.state, &h.streams, ask("   "))
+            .await
+            .unwrap_err();
+        assert_eq!(error, "Describe what the workflow should do.");
+        assert!(h.model.requests.lock().unwrap().is_empty());
+    }
+
+    fn text_message(conversation: &str, role: MessageRole, text: &str, at: &str) -> Message {
+        let id = uuid::Uuid::new_v4().to_string();
+        Message {
+            id: id.clone(),
+            conversation_id: conversation.to_string(),
+            role,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: None,
+            parts: vec![MessagePart {
+                id: format!("{id}/p0"),
+                message_id: id,
+                index: 0,
+                kind: MessagePartKind::Text,
+                content: Some(text.to_string()),
+                mime_type: None,
+                tool_call_id: None,
+                artifact_id: None,
+                attachment_id: None,
+                blob_ref: None,
+                metadata: None,
+                created_at: at.to_string(),
+            }],
+            created_at: at.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_chat_becomes_a_transcript_of_questions_and_tool_calls_only() {
+        let h = Harness::new(with_drafts(vec![valid_reply()])).await;
+        let pool = &h.state.db;
+        let chat = conversations::create(pool, None).await.unwrap();
+        messages::insert_message(
+            pool,
+            &text_message(
+                &chat.id,
+                MessageRole::User,
+                "Research Rust news. My key is api_key=sk-abc123456789",
+                "2026-10-07T10:00:00.000Z",
+            ),
+        )
+        .await
+        .unwrap();
+        let reply = text_message(
+            &chat.id,
+            MessageRole::Assistant,
+            "THE WHOLE REPORT TEXT",
+            "2026-10-07T10:00:05.000Z",
+        );
+        messages::insert_message(pool, &reply).await.unwrap();
+        sqlx::query("UPDATE messages SET request_id = 'req-1' WHERE id = ?")
+            .bind(&reply.id)
+            .execute(pool)
+            .await
+            .unwrap();
+        for (id, tool, args, result, status) in [
+            (
+                "c1",
+                "web_search",
+                json!({ "query": "rust news this week" }),
+                json!({ "hits": "TOOL OUTPUT ONE" }),
+                ToolCallStatus::Completed,
+            ),
+            (
+                "c2",
+                "web_fetch",
+                json!({ "url": "https://example.org/a" }),
+                json!("TOOL OUTPUT TWO"),
+                ToolCallStatus::Failed,
+            ),
+        ] {
+            tool_calls::insert_tool_call(
+                pool,
+                &ToolCallRecord {
+                    id: id.to_string(),
+                    tool_id: tool.to_string(),
+                    request_id: "req-1".to_string(),
+                    status,
+                    arguments: Some(args),
+                    result: Some(result),
+                    error: None,
+                    approved_at: None,
+                    completed_at: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let transcript = author::chat_transcript(&h.state, &chat.id).await.unwrap();
+        assert!(
+            transcript.contains("User: Research Rust news."),
+            "{transcript}"
+        );
+        assert!(
+            transcript.contains("web_search {\"query\":\"rust news this week\"} -> done"),
+            "{transcript}"
+        );
+        assert!(transcript.contains("web_fetch"));
+        assert!(transcript.contains("-> failed"));
+        assert!(!transcript.contains("sk-abc123456789"), "{transcript}");
+        assert!(!transcript.contains("TOOL OUTPUT"), "{transcript}");
+        assert!(!transcript.contains("WHOLE REPORT"), "{transcript}");
+
+        // The chat variant sends it with the default request.
+        let draft = author::draft(
+            &h.state,
+            &h.streams,
+            DraftRequest {
+                description: author::DEFAULT_CHAT_REQUEST.to_string(),
+                transcript: Some(transcript),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(draft.problems.is_empty());
+        let sent = last_text(&h.model.requests.lock().unwrap()[0]);
+        assert!(sent.contains("<chat>") && sent.contains("web_search"));
+        assert!(sent.contains(author::DEFAULT_CHAT_REQUEST));
+    }
+
+    #[tokio::test]
+    async fn a_chat_with_nothing_in_it_has_no_transcript() {
+        let h = Harness::new(EchoModel::default()).await;
+        let chat = conversations::create(&h.state.db, None).await.unwrap();
+        let error = author::chat_transcript(&h.state, &chat.id)
+            .await
+            .unwrap_err();
+        assert_eq!(error, "That chat has no messages to turn into a workflow.");
+        let error = author::chat_transcript(&h.state, "missing")
+            .await
+            .unwrap_err();
+        assert_eq!(error, "That chat no longer exists.");
+    }
 }

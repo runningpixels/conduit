@@ -66,6 +66,8 @@ interface CommandPaletteProps {
   onCopyConversationAsMarkdown: () => void;
   onExportConversationMarkdown: () => void;
   onExportConversationJson: () => void;
+  /** Draft a workflow from this chat (opens Workflows). */
+  onSaveChatAsWorkflow?: () => void;
   onDeleteChat: () => void;
   /** V7 — delete all conversation history (routes through the confirm dialog). */
   onDeleteAllHistory: () => void;
@@ -162,6 +164,7 @@ export function CommandPalette({
   onCopyConversationAsMarkdown,
   onExportConversationMarkdown,
   onExportConversationJson,
+  onSaveChatAsWorkflow,
   onDeleteChat,
   onDeleteAllHistory,
   onSelectModel,
@@ -296,6 +299,9 @@ export function CommandPalette({
       { id: 'cmd-copy-md', group, kind: 'cmd', label: t('workspace.commandPalette.command.copyAsMarkdown'), run: () => { onCopyConversationAsMarkdown(); close(); } },
       { id: 'cmd-export-md', group, kind: 'cmd', label: t('workspace.commandPalette.command.exportMarkdown'), run: () => { onExportConversationMarkdown(); close(); } },
       { id: 'cmd-export-json', group, kind: 'cmd', label: t('workspace.commandPalette.command.exportJson'), run: () => { onExportConversationJson(); close(); } },
+      ...(onSaveChatAsWorkflow
+        ? [{ id: 'cmd-save-workflow', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.saveAsWorkflow'), run: () => { onSaveChatAsWorkflow(); close(); } }]
+        : []),
       { id: 'cmd-delete', group, kind: 'cmd', label: t('workspace.commandPalette.command.deleteChat'), run: () => { onDeleteChat(); close(); } },
       { id: 'cmd-delete-all', group, kind: 'cmd', label: t('workspace.commandPalette.command.deleteAllChats'), tail: '⌫', run: () => { onDeleteAllHistory(); close(); } },
       { id: 'cmd-theme', group, kind: 'cmd', label: t('workspace.commandPalette.command.toggleTheme'), run: () => { onToggleTheme(); close(); } },
@@ -307,7 +313,7 @@ export function CommandPalette({
     t, onClose, onNewChat, onNewDeck, onNewDraft, navItems, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
-    onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson,
+    onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson, onSaveChatAsWorkflow,
     onDeleteChat, onDeleteAllHistory, onToggleTheme, onOpenShortcuts, onOpenIdeas, onOpenWorkflows, onToggleArtifactExpand,
   ]);
 
@@ -391,6 +397,8 @@ export function CommandPalette({
     const goItems = navItems(t('workspace.commandPalette.group.navigate')).filter((item) =>
       item.label.toLowerCase().includes(q),
     );
+    // Typed without the `>`: "workflow" or "save" finds this one command too.
+    const quickCommands = commands.filter((c) => c.id === 'cmd-save-workflow' && c.label.toLowerCase().includes(q));
     if (!q) {
       return [
         { id: 'cmd-new-chat', group: chatsGroup, kind: 'cmd', label: t('workspace.commandPalette.command.newChat'), tail: modShortcutHint('N'), run: () => { onNewChat(); onClose(); } },
@@ -399,7 +407,7 @@ export function CommandPalette({
         ...searchItems,
       ];
     }
-    return [...convItems, ...goItems, ...searchItems];
+    return [...convItems, ...goItems, ...quickCommands, ...searchItems];
   }, [
     prefix, q, commands, navItems, artifacts, modelItems, conversations, results,
     onClose, onNewChat, onOpenArtifact, onSelectConversation, onSelectSearchResult, t,

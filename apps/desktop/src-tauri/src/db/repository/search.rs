@@ -68,6 +68,7 @@ pub async fn search_messages(
         LEFT JOIN conversations c ON c.id = f.conversation_id
         LEFT JOIN conversation_folders fol ON fol.id = c.folder_id
         WHERE message_fts MATCH ?
+          AND COALESCE(c.kind, 'chat') != 'automation'
         ORDER BY rank
         LIMIT ?
         "#,
@@ -301,6 +302,25 @@ mod tests {
 
         let results = search_messages(&pool, "payment", 1).await.unwrap();
         assert_eq!(results.len(), 1, "limit=1 should return 1 result");
+    }
+
+    #[sqlx::test]
+    async fn test_search_leaves_out_automation_conversations() {
+        let pool = pool().await;
+        let (conv_id, _msg_id) = insert_test_data(&pool).await;
+        reindex_all(&pool).await.unwrap();
+        assert_eq!(
+            search_messages(&pool, "payment", 10).await.unwrap().len(),
+            1
+        );
+
+        sqlx::query("UPDATE conversations SET kind = 'automation' WHERE id = ?")
+            .bind(&conv_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let results = search_messages(&pool, "payment", 10).await.unwrap();
+        assert!(results.is_empty(), "automation chats are not searchable");
     }
 
     #[sqlx::test]

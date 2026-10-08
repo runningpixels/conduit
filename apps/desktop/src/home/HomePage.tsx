@@ -48,6 +48,8 @@ export interface HomePageProps {
   onWrite?: (brief: string) => void;
   /** The deck chip with text: start a deck from it. */
   onStartDeck?: (text: string) => void;
+  /** The Automate chip with text: describe a workflow from it. */
+  onAutomate?: (text: string) => void;
   onOpenChat: (conversationId: string) => void;
   onOpenDeck: (deckId: string) => void;
   onOpenDraft?: (draftId: string) => void;
@@ -100,6 +102,7 @@ export function HomePage({
   onResearch,
   onWrite,
   onStartDeck,
+  onAutomate,
   onOpenChat,
   onOpenDeck,
   onOpenDraft,
@@ -238,6 +241,7 @@ export function HomePage({
               onResearch={onResearch}
               onWrite={onWrite}
               onStartDeck={onStartDeck}
+              onAutomate={onAutomate}
               onAction={onAction}
             />
           </header>

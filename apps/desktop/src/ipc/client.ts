@@ -89,6 +89,7 @@ import type {
   SkillSummary,
   MemoryItem,
   WorkflowDefinition,
+  WorkflowDraftResult,
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
@@ -1543,6 +1544,25 @@ export async function resetLocalDatabase(): Promise<{ backupPath: string }> {
 /** Everything wrong with a definition, in plain English; empty when it can be saved. */
 export async function validateWorkflow(definition: WorkflowDefinition): Promise<string[]> {
   return invokeCommand<string[]>('validate_workflow', { definition });
+}
+
+/// Describe a workflow in words and get a draft back (never saved). The two
+/// commands below are the only place their names appear.
+export async function draftWorkflow(description: string): Promise<WorkflowDraftResult> {
+  return invokeCommand<WorkflowDraftResult>('draft_workflow', { description });
+}
+
+/// A draft made from what happened in a chat; `description` is optional.
+export async function draftWorkflowFromChat(
+  conversationId: string,
+  description?: string,
+): Promise<WorkflowDraftResult> {
+  return invokeCommand<WorkflowDraftResult>('draft_workflow_from_chat', { conversationId, description });
+}
+
+/// Stop the draft in progress; resolves false when nothing was drafting.
+export async function cancelWorkflowDraft(): Promise<boolean> {
+  return invokeCommand<boolean>('cancel_workflow_draft', {});
 }
 
 // ── Apps (saved mini-apps) ────────────────────────────────────────────────────

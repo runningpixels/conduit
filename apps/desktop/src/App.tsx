@@ -5,7 +5,7 @@ import type { StatusState } from './chat/statusTypes';
 import { useUpdateScheduler } from './updates/useUpdateScheduler';
 import { ToastStack } from './workspace/ToastStack';
 import { useSpendAlert } from './workspace/useSpendAlert';
-import { makeStatus, fromString, STATUS_DISMISS_MS, TOAST_DISMISS_MS, TOAST_STATUS_KINDS } from './chat/statusTypes';
+import { makeStatus, fromString, STATUS_DISMISS_MS, TOAST_DISMISS_MS, TOAST_STATUS_KINDS, toastDismissMs, workflowRunStatus } from './chat/statusTypes';
 import {
   checkArtifactFileState,
   createArtifact,
@@ -80,7 +80,7 @@ import { readArtifactNetworkLog } from './workspace/useArtifactNetwork';
 import { LibraryPage, type LibraryTab } from './pages/LibraryPage';
 import { ConnectorsPage } from './pages/ConnectorsPage';
 import { MemoryPage } from './pages/MemoryPage';
-import { WorkflowsPage } from './pages/WorkflowsPage';
+import { WorkflowsPage, type WorkflowDraftRequest } from './pages/WorkflowsPage';
 import {
   notificationFor,
   notificationForQuestion,
@@ -363,10 +363,13 @@ export default function App() {
   // Home's "Answer"/"Review" opens the Workflows page on the waiting workflow.
   // `nonce` makes a second request for the same workflow count as a new one.
   const [workflowsFocus, setWorkflowsFocus] = useState<{ workflowId: string; runId: string; nonce: number } | null>(null);
+  // Home's Automate chip and a chat's "Save as workflow" ask Workflows to draft one.
+  const [workflowsDraftRequest, setWorkflowsDraftRequest] = useState<WorkflowDraftRequest | null>(null);
   useEffect(() => {
     if (destination !== 'workflows') {
       setWorkflowsStartNew(false);
       setWorkflowsFocus(null);
+      setWorkflowsDraftRequest(null);
     }
   }, [destination]);
   // Apps: the one open app (null = the list), the saved apps for the
@@ -826,10 +829,9 @@ export default function App() {
   // does a toast that offers an action (see `StatusState.action`).
   useEffect(() => {
     const timers = toasts
-      .filter((t) => TOAST_DISMISS_MS[t.kind] != null && !t.action)
-      .map((t) =>
-        window.setTimeout(() => dismissToast(t.timestamp), TOAST_DISMISS_MS[t.kind]!),
-      );
+      .map((t) => ({ t, ms: toastDismissMs(t) }))
+      .filter((x): x is { t: StatusState; ms: number } => x.ms != null)
+      .map(({ t, ms }) => window.setTimeout(() => dismissToast(t.timestamp), ms));
     return () => {
       for (const id of timers) window.clearTimeout(id);
     };
@@ -2329,7 +2331,11 @@ export default function App() {
   useWorkflowRunEvents((event) => {
     setWorkflowRunsVersion((v) => v + 1);
     const note = notificationFor(event, t);
-    if (note) void notifyWorkflowRun(note.title, note.body).catch(() => {});
+    if (!note) return;
+    void notifyWorkflowRun(note.title, note.body).catch(() => {});
+    // Also a toast that leaves by itself: the run list keeps the detail.
+    const toast = workflowRunStatus(note.title, event.status === 'failed' ? 'error' : 'success', note.body);
+    setToasts((current) => [...current.slice(-4), toast]);
   });
   // A scheduled run paused to ask: say so, and show it on the Workflows page.
   useWorkflowReviewEvents((review) => {
@@ -3106,6 +3112,11 @@ export default function App() {
     },
     [handleStartDraft, setStatusMessage],
   );
+  /** Home's Automate chip: describe a workflow from the box text. */
+  const handleHomeAutomate = useCallback((description: string) => {
+    setWorkflowsDraftRequest({ nonce: Date.now(), description });
+    setDestination('workflows');
+  }, []);
   /** Home's Research chip: a fresh chat, with the text sent as a Research run. */
   const handleHomeResearch = useCallback(
     (text: string) => {
@@ -3691,6 +3702,7 @@ export default function App() {
                 onResearch={handleHomeResearch}
                 onWrite={handleHomeWrite}
                 onStartDeck={handleHomeStartDeck}
+                onAutomate={handleHomeAutomate}
                 onOpenChat={handleHomeOpenChat}
                 onOpenDeck={(id) => void handleOpenDeck(id)}
                 onOpenDraft={(id) => void handleOpenDraft(id)}
@@ -3804,6 +3816,7 @@ export default function App() {
                 refreshKey={workflowRunsVersion}
                 startNew={workflowsStartNew}
                 focus={workflowsFocus}
+                draftRequest={workflowsDraftRequest}
               />
             )}
           </div>
@@ -4035,6 +4048,14 @@ export default function App() {
         onCopyConversationAsMarkdown={() => void handleCopyConversationAsMarkdown()}
         onExportConversationMarkdown={() => void handleExportConversation('markdown')}
         onExportConversationJson={() => void handleExportConversation('json')}
+        onSaveChatAsWorkflow={() => {
+          if (!activeConversationId) {
+            setStatus(makeStatus(t('app.status.nothingToSaveAsWorkflow'), 'warning'));
+            return;
+          }
+          setWorkflowsDraftRequest({ nonce: Date.now(), conversationId: activeConversationId });
+          setDestination('workflows');
+        }}
         onDeleteChat={handleDeleteChatRequest}
         onDeleteAllHistory={handleDeleteAllHistory}
         onSelectModel={handleSelectModel}

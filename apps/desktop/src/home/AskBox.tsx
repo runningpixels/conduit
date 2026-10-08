@@ -32,10 +32,13 @@ export interface AskBoxProps {
   /** The deck chip: start a deck from this text (Slides opens on its list
    *  when the box is empty). */
   onStartDeck?: (text: string) => void;
+  /** The Automate chip: describe a workflow from this text (the Workflows
+   *  page opens on its picker when the box is empty). */
+  onAutomate?: (text: string) => void;
   onAction: (action: HomeAction) => void;
 }
 
-export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onResearch, onWrite, onStartDeck, onAction }: AskBoxProps) {
+export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onResearch, onWrite, onStartDeck, onAutomate, onAction }: AskBoxProps) {
   const t = useT();
   const hintId = useId();
 
@@ -86,6 +89,16 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
     onStartDeck(value);
   };
 
+  const automate = () => {
+    const value = text.trim();
+    if (value === '' || !onAutomate) {
+      onAction('new-workflow');
+      return;
+    }
+    setText('');
+    onAutomate(value);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -131,6 +144,10 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
         {/* With text, Write starts a draft from it; without, it opens Writing. */}
         <button type="button" className="home-chip" onClick={write}>
           {t('home.ask.chip.write')}
+        </button>
+        {/* With text, Automate drafts a workflow from it; without, it opens the picker. */}
+        <button type="button" className="home-chip" onClick={automate}>
+          {t('home.ask.chip.automate')}
         </button>
         {/* Research needs a question to research, so it waits for text. */}
         <button

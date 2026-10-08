@@ -353,6 +353,9 @@ fn main() {
             drop_artifact_frame,
             // Workflows v1: saved routines, run by hand.
             validate_workflow,
+            draft_workflow,
+            draft_workflow_from_chat,
+            cancel_workflow_draft,
             list_workflows,
             get_workflow,
             create_workflow,

@@ -354,8 +354,46 @@ const MODEL_KEYS: &[&str] = &["provider", "model"];
 const INPUT_KEYS: &[&str] = &["id", "label", "default"];
 const STEP_KEYS: &[&str] = &["id", "type", "onError", "retries"];
 
+/// Every step type, as written in a definition's `"type"` (read from the
+/// enum's own error message, so a new variant appears here by itself).
+pub fn step_types() -> Vec<String> {
+    let error = serde_json::from_value::<StepAction>(serde_json::json!({ "type": "?" }))
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    error
+        .split_once("expected one of ")
+        .map(|(_, list)| {
+            list.split(", ")
+                .map(|name| name.trim().trim_matches('`').to_string())
+                .filter(|name| !name.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Parse and check a raw definition as saving does: unreadable, unknown
+/// settings and every [`validate`] problem, joined one per line.
+pub fn check_value(definition: &Value) -> Result<(), String> {
+    let parsed: WorkflowDefinition =
+        serde_json::from_value(definition.clone()).map_err(|e| unreadable(&e))?;
+    // Loading ignores settings it doesn't know; saving does not.
+    let mut problems = unknown_settings(definition);
+    if let Err(more) = validate(&parsed) {
+        problems.extend(more);
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems.join(
+            "
+",
+        ))
+    }
+}
+
 /// The settings a step of this type reads, besides [`STEP_KEYS`].
-fn action_keys(step_type: &str) -> &'static [&'static str] {
+pub fn action_keys(step_type: &str) -> &'static [&'static str] {
     match step_type {
         "fetch_page" => &["urls"],
         "web_search" => &["query", "maxResults"],
@@ -517,6 +555,9 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
         steps: Vec::new(),
         in_loop: false,
         has_folder: folder.is_some(),
+        loops: Vec::new(),
+        own: Vec::new(),
+        item_is_loop_result: false,
     };
     check_steps(&def.steps, scope, &mut all_ids, &mut count, &mut problems);
     if count > MAX_STEPS {
@@ -540,6 +581,118 @@ struct Scope<'a> {
     in_loop: bool,
     /// The workflow has a folder to read files from.
     has_folder: bool,
+    /// The `for_each` steps before this one: its id and its own steps (id and
+    /// a text-like output to suggest), which is all a result item holds.
+    loops: Vec<LoopShape>,
+    /// The ids of the steps in the innermost loop being checked, and whether
+    /// its `item` comes from an earlier loop's results (whose items are
+    /// keyed by step id, so `item.<id>` is right there).
+    own: Vec<String>,
+    item_is_loop_result: bool,
+}
+
+/// What one round of an earlier `for_each` leaves behind.
+#[derive(Clone)]
+struct LoopShape {
+    id: String,
+    steps: Vec<(String, Option<&'static str>)>,
+}
+
+/// The output of a step worth suggesting as `item.<id>.<field>`.
+fn text_field(action: &StepAction) -> Option<&'static str> {
+    match action {
+        StepAction::Summarize { .. }
+        | StepAction::Template { .. }
+        | StepAction::Agent { .. }
+        | StepAction::FetchPage { .. }
+        | StepAction::ReadFile { .. }
+        | StepAction::ParseData { .. } => Some("text"),
+        StepAction::Ask { .. } => Some("answer"),
+        _ => None,
+    }
+}
+
+/// Fields a loop's own elements commonly have (a page, a search result), so
+/// `item.<field>` is not mistaken for a step of the loop with the same id.
+const ITEM_FIELDS: &[&str] = &[
+    "url",
+    "title",
+    "text",
+    "links",
+    "snippet",
+    "error",
+    "lookedEmpty",
+    "contentType",
+];
+
+fn check_item_reads(
+    paths: &[String],
+    texts_each: &[(String, Vec<String>)],
+    scope: &Scope<'_>,
+    name: &str,
+    problems: &mut Vec<String>,
+) {
+    // Inside a loop body: `item.<own earlier step>` is the wrong address.
+    if scope.in_loop && !scope.item_is_loop_result {
+        for path in paths {
+            let mut parts = path.splitn(3, '.');
+            if parts.next() != Some("item") {
+                continue;
+            }
+            let Some(id) = parts.next() else { continue };
+            if scope.own.iter().any(|s| s == id)
+                && scope.steps.iter().any(|s| s == id)
+                && !ITEM_FIELDS.contains(&id)
+            {
+                let rest = path.strip_prefix("item.").unwrap_or(path);
+                problems.push(format!(
+                    "Step \"{name}\" reads {path}, but {id} is a step in this loop \u{2014} use steps.{rest} for its result in the current round."
+                ));
+            }
+        }
+    }
+    // Inside `{{#each steps.<loop>.items}}`: `item.<x>` must be a loop step.
+    for (list, reads) in texts_each {
+        let parts: Vec<&str> = list.split('.').collect();
+        let [steps, id, items] = parts[..] else {
+            continue;
+        };
+        if steps != "steps" || items != "items" {
+            continue;
+        }
+        let Some(shape) = scope.loops.iter().find(|l| l.id == id) else {
+            continue;
+        };
+        let mut seen = HashSet::new();
+        for read in reads {
+            let Some(x) = read.split('.').nth(1) else {
+                continue;
+            };
+            if shape.steps.iter().any(|(s, _)| s == x) || !seen.insert(read.as_str()) {
+                continue;
+            }
+            let held = shape
+                .steps
+                .iter()
+                .map(|(s, _)| format!("item.{s}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let example = shape
+                .steps
+                .iter()
+                .rev()
+                .find(|(_, f)| f.is_some())
+                .or(shape.steps.last())
+                .map(|(s, f)| match f {
+                    Some(f) => format!("item.{s}.{f}"),
+                    None => format!("item.{s}"),
+                })
+                .unwrap_or_default();
+            problems.push(format!(
+                "Step \"{name}\" reads {read} inside a loop over {list}, but each item only holds what the loop's steps made ({held}). Use one of those, e.g. {example}."
+            ));
+        }
+    }
 }
 
 fn check_steps(
@@ -793,22 +946,39 @@ fn check_steps(
                 if body.is_empty() {
                     problems.push(format!("Step \"{name}\" repeats nothing."));
                 }
+                let from_loop_result = {
+                    let parts: Vec<&str> = items.split('.').collect();
+                    matches!(parts[..], ["steps", id, "items"]
+                        if scope.loops.iter().any(|l| l.id == id))
+                };
                 let inner = Scope {
                     in_loop: true,
+                    own: body.iter().map(|s| s.id.clone()).collect(),
+                    item_is_loop_result: from_loop_result,
                     ..scope.clone()
                 };
                 check_steps(body, inner, all_ids, count, problems);
             }
         }
         for text in texts {
-            match template::references(text) {
-                Ok(paths) => {
-                    for path in paths {
-                        check_path(&path, &scope, name, problems);
+            match (template::references(text), template::each_item_reads(text)) {
+                (Ok(paths), Ok(each_reads)) => {
+                    for path in &paths {
+                        check_path(path, &scope, name, problems);
                     }
+                    check_item_reads(&paths, &each_reads, &scope, name, problems);
                 }
-                Err(e) => problems.push(format!("Step \"{name}\": {e}")),
+                (Err(e), _) | (_, Err(e)) => problems.push(format!("Step \"{name}\": {e}")),
             }
+        }
+        if let StepAction::ForEach { steps: body, .. } = &step.action {
+            scope.loops.push(LoopShape {
+                id: step.id.clone(),
+                steps: body
+                    .iter()
+                    .map(|s| (s.id.clone(), text_field(&s.action)))
+                    .collect(),
+            });
         }
         scope.steps.push(step.id.clone());
     }
@@ -954,6 +1124,85 @@ mod tests {
             .unwrap_err()
             .iter()
             .any(|p| p.contains("reads item.text")));
+    }
+
+    #[test]
+    fn a_loop_result_item_only_holds_the_loops_own_steps() {
+        let loop_then = |template: &str| {
+            json!({ "steps": [
+                { "id": "fetch", "type": "fetch_page", "urls": ["https://example.com"] },
+                { "id": "each", "type": "for_each", "items": "steps.fetch.pages", "steps": [
+                    { "id": "fetch_one", "type": "template", "template": "{{item.url}}" },
+                    { "id": "sum", "type": "summarize", "prompt": "p", "input": "{{item.text}}" }
+                ]},
+                { "id": "doc", "type": "template", "template": template },
+            ]})
+        };
+        assert_eq!(
+            problems_of(loop_then("{{#each steps.each.items}}{{item.title}}{{/each}}")),
+            vec!["Step \"doc\" reads item.title inside a loop over steps.each.items, but each item only holds what the loop's steps made (item.fetch_one, item.sum). Use one of those, e.g. item.sum.text."]
+        );
+        // The loop's own steps, and a nested block's own item, are fine.
+        let fine = loop_then(
+            "{{#each steps.each.items}}{{item.sum.text}}{{item.fetch_one}}{{#each item.sum.data}}{{item.name}}{{/each}}{{/each}}{{item.title}}",
+        );
+        // `item` outside any block is the existing "only inside a loop" check.
+        let problems = problems_of(fine);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("reads item.title, which doesn't exist"));
+    }
+
+    #[test]
+    fn a_loop_step_reads_its_earlier_steps_by_step_id_not_item() {
+        let body = |input: &str| {
+            json!({ "steps": [
+                { "id": "fetch", "type": "fetch_page", "urls": ["https://example.com"] },
+                { "id": "each", "type": "for_each", "items": "steps.fetch.pages", "steps": [
+                    { "id": "clean", "type": "template", "template": "{{item.text}}" },
+                    { "id": "sum", "type": "summarize", "prompt": "p", "input": input },
+                ]},
+            ]})
+        };
+        assert_eq!(
+            problems_of(body("{{item.clean.text}}")),
+            vec!["Step \"sum\" reads item.clean.text, but clean is a step in this loop \u{2014} use steps.clean.text for its result in the current round."]
+        );
+        assert_eq!(
+            validate(&def(body("{{steps.clean.text}} {{item.title}}"))),
+            Ok(())
+        );
+        // A loop over an earlier loop's results is keyed by step id: item.<id> is right.
+        let chained = json!({ "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": ["https://example.com"] },
+            { "id": "one", "type": "for_each", "items": "steps.fetch.pages", "steps": [
+                { "id": "sum", "type": "template", "template": "{{item.text}}" }
+            ]},
+            { "id": "two", "type": "for_each", "items": "steps.one.items", "steps": [
+                { "id": "again", "type": "template", "template": "{{item.sum.text}}" }
+            ]},
+        ]});
+        assert_eq!(validate(&def(chained)), Ok(()));
+    }
+
+    #[test]
+    fn the_starter_shapes_still_validate() {
+        // The morning-briefing starter: heading and summary read the page
+        // (item.url/title/text/error), the template reads the loop's results.
+        let d = def(json!({
+            "inputs": [{ "id": "site_one", "label": "A", "default": "x" }],
+            "steps": [
+                { "id": "fetch", "type": "fetch_page", "urls": ["{{inputs.site_one}}"] },
+                { "id": "each_site", "type": "for_each", "items": "steps.fetch.pages", "steps": [
+                    { "id": "heading", "type": "template", "template": "## {{item.url}}\n{{item.error}}" },
+                    { "id": "summary", "type": "summarize", "prompt": "p",
+                      "input": "{{item.title}}\n\n{{item.text}}", "onError": "skip" }
+                ]},
+                { "id": "briefing", "type": "template",
+                  "template": "{{#each steps.each_site.items}}{{item.heading.text}}{{item.summary.text}}\n\n{{/each}}" },
+                { "id": "save", "type": "save_artifact", "title": "t", "content": "{{steps.briefing.text}}" }
+            ]
+        }));
+        assert_eq!(validate(&d), Ok(()));
     }
 
     #[test]

@@ -22,6 +22,9 @@ export interface StatusState {
    *  that carries one stays until dismissed: an action that vanishes after six
    *  seconds is one most people never get to press. */
   action?: StatusAction;
+  /** Auto-dismiss after this many ms whatever the kind (overrides
+   *  `TOAST_DISMISS_MS`). A workflow run's toast uses it: the run list keeps the detail. */
+  dismissMs?: number;
 }
 
 export interface StatusAction {
@@ -39,6 +42,21 @@ export const TOAST_DISMISS_MS: Partial<Record<StatusKind, number>> = {
   warning: 6000,
   success: 4000,
 };
+
+/** Workflow run toasts (finished / failed) leave after 10s, errors included. */
+export const WORKFLOW_RUN_TOAST_MS = 10_000;
+
+/** How long a toast stays before it dismisses itself, or null to stay. A toast
+ *  that offers an action never leaves on its own. */
+export function toastDismissMs(toast: StatusState): number | null {
+  if (toast.action) return null;
+  return toast.dismissMs ?? TOAST_DISMISS_MS[toast.kind] ?? null;
+}
+
+/** A workflow run's outcome as a self-dismissing toast. */
+export function workflowRunStatus(brief: string, kind: StatusKind, detail?: string): StatusState {
+  return { ...makeStatus(brief, kind, undefined, detail), dismissMs: WORKFLOW_RUN_TOAST_MS };
+}
 
 /** Kinds that surface exclusively in ToastStack (not the panel-head pill). */
 export const TOAST_STATUS_KINDS: ReadonlySet<StatusKind> = new Set([

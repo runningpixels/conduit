@@ -229,6 +229,32 @@ describe('CommandPalette prefix modes', () => {
     expect(props.onClose).toHaveBeenCalled();
   });
 
+  it('>workflow offers Save chat as workflow and runs onSaveChatAsWorkflow', () => {
+    const onSaveChatAsWorkflow = vi.fn();
+    const props = renderPalette({ onSaveChatAsWorkflow });
+    type('>workflow');
+    fireEvent.click(screen.getByRole('option', { name: /Save chat as workflow/ }));
+    expect(onSaveChatAsWorkflow).toHaveBeenCalledTimes(1);
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('finds Save chat as workflow by typing "workflow" or "save" without the > prefix', () => {
+    const onSaveChatAsWorkflow = vi.fn();
+    const props = renderPalette({ onSaveChatAsWorkflow });
+    type('workflow');
+    expect(screen.getByRole('option', { name: /Save chat as workflow/ })).toBeInTheDocument();
+    type('save');
+    fireEvent.click(screen.getByRole('option', { name: /Save chat as workflow/ }));
+    expect(onSaveChatAsWorkflow).toHaveBeenCalledTimes(1);
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('does not offer Save chat as workflow in the default mode when it is not wired', () => {
+    renderPalette();
+    type('workflow');
+    expect(screen.queryByRole('option', { name: /Save chat as workflow/ })).not.toBeInTheDocument();
+  });
+
   it('> exposes Delete all chats… wired to onDeleteAllHistory', () => {
     const props = renderPalette();
     type('>delete all');

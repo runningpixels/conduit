@@ -369,6 +369,22 @@ describe('HomePage Writing', () => {
     expect(box).toHaveValue('');
   });
 
+  it('the Automate chip describes a workflow from the box text, or opens the picker when empty', async () => {
+    const onAutomate = vi.fn();
+    const { p } = await renderHome({ onAutomate });
+    const chip = within(screen.getByRole('group', { name: 'Quick starts' })).getByRole('button', { name: 'Automate' });
+    fireEvent.click(chip);
+    expect(p.onAction).toHaveBeenCalledWith('new-workflow');
+    expect(onAutomate).not.toHaveBeenCalled();
+    const box = screen.getByLabelText('Describe what you want to do');
+    fireEvent.change(box, { target: { value: ' Read two sites and save a briefing ' } });
+    fireEvent.click(chip);
+    expect(onAutomate).toHaveBeenCalledWith('Read two sites and save a briefing');
+    // The text is not sent as a chat, whatever it says.
+    expect(p.onAsk).not.toHaveBeenCalled();
+    expect(box).toHaveValue('');
+  });
+
   it('the deck chip starts a deck from the box text, or opens Slides when it is empty', async () => {
     const onStartDeck = vi.fn();
     const { p } = await renderHome({ onStartDeck });

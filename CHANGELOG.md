@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Workflows that start themselves.** A workflow can start when a new post
+  appears in a feed (RSS or Atom, checked every 15 minutes to once a day) or
+  when a new file lands in its folder. Turn it on with "Run automatically":
+  the first check only notes what is already there, then each new post or
+  file gets its own run, with its title, link or file path ready for the
+  steps. A file still being written waits until it's finished; hidden and
+  temporary files are ignored. If the feed or folder can't be read three
+  times in a row, you get one notification and the workflow says why it's
+  paused; it carries on by itself once it can read again. Starters:
+  "Summarize new posts" and "Inbox folder".
+- **Export a file, or suggest a memory, from a workflow.** An "Export a
+  file" step saves Markdown, text, CSV, JSON or HTML into the exports
+  folder, with Show in folder on the run. A "Save to memory" step suggests a
+  memory for you to accept; it never adds one on its own.
+
 - **Workflows can use your connected apps.** A "Use a connector tool" step
   calls a tool from one of your connectors — list a folder, read a file,
   list a repository's open issues — and later steps can summarize or save

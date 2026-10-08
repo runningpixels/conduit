@@ -520,6 +520,11 @@ async fn poll_and_run(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> 
                 Some(item.value.clone()),
             )
             .await;
+        // Seen only now that it has had its run: items left over when the
+        // loop stops early come back at the next look.
+        if let Err(e) = triggers::mark_seen(&state.paths.root, &workflow_id, &item.id) {
+            tracing::warn!(error = %e, "could not record a workflow trigger's progress");
+        }
         let base = RunFinished {
             trigger: kind.to_string(),
             trigger_item: Some(item.value),

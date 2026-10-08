@@ -385,18 +385,27 @@ async fn look_at_feed(
         let ids: Vec<String> = items.iter().rev().map(|i| i.id.clone()).collect();
         remember(cursor, ids);
     }
-    let more = fresh.len() > MAX_RUNS_PER_POLL;
     fresh.truncate(MAX_RUNS_PER_POLL);
-    remember(cursor, fresh.iter().map(|i| i.id.clone()).collect());
-    // With posts still waiting, ask for the whole feed again next time.
-    if more {
-        cursor.etag = None;
-        cursor.last_modified = None;
-    } else {
+    // New posts are marked seen one by one as their runs happen
+    // (`mark_seen`), so a batch cut short is picked up again next time. Until
+    // then ask for the whole feed: a "not modified" answer would hide them.
+    if fresh.is_empty() {
         cursor.etag = response.etag;
         cursor.last_modified = response.last_modified;
+    } else {
+        cursor.etag = None;
+        cursor.last_modified = None;
     }
     Ok(fresh)
+}
+
+/// Record that the item `id` has had its run, so later looks skip it. Called
+/// after each run (whatever its outcome), not when the item is found: a batch
+/// that is cut short leaves the rest to the next look.
+pub fn mark_seen(root: &Path, workflow_id: &str, id: &str) -> Result<(), String> {
+    let mut cursor = load_cursor(root, workflow_id);
+    remember(&mut cursor, vec![id.to_string()]);
+    save_cursor(root, workflow_id, &cursor)
 }
 
 /// Add `ids` to what has been seen, keeping the newest [`SEEN_CAP`].
@@ -750,13 +759,54 @@ fn look_in_folder(
     for file in &ready {
         cursor.sizes.remove(&file.id);
     }
-    remember(cursor, ready.iter().map(|f| f.id.clone()).collect());
+    // Marked seen one by one as their runs happen (`mark_seen`).
     Ok(ready)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn items_found_but_not_run_come_back_at_the_next_look() {
+        let root = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let dir = folder.path().to_string_lossy().to_string();
+        let policy = AddressPolicy { public_only: true };
+        // Looks happen a minute after the files were written, so they count as settled.
+        let later = || Utc::now() + chrono::Duration::seconds(120);
+        let look = || {
+            poll(
+                root.path(),
+                "wf",
+                &Trigger::Folder,
+                Some(dir.as_str()),
+                policy,
+                later(),
+                Ok(()),
+            )
+        };
+
+        // Baseline on the empty folder, then two new files.
+        assert!(matches!(look().await.unwrap(), Polled::Items(items) if items.is_empty()));
+        std::fs::write(folder.path().join("a.md"), "a").unwrap();
+        std::fs::write(folder.path().join("b.md"), "b").unwrap();
+        let Polled::Items(found) = look().await.unwrap() else {
+            panic!("look failed")
+        };
+        assert_eq!(found.len(), 2);
+
+        // Only the first had its run before the batch was cut short.
+        mark_seen(root.path(), "wf", &found[0].id).unwrap();
+        let Polled::Items(again) = look().await.unwrap() else {
+            panic!("look failed")
+        };
+        let ids: Vec<&str> = again.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec![found[1].id.as_str()]);
+
+        mark_seen(root.path(), "wf", &found[1].id).unwrap();
+        assert!(matches!(look().await.unwrap(), Polled::Items(items) if items.is_empty()));
+    }
 
     const RSS: &str = r#"<?xml version="1.0"?>
 <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">

@@ -3,8 +3,12 @@ name: Release
 # Phase 6 M6.2 — build + updater-sign + manifest + host. NO OS code-signing.
 #
 # Triggers:
-#   - push tag v*.*.*            → stable release (a prerelease tag like
-#     v0.1.0-beta.1 is routed to the beta channel by the `channel` step below)
+#   - push tag v*.*.*            → stable release (release candidates too; a
+#     prerelease tag like v0.1.0-beta.1 is routed to the beta channel by the
+#     `channel` step below). A stable release is GitHub's "latest" release and
+#     carries version-free copies of the installers, so
+#     .../releases/latest/download/Conduit_x64-setup.exe always serves the
+#     newest one and the website never changes per release.
 #   - push branch nightly         → beta release
 #   - workflow_dispatch           → manual (pick channel via input)
 #   - workflow_call               → reusable; Phase 9 white-label passes
@@ -74,8 +78,14 @@ jobs:
             CHANNEL="beta"
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
-            # A prerelease tag (v1.2.3-beta.1, -rc.1, -nightly) → beta; else stable.
-            if [[ "${TAG}" == *-* ]]; then CHANNEL="beta"; else CHANNEL="stable"; fi
+            # A release candidate (v1.2.3-rc.1) is what the site offers for
+            # download, so it goes to stable: installs check the stable
+            # channel by default, and with rc tags on beta nobody on default
+            # settings was ever offered an update. Other prerelease tags
+            # (v1.2.3-beta.1, -alpha, -nightly) → beta; plain versions → stable.
+            if [[ "${TAG}" == *-rc.* ]]; then CHANNEL="stable"
+            elif [[ "${TAG}" == *-* ]]; then CHANNEL="beta"
+            else CHANNEL="stable"; fi
           else
             CHANNEL="stable"
           fi
@@ -288,6 +298,16 @@ jobs:
             echo "::error::expected 4 platforms, got $COUNT"
             exit 1
           fi
+      # Beta is meant to be at least as new as stable, so a stable release
+      # updates the beta manifest too; otherwise beta users would sit on the
+      # last beta while stable moved past it.
+      - name: Copy a stable manifest to beta
+        if: needs.meta.outputs.channel == 'stable'
+        run: |
+          set -euo pipefail
+          mkdir -p manifest-out/beta
+          cp manifest-out/stable/manifest.json manifest-out/beta/manifest.json
+
       - name: Upload manifest artifact
         uses: actions/upload-artifact@v7
         with:
@@ -305,6 +325,30 @@ jobs:
           gh release upload "${{ needs.meta.outputs.tag }}" \
             "manifest-out/${{ needs.meta.outputs.channel }}/manifest.json" \
             --clobber
+
+      # The website links to .../releases/latest/download/<name>, which needs
+      # names without the version. Re-upload each installer under one
+      # (Conduit_1.2.3_x64-setup.exe → Conduit_x64-setup.exe) on every stable
+      # release, so the site's links never change. Fails if an installer is
+      # missing, since the site would then link to a 404.
+      - name: Attach version-free installer copies
+        if: needs.meta.outputs.channel == 'stable'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p fixed
+          for suffix in x64-setup.exe aarch64.dmg x64.dmg amd64.AppImage amd64.deb; do
+            gh release download "$TAG" --pattern "*_${VERSION}_${suffix}" --dir dl --clobber
+            src=$(ls dl/*_"${VERSION}"_"${suffix}")
+            name=$(basename "$src")
+            cp "$src" "fixed/${name/_${VERSION}_/_}"
+          done
+          ls -la fixed
+          test "$(ls fixed | wc -l)" -eq 5
+          gh release upload "$TAG" fixed/* --clobber
 
   # Publish the per-channel manifest to GitHub Pages, which is the host
   # `tauri.conf.json` endpoints and `updater.rs::UPDATE_BASE` point at:

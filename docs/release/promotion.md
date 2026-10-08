@@ -22,7 +22,8 @@ the channels are isolated by URL path.
 `scripts/generate-update-manifest.mjs --channel <stable|beta>` writes
 `<outDir>/<channel>/manifest.json`. Each release's `manifest` job (`.github/
 workflows/release.yml`) generates the manifest for the channel the release was
-tagged for (prerelease tags + `nightly` → beta; plain `v*.*.*` → stable).
+tagged for (plain `v*.*.*` and `-rc.*` → stable, with a copy to beta; other
+prerelease tags + `nightly` → beta).
 
 ## Promotion: beta → stable
 

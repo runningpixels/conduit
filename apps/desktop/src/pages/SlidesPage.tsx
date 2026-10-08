@@ -21,6 +21,8 @@ export interface SlidesPageProps {
   onStatus?: (message: string) => void;
   /** A story to put in the prompt box (a deck idea); a new `seq` fills it again. */
   prefill?: { text: string; seq: number } | null;
+  /** Changes when a workflow changed a deck; the list is read again. */
+  refreshKey?: number;
 }
 
 /** Starter chips: the label and the scaffold they put in the prompt box. */
@@ -35,7 +37,7 @@ function themeLabel(name: string): string {
   return STARTER_THEMES.find((th) => th.name === name)?.label ?? name;
 }
 
-export function SlidesPage({ onOpenDeck, onStartDeck, onStatus, prefill }: SlidesPageProps) {
+export function SlidesPage({ onOpenDeck, onStartDeck, onStatus, prefill, refreshKey = 0 }: SlidesPageProps) {
   const t = useT();
   const fmt = useFormatters();
   const [decks, setDecks] = useState<DeckSummary[] | null>(null);
@@ -81,7 +83,7 @@ export function SlidesPage({ onOpenDeck, onStartDeck, onStatus, prefill }: Slide
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, refreshKey]);
 
   const fail = useCallback(
     (e: unknown) => onStatus?.(e instanceof Error ? e.message : String(e)),

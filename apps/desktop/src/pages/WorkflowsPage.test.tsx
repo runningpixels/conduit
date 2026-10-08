@@ -29,6 +29,10 @@ const ipc = vi.hoisted(() => ({
   listWorkflowQuestions: vi.fn(),
   answerWorkflowQuestion: vi.fn(),
   listProviderDescriptors: vi.fn(),
+  listDecks: vi.fn(),
+  listDrafts: vi.fn(),
+  restoreDeckSnapshot: vi.fn(),
+  restoreDraftSnapshot: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -121,6 +125,8 @@ describe('WorkflowsPage', () => {
     ipc.validateWorkflow.mockResolvedValue([]);
     ipc.getWorkflowSchedule.mockResolvedValue(null);
     ipc.listProviderDescriptors.mockResolvedValue([{ id: 'openrouter', displayName: 'OpenRouter' }]);
+    ipc.listDecks.mockResolvedValue([]);
+    ipc.listDrafts.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -139,6 +145,150 @@ describe('WorkflowsPage', () => {
     );
     expect(onStatus).toHaveBeenCalledWith('Created Morning briefing');
     expect(await screen.findByRole('heading', { name: 'Morning briefing' })).toBeInTheDocument();
+  });
+
+  it('opens a starter that changes a deck in the editor, flagged, instead of saving it empty', async () => {
+    ipc.listWorkflows.mockResolvedValue([]);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const empty = (await screen.findByText('No workflows yet')).closest('.page-empty') as HTMLElement;
+    const card = within(empty).getByText('Weekly numbers deck').closest('li') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: 'Use this' }));
+    expect(await screen.findByText('Choose the deck this step updates.')).toBeInTheDocument();
+    expect(ipc.createWorkflow).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue('Weekly numbers deck')).toBeInTheDocument();
+    // The backend says what it thinks of the empty deck, as for any other problem.
+    await waitFor(() => expect(ipc.validateWorkflow).toHaveBeenCalled());
+    const sent = ipc.validateWorkflow.mock.calls.at(-1)?.[0] as { steps: { type: string; deck?: string }[] };
+    expect(sent.steps.at(-1)).toMatchObject({ type: 'edit_deck', deck: '' });
+  });
+
+  it('reads a deck or draft update on the collapsed row and opens the document', async () => {
+    const deckStep = {
+      ...finishedRun.steps[1],
+      id: 's5',
+      stepId: 'deck',
+      iteration: null,
+      status: 'completed' as const,
+      error: null,
+      output: {
+        deckId: 'deck-1',
+        title: 'Q3 numbers',
+        changed: ['s1', 's3'],
+        skippedPinned: [],
+        reply: 'Updated the chart.',
+        layoutChecked: false,
+        model: { provider: 'openrouter', model: 'deepseek/flash' },
+      },
+    };
+    const draftStep = {
+      ...deckStep,
+      id: 's6',
+      stepId: 'report',
+      output: { draftId: 'draft-1', title: 'Report', changed: [], skippedPinned: [], reply: 'Nothing to add.' },
+    };
+    const done: WorkflowRunDetail = {
+      run: { ...finishedRun.run, status: 'completed', error: null },
+      steps: [deckStep, draftStep],
+    };
+    ipc.listWorkflowRuns.mockResolvedValue([done.run]);
+    ipc.getWorkflowRun.mockResolvedValue(done);
+    const onOpenDeck = vi.fn();
+    const onOpenDraft = vi.fn();
+    render(<WorkflowsPage onStatus={vi.fn()} onOpenDeck={onOpenDeck} onOpenDraft={onOpenDraft} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Finished/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    expect(detail).toHaveTextContent('Changed 2 slides');
+    expect(detail).toHaveTextContent('Layout is checked when you next open the deck.');
+    expect(detail).toHaveTextContent('No changes');
+    expect(detail).toHaveTextContent('deepseek/flash');
+    fireEvent.click(within(detail).getByRole('button', { name: 'Open deck' }));
+    expect(onOpenDeck).toHaveBeenCalledWith('deck-1');
+    fireEvent.click(within(detail).getByRole('button', { name: 'Open draft' }));
+    expect(onOpenDraft).toHaveBeenCalledWith('draft-1');
+    // "No changes" carries no layout note: only the deck row has one.
+    expect(screen.getAllByText('Layout is checked when you next open the deck.')).toHaveLength(1);
+  });
+
+  it('undoes a deck update after asking, once, and says what happened', async () => {
+    const deckStep = {
+      ...finishedRun.steps[1],
+      id: 's5',
+      stepId: 'deck',
+      iteration: null,
+      status: 'completed' as const,
+      error: null,
+      output: { deckId: 'deck-9', title: 'Q3 numbers', changed: ['s1'], skippedPinned: [], reply: 'Done.', beforeSnapshotId: 'snap-before' },
+    };
+    const done: WorkflowRunDetail = { run: { ...finishedRun.run, status: 'completed', error: null }, steps: [deckStep] };
+    ipc.listWorkflowRuns.mockResolvedValue([done.run]);
+    ipc.getWorkflowRun.mockResolvedValue(done);
+    ipc.restoreDeckSnapshot.mockResolvedValue({ id: 'deck-9' });
+    const onRestoreDocument = vi.fn().mockResolvedValue(undefined);
+    render(<WorkflowsPage onStatus={vi.fn()} onRestoreDocument={onRestoreDocument} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Finished/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    fireEvent.click(within(detail).getByRole('button', { name: 'Undo this update' }));
+    // Nothing happens until it is confirmed.
+    const confirm = within(detail).getByRole('group', { name: 'Put the deck back the way it was before this update?' });
+    expect(onRestoreDocument).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    expect(onRestoreDocument).not.toHaveBeenCalled();
+    fireEvent.click(within(detail).getByRole('button', { name: 'Undo this update' }));
+    fireEvent.click(within(detail).getByRole('button', { name: 'Undo update' }));
+    await waitFor(() => expect(onRestoreDocument).toHaveBeenCalledWith('deck', 'deck-9', 'snap-before'));
+    const used = await within(detail).findByRole('button', { name: 'Update undone' });
+    expect(used).toBeDisabled();
+  });
+
+  it('restores the entry directly when the page is not wired to the shell, and reports a failure', async () => {
+    const draftStep = {
+      ...finishedRun.steps[1],
+      id: 's6',
+      stepId: 'report',
+      iteration: null,
+      status: 'completed' as const,
+      error: null,
+      output: { draftId: 'draft-7', title: 'Report', changed: ['b1'], changedSections: ['This week'], skippedPinned: [], reply: 'Added.', beforeSnapshotId: 'snap-d' },
+    };
+    const done: WorkflowRunDetail = { run: { ...finishedRun.run, status: 'completed', error: null }, steps: [draftStep] };
+    ipc.listWorkflowRuns.mockResolvedValue([done.run]);
+    ipc.getWorkflowRun.mockResolvedValue(done);
+    ipc.restoreDraftSnapshot.mockRejectedValueOnce(new Error('Version not found'));
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Finished/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    expect(detail).toHaveTextContent('Changed 1 section');
+    fireEvent.click(within(detail).getByRole('button', { name: 'Undo this update' }));
+    fireEvent.click(within(detail).getByRole('button', { name: 'Undo update' }));
+    expect(await within(detail).findByRole('alert')).toHaveTextContent("Couldn't undo the update: Version not found");
+    expect(ipc.restoreDraftSnapshot).toHaveBeenCalledWith('draft-7', 'snap-d');
+    // Still available after a failure.
+    fireEvent.click(within(detail).getByRole('button', { name: 'Undo update' }));
+    await waitFor(() => expect(ipc.restoreDraftSnapshot).toHaveBeenCalledTimes(2));
+  });
+
+  it('offers no undo for runs that did not record the earlier version', async () => {
+    const deckStep = {
+      ...finishedRun.steps[1],
+      id: 's5',
+      stepId: 'deck',
+      iteration: null,
+      status: 'completed' as const,
+      error: null,
+      output: { deckId: 'deck-1', title: 'Old run', changed: ['s1'], skippedPinned: [], reply: 'Done.' },
+    };
+    const done: WorkflowRunDetail = { run: { ...finishedRun.run, status: 'completed', error: null }, steps: [deckStep] };
+    ipc.listWorkflowRuns.mockResolvedValue([done.run]);
+    ipc.getWorkflowRun.mockResolvedValue(done);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const runs = await screen.findByRole('region', { name: 'Recent runs' });
+    fireEvent.click(within(runs).getByRole('button', { name: /Finished/ }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    expect(detail).toHaveTextContent('Changed 1 slide');
+    expect(within(detail).queryByRole('button', { name: 'Undo this update' })).toBeNull();
   });
 
   it('shows the steps in words and runs with the inputs as edited', async () => {

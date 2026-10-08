@@ -236,3 +236,14 @@
 }
 .wf-steps > li:last-child::after { display: none; }
 .wf-steps .wf-steps { margin-top: var(--sp-3); }
+.wf-folder-path { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--ink-2); }
+.workflow-update-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 6px var(--sp-3);
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.workflow-update-banner-text { flex: 1; min-width: 0; }

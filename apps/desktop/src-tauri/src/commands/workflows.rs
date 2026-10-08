@@ -157,6 +157,7 @@ async fn run_manually(
     let streams = app.state::<StreamManager>();
     let running = app.state::<Arc<RunningWorkflows>>();
     let questions = app.state::<Questions>();
+    let documents = app.state::<crate::workflows::documents::DocumentChanges>();
     let connectors = app.state::<crate::connector_runtime::ConnectorRuntimeManager>();
     let guard = running
         .try_start(workflow_id)
@@ -172,6 +173,7 @@ async fn run_manually(
         notify: Some(&notify),
         questions: Some(questions.inner()),
         connectors: Some(connectors.inner()),
+        documents: Some(documents.inner()),
     };
     runner.run_from(workflow_id, inputs, trigger, resume).await
 }

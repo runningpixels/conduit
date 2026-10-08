@@ -12,6 +12,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
+import { documentEditSummary } from '../workflows/documentEditSummary';
+import { UndoUpdate } from '../workflows/UndoUpdate';
+import { dataStepSummary } from '../workflows/stepSummary';
 import {
   createWorkflow,
   deleteWorkflow,
@@ -45,7 +48,7 @@ import type {
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
-import { newStep } from '../workflows/editorModel';
+import { needsDocumentTarget, newStep } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { reviewText } from '../workflows/permissionText';
 import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
@@ -94,6 +97,9 @@ function durationMs(start: string, end: string | null): number | null {
 export function WorkflowsPage({
   onStatus,
   onOpenDocument,
+  onOpenDeck,
+  onOpenDraft,
+  onRestoreDocument,
   refreshKey,
   startNew = false,
   focus = null,
@@ -101,6 +107,12 @@ export function WorkflowsPage({
   onStatus: (message: string) => void;
   /** Open a document a run saved, in its conversation's document panel. */
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
+  /** Open a deck an "Update a deck" step changed, in Slides. */
+  onOpenDeck?: (deckId: string) => void;
+  /** Open a draft an "Update a draft" step changed, in Writing. */
+  onOpenDraft?: (draftId: string) => void;
+  /** Put a deck or draft back to a history entry ("Undo this update"); reloads it if it is open. */
+  onRestoreDocument?: (kind: 'deck' | 'draft', id: string, snapshotId: string) => Promise<void>;
   /** Changes when a scheduled run finishes elsewhere; the page re-reads. */
   refreshKey?: number;
   /** Open on the "new workflow" picker (Home's "New workflow"). */
@@ -361,6 +373,22 @@ export function WorkflowsPage({
   }, [running, selectedId]);
 
   async function startFrom(starter: StarterWorkflow) {
+    // A starter that changes a deck or draft cannot be saved until the user
+    // picks which one, so it opens in the editor with that step flagged.
+    if (needsDocumentTarget(starter.definition)) {
+      setEditError(null);
+      setMode({
+        kind: 'draft',
+        workflowId: null,
+        draft: {
+          name: t(starter.nameKey),
+          description: t(starter.blurbKey),
+          definition: starter.definition,
+        },
+        json: null,
+      });
+      return;
+    }
     setBusy(true);
     try {
       const created = await createWorkflow(t(starter.nameKey), t(starter.blurbKey), starter.definition);
@@ -788,6 +816,9 @@ export function WorkflowsPage({
             detail={openRun}
             statusLabel={statusLabel}
             onOpenDocument={onOpenDocument}
+            onOpenDeck={onOpenDeck}
+            onOpenDraft={onOpenDraft}
+            onRestoreDocument={onRestoreDocument}
             canRerun={!running && !busy}
             onRerunFrom={(stepId) => void run(() => rerunWorkflowFrom(openRun.run.id, stepId))}
           />
@@ -1003,12 +1034,18 @@ function RunDetail({
   detail,
   statusLabel,
   onOpenDocument,
+  onOpenDeck,
+  onOpenDraft,
+  onRestoreDocument,
   canRerun = false,
   onRerunFrom,
 }: {
   detail: WorkflowRunDetail;
   statusLabel: (s: string) => string;
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
+  onOpenDeck?: (deckId: string) => void;
+  onOpenDraft?: (draftId: string) => void;
+  onRestoreDocument?: (kind: 'deck' | 'draft', id: string, snapshotId: string) => Promise<void>;
   canRerun?: boolean;
   /// Run the workflow again from this top-level step, reusing what came before.
   onRerunFrom?: (stepId: string) => void;
@@ -1060,6 +1097,9 @@ function RunDetail({
             key={step.id}
             step={step}
             statusLabel={statusLabel}
+            onOpenDeck={onOpenDeck}
+            onOpenDraft={onOpenDraft}
+            onRestoreDocument={onRestoreDocument}
             onRerun={onRerunFrom && step.iteration == null ? () => onRerunFrom(step.stepId) : undefined}
             canRerun={canRerun}
           />
@@ -1072,11 +1112,17 @@ function RunDetail({
 function RunStepRow({
   step,
   statusLabel,
+  onOpenDeck,
+  onOpenDraft,
+  onRestoreDocument,
   onRerun,
   canRerun = false,
 }: {
   step: WorkflowRunStep;
   statusLabel: (s: string) => string;
+  onOpenDeck?: (deckId: string) => void;
+  onOpenDraft?: (draftId: string) => void;
+  onRestoreDocument?: (kind: 'deck' | 'draft', id: string, snapshotId: string) => Promise<void>;
   /// Offered on top-level steps: run again from here.
   onRerun?: () => void;
   canRerun?: boolean;
@@ -1088,6 +1134,13 @@ function RunStepRow({
     step.iteration != null
       ? t('workspace.workflows.runDetail.iteration', { step: step.stepId, n: step.iteration + 1 })
       : step.stepId;
+  const dataSummary = dataStepSummary(step, t, (bytes) => fmt.size(bytes));
+  const edit = documentEditSummary(step, t);
+  const open = edit?.target
+    ? edit.target.kind === 'deck'
+      ? onOpenDeck && (() => onOpenDeck(edit.target!.id))
+      : onOpenDraft && (() => onOpenDraft(edit.target!.id))
+    : undefined;
   return (
     <li className={step.iteration != null ? 'wf-run-step wf-run-step-nested' : 'wf-run-step'}>
       <details>
@@ -1098,6 +1151,8 @@ function RunStepRow({
           {conditionText(step) ? (
             <span className="wf-muted wf-step-reason">{conditionText(step)}</span>
           ) : null}
+          {dataSummary ? <span className="wf-muted wf-step-reason">{dataSummary}</span> : null}
+          {edit ? <span className="wf-muted wf-step-reason">{edit.text}</span> : null}
           {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
         </summary>
         {step.error ? <p className="wf-error">{step.error}</p> : null}
@@ -1122,6 +1177,24 @@ function RunStepRow({
           </>
         ) : null}
       </details>
+      {edit?.note ? <p className="wf-muted">{edit.note}</p> : null}
+      {open ? (
+        <button type="button" className="btn ghost" onClick={open}>
+          {t(
+            edit?.target?.kind === 'deck'
+              ? 'workspace.workflows.runDetail.openDeck'
+              : 'workspace.workflows.runDetail.openDraft',
+          )}
+        </button>
+      ) : null}
+      {edit?.target && edit.beforeSnapshotId ? (
+        <UndoUpdate
+          kind={edit.target.kind}
+          id={edit.target.id}
+          snapshotId={edit.beforeSnapshotId}
+          onRestore={onRestoreDocument}
+        />
+      ) : null}
     </li>
   );
 }

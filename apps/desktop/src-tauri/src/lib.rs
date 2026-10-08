@@ -22,6 +22,7 @@ pub mod conversation_export;
 pub mod credentials;
 pub mod db;
 pub mod diagnostics;
+pub mod document_prompts;
 pub mod draft_blocks;
 pub mod draft_export;
 pub mod drop_grant;

@@ -327,6 +327,29 @@ pub async fn mark_interrupted_by_request(
     Ok(())
 }
 
+/// Record the model that wrote the assistant messages of `conversation_id`
+/// created at or after `since`, as `metadata.model = { provider, model }`
+/// (other metadata is kept). For turns run for the user, such as a workflow's
+/// update of a deck, so the chat names what actually ran.
+pub async fn set_assistant_model_since(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    since: &str,
+    provider: &str,
+    model: &str,
+) -> Result<(), DbError> {
+    let value = serde_json::json!({ "provider": provider, "model": model }).to_string();
+    sqlx::query(
+        "UPDATE messages SET metadata = json_set(COALESCE(metadata, '{}'), '$.model', json(?))          WHERE conversation_id = ? AND role = 'assistant' AND created_at >= ?",
+    )
+    .bind(value)
+    .bind(conversation_id)
+    .bind(since)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Look up the message id backing an assistant turn, if any.
 pub async fn get_message_id_by_request(
     pool: &SqlitePool,

@@ -45,3 +45,42 @@ describe('reviewText', () => {
     expect(reviewText(review, t)).toBe('anyHost {"url":"https://elsewhere.org/x","step":"page"}');
   });
 });
+
+describe('read folder', () => {
+  it('names the folder, in the list and in a review', () => {
+    const p = { kind: 'readFolder', path: 'C:\\Reports', label: null, local: null } as const;
+    expect(permissionText(p, t)).toBe('readFolder {"folder":"C:\\\\Reports"}');
+    const review: WorkflowReview = {
+      runId: 'r1',
+      workflowId: 'w1',
+      workflowName: 'Weekly',
+      stepId: 'file',
+      permission: p,
+      url: null,
+      requestedAt: '2026-09-29T08:00:00Z',
+      expiresAt: '2026-09-30T08:00:00Z',
+    };
+    expect(reviewText(review, t)).toBe('readFolder {"folder":"C:\\\\Reports"}');
+  });
+});
+
+describe('editDocument', () => {
+  it('names the deck or the draft it will change', () => {
+    const deck = { kind: 'editDocument', documentKind: 'deck', id: 'd1', title: 'Q3 numbers', label: null, local: null } as const;
+    const draft = { kind: 'editDocument', documentKind: 'draft', id: 'p1', title: 'Monthly report', label: null, local: null } as const;
+    expect(permissionText(deck, t)).toBe('editDeck {"title":"Q3 numbers"}');
+    expect(permissionText(draft, t)).toBe('editDraft {"title":"Monthly report"}');
+    const review = (permission: typeof deck | typeof draft): WorkflowReview => ({
+      runId: 'r1',
+      workflowId: 'w1',
+      workflowName: 'Weekly numbers',
+      stepId: 'deck',
+      permission,
+      url: null,
+      requestedAt: '2026-10-07T08:00:00Z',
+      expiresAt: '2026-10-07T09:00:00Z',
+    });
+    expect(reviewText(review(deck), t)).toBe('editDeck {"title":"Q3 numbers"}');
+    expect(reviewText(review(draft), t)).toBe('editDraft {"title":"Monthly report"}');
+  });
+});

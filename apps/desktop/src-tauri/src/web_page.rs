@@ -30,6 +30,9 @@ pub struct Page {
     pub text: String,
     /// Absolute links found on an HTML page (empty for plain text).
     pub links: Vec<String>,
+    /// The response's media type, lowercase and without parameters
+    /// (`text/html`, `text/csv`); empty when the site sent none.
+    pub content_type: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,6 +129,12 @@ pub async fn fetch(
         .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
         .map(|(_, v)| v.to_ascii_lowercase())
         .unwrap_or_default();
+    let media_type = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     if content_type.contains("application/pdf") || bytes.starts_with(b"%PDF-") {
         let text = pdf_text(bytes).await?;
         return Ok(Page {
@@ -133,9 +142,21 @@ pub async fn fetch(
             url: response.url,
             text: text.chars().take(max_chars).collect(),
             links: Vec::new(),
+            content_type: media_type,
         });
     }
     let body = String::from_utf8_lossy(&bytes);
+    // Data (a CSV, JSON or plain-text file) is handed over as it is: reading
+    // it as an article would throw away the rows.
+    if is_data(&media_type, &response.url) {
+        return Ok(Page {
+            url: response.url,
+            title: None,
+            text: body.chars().take(max_chars).collect(),
+            links: Vec::new(),
+            content_type: media_type,
+        });
+    }
     let is_html = content_type.contains("html") || body.trim_start().starts_with('<');
     let (title, text, links) = if is_html {
         let page = extract::extract_readable(&body, &response.url);
@@ -153,7 +174,31 @@ pub async fn fetch(
         title,
         text: text.chars().take(max_chars).collect(),
         links,
+        content_type: media_type,
     })
+}
+
+/// Whether a response is data to pass on untouched: by its media type, or,
+/// when the site sent none (or a generic download type), by the file
+/// extension in the URL.
+pub(crate) fn is_data(media_type: &str, url: &str) -> bool {
+    match media_type {
+        "text/csv"
+        | "text/tab-separated-values"
+        | "text/plain"
+        | "application/json"
+        | "application/csv" => true,
+        m if m.ends_with("+json") => true,
+        "" | "application/octet-stream" | "binary/octet-stream" => {
+            let path = url::Url::parse(url)
+                .map(|u| u.path().to_ascii_lowercase())
+                .unwrap_or_default();
+            [".csv", ".tsv", ".json", ".txt"]
+                .iter()
+                .any(|ext| path.ends_with(ext))
+        }
+        _ => false,
+    }
 }
 
 /// The text of a PDF, tidied: trailing spaces and runs of blank lines go.
@@ -378,6 +423,71 @@ mod tests {
             Some("Annual Report 2025")
         );
         assert_eq!(pdf_title("https://example.com/"), None);
+    }
+
+    #[tokio::test]
+    async fn csv_and_json_come_back_as_they_are() {
+        let csv = "\u{feff}Week,Revenue\n1,100\n\n<b>2</b>,250\n";
+        let base = serve("text/csv; charset=utf-8", csv.as_bytes().to_vec()).await;
+        let page = fetch(&format!("{base}/report"), "test", LOOPBACK, 10_000)
+            .await
+            .unwrap();
+        assert_eq!(page.text, csv, "no reading, no trimming");
+        assert_eq!(page.content_type, "text/csv");
+        assert_eq!(page.title, None);
+        assert!(page.links.is_empty());
+
+        let json = r#"{"rows": [{"a": 1}]}"#;
+        for content_type in ["application/json", "application/vnd.api+json", "text/plain"] {
+            let base = serve(content_type, json.as_bytes().to_vec()).await;
+            let page = fetch(&format!("{base}/x"), "test", LOOPBACK, 10_000)
+                .await
+                .unwrap();
+            assert_eq!(
+                (page.text.as_str(), page.content_type.as_str()),
+                (json, content_type)
+            );
+        }
+        let base = serve("text/tab-separated-values", b"a\tb\n1\t2\n".to_vec()).await;
+        let page = fetch(&format!("{base}/t"), "test", LOOPBACK, 10_000)
+            .await
+            .unwrap();
+        assert_eq!(page.text, "a\tb\n1\t2\n");
+    }
+
+    #[tokio::test]
+    async fn a_data_file_url_is_data_when_the_site_names_no_type() {
+        let csv = b"a,b\n1,2\n".to_vec();
+        for path in [
+            "/export.csv",
+            "/EXPORT.CSV?download=1",
+            "/data.json",
+            "/notes.txt",
+        ] {
+            let base = serve("application/octet-stream", csv.clone()).await;
+            let page = fetch(&format!("{base}{path}"), "test", LOOPBACK, 10_000)
+                .await
+                .unwrap_or_else(|e| panic!("{path}: {e}"));
+            assert_eq!(page.text, "a,b\n1,2\n", "{path}");
+            assert_eq!(page.content_type, "application/octet-stream");
+        }
+        // Without a data extension, a download is still not a page.
+        let base = serve("application/octet-stream", csv).await;
+        let result = fetch(&format!("{base}/download"), "test", LOOPBACK, 10_000).await;
+        assert!(matches!(result, Err(FetchError::NotAPage(_))), "{result:?}");
+    }
+
+    #[tokio::test]
+    async fn html_is_still_read_as_an_article() {
+        let html = "<html><head><title>News</title><script>track()</script></head>\
+                    <body><nav>Home</nav><article><h1>Big story</h1><p>It happened today.</p></article></body></html>";
+        let base = serve("text/html; charset=utf-8", html.as_bytes().to_vec()).await;
+        let page = fetch(&format!("{base}/story.csv"), "test", LOOPBACK, 10_000)
+            .await
+            .unwrap();
+        assert_eq!(page.title.as_deref(), Some("News"));
+        assert!(page.text.contains("Big story") && !page.text.contains("track()"));
+        assert_eq!(page.content_type, "text/html");
     }
 
     #[tokio::test]

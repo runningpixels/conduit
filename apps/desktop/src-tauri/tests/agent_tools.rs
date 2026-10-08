@@ -18,6 +18,7 @@ async fn write_html_document_creates_artifact() {
     let exports_dir = tempfile::tempdir().unwrap();
     let conv = conversations::create(&pool, None).await.unwrap();
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -68,6 +69,7 @@ async fn write_html_document_creates_when_artifact_id_unknown() {
     let exports_dir = tempfile::tempdir().unwrap();
     let conv = conversations::create(&pool, None).await.unwrap();
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -128,6 +130,7 @@ async fn edit_text_document_updates_existing() {
     .unwrap();
 
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -180,6 +183,7 @@ async fn export_document_writes_file() {
     .unwrap();
 
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -262,6 +266,7 @@ async fn write_brand_theme_creates_parseable_artifact() {
     let exports_dir = tempfile::tempdir().unwrap();
     let conv = conversations::create(&pool, None).await.unwrap();
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -327,6 +332,7 @@ async fn write_brand_theme_rejects_bad_hex_naming_the_field() {
     let exports_dir = tempfile::tempdir().unwrap();
     let conv = conversations::create(&pool, None).await.unwrap();
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -376,6 +382,7 @@ async fn write_brand_theme_rejects_missing_light_palette() {
     let exports_dir = tempfile::tempdir().unwrap();
     let conv = conversations::create(&pool, None).await.unwrap();
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -416,6 +423,7 @@ async fn write_brand_theme_surfaces_contrast_warnings_without_failing() {
     let exports_dir = tempfile::tempdir().unwrap();
     let conv = conversations::create(&pool, None).await.unwrap();
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -507,6 +515,7 @@ async fn patch_document_replaces_placeholders_and_keeps_the_kind() {
     )
     .await;
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -556,6 +565,7 @@ async fn a_failing_edit_saves_nothing_and_names_the_edit() {
     let original = "<p>a</p>\n<p>a</p>\n<p>b</p>";
     let id = html_document(&pool, &enc, artifacts_dir.path(), &conv.id, original).await;
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -609,6 +619,7 @@ async fn read_document_returns_the_requested_lines() {
     )
     .await;
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -646,6 +657,7 @@ async fn read_document_cuts_a_minified_line_instead_of_returning_nothing() {
     let minified = format!("<div>{}</div>", "é".repeat(40_000));
     let id = html_document(&pool, &enc, artifacts_dir.path(), &conv.id, &minified).await;
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),
@@ -741,6 +753,7 @@ async fn edit_html_document_converts_a_markdown_document() {
     let exports_dir = tempfile::tempdir().unwrap();
     let conv = conversations::create(&pool, None).await.unwrap();
     let ctx = AgentToolContext {
+        headless: false,
         db: &pool,
         artifacts_dir: artifacts_dir.path(),
         exports_dir: exports_dir.path(),

@@ -31,6 +31,10 @@ pub struct WorkflowDefinition {
     /// own; without one, the chat's active model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelChoice>,
+    /// An absolute folder the workflow's `read_file` steps may read from, and
+    /// nothing outside it. Its existence is checked when a step runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     pub steps: Vec<Step>,
 }
 
@@ -83,8 +87,12 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 /// What a step does. Each field that holds text is a template.
 ///
 /// Outputs, as later steps see them:
-/// - `fetch_page`: `pages` (each `url, title, text, links, lookedEmpty, error`)
-///   and `text` (all readable pages joined under their titles)
+/// - `fetch_page`: `pages` (each `url, title, text, links, lookedEmpty, error,
+///   contentType`) and `text` (all readable pages joined under their titles);
+///   a CSV, JSON or plain-text response is kept as it came, not read as an article
+/// - `read_file`: `path`, `name`, `text`, `modified` and `bytes`
+/// - `parse_data`: a table (`columns`, `rows`, `count`, `text`, `warnings`), or
+///   for JSON that isn't a list of objects, `data` and `text`
 /// - `web_search`: `results` (the search backend's result objects)
 /// - `summarize`: `text`, plus `data` (the parsed JSON) when `schema` is set
 /// - `template`: `text`
@@ -96,6 +104,11 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 ///   (why it passed or stopped the run)
 /// - `ask`: `answer`
 /// - `agent`: `text` (its answer) and `toolCalls` (the tools it called)
+/// - `edit_deck`: `deckId`, `title`, `changed` (slide ids), `skippedPinned`,
+///   `reply` (the model's one sentence), `layoutChecked` (always false: the
+///   layout is checked when the deck is next opened) and `model`
+/// - `edit_draft`: `draftId`, `title`, `changed` (block ids), `skippedPinned`,
+///   `reply` and `model`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -172,6 +185,42 @@ pub enum StepAction {
     },
     /// Carry on only if a test on `value` passes; otherwise the run ends,
     /// completed, as "nothing new". Top-level steps only.
+    /// Read a file from the workflow's folder (text, CSV, JSON, PDF or DOCX).
+    ReadFile {
+        /// A template: the file's path inside the folder.
+        path: String,
+    },
+    /// Turn CSV, TSV or JSON text into rows.
+    ParseData {
+        /// The text to read, usually a reference to an earlier step.
+        input: String,
+        /// One of [`DATA_FORMATS`]. Kept as text so a wrong one is reported
+        /// in plain words by [`validate`].
+        format: String,
+    },
+    /// Update a saved deck with an agent turn in the deck's own chat: change
+    /// what `instructions` ask for, keep the user's pinned text. Top-level
+    /// steps only.
+    EditDeck {
+        /// The deck's id.
+        deck: String,
+        /// What to change ("Update slide 3's chart with these numbers"); a template.
+        instructions: String,
+        /// The data the instructions work on, usually an earlier step's
+        /// output; a template. When set but empty, the step fails without
+        /// asking a model.
+        #[serde(default)]
+        input: Option<String>,
+    },
+    /// Update a saved draft the same way. A section that isn't in the draft
+    /// yet is added at the end. Top-level steps only.
+    EditDraft {
+        /// The draft's id.
+        draft: String,
+        instructions: String,
+        #[serde(default)]
+        input: Option<String>,
+    },
     Condition {
         /// A template: the text to test.
         value: String,
@@ -200,6 +249,9 @@ pub const CONDITION_TESTS: &[&str] = &[
     "equals",
 ];
 
+/// The formats a `parse_data` step reads.
+pub const DATA_FORMATS: &[&str] = &["csv", "tsv", "json"];
+
 /// Whether a condition test compares with `text`.
 pub fn condition_needs_text(is: &str) -> bool {
     matches!(is, "contains" | "not_contains" | "equals")
@@ -212,6 +264,9 @@ impl StepAction {
         match self {
             StepAction::FetchPage { .. } | StepAction::WebSearch { .. } => 2,
             StepAction::Summarize { .. } => 1,
+            // Only a conversation that is busy is tried again; a model that
+            // already changed the document is never asked twice.
+            StepAction::EditDeck { .. } | StepAction::EditDraft { .. } => 1,
             _ => 0,
         }
     }
@@ -294,7 +349,7 @@ fn plain_parse_error(message: &str) -> String {
     message.to_string()
 }
 
-const DEFINITION_KEYS: &[&str] = &["inputs", "model", "steps"];
+const DEFINITION_KEYS: &[&str] = &["inputs", "model", "folder", "steps"];
 const MODEL_KEYS: &[&str] = &["provider", "model"];
 const INPUT_KEYS: &[&str] = &["id", "label", "default"];
 const STEP_KEYS: &[&str] = &["id", "type", "onError", "retries"];
@@ -312,6 +367,10 @@ fn action_keys(step_type: &str) -> &'static [&'static str] {
         "ask" => &["question", "choices", "default"],
         "notify" => &["title", "body", "onlyIfChanged"],
         "condition" => &["value", "is", "text"],
+        "read_file" => &["path"],
+        "parse_data" => &["input", "format"],
+        "edit_deck" => &["deck", "instructions", "input", "model"],
+        "edit_draft" => &["draft", "instructions", "input", "model"],
         _ => &[],
     }
 }
@@ -428,6 +487,17 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
     if let Some(model) = &def.model {
         check_model(model, "The workflow's model", &mut problems);
     }
+    let folder = def
+        .folder
+        .as_deref()
+        .map(str::trim)
+        .filter(|f| !f.is_empty());
+    if folder.is_some_and(|f| !std::path::Path::new(f).is_absolute()) {
+        problems.push(
+            "The workflow's folder needs a full path, starting from the top of a drive."
+                .to_string(),
+        );
+    }
     let mut input_ids = HashSet::new();
     for input in &def.inputs {
         if !is_id(&input.id) {
@@ -446,6 +516,7 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
         inputs: &input_ids,
         steps: Vec::new(),
         in_loop: false,
+        has_folder: folder.is_some(),
     };
     check_steps(&def.steps, scope, &mut all_ids, &mut count, &mut problems);
     if count > MAX_STEPS {
@@ -467,6 +538,8 @@ struct Scope<'a> {
     inputs: &'a HashSet<&'a str>,
     steps: Vec<String>,
     in_loop: bool,
+    /// The workflow has a folder to read files from.
+    has_folder: bool,
 }
 
 fn check_steps(
@@ -500,10 +573,13 @@ fn check_steps(
         if let Some(model) = &step.model {
             if !matches!(
                 step.action,
-                StepAction::Summarize { .. } | StepAction::Agent { .. }
+                StepAction::Summarize { .. }
+                    | StepAction::Agent { .. }
+                    | StepAction::EditDeck { .. }
+                    | StepAction::EditDraft { .. }
             ) {
                 problems.push(format!(
-                    "Step \"{name}\" can't choose a model: only summarize and agent steps use one."
+                    "Step \"{name}\" can't choose a model: only summarize, agent, edit_deck and edit_draft steps use one."
                 ));
             }
             check_model(model, &format!("Step \"{name}\"'s model"), problems);
@@ -622,6 +698,61 @@ fn check_steps(
                 texts.push(title);
                 texts.push(body);
             }
+            StepAction::ReadFile { path } => {
+                if !scope.has_folder {
+                    problems.push(format!(
+                        "Step \"{name}\" reads a file, so choose the workflow's folder first."
+                    ));
+                }
+                if path.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs a file path."));
+                }
+                texts.push(path);
+            }
+            StepAction::ParseData { input, format } => {
+                if format.is_empty() {
+                    problems.push(format!(
+                        "Step \"{name}\" needs a format (one of: {}).",
+                        DATA_FORMATS.join(", ")
+                    ));
+                } else if !DATA_FORMATS.contains(&format.as_str()) {
+                    problems.push(format!(
+                        "Step \"{name}\": \"{format}\" isn't a data format. Use one of: {}.",
+                        DATA_FORMATS.join(", ")
+                    ));
+                }
+                texts.push(input);
+            }
+            StepAction::EditDeck {
+                deck,
+                instructions,
+                input,
+            } => {
+                check_update(
+                    ("deck", deck),
+                    instructions,
+                    input.as_deref(),
+                    &scope,
+                    name,
+                    problems,
+                    &mut texts,
+                );
+            }
+            StepAction::EditDraft {
+                draft,
+                instructions,
+                input,
+            } => {
+                check_update(
+                    ("draft", draft),
+                    instructions,
+                    input.as_deref(),
+                    &scope,
+                    name,
+                    problems,
+                    &mut texts,
+                );
+            }
             StepAction::Condition { value, is, text } => {
                 if scope.in_loop {
                     problems.push(format!(
@@ -680,6 +811,35 @@ fn check_steps(
             }
         }
         scope.steps.push(step.id.clone());
+    }
+}
+
+/// The checks `edit_deck` and `edit_draft` share. `target` is the kind ("deck"
+/// or "draft") and the id chosen.
+fn check_update<'a>(
+    target: (&str, &str),
+    instructions: &'a str,
+    input: Option<&'a str>,
+    scope: &Scope<'_>,
+    name: &str,
+    problems: &mut Vec<String>,
+    texts: &mut Vec<&'a str>,
+) {
+    let (kind, id) = target;
+    if id.trim().is_empty() {
+        problems.push(format!("Step \"{name}\" needs a {kind} to update."));
+    }
+    if instructions.trim().is_empty() {
+        problems.push(format!("Step \"{name}\" needs instructions."));
+    }
+    if scope.in_loop {
+        problems.push(format!(
+            "Step \"{name}\" updates a saved {kind}, which only works on the steps at the top level, not inside a repeated step."
+        ));
+    }
+    texts.push(instructions);
+    if let Some(input) = input {
+        texts.push(input);
     }
 }
 
@@ -1019,7 +1179,7 @@ mod tests {
         let problems = validate(&def(raw.clone())).unwrap_err();
         assert_eq!(
             problems,
-            vec!["Step \"t\" can't choose a model: only summarize and agent steps use one."]
+            vec!["Step \"t\" can't choose a model: only summarize, agent, edit_deck and edit_draft steps use one."]
         );
         // And the editor's unknown-setting check names it too.
         assert_eq!(
@@ -1188,6 +1348,148 @@ mod tests {
             unknown_settings(&raw),
             vec![
                 "Step \"c\": unknown setting \"Text\" \u{2014} did you mean \"text\"?".to_string()
+            ]
+        );
+    }
+
+    fn file_steps() -> Value {
+        json!([
+            { "id": "f", "type": "read_file", "path": "reports/metrics.csv" },
+            { "id": "d", "type": "parse_data", "input": "{{steps.f.text}}", "format": "csv" },
+        ])
+    }
+
+    fn some_folder() -> &'static str {
+        if cfg!(windows) {
+            "C:\\data\\reports"
+        } else {
+            "/data/reports"
+        }
+    }
+
+    #[test]
+    fn a_file_step_needs_the_workflows_folder() {
+        let with = json!({ "folder": some_folder(), "steps": file_steps() });
+        let d = def(with.clone());
+        assert_eq!(d.folder.as_deref(), Some(some_folder()));
+        assert!(unknown_settings(&with).is_empty());
+        assert_eq!(validate(&d), Ok(()));
+        // It round-trips, and a workflow without one stores none.
+        assert_eq!(parse(&serde_json::to_string(&d).unwrap()).unwrap(), d);
+        assert!(serde_json::to_value(def(briefing()))
+            .unwrap()
+            .get("folder")
+            .is_none());
+
+        let problems = problems_of(json!({ "steps": file_steps() }));
+        assert_eq!(
+            problems,
+            vec!["Step \"f\" reads a file, so choose the workflow's folder first."]
+        );
+        let blank = problems_of(json!({ "folder": "  ", "steps": file_steps() }));
+        assert_eq!(blank, problems);
+        let relative = problems_of(json!({ "folder": "reports", "steps": file_steps() }));
+        assert_eq!(
+            relative,
+            vec!["The workflow's folder needs a full path, starting from the top of a drive."]
+        );
+    }
+
+    #[test]
+    fn file_and_data_steps_check_their_settings() {
+        let problems = problems_of(json!({ "folder": some_folder(), "steps": [
+            { "id": "f", "type": "read_file", "path": " " },
+            { "id": "a", "type": "parse_data", "input": "{{steps.f.text}}", "format": "" },
+            { "id": "b", "type": "parse_data", "input": "{{steps.later.text}}", "format": "xml" },
+            { "id": "later", "type": "template", "template": "x" },
+        ]}));
+        let has = |text: &str| problems.iter().any(|p| p.contains(text));
+        assert!(has("Step \"f\" needs a file path."), "{problems:?}");
+        assert!(has("Step \"a\" needs a format"), "{problems:?}");
+        assert!(
+            has("Step \"b\": \"xml\" isn't a data format. Use one of: csv, tsv, json."),
+            "{problems:?}"
+        );
+        assert!(has("steps.later.text"), "{problems:?}");
+        // Misspelt settings are named.
+        let raw = json!({ "folder": some_folder(), "steps": [
+            { "id": "f", "type": "read_file", "Path": "a.csv" },
+            { "id": "d", "type": "parse_data", "input": "x", "format": "csv", "Format": "tsv" },
+        ]});
+        assert_eq!(
+            unknown_settings(&raw),
+            vec![
+                "Step \"f\": unknown setting \"Path\" \u{2014} did you mean \"path\"?".to_string(),
+                "Step \"d\": unknown setting \"Format\" \u{2014} did you mean \"format\"?"
+                    .to_string(),
+            ]
+        );
+        // A missing format is a parse error in plain words.
+        let err = parse(r#"{"steps":[{"id":"d","type":"parse_data","input":"x"}]}"#).unwrap_err();
+        assert!(
+            err.ends_with("A step is missing its \"format\" setting."),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn update_steps_need_a_document_and_instructions_and_stay_at_the_top_level() {
+        let fine = def(json!({ "steps": [
+            { "id": "d", "type": "edit_deck", "deck": "deck-1", "instructions": "Update slide 3",
+              "input": "{{inputs.q}}", "model": { "provider": "ollama", "model": "m" } },
+            { "id": "w", "type": "edit_draft", "draft": "draft-1", "instructions": "Add a section" },
+        ], "inputs": [{ "id": "q", "label": "Q" }]}));
+        assert!(validate(&fine).is_ok(), "{:?}", validate(&fine));
+        assert_eq!(fine.steps[0].action.default_retries(), 1);
+        let StepAction::EditDeck { deck, input, .. } = &fine.steps[0].action else {
+            panic!("an edit_deck step");
+        };
+        assert_eq!(
+            (deck.as_str(), input.as_deref()),
+            ("deck-1", Some("{{inputs.q}}"))
+        );
+
+        let bad = def(json!({ "steps": [
+            { "id": "d", "type": "edit_deck", "deck": " ", "instructions": "" },
+            { "id": "w", "type": "edit_draft", "draft": "", "instructions": "Go" },
+            { "id": "each", "type": "for_each", "items": "steps.d.text", "steps": [
+                { "id": "in", "type": "edit_deck", "deck": "x", "instructions": "Go" }
+            ]},
+        ]}));
+        let problems = validate(&bad).unwrap_err().join("\n");
+        assert!(
+            problems.contains("Step \"d\" needs a deck to update."),
+            "{problems}"
+        );
+        assert!(
+            problems.contains("Step \"d\" needs instructions."),
+            "{problems}"
+        );
+        assert!(
+            problems.contains("Step \"w\" needs a draft to update."),
+            "{problems}"
+        );
+        assert!(
+            problems.contains(
+                "Step \"in\" updates a saved deck, which only works on the steps at the top level"
+            ),
+            "{problems}"
+        );
+        let missing =
+            parse(r#"{"steps":[{"id":"d","type":"edit_deck","instructions":"Go"}]}"#).unwrap_err();
+        assert!(
+            missing.ends_with("A step is missing its \"deck\" setting."),
+            "{missing}"
+        );
+
+        let raw = json!({ "steps": [
+            { "id": "d", "type": "edit_deck", "deck": "x", "instructions": "Go", "Input": "y" },
+        ]});
+        assert_eq!(
+            unknown_settings(&raw),
+            vec![
+                "Step \"d\": unknown setting \"Input\" \u{2014} did you mean \"input\"?"
+                    .to_string()
             ]
         );
     }

@@ -134,4 +134,51 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
       ],
     },
   },
+  {
+    id: 'weekly-numbers-deck',
+    nameKey: 'workspace.workflows.starter.weeklyDeck.name',
+    blurbKey: 'workspace.workflows.starter.weeklyDeck.blurb',
+    definition: {
+      inputs: [{ id: 'url', label: 'Numbers (CSV address)', default: 'https://example.com/weekly-numbers.csv' }],
+      steps: [
+        { id: 'fetch', type: 'fetch_page', urls: ['{{inputs.url}}'] },
+        { id: 'data', type: 'parse_data', input: '{{steps.fetch.pages.0.text}}', format: 'csv' },
+        {
+          id: 'deck',
+          type: 'edit_deck',
+          // Picked in the editor: a starter cannot know which deck is yours.
+          deck: '',
+          instructions:
+            'Update the chart and the numbers on the slides that show them, using the table below. Keep the layout and wording; change only the figures.',
+          input: '{{steps.data.text}}',
+        },
+      ],
+    },
+  },
+  {
+    id: 'monthly-report-section',
+    nameKey: 'workspace.workflows.starter.monthlySection.name',
+    blurbKey: 'workspace.workflows.starter.monthlySection.blurb',
+    definition: {
+      inputs: [{ id: 'url', label: 'Page', default: 'https://news.ycombinator.com' }],
+      steps: [
+        { id: 'fetch', type: 'fetch_page', urls: ['{{inputs.url}}'] },
+        {
+          id: 'summary',
+          type: 'summarize',
+          prompt: 'Summarize what is new on this page in a short paragraph and three bullet points.',
+          input: '{{steps.fetch.text}}',
+        },
+        {
+          id: 'report',
+          type: 'edit_draft',
+          // Picked in the editor: a starter cannot know which draft is yours.
+          draft: '',
+          instructions:
+            "Add a section titled 'This month' at the end of the draft that presents the notes below. Leave the other sections as they are.",
+          input: '{{steps.summary.text}}',
+        },
+      ],
+    },
+  },
 ];

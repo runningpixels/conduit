@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
+import type { DeckSummary, DraftSummary } from '../ipc/contracts';
 import { WorkflowEditor, type WorkflowDraft } from './WorkflowEditor';
 
 const ipc = vi.hoisted(() => ({
@@ -9,6 +10,9 @@ const ipc = vi.hoisted(() => ({
   listConfiguredProviders: vi.fn(),
   listProviderModels: vi.fn(),
   getSettings: vi.fn(),
+  pickWorkspaceFolder: vi.fn(),
+  listDecks: vi.fn(),
+  listDrafts: vi.fn(),
 }));
 vi.mock('../ipc/client', () => ipc);
 
@@ -343,5 +347,154 @@ describe('WorkflowEditor: only if something changed', () => {
     expect(out.draft.definition.steps[0]).not.toHaveProperty('onlyIfChanged');
     const inner = screen.getAllByRole('listitem', { name: /^1\. Show a notification/ })[1];
     expect(within(inner).queryByRole('checkbox', { name: 'Only if it changed since the last run' })).toBeNull();
+  });
+});
+
+describe('data steps and folder', () => {
+  it('sets and clears the folder with the picker', async () => {
+    const out = renderEditor({ steps: [] });
+    ipc.pickWorkspaceFolder.mockResolvedValueOnce('C:\\Reports');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose folder…' }));
+    await waitFor(() => expect(out.draft.definition.folder).toBe('C:\\Reports'));
+    expect(screen.getByText('C:\\Reports')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear folder' }));
+    expect(out.draft.definition).not.toHaveProperty('folder');
+    // Cancelling the dialog changes nothing.
+    ipc.pickWorkspaceFolder.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Choose folder…' }));
+    await waitFor(() => expect(ipc.pickWorkspaceFolder).toHaveBeenCalledTimes(2));
+    expect(out.draft.definition).not.toHaveProperty('folder');
+  });
+
+  it('writes a read_file path and hints when there is no folder', () => {
+    const out = renderEditor({ steps: [] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'read_file' } });
+    const c = card(/^1\. Read a file/);
+    expect(within(c).getByText(/Choose the workflow's folder above/)).toBeTruthy();
+    typeInto(within(c).getByRole('textbox', { name: 'File path (inside the folder)' }), 'reports/metrics.csv');
+    expect(out.draft.definition.steps[0]).toEqual({ id: 'file', type: 'read_file', path: 'reports/metrics.csv' });
+  });
+
+  it('writes a parse_data input and format, and offers the file text to insert', () => {
+    const out = renderEditor({
+      folder: 'C:\\Reports',
+      steps: [{ id: 'file', type: 'read_file', path: 'a.csv' }],
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'parse_data' } });
+    const c = card(/^2\. Turn text into a table/);
+    fireEvent.change(within(c).getByRole('combobox', { name: 'Insert a value into Text to turn into a table' }), {
+      target: { value: 'steps.file.text' },
+    });
+    fireEvent.change(within(c).getByRole('combobox', { name: 'Format' }), { target: { value: 'tsv' } });
+    expect(out.draft.definition.steps[1]).toEqual({ id: 'data', type: 'parse_data', input: '{{steps.file.text}}', format: 'tsv' });
+    expect(screen.queryByText(/Choose the workflow's folder above/)).toBeNull();
+  });
+});
+
+const deckSummary = (id: string, title: string, stage: DeckSummary['stage'], slideCount: number): DeckSummary => ({
+  id,
+  title,
+  themeName: 'Plain',
+  slideCount,
+  stage,
+  createdAt: '2026-10-01T00:00:00Z',
+  updatedAt: '2026-10-01T00:00:00Z',
+});
+const draftSummary = (id: string, title: string, stage: DraftSummary['stage'], words: number): DraftSummary => ({
+  id,
+  title,
+  stage,
+  words,
+  updatedAt: '2026-10-01T00:00:00Z',
+});
+
+describe('update a deck or draft', () => {
+  beforeEach(() => {
+    ipc.listDecks.mockResolvedValue([
+      deckSummary('deck-1', 'Q3 numbers', 'slides', 12),
+      deckSummary('deck-2', 'Kickoff', 'slides', 1),
+      deckSummary('deck-3', 'Still an outline', 'storyline', 0),
+    ]);
+    ipc.listDrafts.mockResolvedValue([
+      draftSummary('draft-1', 'Monthly report', 'draft', 1200),
+      draftSummary('draft-2', 'Outline only', 'outline', 0),
+    ]);
+  });
+
+  it('adds a deck step, picks from slides-stage decks only, and writes instructions, input and model', async () => {
+    const out = renderEditor({
+      inputs: [],
+      steps: [{ id: 'data', type: 'parse_data', input: '', format: 'csv' }],
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'edit_deck' } });
+    const deck = card(/^2\. Update a deck/);
+    const picker = (await within(deck).findByRole('combobox', { name: 'Deck' })) as HTMLSelectElement;
+    await waitFor(() => expect(within(picker).getAllByRole('option').length).toBeGreaterThan(1));
+    expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Choose a deck…',
+      'Q3 numbers · 12 slides',
+      'Kickoff · 1 slide',
+    ]);
+    // Nothing is chosen yet, and the card says so.
+    expect(within(deck).getByText('Choose the deck this step updates.')).toBeInTheDocument();
+    fireEvent.change(picker, { target: { value: 'deck-1' } });
+    expect(within(deck).queryByText('Choose the deck this step updates.')).not.toBeInTheDocument();
+    typeInto(within(deck).getByRole('textbox', { name: 'What to change' }), "Update slide 3's chart.");
+    fireEvent.change(within(deck).getByRole('combobox', { name: 'Insert a value into Text to work on' }), {
+      target: { value: 'steps.data.text' },
+    });
+    expect(out.draft.definition.steps[1]).toMatchObject({
+      type: 'edit_deck',
+      deck: 'deck-1',
+      instructions: "Update slide 3's chart.",
+      input: '{{steps.data.text}}',
+    });
+    // The model row is the same one the summarize step has.
+    expect(within(deck).getByText('Model for this step')).toBeInTheDocument();
+  });
+
+  it('offers drafts past their outline, with their size', async () => {
+    const out = renderEditor({ inputs: [], steps: [] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'edit_draft' } });
+    const draft = card(/^1\. Update a draft/);
+    const picker = (await within(draft).findByRole('combobox', { name: 'Draft' })) as HTMLSelectElement;
+    await waitFor(() => expect(within(picker).getAllByRole('option').length).toBeGreaterThan(1));
+    expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Choose a draft…',
+      'Monthly report · 1,200 words',
+    ]);
+    fireEvent.change(picker, { target: { value: 'draft-1' } });
+    typeInto(within(draft).getByRole('textbox', { name: 'What to change' }), "Add a section 'This week'.");
+    expect(out.draft.definition.steps[0]).toMatchObject({
+      type: 'edit_draft',
+      draft: 'draft-1',
+      instructions: "Add a section 'This week'.",
+    });
+    expect('input' in out.draft.definition.steps[0]).toBe(false);
+  });
+
+  it('says so in the card when the deck or draft was deleted', async () => {
+    renderEditor({
+      inputs: [],
+      steps: [
+        { id: 'a', type: 'edit_deck', deck: 'gone', instructions: 'x' },
+        { id: 'b', type: 'edit_draft', draft: 'gone-too', instructions: 'y' },
+      ],
+    });
+    expect(await screen.findByText('This deck was deleted')).toBeInTheDocument();
+    expect(await screen.findByText('This draft was deleted')).toBeInTheDocument();
+  });
+
+  it('flags a deck that is still an outline', async () => {
+    renderEditor({ inputs: [], steps: [{ id: 'a', type: 'edit_deck', deck: 'deck-3', instructions: 'x' }] });
+    expect(await screen.findByText('This deck is still an outline. Finish it in Slides first.')).toBeInTheDocument();
+  });
+
+  it('does not offer them inside a loop', () => {
+    renderEditor({ inputs: [], steps: [{ id: 'each', type: 'for_each', items: '', steps: [] }] });
+    const inner = screen.getByRole('combobox', { name: 'Add a step to repeat…' });
+    expect(within(inner).queryByRole('option', { name: 'Update a deck' })).not.toBeInTheDocument();
+    expect(within(inner).queryByRole('option', { name: 'Update a draft' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('combobox', { name: 'Add a step…' })).getByRole('option', { name: 'Update a deck' })).toBeInTheDocument();
   });
 });

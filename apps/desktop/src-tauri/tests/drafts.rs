@@ -413,7 +413,13 @@ impl Harness {
     }
 
     async fn run(&self, tool: &str, args: Value) -> AgentToolExecution {
+        self.run_as(false, tool, args).await
+    }
+
+    /// `run`, as a turn nobody is watching when `headless`.
+    async fn run_as(&self, headless: bool, tool: &str, args: Value) -> AgentToolExecution {
         let ctx = AgentToolContext {
+            headless,
             db: &self.pool,
             artifacts_dir: self.artifacts.path(),
             exports_dir: self.exports.path(),
@@ -972,4 +978,93 @@ async fn write_section_refuses_an_empty_body_or_a_heading_not_in_the_outline() {
         "{}",
         written.markdown
     );
+}
+
+#[tokio::test]
+async fn headless_turns_ignore_release_pinned_and_may_add_a_section() {
+    let h = Harness::new().await;
+    h.ok(SET_OUTLINE_TOOL, outline_args()).await;
+    drafts::set_stage(&h.pool, &h.enc, &h.draft_id, DraftStage::Draft)
+        .await
+        .unwrap();
+    h.ok(
+        WRITE_SECTION_TOOL,
+        json!({ "heading": "Brewing", "markdown": "Boil water.
+
+Steep the tea." }),
+    )
+    .await;
+    let draft = h.draft().await;
+    let edited = draft
+        .markdown
+        .replace("Steep the tea.", "Steep the tea for three minutes.");
+    let draft = drafts::save_markdown(&h.pool, &h.enc, &h.draft_id, &edited)
+        .await
+        .unwrap();
+    let mine = block(&draft, "Steep the tea for three minutes.").id.clone();
+
+    // A watching chat may release it; an automated update never.
+    let out = h
+        .run_as(
+            true,
+            EDIT_BLOCKS_TOOL,
+            json!({ "edits": [{ "block_id": mine, "markdown": "Gone." }], "release_pinned": [mine] }),
+        )
+        .await;
+    assert!(out.is_error, "{}", out.output);
+    assert!(out.output["error"].as_str().unwrap().contains("pinned"));
+    assert!(h
+        .draft()
+        .await
+        .markdown
+        .contains("Steep the tea for three minutes."));
+
+    // A heading that is in neither the outline nor the draft: refused in a
+    // chat (the user adds it to the outline), added at the end headless.
+    let new_section = json!({ "heading": "This week", "markdown": "Sales rose." });
+    let refused = h
+        .run_as(false, WRITE_SECTION_TOOL, new_section.clone())
+        .await;
+    assert!(refused.is_error);
+    assert!(h
+        .draft()
+        .await
+        .outline
+        .iter()
+        .all(|s| s.heading != "This week"));
+    let before = h.draft().await;
+    let out = h.run_as(true, WRITE_SECTION_TOOL, new_section).await;
+    assert!(!out.is_error, "{}", out.output);
+    let after = h.draft().await;
+    assert!(
+        after.markdown.ends_with(
+            "## This week
+
+Sales rose.
+"
+        ),
+        "{}",
+        after.markdown
+    );
+    assert!(after.markdown.starts_with(before.markdown.trim_end()));
+    assert_eq!(after.outline.last().unwrap().heading, "This week");
+    assert_eq!(after.outline.len(), before.outline.len() + 1);
+    // Writing it again replaces that section like any other.
+    let again = h
+        .run_as(
+            true,
+            WRITE_SECTION_TOOL,
+            json!({ "heading": "This week", "markdown": "Sales rose again." }),
+        )
+        .await;
+    assert!(!again.is_error, "{}", again.output);
+    let after = h.draft().await;
+    assert!(
+        after.markdown.contains("Sales rose again.")
+            && !after.markdown.contains(
+                "Sales rose.
+"
+            )
+    );
+    assert_eq!(after.outline.len(), before.outline.len() + 1);
 }

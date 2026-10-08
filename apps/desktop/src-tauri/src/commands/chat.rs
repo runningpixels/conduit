@@ -102,6 +102,12 @@ pub async fn start_chat_stream(
 ) -> Result<StreamHandle, String> {
     if request.tool_definitions.is_empty() {
         let _ = runtime_channel;
+        // A reply without tools doesn't take the conversation's turn, but it
+        // must not land in the middle of one that has it (a workflow
+        // updating this deck or draft).
+        if let Some(holder) = stream_manager.turn_holder(&request.conversation_id) {
+            return Err(holder.busy_message(&crate::stream_manager::TurnOwner::Chat));
+        }
         stream_manager
             .start_chat_stream(state.inner(), request, channel)
             .await

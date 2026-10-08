@@ -748,11 +748,26 @@ pub async fn model_write_section(
     heading: &str,
     markdown: &str,
 ) -> Result<WrittenSection, DbError> {
+    model_write_section_with(pool, enc, draft, heading, markdown, false).await
+}
+
+/// [`model_write_section`]; with `add_new`, a heading that is in neither the
+/// outline nor the draft is added to the end of the outline and written there
+/// (a workflow's update has no one to ask to add it). Existing sections are
+/// not touched, and pinned blocks are kept as always.
+pub async fn model_write_section_with(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    draft: &Loaded,
+    heading: &str,
+    markdown: &str,
+    add_new: bool,
+) -> Result<WrittenSection, DbError> {
     require_stage(draft, DraftStage::Draft)?;
     if heading.trim().is_empty() {
         return Err(invalid("write_section needs the section's heading."));
     }
-    let headings: Vec<String> = draft.outline.iter().map(|s| s.heading.clone()).collect();
+    let mut headings: Vec<String> = draft.outline.iter().map(|s| s.heading.clone()).collect();
     // A call with no text or an unknown heading would leave an empty, stray
     // section (live: "## New econometrics for time-to-variance placeholder",
     // next to the real "time-varying risk" one). Refuse both, naming the
@@ -765,7 +780,26 @@ pub async fn model_write_section(
     let key = draft_blocks::heading_key(heading);
     let in_outline = headings.iter().any(|h| draft_blocks::heading_key(h) == key);
     let in_draft = draft_blocks::section_range(&draft.markdown, &draft.blocks, heading).is_some();
-    if !headings.is_empty() && !in_outline && !in_draft {
+    let adds_section = add_new && !in_outline && !in_draft;
+    let mut new_outline_to_store: Option<Vec<OutlineSection>> = None;
+    if adds_section {
+        let heading = heading.trim().trim_start_matches('#').trim();
+        let new_outline: Vec<OutlineSection> = draft
+            .outline
+            .iter()
+            .cloned()
+            .chain(std::iter::once(OutlineSection {
+                heading: heading.to_string(),
+                intent: String::new(),
+                target_words: None,
+            }))
+            .collect();
+        // Validates the heading (length) and the section count too.
+        let normalized = normalize_outline(new_outline, false)?;
+        headings = normalized.iter().map(|s| s.heading.clone()).collect();
+        new_outline_to_store = Some(normalized);
+    }
+    if !headings.is_empty() && !in_outline && !in_draft && !adds_section {
         let list = headings
             .iter()
             .map(|h| format!("\"{}\"", h.trim()))
@@ -779,6 +813,14 @@ pub async fn model_write_section(
     let new_md =
         draft_blocks::write_section(&draft.markdown, &draft.blocks, &headings, heading, markdown);
     let blocks = store_change(pool, enc, draft, &new_md, EditMode::Ai, &[]).await?;
+    if let Some(outline) = new_outline_to_store {
+        sqlx::query("UPDATE drafts SET outline_json = ?, updated_at = ? WHERE id = ?")
+            .bind(encode_json(enc, &outline, "draft outline")?)
+            .bind(now_iso8601())
+            .bind(&draft.id)
+            .execute(pool)
+            .await?;
+    }
     let section: Vec<String> = draft_blocks::section_range(&new_md, &blocks, heading)
         .map(|r| blocks[r].iter().map(|b| b.id.clone()).collect())
         .unwrap_or_default();

@@ -39,8 +39,15 @@ export function permissionText(p: WorkflowPermissionView, t: Translate): string 
         : t('workspace.workflows.permissions.modelCloud', { provider: p.label ?? p.provider });
     case 'saveDocuments':
       return t('workspace.workflows.permissions.saveDocuments');
+    case 'readFolder':
+      return t('workspace.workflows.permissions.readFolder', { folder: p.path });
     case 'agentTools':
       return t('workspace.workflows.permissions.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
+    case 'editDocument':
+      return t(
+        p.documentKind === 'deck' ? 'workspace.workflows.permissions.editDeck' : 'workspace.workflows.permissions.editDraft',
+        { title: p.title },
+      );
   }
 }
 
@@ -60,7 +67,14 @@ export function reviewText(review: WorkflowReview, t: Translate): string {
         : t('workspace.workflows.review.modelCloud', { provider: p.label ?? p.provider });
     case 'saveDocuments':
       return t('workspace.workflows.review.saveDocuments');
+    case 'readFolder':
+      return t('workspace.workflows.review.readFolder', { folder: p.path });
     case 'agentTools':
       return t('workspace.workflows.review.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
+    case 'editDocument':
+      return t(
+        p.documentKind === 'deck' ? 'workspace.workflows.review.editDeck' : 'workspace.workflows.review.editDraft',
+        { title: p.title },
+      );
   }
 }

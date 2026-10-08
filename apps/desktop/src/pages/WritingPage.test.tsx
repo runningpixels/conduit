@@ -45,6 +45,16 @@ describe('WritingPage', () => {
     expect(onOpenDraft).toHaveBeenCalledWith('d1');
   });
 
+  it('reads the list again when a workflow changed a draft', async () => {
+    const view = render(<WritingPage onOpenDraft={vi.fn()} onStartDraft={vi.fn()} refreshKey={0} />);
+    await screen.findByText('Q3 report');
+    expect(ipc.listDrafts).toHaveBeenCalledTimes(1);
+    ipc.listDrafts.mockResolvedValue([{ ...draft, words: 1500 }, outlining]);
+    view.rerender(<WritingPage onOpenDraft={vi.fn()} onStartDraft={vi.fn()} refreshKey={1} />);
+    expect(await screen.findByText('1,500 words')).toBeInTheDocument();
+    expect(ipc.listDrafts).toHaveBeenCalledTimes(2);
+  });
+
   it('shows the empty state', async () => {
     ipc.listDrafts.mockResolvedValue([]);
     render(<WritingPage onOpenDraft={vi.fn()} onStartDraft={vi.fn()} />);

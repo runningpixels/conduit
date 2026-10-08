@@ -19,6 +19,8 @@ export interface WritingPageProps {
    *  sends the brief as the draft chat's first message. */
   onStartDraft: (brief: string) => Promise<void>;
   onStatus?: (message: string) => void;
+  /** Changes when a workflow changed a draft; the list is read again. */
+  refreshKey?: number;
 }
 
 /** Starter chips: the label and the brief template they put in the box. */
@@ -30,7 +32,7 @@ export const WRITING_STARTERS: ReadonlyArray<{ id: string; labelId: string; temp
   { id: 'essay', labelId: 'writing.start.chip.essay', templateId: 'writing.start.template.essay' },
 ];
 
-export function WritingPage({ onOpenDraft, onStartDraft, onStatus }: WritingPageProps) {
+export function WritingPage({ onOpenDraft, onStartDraft, onStatus, refreshKey = 0 }: WritingPageProps) {
   const t = useT();
   const fmt = useFormatters();
   const [drafts, setDrafts] = useState<DraftSummary[] | null>(null);
@@ -53,7 +55,7 @@ export function WritingPage({ onOpenDraft, onStartDraft, onStatus }: WritingPage
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, refreshKey]);
 
   const fail = useCallback(
     (e: unknown) => onStatus?.(e instanceof Error ? e.message : String(e)),

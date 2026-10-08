@@ -134,6 +134,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_inbox_starter_name_reads_well_for_any_file() {
+        // `{{trigger.name}} summary.md` for a `list2.txt` and for a name with no extension.
+        assert_eq!(
+            checked_name("list2.txt summary.md").unwrap(),
+            "list2.txt summary.md"
+        );
+        assert_eq!(
+            checked_name("notes summary.md").unwrap(),
+            "notes summary.md"
+        );
+    }
+
+    #[test]
     fn only_things_in_the_exports_folder_can_be_revealed() {
         let dir = tempfile::tempdir().unwrap();
         let exports = dir.path().join("exports");

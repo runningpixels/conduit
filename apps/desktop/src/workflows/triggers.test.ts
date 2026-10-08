@@ -21,6 +21,10 @@ describe('triggers', () => {
     expect(runTriggerLabel({ trigger: 'feed' }, t)).toBe('runFeedPlain undefined');
     expect(runTriggerLabel({ trigger: 'folder', triggerItem: { name: 'a.pdf' } }, t)).toBe('runFolder {"name":"a.pdf"}');
     expect(runTriggerLabel({ trigger: 'folder', triggerItem: { name: ' ' } }, t)).toBe('runFolderPlain undefined');
+    expect(runTriggerLabel({ trigger: 'manual', triggerItem: { title: 'Rust 1.90' } }, t)).toBe('runTest {"item":"Rust 1.90"}');
+    expect(runTriggerLabel({ trigger: 'manual', triggerItem: { name: 'a.pdf' } }, t)).toBe('runTest {"item":"a.pdf"}');
+    expect(runTriggerLabel({ trigger: 'manual', triggerItem: null }, t)).toBeNull();
+    expect(runTriggerLabel({ trigger: 'manual' }, t)).toBeNull();
     expect(runTriggerLabel({ trigger: 'schedule' }, t)).toBeNull();
   });
 });

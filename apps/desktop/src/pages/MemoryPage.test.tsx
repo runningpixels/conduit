@@ -95,11 +95,13 @@ describe('MemoryPage', () => {
       item({}),
       item({ id: 'p1', status: 'pending', body: 'Queued BANANA-MEMORY', sourceConversationId: 'c1' }),
       item({ id: 'p2', status: 'pending', body: 'Another suggestion' }),
+      item({ id: 'p3', status: 'pending', body: 'From a flow', sourceConversationId: 'c2', sourceWorkflow: 'Weekly digest' }),
     ]);
     renderPage();
     const pending = await screen.findByRole('region', { name: 'Waiting for you' });
     expect(within(pending).getByText('Queued BANANA-MEMORY')).toBeInTheDocument();
     expect(within(pending).getAllByText(/from a chat/)).toHaveLength(1);
+    expect(within(pending).getAllByText(/from the workflow Weekly digest/)).toHaveLength(1);
     // The suggestion block precedes the saved facts in the document.
     const core = screen.getByRole('region', { name: 'Core' });
     expect(pending.compareDocumentPosition(core) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

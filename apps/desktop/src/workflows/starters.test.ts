@@ -123,6 +123,9 @@ describe('starters', () => {
     expect(inbox.definition.trigger).toEqual({ kind: 'folder' });
     expect(inbox.definition.steps.map((x) => x.type)).toEqual(['read_file', 'summarize', 'export_file', 'notify']);
     expect(inbox.definition.steps[0]).toMatchObject({ path: '{{trigger.path}}' });
+    // The export keeps the source's own extension out of the way: "list2.txt summary.md", never "summary-list2.txt.md".
+    const exportStep = inbox.definition.steps[2];
+    expect(exportStep.type === 'export_file' && exportStep.name).toBe('{{trigger.name}} summary.md');
     // Nothing is chosen for the user: the editor opens so they pick the folder.
     expect(triggerNeedsFolder(inbox.definition)).toBe(true);
   });

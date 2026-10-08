@@ -3,6 +3,8 @@
 
 import type { ConditionTest, WorkflowStep } from '../ipc/contracts';
 import type { Translate } from '../i18n';
+import type { ValueRef } from './editorModel';
+import { refLabel } from './refLabel';
 
 /// Longest quoted text (a prompt, a query) shown in a step's line.
 const MAX_QUOTE = 80;
@@ -10,10 +12,38 @@ const MAX_QUOTE = 80;
 /// Input names by id, so `{{inputs.url}}` reads as `[Page]`.
 export type InputLabels = Record<string, string>;
 
-function quote(text: string, labels: InputLabels = {}): string {
-  const named = text.replace(/\{\{\s*inputs\.([a-z0-9_]+)\s*\}\}/g, (whole, id: string) =>
-    labels[id] ? `[${labels[id]}]` : whole,
-  );
+/// A `{{path}}` as the chip the editor shows for it, or `null` for a path it
+/// has no chip for.
+function refFor(path: string, labels: InputLabels): ValueRef | null {
+  const [head, second, ...rest] = path.split('.');
+  switch (head) {
+    case 'inputs':
+      return second && labels[second]
+        ? { path, source: { kind: 'input', label: labels[second] }, field: second, list: false }
+        : null;
+    case 'run':
+      return { path, source: { kind: 'run' }, field: 'date', list: false };
+    case 'trigger':
+      return second ? { path, source: { kind: 'trigger' }, field: second, list: false } : null;
+    case 'steps':
+      return second && rest.length > 0
+        ? { path, source: { kind: 'step', stepId: second }, field: rest.join('.'), list: false }
+        : null;
+    case 'item':
+      return { path, source: { kind: 'item' }, field: second ? [second, ...rest].join('.') : 'item', list: false };
+    default:
+      return null;
+  }
+}
+
+/// A step's text on one line, each `{{reference}}` as the label its chip carries
+/// (`[Topic]`, `[the new file's path]`). `\{{` stays literal.
+function quote(text: string, t: Translate, labels: InputLabels = {}): string {
+  const named = text.replace(/(\\?)\{\{\s*([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)\s*\}\}/g, (whole, slash: string, path: string) => {
+    if (slash) return whole;
+    const ref = refFor(path, labels);
+    return ref ? `[${refLabel(ref, t)}]` : whole;
+  });
   const flat = named.replace(/\s+/g, ' ').trim();
   return flat.length > MAX_QUOTE ? `${flat.slice(0, MAX_QUOTE - 1)}…` : flat;
 }
@@ -45,7 +75,7 @@ export function describeStep(
 }
 
 function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels, connectorNames: Record<string, string>): string {
-  const q = (text: string) => quote(text, labels);
+  const q = (text: string) => quote(text, t, labels);
   switch (step.type) {
     case 'fetch_page':
       return t('workspace.workflows.step.fetchPage', {

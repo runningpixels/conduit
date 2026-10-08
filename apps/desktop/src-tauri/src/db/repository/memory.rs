@@ -74,6 +74,10 @@ pub struct MemoryItem {
     pub body: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_conversation_id: Option<String>,
+    /// Name of the workflow whose run suggested this, when the source
+    /// conversation is a workflow's (derived on `list`, never stored).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_workflow: Option<String>,
     pub pinned: bool,
     pub status: MemoryStatus,
     pub created_at: String,
@@ -98,6 +102,7 @@ fn row_to_item(row: MemoryRow, enc: &Encryption) -> Result<MemoryItem, DbError> 
         kind: MemoryKind::parse(&kind)?,
         body: enc.decrypt(&body)?,
         source_conversation_id,
+        source_workflow: None,
         pinned: pinned != 0,
         status: MemoryStatus::parse(&status)?,
         created_at,
@@ -141,7 +146,33 @@ pub async fn list(
         .fetch_all(pool)
         .await?
     };
-    rows.into_iter().map(|row| row_to_item(row, enc)).collect()
+    let mut items = rows
+        .into_iter()
+        .map(|row| row_to_item(row, enc))
+        .collect::<Result<Vec<_>, _>>()?;
+    name_workflow_sources(pool, &mut items).await?;
+    Ok(items)
+}
+
+/// A memory a workflow suggested is made in that workflow's own conversation
+/// (`kind = 'automation'`, titled with the workflow's name); say so by name.
+async fn name_workflow_sources(pool: &SqlitePool, items: &mut [MemoryItem]) -> Result<(), DbError> {
+    if items.iter().all(|i| i.source_conversation_id.is_none()) {
+        return Ok(());
+    }
+    let workflows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT id, title FROM conversations WHERE kind = 'automation'")
+            .fetch_all(pool)
+            .await?;
+    for item in items {
+        let Some(source) = item.source_conversation_id.as_deref() else {
+            continue;
+        };
+        if let Some((_, title)) = workflows.iter().find(|(id, _)| id == source) {
+            item.source_workflow = Some(title.clone().unwrap_or_default());
+        }
+    }
+    Ok(())
 }
 
 pub async fn get(
@@ -196,6 +227,7 @@ pub async fn create(
         kind: new.kind,
         body,
         source_conversation_id: new.source_conversation_id,
+        source_workflow: None,
         pinned: new.pinned,
         status: new.status,
         created_at: now.clone(),
@@ -232,6 +264,7 @@ pub async fn update(
         kind,
         body,
         source_conversation_id: existing.source_conversation_id,
+        source_workflow: existing.source_workflow,
         pinned,
         status: existing.status,
         created_at: existing.created_at,
@@ -340,6 +373,7 @@ mod tests {
             kind: MemoryKind::Core,
             body: "User prefers BANANA-MEMORY.".into(),
             source_conversation_id: None,
+            source_workflow: None,
             pinned: false,
             status: MemoryStatus::Pending,
             created_at: "t".into(),
@@ -354,5 +388,46 @@ mod tests {
         let on = compose_prompt_block(std::slice::from_ref(&active), true);
         assert!(on.contains("BANANA-MEMORY"));
         assert!(on.contains(MEMORY_HEADING));
+    }
+
+    #[tokio::test]
+    async fn list_names_the_workflow_behind_a_suggestion() {
+        use crate::db::repository::conversations;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::migrations::MIGRATOR.run(&pool).await.unwrap();
+        let enc = Encryption::off();
+        let chat = conversations::create(&pool, Some("A chat")).await.unwrap();
+        let flow = conversations::create(&pool, Some("Weekly digest"))
+            .await
+            .unwrap();
+        conversations::set_kind(&pool, &flow.id, "automation")
+            .await
+            .unwrap();
+        for source in [Some(chat.id.clone()), Some(flow.id.clone()), None] {
+            let new = NewMemory {
+                kind: MemoryKind::Core,
+                body: format!("fact {source:?}"),
+                source_conversation_id: source,
+                pinned: false,
+                status: MemoryStatus::Pending,
+            };
+            create(&pool, &enc, new).await.unwrap();
+        }
+        let items = list(&pool, &enc, None).await.unwrap();
+        let named = |id: &Option<String>| {
+            items
+                .iter()
+                .find(|i| &i.source_conversation_id == id)
+                .unwrap()
+                .source_workflow
+                .clone()
+        };
+        assert_eq!(named(&Some(flow.id)), Some("Weekly digest".to_string()));
+        assert_eq!(named(&Some(chat.id)), None);
+        assert_eq!(named(&None), None);
     }
 }

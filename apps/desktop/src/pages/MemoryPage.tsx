@@ -88,7 +88,13 @@ export function MemoryPage({
 
   const meta = (item: MemoryItem) => {
     const parts = [t('settings.memory.page.added', { when: fmt.timeAgo(item.createdAt) })];
-    if (item.sourceConversationId) parts.push(t('settings.memory.page.fromChat'));
+    if (item.sourceWorkflow != null) {
+      parts.push(
+        item.sourceWorkflow
+          ? t('settings.memory.page.fromWorkflowNamed', { name: item.sourceWorkflow })
+          : t('settings.memory.page.fromWorkflow'),
+      );
+    } else if (item.sourceConversationId) parts.push(t('settings.memory.page.fromChat'));
     return parts.join(' · ');
   };
 

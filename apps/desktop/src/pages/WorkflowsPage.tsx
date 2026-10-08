@@ -63,7 +63,7 @@ import type {
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
-import { needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
+import { findStep, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { reviewText } from '../workflows/permissionText';
 import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
@@ -944,6 +944,8 @@ export function WorkflowsPage({
         {openRun ? (
           <RunDetail
             detail={openRun}
+            steps={record.definition.steps}
+            labels={Object.fromEntries(workflowInputs.map((i) => [i.id, i.label]))}
             statusLabel={statusLabel}
             onOpenDocument={onOpenDocument}
             onOpenDeck={onOpenDeck}
@@ -1237,6 +1239,8 @@ function QuestionPanel({
 
 function RunDetail({
   detail,
+  steps = [],
+  labels = {},
   statusLabel,
   onOpenDocument,
   onOpenDeck,
@@ -1246,6 +1250,9 @@ function RunDetail({
   onRerunFrom,
 }: {
   detail: WorkflowRunDetail;
+  /// The workflow's steps and input names, so each row can say what its step does.
+  steps?: WorkflowStep[];
+  labels?: InputLabels;
   statusLabel: (s: string) => string;
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
   onOpenDeck?: (deckId: string) => void;
@@ -1258,6 +1265,7 @@ function RunDetail({
   const t = useT();
   const fmt = useFormatters();
   const started = useMemo(() => fmt.timeAgo(detail.run.startedAt), [fmt, detail.run.startedAt]);
+  const connectorNames = useConnectorNames(steps);
   const docs = savedDocuments(detail);
   const nothingNew = nothingNewStop(detail);
   return (
@@ -1302,6 +1310,10 @@ function RunDetail({
           <RunStepRow
             key={step.id}
             step={step}
+            description={(() => {
+              const def = findStep(steps, step.stepId);
+              return def ? describeStep(def, t, labels, connectorNames) : null;
+            })()}
             statusLabel={statusLabel}
             onOpenDocument={onOpenDocument}
             onOpenDeck={onOpenDeck}
@@ -1318,6 +1330,7 @@ function RunDetail({
 
 function RunStepRow({
   step,
+  description = null,
   statusLabel,
   onOpenDocument,
   onOpenDeck,
@@ -1327,6 +1340,8 @@ function RunStepRow({
   canRerun = false,
 }: {
   step: WorkflowRunStep;
+  /// What the step does (its line on the workflow page); its id when unknown.
+  description?: string | null;
   statusLabel: (s: string) => string;
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
   onOpenDeck?: (deckId: string) => void;
@@ -1339,10 +1354,9 @@ function RunStepRow({
   const t = useT();
   const fmt = useFormatters();
   const ms = durationMs(step.startedAt, step.finishedAt);
+  const label = description ?? step.stepId;
   const name =
-    step.iteration != null
-      ? t('workspace.workflows.runDetail.iteration', { step: step.stepId, n: step.iteration + 1 })
-      : step.stepId;
+    step.iteration != null ? t('workspace.workflows.runDetail.iteration', { step: label, n: step.iteration + 1 }) : label;
   const dataSummary =
     dataStepSummary(step, t, (bytes) => fmt.size(bytes)) ??
     researchStepSummary(step, t) ??
@@ -1350,7 +1364,8 @@ function RunStepRow({
     connectorStepSummary(step, t) ??
     exportStepSummary(step, t, (bytes) => fmt.size(bytes)) ??
     memoryStepSummary(step, t);
-  const exported = exportedFile(step);
+  // A file read has the same output shape, but only an export is shown in the folder.
+  const exported = (step.input as { type?: string } | null)?.type === 'export_file' ? exportedFile(step) : null;
   const report = researchReport(step);
   const edit = documentEditSummary(step, t);
   const open = edit?.target
@@ -1364,6 +1379,7 @@ function RunStepRow({
         <summary>
           <span className={STATUS_CLASS[step.status] ?? 'wf-status'}>{statusLabel(step.status)}</span>
           <span className="wf-step-name">{name}</span>
+          {description ? <span className="wf-muted wf-step-id">{step.stepId}</span> : null}
           {usedModelId(step.output) ? <span className="wf-muted wf-step-model">{usedModelId(step.output)}</span> : null}
           {conditionText(step) ? (
             <span className="wf-muted wf-step-reason">{conditionText(step)}</span>

@@ -26,6 +26,7 @@ const ipc = vi.hoisted(() => ({
   listWorkflowReviews: vi.fn(),
   answerWorkflowReview: vi.fn(),
   rerunWorkflowFrom: vi.fn(),
+  revealExportedFile: vi.fn(),
   listWorkflowQuestions: vi.fn(),
   answerWorkflowQuestion: vi.fn(),
   listProviderDescriptors: vi.fn(),
@@ -391,7 +392,7 @@ describe('WorkflowsPage', () => {
     const detail = await screen.findByRole('region', { name: 'What this run did' });
     expect(within(detail).getByText('Step "fetch" failed: the site answered 404')).toBeInTheDocument();
     expect(within(detail).getByText('fetch')).toBeInTheDocument();
-    expect(within(detail).getByText('summary #1')).toBeInTheDocument();
+    expect(within(detail).getByText(/ #1$/)).toBeInTheDocument();
     expect(within(detail).getByText(/"text": "Three stories"/)).toBeInTheDocument();
     expect(onStatus).toHaveBeenCalledWith(
       expect.objectContaining({ brief: 'Morning briefing failed. Open the run to see which step.', kind: 'error', dismissMs: 10_000 }),
@@ -407,6 +408,42 @@ describe('WorkflowsPage', () => {
     const describeBox = action.querySelector('.wf-describe') as HTMLElement;
     const cards = action.querySelector('.wf-starters') as HTMLElement;
     expect(describeBox.compareDocumentPosition(cards) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('leads each run step with what it does, and shows an exported file once', async () => {
+    const flow: WorkflowRecord = {
+      ...record,
+      definition: {
+        trigger: { kind: 'folder' },
+        steps: [
+          { id: 'file', type: 'read_file', path: '{{trigger.path}}' },
+          { id: 'export', type: 'export_file', name: '{{trigger.name}} summary.md', content: '{{steps.file.text}}' },
+        ],
+      },
+    };
+    ipc.getWorkflow.mockResolvedValue(flow);
+    const file = { path: 'E:\in\a.txt', name: 'a.txt', bytes: 4 };
+    const step = (stepId: string, input: unknown, output: unknown) => ({
+      ...finishedRun.steps[1],
+      id: stepId,
+      stepId,
+      iteration: null,
+      input,
+      output,
+    });
+    ipc.runWorkflow.mockResolvedValueOnce({
+      run: { ...finishedRun.run, status: 'completed', error: null },
+      steps: [
+        step('file', { type: 'read_file' }, file),
+        step('export', { type: 'export_file' }, { ...file, name: 'a.txt summary.md' }),
+      ],
+    });
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
+    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    expect(within(detail).getByText(/Read the file: \[File path\]/)).toBeInTheDocument();
+    expect(within(detail).getByText('file')).toBeInTheDocument();
+    expect(within(detail).getAllByRole('button', { name: 'Show in folder' })).toHaveLength(1);
   });
 
   it('opens a document the run saved', async () => {

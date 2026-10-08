@@ -100,7 +100,7 @@ describe('documents search step', () => {
 
   it('describes itself, and offers passages to repeat over', () => {
     const step: WorkflowStep = { id: 'docs', type: 'search_documents', collections: ['a', 'b'], query: '{{steps.n.text}}' };
-    expect(describeStep(step, t)).toBe('searchDocuments {"count":2,"query":"{{steps.n.text}}"}');
+    expect(describeStep(step, t)).toContain('"query":"[n · text');
     const def: WorkflowDefinition = {
       steps: [
         step,

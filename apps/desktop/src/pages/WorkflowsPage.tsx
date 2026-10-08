@@ -9,7 +9,8 @@
 /// New workflows start from a ready-made one; editing is a checked JSON editor
 /// for now (the backend validates every save).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { workflowRunStatus, type StatusState } from '../chat/statusTypes';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { documentEditSummary } from '../workflows/documentEditSummary';
@@ -18,6 +19,9 @@ import { dataStepSummary } from '../workflows/stepSummary';
 import {
   createWorkflow,
   deleteWorkflow,
+  draftWorkflow,
+  draftWorkflowFromChat,
+  cancelWorkflowDraft,
   getWorkflow,
   getWorkflowRun,
   answerWorkflowQuestion,
@@ -36,6 +40,7 @@ import {
 import type {
   ProviderDescriptor,
   WorkflowDefinition,
+  WorkflowDraftResult,
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
@@ -72,7 +77,14 @@ const STATUS_CLASS: Record<string, string> = {
 type Mode =
   | { kind: 'view' }
   | { kind: 'new' }
-  | { kind: 'draft'; workflowId: string | null; draft: WorkflowDraft; json: string | null };
+  | { kind: 'draft'; workflowId: string | null; draft: WorkflowDraft; json: string | null; notes?: string[] };
+
+/// A request from elsewhere in the app to draft a workflow: Home's "Automate"
+/// chip (a description) or a chat's "Save as workflow" (a conversation).
+/// `nonce` makes a second request for the same text count as a new one.
+export type WorkflowDraftRequest =
+  | { nonce: number; description: string; conversationId?: undefined }
+  | { nonce: number; conversationId: string; description?: string };
 
 function errorText(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
@@ -103,8 +115,9 @@ export function WorkflowsPage({
   refreshKey,
   startNew = false,
   focus = null,
+  draftRequest = null,
 }: {
-  onStatus: (message: string) => void;
+  onStatus: (message: string | StatusState) => void;
   /** Open a document a run saved, in its conversation's document panel. */
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
   /** Open a deck an "Update a deck" step changed, in Slides. */
@@ -119,6 +132,8 @@ export function WorkflowsPage({
   startNew?: boolean;
   /** Open on this workflow, with its waiting panel in view (Home's "Answer"/"Review"). */
   focus?: { workflowId: string; runId?: string; nonce?: number } | null;
+  /** Draft a workflow from a description or a chat as soon as the page opens. */
+  draftRequest?: WorkflowDraftRequest | null;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -183,6 +198,77 @@ export function WorkflowsPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftDefinition, draftJson]);
+
+  /// Drafting from a description: one request at a time. Cancel does not stop
+  /// the model on the other side; it ignores the answer, so the page stays
+  /// usable and nothing opens when the answer arrives.
+  const draftToken = useRef(0);
+  const handledRequest = useRef<number | null>(null);
+  const [describeText, setDescribeText] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+
+  const runDraft = useCallback(
+    async (request: () => Promise<WorkflowDraftResult>) => {
+      const token = ++draftToken.current;
+      setDrafting(true);
+      setDraftError(null);
+      try {
+        const result = await request();
+        if (token !== draftToken.current || !mounted.current) return;
+        setDrafting(false);
+        setDescribeText('');
+        setEditError(null);
+        setProblems(result.problems);
+        setMode({
+          kind: 'draft',
+          workflowId: null,
+          draft: { name: result.name, description: result.description, definition: result.definition },
+          json: null,
+          notes: result.notes,
+        });
+      } catch (e) {
+        if (token !== draftToken.current || !mounted.current) return;
+        setDrafting(false);
+        setDraftError(errorText(e));
+      }
+    },
+    [],
+  );
+
+  function describeIt() {
+    const description = describeText.trim();
+    if (!description || drafting) return;
+    void runDraft(() => draftWorkflow(description));
+  }
+
+  function cancelDraft() {
+    draftToken.current += 1;
+    setDrafting(false);
+    // Stop the model call too; the token above already drops a late answer.
+    void Promise.resolve()
+      .then(() => cancelWorkflowDraft())
+      .catch(() => {});
+  }
+
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftRequest || handledRequest.current === draftRequest.nonce) return;
+    handledRequest.current = draftRequest.nonce;
+    setMode({ kind: 'new' });
+    setDescribeText(draftRequest.description ?? '');
+    const { conversationId, description } = draftRequest;
+    void runDraft(() =>
+      conversationId ? draftWorkflowFromChat(conversationId, description?.trim() || undefined) : draftWorkflow(description ?? ''),
+    );
+  }, [draftRequest, runDraft]);
 
   /// Why this text isn't JSON, in plain words with a line and column.
   function jsonProblem(text: string, e: unknown): string {
@@ -413,12 +499,13 @@ export function WorkflowsPage({
     try {
       const detail = await start();
       setOpenRun(detail);
+      // Leaves by itself after ~10 s: the run list keeps the detail.
       onStatus(
         detail.run.status === 'completed'
-          ? t('workspace.workflows.status.runCompleted', { name: record.name })
+          ? workflowRunStatus(t('workspace.workflows.status.runCompleted', { name: record.name }), 'success')
           : detail.run.status === 'stopped'
-            ? t('workspace.workflows.status.runStopped', { name: record.name })
-            : t('workspace.workflows.status.runFailed', { name: record.name }),
+            ? workflowRunStatus(t('workspace.workflows.status.runStopped', { name: record.name }), 'success')
+            : workflowRunStatus(t('workspace.workflows.status.runFailed', { name: record.name }), 'error'),
       );
       setRuns(await listWorkflowRuns(record.id, 20));
       await refreshList();
@@ -581,6 +668,16 @@ export function WorkflowsPage({
   } else if (mode.kind === 'new' || (summaries.length === 0 && mode.kind !== 'draft')) {
     detail = (
       <StarterPicker
+        describe={
+          <DescribeBox
+            text={describeText}
+            drafting={drafting}
+            error={draftError}
+            onText={setDescribeText}
+            onDraft={describeIt}
+            onCancel={cancelDraft}
+          />
+        }
         empty={summaries.length === 0}
         busy={busy}
         onPick={(starter) => void startFrom(starter)}
@@ -591,6 +688,21 @@ export function WorkflowsPage({
   } else if (mode.kind === 'draft') {
     detail = (
       <section className="wf-edit" aria-label={t('workspace.workflows.edit.title')}>
+        {mode.notes && mode.notes.length > 0 ? (
+          <div className="wf-notes" role="group" aria-label={t('workspace.workflows.describe.notes')}>
+            <p className="wf-io-label">{t('workspace.workflows.describe.notes')}</p>
+            <ul>
+              {mode.notes.map((note, index) => (
+                <li key={`${index}-${note}`}>
+                  <label className="wf-check">
+                    <input type="checkbox" />
+                    <span>{note}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {mode.json == null ? (
           <WorkflowEditor draft={mode.draft} onChange={(draft) => setMode({ ...mode, draft })} />
         ) : (
@@ -842,13 +954,70 @@ export function WorkflowsPage({
   );
 }
 
+/// "Describe a workflow": a few words in, an unsaved draft out.
+function DescribeBox({
+  text,
+  drafting,
+  error,
+  onText,
+  onDraft,
+  onCancel,
+}: {
+  text: string;
+  drafting: boolean;
+  error: string | null;
+  onText: (text: string) => void;
+  onDraft: () => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="wf-describe">
+      <label className="wf-field">
+        <span className="grp-label">{t('workspace.workflows.describe.title')}</span>
+        <textarea
+          className="mem-input"
+          rows={3}
+          value={text}
+          disabled={drafting}
+          placeholder={t('workspace.workflows.describe.placeholder')}
+          onChange={(e) => onText(e.target.value)}
+        />
+      </label>
+      {drafting ? (
+        <div className="wf-describe-progress">
+          <p className="wf-muted" role="status">
+            {t('workspace.workflows.describe.drafting')}
+          </p>
+          <button type="button" className="btn ghost" onClick={onCancel}>
+            {t('common.actions.cancel')}
+          </button>
+        </div>
+      ) : (
+        <div className="mem-actions">
+          <button type="button" className="btn primary" disabled={text.trim() === ''} onClick={onDraft}>
+            {t('workspace.workflows.describe.draft')}
+          </button>
+        </div>
+      )}
+      {error ? (
+        <p className="wf-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function StarterPicker({
+  describe,
   empty,
   busy,
   onPick,
   onBlank,
   onCancel,
 }: {
+  describe: ReactNode;
   empty: boolean;
   busy: boolean;
   onPick: (starter: StarterWorkflow) => void;
@@ -881,12 +1050,19 @@ function StarterPicker({
       <PageEmpty
         title={t('workspace.workflows.empty.title')}
         body={t('workspace.workflows.empty.body')}
-        action={cards}
+        actionClassName="wf-empty-action"
+        action={
+          <>
+            {describe}
+            {cards}
+          </>
+        }
       />
     );
   }
   return (
     <section aria-label={t('workspace.workflows.starter.title')}>
+      {describe}
       <div className="grp-label">{t('workspace.workflows.starter.title')}</div>
       {cards}
       {onCancel ? (

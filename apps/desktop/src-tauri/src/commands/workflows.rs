@@ -17,6 +17,7 @@ use crate::state::AppState;
 use crate::stream_manager::StreamManager;
 use crate::workflows::{
     ask::{self, PendingQuestion, Questions},
+    author::{self, DraftRequest, DraftResult},
     definition,
     permissions::{self, Decision, PendingReview, PermissionView, Reviews},
     runner::{search_backend, Resume, RunBudget, Runner},
@@ -40,18 +41,7 @@ fn checked_name(name: &str) -> Result<String, String> {
 
 /// Parse and validate a definition sent by the renderer.
 fn checked_definition(definition: &Value) -> Result<(), String> {
-    let parsed: definition::WorkflowDefinition =
-        serde_json::from_value(definition.clone()).map_err(|e| definition::unreadable(&e))?;
-    // Loading ignores settings it doesn't know; saving does not.
-    let mut problems = definition::unknown_settings(definition);
-    if let Err(more) = definition::validate(&parsed) {
-        problems.extend(more);
-    }
-    if problems.is_empty() {
-        Ok(())
-    } else {
-        Err(problems.join("\n"))
-    }
+    definition::check_value(definition)
 }
 
 /// Everything wrong with a definition, in plain English; empty when it can
@@ -62,6 +52,57 @@ pub fn validate_workflow(definition: Value) -> Vec<String> {
         Ok(()) => Vec::new(),
         Err(problems) => problems.lines().map(str::to_string).collect(),
     }
+}
+
+/// Draft a workflow from a description with the chat's model. Nothing is
+/// saved; the result opens in the editor as an unsaved draft. Waits for the
+/// model (up to 90 seconds); `cancel_workflow_draft` stops it.
+#[tauri::command]
+pub async fn draft_workflow(
+    state: State<'_, AppState>,
+    streams: State<'_, StreamManager>,
+    description: String,
+) -> Result<DraftResult, String> {
+    author::draft_cancellable(
+        &state,
+        &streams,
+        DraftRequest {
+            description,
+            transcript: None,
+        },
+    )
+    .await
+}
+
+/// Draft a workflow from what happened in a chat: what the user asked and
+/// which tools were used (never tool outputs or document text), secrets removed.
+#[tauri::command]
+pub async fn draft_workflow_from_chat(
+    state: State<'_, AppState>,
+    streams: State<'_, StreamManager>,
+    conversation_id: String,
+    description: Option<String>,
+) -> Result<DraftResult, String> {
+    let transcript = author::chat_transcript(&state, &conversation_id).await?;
+    let description = description
+        .filter(|d| !d.trim().is_empty())
+        .unwrap_or_else(|| author::DEFAULT_CHAT_REQUEST.to_string());
+    author::draft_cancellable(
+        &state,
+        &streams,
+        DraftRequest {
+            description,
+            transcript: Some(transcript),
+        },
+    )
+    .await
+}
+
+/// Stop the draft in progress; `false` when none was running. The waiting
+/// `draft_workflow` call then fails with "Drafting was stopped."
+#[tauri::command]
+pub fn cancel_workflow_draft() -> bool {
+    author::cancel_current()
 }
 
 #[tauri::command]

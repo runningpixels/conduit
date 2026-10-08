@@ -9,6 +9,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Describe a workflow and Conduit drafts it.** Say what you want in your
+  own words — on the Workflows page, or with the Automate chip on Home — and
+  the chat model drafts a workflow, checks it, and fixes what doesn't check
+  out. It opens in the editor unsaved, with a short list of what's left for
+  you to pick (the folder, the deck); nothing is saved or scheduled until you
+  say so. **Save chat as workflow** in the command palette turns what you did
+  in a chat into a workflow you can run again; it sees your messages and
+  which tools were used, not the pages or documents themselves.
+
 - **A model per workflow, and per step.** A workflow can use its own model
   instead of the one picked in chat, and each summarize or agent step can
   override it: a fast, cheap model for the bulk of the work and a stronger

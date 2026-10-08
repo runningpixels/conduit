@@ -93,12 +93,23 @@ export function PageFrame({
 }
 
 /** A consistent empty state: one sentence and, when there is one, the action. */
-export function PageEmpty({ title, body, action }: { title: string; body?: ReactNode; action?: ReactNode }) {
+export function PageEmpty({
+  title,
+  body,
+  action,
+  actionClassName,
+}: {
+  title: string;
+  body?: ReactNode;
+  action?: ReactNode;
+  /** Extra class on the action wrapper, for a page that stacks its action instead of a row. */
+  actionClassName?: string;
+}) {
   return (
     <div className="page-empty">
       <p className="page-empty-title">{title}</p>
       {body ? <p className="page-empty-body">{body}</p> : null}
-      {action ? <div className="page-empty-action">{action}</div> : null}
+      {action ? <div className={actionClassName ? `page-empty-action ${actionClassName}` : 'page-empty-action'}>{action}</div> : null}
     </div>
   );
 }

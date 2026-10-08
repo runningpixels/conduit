@@ -76,6 +76,7 @@
   word-break: break-word;
 }
 
+.page-empty-action.wf-empty-action { display: block; max-width: 56rem; margin: 0 auto; }
 .wf-starters {
   margin: var(--sp-3) 0;
   padding: 0;
@@ -247,3 +248,9 @@
   color: var(--ink-2);
 }
 .workflow-update-banner-text { flex: 1; min-width: 0; }
+
+/* -- Describe a workflow (pages/WorkflowsPage.tsx) -- */
+.wf-describe { display: grid; gap: var(--sp-2); margin: var(--sp-3) 0; text-align: left; }
+.wf-describe-progress { display: flex; align-items: center; gap: var(--sp-3); }
+.wf-notes { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line-soft); }
+.wf-notes ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); }

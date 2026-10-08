@@ -29,6 +29,8 @@ const ipc = vi.hoisted(() => ({
   listWorkflowQuestions: vi.fn(),
   answerWorkflowQuestion: vi.fn(),
   listProviderDescriptors: vi.fn(),
+  draftWorkflow: vi.fn(),
+  draftWorkflowFromChat: vi.fn(),
   listDecks: vi.fn(),
   listDrafts: vi.fn(),
   restoreDeckSnapshot: vi.fn(),
@@ -160,6 +162,79 @@ describe('WorkflowsPage', () => {
     await waitFor(() => expect(ipc.validateWorkflow).toHaveBeenCalled());
     const sent = ipc.validateWorkflow.mock.calls.at(-1)?.[0] as { steps: { type: string; deck?: string }[] };
     expect(sent.steps.at(-1)).toMatchObject({ type: 'edit_deck', deck: '' });
+  });
+
+  describe('describe a workflow', () => {
+    const drafted = {
+      name: 'Deck refresh',
+      description: 'Updates the numbers',
+      definition: STARTER_WORKFLOWS.find((s) => s.id === 'weekly-numbers-deck')!.definition,
+      problems: ['Choose the deck this step updates.'],
+      attempts: 2,
+      notes: ['Pick the deck to update', 'Choose the CSV address'],
+    };
+
+    it('opens the draft in the editor, unsaved, with notes and problems', async () => {
+      ipc.draftWorkflow.mockResolvedValue(drafted);
+      ipc.validateWorkflow.mockResolvedValue(drafted.problems);
+      render(<WorkflowsPage onStatus={vi.fn()} startNew />);
+      const box = await screen.findByLabelText('Describe a workflow');
+      const button = screen.getByRole('button', { name: 'Draft it' });
+      expect(button).toBeDisabled();
+      fireEvent.change(box, { target: { value: ' update my deck from a CSV ' } });
+      fireEvent.click(button);
+      expect(ipc.draftWorkflow).toHaveBeenCalledWith('update my deck from a CSV');
+      expect(await screen.findByDisplayValue('Deck refresh')).toBeInTheDocument();
+      const notes = screen.getByRole('group', { name: 'Still to fill in before you save' });
+      expect(within(notes).getAllByRole('checkbox')).toHaveLength(2);
+      expect(within(notes).getByText('Pick the deck to update')).toBeInTheDocument();
+      expect(screen.getAllByText('Choose the deck this step updates.').length).toBeGreaterThan(0);
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+      // Never saved on its own.
+      expect(ipc.createWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('Cancel ignores the answer and leaves the page usable', async () => {
+      let resolve!: (value: typeof drafted) => void;
+      ipc.draftWorkflow.mockReturnValue(new Promise((r) => (resolve = r)));
+      render(<WorkflowsPage onStatus={vi.fn()} startNew />);
+      fireEvent.change(await screen.findByLabelText('Describe a workflow'), { target: { value: 'anything' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Draft it' }));
+      expect(await screen.findByText('Drafting your workflow…')).toBeInTheDocument();
+      fireEvent.click(
+        within(screen.getByText('Drafting your workflow…').parentElement!).getByRole('button', { name: 'Cancel' }),
+      );
+      expect(screen.queryByText('Drafting your workflow…')).not.toBeInTheDocument();
+      await act(async () => {
+        resolve(drafted);
+      });
+      expect(screen.queryByDisplayValue('Deck refresh')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Draft it' })).toBeInTheDocument();
+    });
+
+    it('shows a failure in place and keeps the text', async () => {
+      ipc.draftWorkflow.mockRejectedValue({ message: "The model didn't return a workflow." });
+      render(<WorkflowsPage onStatus={vi.fn()} startNew />);
+      fireEvent.change(await screen.findByLabelText('Describe a workflow'), { target: { value: 'something' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Draft it' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent("The model didn't return a workflow.");
+      expect(screen.getByLabelText('Describe a workflow')).toHaveValue('something');
+    });
+
+    it('drafts from a chat when asked to, and from a description (Home) once per request', async () => {
+      ipc.draftWorkflowFromChat.mockResolvedValue(drafted);
+      const { unmount } = render(
+        <WorkflowsPage onStatus={vi.fn()} draftRequest={{ nonce: 1, conversationId: 'conv-1' }} />,
+      );
+      expect(await screen.findByDisplayValue('Deck refresh')).toBeInTheDocument();
+      expect(ipc.draftWorkflowFromChat).toHaveBeenCalledTimes(1);
+      expect(ipc.draftWorkflowFromChat).toHaveBeenCalledWith('conv-1', undefined);
+      unmount();
+      ipc.draftWorkflow.mockResolvedValue(drafted);
+      render(<WorkflowsPage onStatus={vi.fn()} draftRequest={{ nonce: 2, description: 'every monday, fetch a page' }} />);
+      expect(await screen.findByDisplayValue('Deck refresh')).toBeInTheDocument();
+      expect(ipc.draftWorkflow).toHaveBeenCalledWith('every monday, fetch a page');
+    });
   });
 
   it('reads a deck or draft update on the collapsed row and opens the document', async () => {
@@ -318,7 +393,20 @@ describe('WorkflowsPage', () => {
     expect(within(detail).getByText('fetch')).toBeInTheDocument();
     expect(within(detail).getByText('summary #1')).toBeInTheDocument();
     expect(within(detail).getByText(/"text": "Three stories"/)).toBeInTheDocument();
-    expect(onStatus).toHaveBeenCalledWith('Morning briefing failed. Open the run to see which step.');
+    expect(onStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ brief: 'Morning briefing failed. Open the run to see which step.', kind: 'error', dismissMs: 10_000 }),
+    );
+  });
+
+  it('stacks the describe box above the starter cards in the empty state', async () => {
+    ipc.listWorkflows.mockResolvedValueOnce([]).mockResolvedValue([summary]);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const empty = (await screen.findByText('No workflows yet')).closest('.page-empty') as HTMLElement;
+    const action = empty.querySelector('.page-empty-action') as HTMLElement;
+    expect(action).toHaveClass('wf-empty-action');
+    const describeBox = action.querySelector('.wf-describe') as HTMLElement;
+    const cards = action.querySelector('.wf-starters') as HTMLElement;
+    expect(describeBox.compareDocumentPosition(cards) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('opens a document the run saved', async () => {
@@ -359,7 +447,7 @@ describe('WorkflowsPage', () => {
       ...finishedRun,
       run: { ...finishedRun.run, status: 'stopped', error: 'Stopped before it finished.' },
     });
-    await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Morning briefing stopped'));
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Morning briefing stopped', dismissMs: 10_000 })));
     expect(screen.queryByRole('button', { name: /^Stop/ })).not.toBeInTheDocument();
     const detail = await screen.findByRole('region', { name: 'What this run did' });
     expect(within(detail).getByText(/^Stopped/)).toBeInTheDocument();
@@ -405,7 +493,7 @@ describe('WorkflowsPage', () => {
     expect(buttons).toHaveLength(1);
     fireEvent.click(within(detail).getByRole('button', { name: 'Rerun from step fetch, reusing the steps before it' }));
     await waitFor(() => expect(ipc.rerunWorkflowFrom).toHaveBeenCalledWith('r1', 'fetch'));
-    await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Morning briefing finished'));
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Morning briefing finished', dismissMs: 10_000 })));
     const after = await screen.findByRole('region', { name: 'What this run did' });
     expect(within(after).getByText('Reused')).toBeInTheDocument();
   });

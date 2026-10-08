@@ -3,6 +3,7 @@
 //!
 //! - `definition`: the stored format and its validation
 //! - `template`: `{{steps.x.y}}` / `{{#each}}` filling
+//! - `author`: drafting a workflow from a description or a chat
 //! - `data`: reading files from the workflow's folder and parsing CSV/JSON
 //! - `extract`: readable text from fetched pages
 //! - `models`: which model each summarize/agent step calls
@@ -14,6 +15,7 @@
 //! - `schedule` / `scheduler`: running workflows automatically
 
 pub mod ask;
+pub mod author;
 pub mod data;
 pub mod definition;
 pub mod documents;

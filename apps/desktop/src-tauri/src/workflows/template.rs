@@ -340,6 +340,58 @@ fn collect_references(
     }
 }
 
+/// For each `{{#each path}}` block in a template, the block's list path and
+/// the `item...` paths read directly in its body (a nested block's own items
+/// belong to the nested block). For checking a block's reads before a run.
+pub fn each_item_reads(template: &str) -> Result<Vec<(String, Vec<String>)>, TemplateError> {
+    let mut out = Vec::new();
+    collect_item_reads(template, 0, None, &mut out)?;
+    Ok(out)
+}
+
+fn collect_item_reads(
+    template: &str,
+    from: usize,
+    current: Option<usize>,
+    out: &mut Vec<(String, Vec<String>)>,
+) -> Result<usize, TemplateError> {
+    let mut pos = from;
+    loop {
+        let Some((tag, span)) = next_tag(template, pos)? else {
+            return Ok(template.len());
+        };
+        match tag {
+            Tag::Var(path) => {
+                if let Some(c) = current {
+                    if path.split('.').next() == Some("item") {
+                        out[c].1.push(path.to_string());
+                    }
+                }
+                pos = span.end;
+            }
+            Tag::EachOpen(path) => {
+                if let Some(c) = current {
+                    if path.split('.').next() == Some("item") {
+                        out[c].1.push(path.to_string());
+                    }
+                }
+                out.push((path.to_string(), Vec::new()));
+                let index = out.len() - 1;
+                pos = collect_item_reads(template, span.end, Some(index), out)?;
+            }
+            Tag::Literal(_) => pos = span.end,
+            Tag::EachClose => {
+                if current.is_some() {
+                    return Ok(span.end);
+                }
+                return Err(TemplateError::Syntax(
+                    "{{/each}} without a matching {{#each}}".to_string(),
+                ));
+            }
+        }
+    }
+}
+
 fn is_loop_local(path: &str) -> bool {
     let head = path.split('.').next().unwrap_or("");
     head == "item" || head == "index"
@@ -527,6 +579,25 @@ mod tests {
         assert_eq!(
             refs,
             vec!["a.b".to_string(), "list".to_string(), "outer".to_string()]
+        );
+    }
+
+    #[test]
+    fn each_item_reads_groups_item_paths_by_block() {
+        let reads = each_item_reads(
+            "{{item.top}}{{#each steps.a.items}}{{item.x.text}} {{#each item.x.list}}{{item.y}}{{/each}}{{index}}{{/each}}{{#each steps.b.items}}{{item.z}}{{/each}}",
+        )
+        .unwrap();
+        assert_eq!(
+            reads,
+            vec![
+                (
+                    "steps.a.items".to_string(),
+                    vec!["item.x.text".to_string(), "item.x.list".to_string()]
+                ),
+                ("item.x.list".to_string(), vec!["item.y".to_string()]),
+                ("steps.b.items".to_string(), vec!["item.z".to_string()]),
+            ]
         );
     }
 

@@ -54,6 +54,7 @@ const PLATFORM_KEYS = new Set([
   'darwin-aarch64',
   'darwin-x86_64',
   'linux-x86_64',
+  'linux-x86_64-deb',
 ]);
 
 /**
@@ -111,9 +112,12 @@ export function buildManifest({ version, notes, pubDate, platforms }) {
  * nothing it produces, so Windows and Linux silently dropped out of the
  * manifest while macOS carried on matching.
  *
- * `.deb` is signed too and appears in latest.json as `linux-x86_64-deb`, but
- * the AppImage is what `linux-x86_64` resolves to and what the updater pulls,
- * so it stays unclassified here.
+ *   linux    → <name>_<version>_amd64.deb               (+ .sig) as linux-x86_64-deb
+ *
+ * A `.deb` install looks up `linux-x86_64-deb` before `linux-x86_64`
+ * (tauri-plugin-updater `get_urls`). Without its own entry it fell back to the
+ * AppImage, which the plugin's `.deb` installer refuses (`is_deb`), so `.deb`
+ * installs could never update.
  *
  * @param {string} filename
  * @returns {{ platform: string, sigFile: string } | null}
@@ -131,6 +135,9 @@ export function classifyBundle(filename) {
   }
   if (/amd64\.AppImage$/.test(filename)) {
     return { platform: 'linux-x86_64', sigFile };
+  }
+  if (/amd64\.deb$/.test(filename)) {
+    return { platform: 'linux-x86_64-deb', sigFile };
   }
   return null;
 }

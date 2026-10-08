@@ -26,7 +26,7 @@ puedas conservar: una **app personal** que obtiene datos en vivo, una
 **presentación** que editas pidiéndolo, una **respuesta citada de tus propios
 documentos**, un **informe de investigación** en el que cada hallazgo se
 comprueba contra la página de la que salió, un **flujo de trabajo** que se
-ejecuta según un horario y se detiene a preguntar. Conecta tus herramientas
+ejecuta según un horario o cuando llega algo nuevo y se detiene a preguntar. Conecta tus herramientas
 mediante MCP: las herramientas que cambian cosas, y cada sitio al que una página
 quiere acceder, te preguntan primero.
 
@@ -166,15 +166,22 @@ exporta como Markdown o HTML.
 
 ### Flujos de trabajo
 
-Los **flujos de trabajo** ejecutan rutinas por ti: obtener páginas, buscar en la
-web, pedir al modelo que resuma y guardar el resultado como documento. Empieza
-con uno ya preparado (un resumen matinal, un resumen de página, un seguimiento
-de tema) o crea el tuyo paso a paso, y luego ejecútalo ahora o según un horario.
-Al activar un horario por primera vez se muestra todo lo que el flujo podrá
-hacer por su cuenta, para que lo apruebes, y una ejecución que necesita más se
-detiene y pregunta.
+Los **flujos de trabajo** ejecutan rutinas por ti. Un paso puede obtener
+páginas, buscar en la web, hacer una investigación, buscar en tus documentos,
+leer archivos de la carpeta propia del flujo y convertir CSV o JSON en tablas, o
+llamar a una herramienta de un conector que solo lee. Otros resumen con un
+modelo elegido por flujo o por paso, continúan solo si algo ha cambiado,
+actualizan una presentación o un borrador guardados, exportan un archivo, te
+avisan, guardan un documento o sugieren un recuerdo.
 
-![Un flujo de seguimiento de tema para las versiones de Tauri y Rust: sus tres pasos, una ejecución terminada y la aprobación que pide antes de ejecutarse según un horario (buscar en la web con Exa, enviar texto a OpenRouter, guardar documentos)](./docs/assets/screenshot-workflows.png)
+Empieza con un flujo preparado, describe con tus palabras lo que quieres y deja
+que el modelo lo redacte, o guarda un chat como flujo. Ejecútalo ahora, según un
+horario o cuando aparezca una publicación nueva en un feed o llegue un archivo
+nuevo a su carpeta. Al activar las ejecuciones automáticas por primera vez se
+muestra todo lo que el flujo podrá hacer por su cuenta, para que lo apruebes, y
+una ejecución que necesita más se detiene y pregunta.
+
+![Un flujo «Tauri blog digest» redactado a partir de una descripción de una línea: vigila el feed del blog de Tauri, resume cada publicación nueva con un modelo elegido para ese paso, guarda un documento y avisa; debajo, lo que puede hacer por su cuenta y su primera ejecución de prueba](./docs/assets/screenshot-workflows.png)
 
 ### Conectores MCP
 
@@ -344,7 +351,7 @@ Consulta [`CHANGELOG.md`](./CHANGELOG.md) para ver todo lo incluido en cada vers
 
 ## Estado
 
-**v1.0.0-rc.9 — versión candidata.** Los instaladores para Windows, macOS
+**v1.0.0-rc.10 — versión candidata.** Los instaladores para Windows, macOS
 (Apple silicon e Intel) y Linux están en la
 [página de versiones](https://github.com/runningpixels/conduit/releases). No
 están firmados por el sistema operativo, así que el primer arranque muestra un
@@ -374,13 +381,13 @@ falta es comprobarlo en instalaciones reales antes de darla por final.
 | Generación de imágenes (OpenAI, Gemini, OpenRouter) | Funciona |
 | Prompts y recursos MCP en el campo de mensaje | Funciona |
 | Un diseño en oscuro y claro, con ajuste del color principal | Funciona |
-| Flujos de trabajo — preparados y personalizados, ejecución inmediata o según horario, con aprobación | Funciona |
+| Flujos de trabajo — preparados, personalizados o redactados a partir de una descripción; ejecución inmediata, según horario o con cada nueva publicación de un feed o archivo; un modelo por paso; pasos de investigación, documentos y conectores de solo lectura; con aprobación | Funciona |
 | Apps personales — guardar una página, ocho apps de inicio, almacenamiento por app, ajustes, acceso al modelo y límites de uso | Funciona |
 | Diapositivas — guion argumental, una presentación en vivo hecha con partes de diseño, gráficos dibujados a partir de datos, una revisión del diseño tras cada cambio, Guion, historial, temas, ventana del presentador | Funciona |
 | Exportación de Diapositivas — HTML en todas las plataformas, PDF en Windows | Funciona |
 | Inicio — campo de petición, te necesita, continúa donde lo dejaste, mosaicos de áreas, navegación con `Ctrl+1`…`9` | Funciona |
 | Interfaz en ocho idiomas | Funciona |
-| Canal de actualización y empaquetado, con actualizaciones automáticas opcionales | Funciona — 1.0.0-rc.9 compilada, firmada y publicada en los cuatro destinos; el propio actualizador aún no se ha verificado con una instalación real |
+| Canal de actualización y empaquetado, con actualizaciones automáticas opcionales | Funciona — 1.0.0-rc.10 compilada, firmada y publicada en los cuatro destinos; el propio actualizador aún no se ha verificado con una instalación real |
 | Firma de código del SO | Sin hacer — los paquetes no están firmados |
 | Sincronización en la nube / cuentas | No previsto en este repositorio |
 

@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.10] - 2026-10-08
+
+Workflows grow up in this release: they can start themselves, use models,
+Research, your Documents, your data and your connected apps, and update your
+decks and drafts.
+
 ### Added
 
 - **Workflows that start themselves.** A workflow can start when a new post
@@ -23,7 +29,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   file" step saves Markdown, text, CSV, JSON or HTML into the exports
   folder, with Show in folder on the run. A "Save to memory" step suggests a
   memory for you to accept; it never adds one on its own.
-
 - **Workflows can use your connected apps.** A "Use a connector tool" step
   calls a tool from one of your connectors — list a folder, read a file,
   list a repository's open issues — and later steps can summarize or save
@@ -32,7 +37,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   asking. The step starts the connector if it isn't running, says plainly
   when it's turned off or needs you to sign in again, and a scheduled run
   asks before using a connector it hasn't used before.
-
 - **Research and Documents search in workflows.** A Research step runs the
   same research as in chat — sub-questions, quotes checked against their
   sources, sources rated — and saves the report, at quick or standard depth
@@ -42,7 +46,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   my docs" starter). Scheduled runs ask before researching the web or
   searching your collections, and a Documents search never asks to send your
   documents for embedding on its own — it says so and stops.
-
 - **Describe a workflow and Conduit drafts it.** Say what you want in your
   own words — on the Workflows page, or with the Automate chip on Home — and
   the chat model drafts a workflow, checks it, and fixes what doesn't check
@@ -51,7 +54,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   say so. **Save chat as workflow** in the command palette turns what you did
   in a chat into a workflow you can run again; it sees your messages and
   which tools were used, not the pages or documents themselves.
-
 - **A model per workflow, and per step.** A workflow can use its own model
   instead of the one picked in chat, and each summarize or agent step can
   override it: a fast, cheap model for the bulk of the work and a stronger
@@ -87,8 +89,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   edit the same document at once. Two starters: "Weekly numbers deck" and
   "Monthly report section".
 
+### Changed
+
+- **Workflow step lists read in plain words.** References show as the labels
+  you see in the editor ("File path", "fetch · text") instead of raw `{{…}}`,
+  and each row in a run leads with what the step did, with its id muted.
+  "Show in folder" appears only on export steps.
+- **Memories from a workflow say where they came from**: "from the workflow
+  <name>".
+- **"Test run"** is the label on Run now for a workflow that starts from a
+  feed or folder, naming the post or file it will use. The "Inbox folder"
+  starter no longer doubles the file extension in the name it exports.
+
 ### Fixed
 
+- **A drafted workflow no longer says it can't use its own model.** When you
+  ask for a particular model, the draft's notes point you to the Model
+  setting instead.
 - **Connectors that only offer tools now work.** A connector that has no
   resources or prompts — the official filesystem server, for one — showed
   "0 tools" and couldn't be used; its tools are found now.
@@ -122,6 +139,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a line and column; an unknown step type lists the valid ones; network errors
   drop the operating system's error codes. `\{{` writes a literal `{{`, and
   template syntax errors say so. Skipped steps read "Skipped" in a run.
+
+### Security
+
+- `katex` for math moves from 0.18.9 to 0.18.11 (#163). The 0.16 copy that
+  the diagram renderer (Mermaid) brings in is unchanged and still open (low),
+  as in 1.0.0-rc.9.
+
+### Notes
+
+- The interface text added for these workflow features in the seven
+  non-English languages was machine-translated and has not yet had a
+  native-speaker review.
 
 ## [1.0.0-rc.9] - 2026-10-07
 
@@ -1080,7 +1109,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.9...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.10...HEAD
+[1.0.0-rc.10]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.9...v1.0.0-rc.10
 [1.0.0-rc.9]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.8...v1.0.0-rc.9
 [1.0.0-rc.8]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.7...v1.0.0-rc.8
 [1.0.0-rc.7]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.6...v1.0.0-rc.7

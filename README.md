@@ -22,9 +22,9 @@ Bring your own key for any of seventeen providers, or run a local model with
 Ollama or LM Studio, and ask for things you can keep: a **personal app** that
 pulls live data, a **slide deck** you edit by asking, an **answer cited from
 your own documents**, a **research report** whose every finding is checked
-against the page it came from, a **workflow** that runs on a schedule and stops
-to ask. Connect your tools over MCP: tools that change things, and every site a
-page wants to reach, ask you first.
+against the page it came from, a **workflow** that runs on a schedule or when
+something new arrives, and stops to ask. Connect your tools over MCP: tools
+that change things, and every site a page wants to reach, ask you first.
 
 Everything lives on your disk: chats, documents, apps and decks, in a local
 SQLite database with optional encryption at rest. There is no Conduit account,
@@ -151,14 +151,20 @@ a draft exports as Markdown or HTML.
 
 ### Workflows
 
-**Workflows** run routines for you: fetch pages, search the web, have the model
-summarise, and save the result as a document. Start from a ready-made one (a
-morning briefing, a page summary, a topic watch) or build your own step by step,
-then run it now or on a schedule. Turning a schedule on first lists everything
-the workflow will be allowed to do on its own, for you to approve, and a run
-that needs more pauses and asks.
+**Workflows** run routines for you. A step can fetch pages, search the web, run
+Research, search your Documents, read files from the workflow's own folder and
+turn CSV or JSON into tables, or call a read-only tool from a connector. Others
+summarise with a model chosen per workflow or per step, continue only if
+something changed, update a saved deck or draft, export a file, notify you, save
+a document, or suggest a memory.
 
-![A Topic watch workflow for Tauri and Rust releases: its three steps, a finished run, and the approval it asks for before running on a schedule (search the web with Exa, send text to OpenRouter, save documents)](./docs/assets/screenshot-workflows.png)
+Start from a ready-made workflow, describe what you want in your own words and
+let the model draft it, or save a chat as a workflow. Run it now, on a schedule,
+or when a new post appears in a feed or a new file lands in its folder. Turning
+automatic runs on first lists everything the workflow will be allowed to do on
+its own, for you to approve, and a run that needs more pauses and asks.
+
+![A "Tauri blog digest" workflow drafted from a one-line description: it watches the Tauri blog feed, summarises each new post with a model chosen for that step, saves a document and notifies; below, what it may do on its own and its first test run](./docs/assets/screenshot-workflows.png)
 
 ### MCP connectors
 
@@ -307,7 +313,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.9 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.10 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -335,13 +341,13 @@ left is checking it on real installs before calling it final.
 | Image generation (OpenAI, Gemini, OpenRouter) | Working |
 | MCP prompts and resources in the composer | Working |
 | One design in dark and light, with a main-colour setting | Working |
-| Workflows — ready-made and custom, run now or on a schedule, with approval | Working |
+| Workflows — ready-made, custom or drafted from a description; run now, on a schedule, or on a new feed post or file; a model per step; Research, Documents and read-only connector steps; with approval | Working |
 | Personal apps — save a page, eight starter apps, per-app storage, settings, model access and usage limits | Working |
 | Slides — storyline, one live deck built from layout parts, charts drawn from data, a layout check after each change, Script, history, themes, presenter window | Working |
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.9 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.10 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

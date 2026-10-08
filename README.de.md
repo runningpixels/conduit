@@ -26,7 +26,7 @@ und bitten Sie um Dinge, die Sie behalten können: eine **persönliche App**, di
 aktuelle Daten abruft, eine **Präsentation**, die Sie per Zuruf bearbeiten, eine
 **Antwort mit Quellenangaben aus Ihren eigenen Dokumenten**, einen
 **Recherchebericht**, dessen Aussagen alle gegen die Seite geprüft sind, von der
-sie stammen, einen **Workflow**, der nach Zeitplan läuft und nachfragt, wenn er
+sie stammen, einen **Workflow**, der nach Zeitplan oder bei Neuem läuft und nachfragt, wenn er
 nicht weiterkommt. Binden Sie Ihre Werkzeuge über MCP an: Werkzeuge, die etwas
 verändern, und jede Website, die eine Seite erreichen möchte, fragen vorher bei
 Ihnen nach.
@@ -172,16 +172,24 @@ lässt sich als Markdown oder HTML exportieren.
 
 ### Workflows
 
-**Workflows** führen Routineaufgaben für Sie aus: Seiten abrufen, im Web
-suchen, vom Modell zusammenfassen lassen und das Ergebnis als Dokument
-speichern. Starten Sie mit einem fertigen (einem Morgenbriefing, einer
-Seitenzusammenfassung, einer Themenbeobachtung) oder bauen Sie Ihren eigenen
-Schritt für Schritt und führen Sie ihn sofort oder nach Zeitplan aus. Wer einen
-Zeitplan zum ersten Mal einschaltet, sieht zunächst alles, was der Workflow
-von selbst tun darf, und kann es freigeben; ein Durchlauf, der mehr braucht,
-hält an und fragt nach.
+**Workflows** führen Routineaufgaben für Sie aus. Ein Schritt kann Seiten
+abrufen, im Web suchen, eine Recherche ausführen, Ihre Dokumente durchsuchen,
+Dateien aus dem eigenen Ordner des Workflows lesen und CSV oder JSON in Tabellen
+umwandeln oder ein Werkzeug eines Connectors aufrufen, das nur liest. Andere
+fassen mit einem pro Workflow oder pro Schritt gewählten Modell zusammen, machen
+nur weiter, wenn sich etwas geändert hat, aktualisieren eine gespeicherte
+Präsentation oder einen Entwurf, exportieren eine Datei, benachrichtigen Sie,
+speichern ein Dokument oder schlagen einen gespeicherten Fakt vor.
 
-![Ein Workflow „Topic watch“ für Tauri- und Rust-Releases: seine drei Schritte, ein abgeschlossener Durchlauf und die Freigabe, die er vor dem Lauf nach Zeitplan verlangt (im Web mit Exa suchen, Text an OpenRouter senden, Dokumente speichern)](./docs/assets/screenshot-workflows.png)
+Starten Sie mit einem fertigen Workflow, beschreiben Sie in eigenen Worten, was
+Sie möchten, und lassen Sie das Modell ihn entwerfen, oder speichern Sie einen
+Chat als Workflow. Führen Sie ihn sofort aus, nach Zeitplan oder wenn ein neuer
+Beitrag in einem Feed erscheint oder eine neue Datei in seinem Ordner landet.
+Wer automatische Durchläufe zum ersten Mal einschaltet, sieht zunächst alles, was
+der Workflow von selbst tun darf, und kann es freigeben; ein Durchlauf, der mehr
+braucht, hält an und fragt nach.
+
+![Ein Workflow „Tauri blog digest“, aus einer einzeiligen Beschreibung entworfen: Er beobachtet den Feed des Tauri-Blogs, fasst jeden neuen Beitrag mit einem für diesen Schritt gewählten Modell zusammen, speichert ein Dokument und benachrichtigt; darunter, was er allein tun darf, und sein erster Testlauf](./docs/assets/screenshot-workflows.png)
 
 ### MCP-Connectors
 
@@ -352,7 +360,7 @@ Siehe [`CHANGELOG.md`](./CHANGELOG.md) für alles, was in jeder Version enthalte
 
 ## Status
 
-**v1.0.0-rc.9 — Release Candidate.** Installationsprogramme für Windows, macOS (Apple
+**v1.0.0-rc.10 — Release Candidate.** Installationsprogramme für Windows, macOS (Apple
 Silicon und Intel) und Linux liegen auf der
 [Releases-Seite](https://github.com/runningpixels/conduit/releases). Sie sind
 nicht vom Betriebssystem signiert, daher zeigt der erste Start eine Gatekeeper-
@@ -382,13 +390,13 @@ gilt.
 | Bilderzeugung (OpenAI, Gemini, OpenRouter) | Funktioniert |
 | MCP-Prompts und -Ressourcen im Eingabefeld | Funktioniert |
 | Ein Design in dunkel und hell, mit Einstellung der Hauptfarbe | Funktioniert |
-| Workflows — fertige und eigene, sofort oder nach Zeitplan, mit Freigabe | Funktioniert |
+| Workflows — fertige, eigene oder aus einer Beschreibung entworfene; sofort, nach Zeitplan oder bei neuem Feed-Beitrag bzw. neuer Datei; ein Modell pro Schritt; Recherche-, Dokumente- und schreibgeschützte Connector-Schritte; mit Freigabe | Funktioniert |
 | Persönliche Apps — eine Seite speichern, acht Starter-Apps, Speicher pro App, Einstellungen, Modellzugriff und Nutzungslimits | Funktioniert |
 | Folien — Handlungsbogen, eine lebendige Präsentation aus Layout-Bausteinen, aus Daten gezeichnete Diagramme, eine Layoutprüfung nach jeder Änderung, Skript, Verlauf, Designs, Referentenfenster | Funktioniert |
 | Folien-Export — HTML auf jeder Plattform, PDF unter Windows | Funktioniert |
 | Start — Eingabefeld, Braucht dich, Weitermachen, Bereichskacheln, Navigation mit `Ctrl+1`…`9` | Funktioniert |
 | Oberfläche in acht Sprachen | Funktioniert |
-| Update-/Paketierungs-Pipeline, mit optionalen automatischen Updates | Funktioniert — 1.0.0-rc.9 für alle vier Ziele gebaut, signiert und veröffentlicht; der Updater selbst ist noch nicht durch eine echte Installation verifiziert |
+| Update-/Paketierungs-Pipeline, mit optionalen automatischen Updates | Funktioniert — 1.0.0-rc.10 für alle vier Ziele gebaut, signiert und veröffentlicht; der Updater selbst ist noch nicht durch eine echte Installation verifiziert |
 | Code-Signierung durch das Betriebssystem | Nicht erledigt — die Bundles sind unsigniert |
 | Cloud-Synchronisierung / Konten | In diesem Repository nicht geplant |
 

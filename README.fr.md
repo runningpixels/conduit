@@ -26,7 +26,7 @@ demandez des choses que vous pouvez garder : une **app personnelle** qui
 récupère des données en direct, une **présentation** que vous modifiez en
 demandant, une **réponse citée à partir de vos propres documents**, un **rapport
 de recherche** dont chaque constat est vérifié par rapport à la page dont il
-vient, un **flux de travail** qui s'exécute selon un calendrier et s'arrête pour
+vient, un **flux de travail** qui s'exécute selon un calendrier ou quand quelque chose de nouveau arrive et s'arrête pour
 demander. Branchez vos outils via MCP : les outils qui modifient quelque chose,
 et chaque site qu'une page veut atteindre, vous demandent d'abord
 l'autorisation.
@@ -177,16 +177,24 @@ Markdown ou en HTML.
 
 ### Flux de travail
 
-Les **flux de travail** exécutent des routines à votre place : récupérer des
-pages, chercher sur le web, faire résumer par le modèle et enregistrer le
-résultat sous forme de document. Partez d'un flux prêt à l'emploi (un briefing
-du matin, un résumé de page, une veille sur un sujet) ou créez le vôtre étape
-par étape, puis lancez-le tout de suite ou selon un calendrier. La première
-activation d'un calendrier affiche tout ce que le flux sera autorisé à faire
-seul, pour que vous l'approuviez, et une exécution qui a besoin de plus
+Les **flux de travail** exécutent des routines à votre place. Une étape peut
+récupérer des pages, chercher sur le web, lancer une recherche, chercher dans vos
+documents, lire des fichiers du dossier propre au flux et transformer du CSV ou
+du JSON en tableaux, ou appeler un outil de connecteur en lecture seule.
+D'autres résument avec un modèle choisi par flux ou par étape, ne continuent que
+si quelque chose a changé, mettent à jour une présentation ou un brouillon
+enregistrés, exportent un fichier, vous notifient, enregistrent un document ou
+suggèrent un souvenir.
+
+Partez d'un flux prêt à l'emploi, décrivez ce que vous voulez avec vos mots et
+laissez le modèle l'ébaucher, ou enregistrez une conversation comme flux.
+Lancez-le tout de suite, selon un calendrier, ou quand un nouvel article paraît
+dans un flux RSS ou qu'un nouveau fichier arrive dans son dossier. La première
+activation des exécutions automatiques affiche tout ce que le flux sera autorisé
+à faire seul, pour que vous l'approuviez, et une exécution qui a besoin de plus
 s'interrompt et demande.
 
-![Un flux de veille sur un sujet pour les versions de Tauri et Rust : ses trois étapes, une exécution terminée et l'approbation demandée avant de s'exécuter selon un calendrier (chercher sur le web avec Exa, envoyer du texte à OpenRouter, enregistrer des documents)](./docs/assets/screenshot-workflows.png)
+![Un flux « Tauri blog digest » rédigé à partir d’une description d’une ligne : il surveille le flux du blog Tauri, résume chaque nouvel article avec un modèle choisi pour cette étape, enregistre un document et prévient ; en dessous, ce qu’il peut faire seul et sa première exécution de test](./docs/assets/screenshot-workflows.png)
 
 ### Connecteurs MCP
 
@@ -361,7 +369,7 @@ Voir [`CHANGELOG.md`](./CHANGELOG.md) pour le détail de chaque version.
 
 ## État
 
-**v1.0.0-rc.9 — version candidate.** Les installateurs pour Windows, macOS (Apple
+**v1.0.0-rc.10 — version candidate.** Les installateurs pour Windows, macOS (Apple
 silicon et Intel) et Linux se trouvent sur la
 [page des versions](https://github.com/runningpixels/conduit/releases). Ils ne
 sont pas signés au niveau du système, si bien que le premier lancement affiche
@@ -391,13 +399,13 @@ C'est la version candidate de la 1.0 : tout ce qui suit fonctionne, et il reste
 | Génération d'images (OpenAI, Gemini, OpenRouter) | Fonctionnel |
 | Prompts et ressources MCP dans la zone de saisie | Fonctionnel |
 | Un seul design en sombre et clair, avec un réglage de couleur principale | Fonctionnel |
-| Flux de travail — prêts à l'emploi et personnalisés, lancés tout de suite ou selon un calendrier, avec approbation | Fonctionnel |
+| Flux de travail — prêts à l'emploi, personnalisés ou ébauchés à partir d'une description ; lancés tout de suite, selon un calendrier, ou à chaque nouvel article de flux ou nouveau fichier ; un modèle par étape ; étapes de recherche, de documents et de connecteurs en lecture seule ; avec approbation | Fonctionnel |
 | Apps personnelles — enregistrer une page, huit apps de départ, stockage par app, réglages, accès au modèle et limites d'utilisation | Fonctionnel |
 | Présentations — trame, une présentation vivante composée de blocs de mise en page, graphiques tracés à partir de données, une vérification de la mise en page après chaque modification, Script, historique, thèmes, fenêtre de présentateur | Fonctionnel |
 | Export des présentations — HTML sur toutes les plateformes, PDF sous Windows | Fonctionnel |
 | Accueil — zone de saisie, À vous, reprise, tuiles des espaces, navigation `Ctrl+1`…`9` | Fonctionnel |
 | Interface en huit langues | Fonctionnel |
-| Chaîne de mise à jour et de packaging, avec mises à jour automatiques facultatives | Fonctionnel — la 1.0.0-rc.9 est compilée, signée et publiée sur les quatre cibles ; le programme de mise à jour lui-même n'est pas encore vérifié par une vraie installation |
+| Chaîne de mise à jour et de packaging, avec mises à jour automatiques facultatives | Fonctionnel — la 1.0.0-rc.10 est compilée, signée et publiée sur les quatre cibles ; le programme de mise à jour lui-même n'est pas encore vérifié par une vraie installation |
 | Signature de code au niveau du système | Non fait — les bundles ne sont pas signés |
 | Synchronisation cloud / comptes | Non prévu dans ce dépôt |
 

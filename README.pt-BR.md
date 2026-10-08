@@ -26,7 +26,7 @@ você possa guardar: um **app pessoal** que busca dados ao vivo, uma
 **apresentação** que você edita pedindo, uma **resposta com citações dos seus
 próprios documentos**, um **relatório de pesquisa** em que cada achado é
 conferido com a página de onde veio, um **fluxo de trabalho** que roda em um
-horário e para para perguntar. Conecte as suas ferramentas por MCP: as
+horário ou quando chega algo novo e para para perguntar. Conecte as suas ferramentas por MCP: as
 ferramentas que alteram algo, e cada site que uma página quer acessar, pedem
 autorização antes.
 
@@ -165,15 +165,22 @@ exportado como Markdown ou HTML.
 
 ### Fluxos de trabalho
 
-Os **fluxos de trabalho** executam rotinas para você: buscar páginas, pesquisar
-na web, pedir ao modelo que resuma e salvar o resultado como documento. Comece
-por um já pronto (um resumo matinal, um resumo de página, um monitor de tópico)
-ou monte o seu passo a passo, e depois execute agora ou em um horário
-programado. Ao ativar um horário pela primeira vez, o Conduit mostra tudo o que
-o fluxo poderá fazer por conta própria, para você aprovar, e uma execução que
-precisa de mais pausa e pergunta.
+Os **fluxos de trabalho** executam rotinas para você. Um passo pode buscar
+páginas, pesquisar na web, fazer uma pesquisa aprofundada, buscar nos seus
+documentos, ler arquivos da pasta do próprio fluxo e transformar CSV ou JSON em
+tabelas, ou chamar uma ferramenta de conector que só lê. Outros resumem com um
+modelo escolhido por fluxo ou por passo, continuam só se algo mudou, atualizam
+um deck ou um rascunho salvos, exportam um arquivo, avisam você, salvam um
+documento ou sugerem uma memória.
 
-![Um fluxo de monitor de tópico para releases do Tauri e do Rust: seus três passos, uma execução concluída e a aprovação que ele pede antes de rodar em um horário (pesquisar na web com o Exa, enviar texto ao OpenRouter, salvar documentos)](./docs/assets/screenshot-workflows.png)
+Comece por um fluxo pronto, descreva com as suas palavras o que quer e deixe o
+modelo rascunhá-lo, ou salve uma conversa como fluxo. Execute agora, em um
+horário programado, ou quando aparecer uma nova publicação em um feed ou chegar
+um novo arquivo à sua pasta. Ao ativar as execuções automáticas pela primeira
+vez, o Conduit mostra tudo o que o fluxo poderá fazer por conta própria, para
+você aprovar, e uma execução que precisa de mais pausa e pergunta.
+
+![Um fluxo "Tauri blog digest" rascunhado a partir de uma descrição de uma linha: acompanha o feed do blog do Tauri, resume cada nova publicação com um modelo escolhido para esse passo, salva um documento e avisa; abaixo, o que ele pode fazer sozinho e sua primeira execução de teste](./docs/assets/screenshot-workflows.png)
 
 ### Conectores MCP
 
@@ -338,7 +345,7 @@ Veja o [`CHANGELOG.md`](./CHANGELOG.md) para tudo o que muda em cada versão.
 
 ## Situação
 
-**v1.0.0-rc.9 — versão candidata.** Os instaladores para Windows, macOS (Apple
+**v1.0.0-rc.10 — versão candidata.** Os instaladores para Windows, macOS (Apple
 silicon e Intel) e Linux estão na
 [página de versões](https://github.com/runningpixels/conduit/releases). Eles não
 são assinados no nível do sistema operacional, então a primeira execução exibe um
@@ -368,13 +375,13 @@ Esta é a versão candidata da 1.0: tudo o que está abaixo funciona, e o que fa
 | Geração de imagens (OpenAI, Gemini, OpenRouter) | Funcionando |
 | Prompts e recursos MCP no campo de mensagem | Funcionando |
 | Um design em escuro e claro, com ajuste da cor principal | Funcionando |
-| Fluxos de trabalho — prontos e personalizados, executar agora ou em um horário, com aprovação | Funcionando |
+| Fluxos de trabalho — prontos, personalizados ou rascunhados a partir de uma descrição; executar agora, em um horário ou a cada nova publicação de feed ou novo arquivo; um modelo por passo; passos de pesquisa, documentos e conectores somente leitura; com aprovação | Funcionando |
 | Apps pessoais — salvar uma página, oito apps iniciais, armazenamento por app, configurações, acesso ao modelo e limites de uso | Funcionando |
 | Slides — narrativa, uma apresentação ao vivo montada com partes de layout, gráficos desenhados a partir de dados, uma verificação do layout após cada mudança, Roteiro, histórico, temas, janela do apresentador | Funcionando |
 | Exportação do Slides — HTML em todas as plataformas, PDF no Windows | Funcionando |
 | Início — campo de pedido, precisa de você, continue de onde parou, blocos de áreas, navegação com `Ctrl+1`…`9` | Funcionando |
 | Interface em oito idiomas | Funcionando |
-| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.9 foi compilada, assinada e publicada nos quatro alvos; o atualizador em si ainda não foi verificado em uma instalação real |
+| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.10 foi compilada, assinada e publicada nos quatro alvos; o atualizador em si ainda não foi verificado em uma instalação real |
 | Assinatura de código do SO | Não feita — os pacotes não são assinados |
 | Sincronização na nuvem / contas | Não planejado neste repositório |
 

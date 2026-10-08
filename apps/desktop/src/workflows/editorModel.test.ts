@@ -219,7 +219,7 @@ describe('condition steps', () => {
     const step: WorkflowStep = { id: 'c', type: 'condition', value: '{{steps.fetch.text}}', is: 'changed' };
     expect(describeStep(step, t)).toContain('workspace.workflows.step.condition.changed|');
     expect(describeStep({ ...step, is: 'contains', text: 'release' } as WorkflowStep, t)).toContain(
-      'workspace.workflows.step.condition.contains|{"value":"{{steps.fetch.text}}","text":"release"}',
+      'workspace.workflows.step.condition.contains|{"value":"[fetch · workspace.workflows.editor.field.text|{}]","text":"release"}',
     );
     const note: WorkflowStep = { id: 'n', type: 'notify', title: 'x', onlyIfChanged: true };
     expect(describeStep(note, t)).toContain('workspace.workflows.step.onlyIfChanged');

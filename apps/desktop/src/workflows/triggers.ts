@@ -42,7 +42,7 @@ export function watchingText(trigger: WorkflowTrigger, folder: string | undefine
 }
 
 /// What started a run that a trigger began: "New post: Title", "New file: name".
-/// `null` for manual and scheduled runs. A trigger run whose item isn't known
+/// "Test run: <item>" for a manual run that used the newest item. `null` for other manual and scheduled runs. A trigger run whose item isn't known
 /// still reads "New post" / "New file".
 export function runTriggerLabel(run: Pick<WorkflowRun, 'trigger' | 'triggerItem'>, t: Translate): string | null {
   if (run.trigger === 'feed') {
@@ -52,6 +52,11 @@ export function runTriggerLabel(run: Pick<WorkflowRun, 'trigger' | 'triggerItem'
   if (run.trigger === 'folder') {
     const name = run.triggerItem?.name?.trim();
     return name ? t('workspace.workflows.trigger.runFolder', { name }) : t('workspace.workflows.trigger.runFolderPlain');
+  }
+  if (run.trigger === 'manual') {
+    // "Run now" on a triggered workflow uses the newest item: say it was a test.
+    const item = (run.triggerItem?.title ?? run.triggerItem?.name)?.trim();
+    return item ? t('workspace.workflows.trigger.runTest', { item }) : null;
   }
   return null;
 }

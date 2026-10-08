@@ -372,7 +372,8 @@ function itemFields(itemsPath: string, def: WorkflowDefinition): ValueRef[] {
   return [item('')];
 }
 
-function findStep(steps: readonly WorkflowStep[], id: string): WorkflowStep | undefined {
+/// A step by id, looking inside loops.
+export function findStep(steps: readonly WorkflowStep[], id: string): WorkflowStep | undefined {
   for (const step of steps) {
     if (step.id === id) return step;
     if (step.type === 'for_each') {

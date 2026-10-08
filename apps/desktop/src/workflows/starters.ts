@@ -246,7 +246,7 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
           prompt: 'Summarize this file in five bullet points and list any action items.',
           input: '{{steps.file.text}}',
         },
-        { id: 'export', type: 'export_file', name: 'summary-{{trigger.name}}.md', content: '{{steps.summary.text}}' },
+        { id: 'export', type: 'export_file', name: '{{trigger.name}} summary.md', content: '{{steps.summary.text}}' },
         { id: 'notify', type: 'notify', title: 'New file summarized', body: '{{trigger.name}}' },
       ],
     },

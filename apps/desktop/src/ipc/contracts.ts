@@ -572,6 +572,8 @@ export interface MemoryItem {
   kind: MemoryKind;
   body: string;
   sourceConversationId?: string;
+  /** The workflow whose run suggested this memory, by name (an empty name when it has none). */
+  sourceWorkflow?: string;
   pinned: boolean;
   status: MemoryStatus;
   createdAt: string;

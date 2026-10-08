@@ -85,11 +85,39 @@ pub struct StdioTransport {
     dead: bool,
 }
 
+/// The program to start. On Windows a bare name like `npx` is usually a
+/// `npx.cmd` shim, which process spawning doesn't find on its own the way a
+/// shell does, so look it up on PATH with the usual extensions. Anything with
+/// an extension or a path is used as written.
+fn resolve_program(command: &str) -> std::path::PathBuf {
+    let path = std::path::Path::new(command);
+    if !cfg!(windows) || path.extension().is_some() || path.components().count() != 1 {
+        return path.to_path_buf();
+    }
+    let Some(dirs) = std::env::var_os("PATH") else {
+        return path.to_path_buf();
+    };
+    find_on_path(command, std::env::split_paths(&dirs)).unwrap_or_else(|| path.to_path_buf())
+}
+
+/// The first `<dir>/<name>.<ext>` that exists, trying exe, cmd, bat, com.
+fn find_on_path(
+    name: &str,
+    dirs: impl IntoIterator<Item = std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    dirs.into_iter().find_map(|dir| {
+        ["exe", "cmd", "bat", "com"]
+            .iter()
+            .map(|ext| dir.join(format!("{name}.{ext}")))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
 impl StdioTransport {
     /// Spawn the connector child. Does not complete the MCP handshake — call
     /// `initialize()` next.
     pub fn spawn(config: StdioConfig, client: ClientInfo) -> Result<Self, McpError> {
-        let mut cmd = Command::new(&config.command);
+        let mut cmd = Command::new(resolve_program(&config.command));
         cmd.args(&config.args);
         for (k, v) in &config.env {
             cmd.env(k, v);
@@ -419,5 +447,33 @@ impl Drop for StdioTransport {
         // Belt-and-suspenders with `kill_on_drop`: never let a connector
         // child outlive the transport.
         let _ = self.child.start_kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_shim_on_path_is_found_by_its_bare_name() {
+        let dir = std::env::temp_dir().join(format!("mcp-shim-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("npx.cmd"), "@echo off").unwrap();
+        let found = find_on_path("npx", [dir.clone()]);
+        assert_eq!(found, Some(dir.join("npx.cmd")));
+        assert_eq!(find_on_path("nothere", [dir.clone()]), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_name_with_an_extension_or_a_path_is_used_as_written() {
+        assert_eq!(
+            resolve_program("node.exe"),
+            std::path::PathBuf::from("node.exe")
+        );
+        assert_eq!(
+            resolve_program("C:/tools/server"),
+            std::path::PathBuf::from("C:/tools/server")
+        );
     }
 }

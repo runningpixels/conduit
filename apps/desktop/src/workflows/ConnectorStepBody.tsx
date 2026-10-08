@@ -27,7 +27,14 @@ import {
 
 type ConnectorStep = Extract<WorkflowStep, { type: 'connector_tool' }>;
 
-type Loaded<T> = { state: 'loading' } | { state: 'error' } | { state: 'ready'; value: T };
+type Loaded<T> = { state: 'loading' } | { state: 'error'; reason?: string } | { state: 'ready'; value: T };
+
+/// The plain reason a command gave ("Files is turned off…"), when it gave one.
+function reasonOf(error: unknown): string | undefined {
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  return undefined;
+}
 
 /// A text field with the "Insert value" menu, supplied by the editor.
 export type RenderTextField = (props: {
@@ -78,8 +85,8 @@ export function ConnectorStepBody({
       .then((value) => {
         if (!cancelled) setTools({ state: 'ready', value });
       })
-      .catch(() => {
-        if (!cancelled) setTools({ state: 'error' });
+      .catch((error: unknown) => {
+        if (!cancelled) setTools({ state: 'error', reason: reasonOf(error) });
       });
     return () => {
       cancelled = true;
@@ -153,7 +160,11 @@ export function ConnectorStepBody({
             </select>
           </label>
           {tools.state === 'loading' ? <p className="wf-muted">{t('workspace.workflows.editor.connector.loadingTools')}</p> : null}
-          {tools.state === 'error' ? <p className="wf-error">{t('workspace.workflows.editor.connector.toolsFailed')}</p> : null}
+          {tools.state === 'error' ? (
+            <p className="wf-error" role="alert">
+              {tools.reason ?? t('workspace.workflows.editor.connector.toolsFailed')}
+            </p>
+          ) : null}
           {toolList && toolList.length === 0 ? (
             <p className="wf-muted">{t('workspace.workflows.editor.connector.noTools', { name: choice.name })}</p>
           ) : null}

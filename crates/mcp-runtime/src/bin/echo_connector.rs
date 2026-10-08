@@ -107,6 +107,12 @@ fn extended_capabilities() -> bool {
     std::env::var("ECHO_CONNECTOR_CAPABILITIES").is_ok_and(|v| v == "full")
 }
 
+/// `ECHO_CONNECTOR_CAPABILITIES=tools`: answer the resource and prompt list
+/// methods with "Method not found", like a server that only has tools.
+fn tools_only() -> bool {
+    std::env::var("ECHO_CONNECTOR_CAPABILITIES").is_ok_and(|v| v == "tools")
+}
+
 fn resources_list() -> Value {
     if !extended_capabilities() {
         return json!([]);
@@ -324,6 +330,21 @@ fn main() {
                 }))
             }
             "tools/list" => Some(json!({ "tools": tools_list() })),
+            // `ECHO_CONNECTOR_CAPABILITIES=tools` plays a tools-only server
+            // that doesn't know the resource and prompt methods at all.
+            "resources/list" | "prompts/list" if tools_only() => {
+                let _ = writeln!(
+                    out,
+                    "{}",
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32601, "message": "Method not found" }
+                    })
+                );
+                let _ = out.flush();
+                continue;
+            }
             "resources/list" => Some(json!({ "resources": resources_list() })),
             "prompts/list" => Some(json!({ "prompts": prompts_list() })),
             "resources/read" => {

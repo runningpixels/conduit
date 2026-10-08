@@ -31,8 +31,16 @@ pub async fn discover(
         // connector cannot block startup or manual refresh forever.
         let lists = async {
             let tools = t.list_tools(&cancel).await.map_err(|e| e.message)?;
-            let resources = t.list_resources(&cancel).await.map_err(|e| e.message)?;
-            let prompts = t.list_prompts(&cancel).await.map_err(|e| e.message)?;
+            // Resources and prompts are optional in MCP: a tools-only server
+            // answers "Method not found", which must not cost it its tools.
+            let resources = t.list_resources(&cancel).await.unwrap_or_else(|e| {
+                tracing::warn!(error = %e.message, "connector lists no resources");
+                Vec::new()
+            });
+            let prompts = t.list_prompts(&cancel).await.unwrap_or_else(|e| {
+                tracing::warn!(error = %e.message, "connector lists no prompts");
+                Vec::new()
+            });
             Ok::<_, String>((tools, resources, prompts))
         };
         tokio::time::timeout(timeout, lists)

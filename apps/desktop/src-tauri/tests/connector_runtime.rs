@@ -380,6 +380,28 @@ async fn discovery_caches_all_tools() {
 }
 
 #[tokio::test]
+async fn a_tools_only_server_keeps_its_tools() {
+    // Resources and prompts are optional in MCP: a server that answers
+    // "Method not found" for them still has its tools discovered.
+    let pool = common::setup_pool().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance(pool.clone(), test_paths(dir.path()));
+    let mgr = test_manager();
+    let env = json!({ "ECHO_CONNECTOR_CAPABILITIES": "tools" });
+    let vid = seed_connector_with(&pool, None, "active", None, Some(env)).await;
+
+    mgr.start_connector(&state, &vid).await.unwrap();
+    let caps = mgr
+        .discover_capabilities(&state, &vid)
+        .await
+        .expect("discover");
+    let names: Vec<&str> = caps.iter().map(|c| c.name.as_str()).collect();
+    assert!(names.contains(&"echo"), "{names:?}");
+    assert!(caps.iter().all(|c| c.kind == "tool"));
+    mgr.stop_connector(&state, &vid).await.unwrap();
+}
+
+#[tokio::test]
 async fn discovery_filters_through_allowlist() {
     let pool = common::setup_pool().await;
     let dir = tempfile::tempdir().unwrap();

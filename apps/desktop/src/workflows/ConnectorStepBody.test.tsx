@@ -69,6 +69,12 @@ describe('ConnectorStepBody', () => {
     expect((await option(/mystery/)).disabled).toBe(true);
   });
 
+  it('says why the tools could not be loaded', async () => {
+    ipc.listWorkflowConnectorTools.mockRejectedValue('Files is turned off. Open Connectors to turn it back on.');
+    renderBody(base);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Files is turned off. Open Connectors to turn it back on.');
+  });
+
   it('builds the form from the schema and writes the arguments', async () => {
     const latest = renderBody({ ...base, tool: 'list_issues' });
     const repo = await screen.findByLabelText(/repo/);

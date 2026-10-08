@@ -99,13 +99,19 @@ describe('generate-update-manifest classifyBundle', () => {
       platform: 'linux-x86_64',
       sigFile: 'Conduit_1.2.3_amd64.AppImage.sig',
     });
+    // A .deb install asks for `linux-x86_64-deb` first; without it the
+    // updater falls back to the AppImage, which its .deb installer refuses.
+    expect(classifyBundle('Conduit_1.2.3_amd64.deb')).toEqual({
+      platform: 'linux-x86_64-deb',
+      sigFile: 'Conduit_1.2.3_amd64.deb.sig',
+    });
   });
 
-  it('ignores non-updater files (the raw .exe, .deb, unrelated files)', () => {
+  it('ignores non-updater files (old bundle names, unrelated files)', () => {
     // Tauri 2.11's own latest.json lists -setup.exe as windows-x86_64; the
     // pre-2.11 .nsis.zip name is what no longer appears.
     expect(classifyBundle('Conduit_1.2.3_x64-setup.nsis.zip')).toBeNull();
-    expect(classifyBundle('Conduit_1.2.3_amd64.deb')).toBeNull();
+    expect(classifyBundle('Conduit_1.2.3_amd64.deb.sig')).toBeNull();
     expect(classifyBundle('README.md')).toBeNull();
   });
 });

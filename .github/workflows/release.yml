@@ -221,6 +221,7 @@ jobs:
             target/**/release/**/*-setup.exe*
             target/**/release/**/*.app.tar.gz*
             target/**/release/**/*.AppImage*
+            target/**/release/**/*.deb*
           if-no-files-found: ignore
 
   # Generate the Tauri 2 updater manifest from the signed bundles + their .sig
@@ -257,13 +258,16 @@ jobs:
           # legs into one directory therefore collides and one silently
           # overwrites the other, which is how the manifest came out with linux
           # and windows only. Re-attach the arch from the target triple, using
-          # the names tauri-action gives the release assets so the URLs resolve.
-          find artifacts -type f \( -name '*-setup.exe*' -o -name '*.app.tar.gz*' -o -name '*.AppImage*' \) |
+          # the names tauri-action gives the release assets so the URLs resolve:
+          # Conduit_<version>_aarch64.app.tar.gz. Until rc.10 the version was
+          # left out, the manifest's macOS URLs 404'd, and no Mac could update.
+          V="${{ needs.meta.outputs.version }}"
+          find artifacts -type f \( -name '*-setup.exe*' -o -name '*.app.tar.gz*' -o -name '*.AppImage*' -o -name '*.deb*' \) |
           while read -r f; do
             b=$(basename "$f")
             case "$f" in
-              *aarch64-apple-darwin*) b=${b/.app.tar.gz/_aarch64.app.tar.gz} ;;
-              *x86_64-apple-darwin*)  b=${b/.app.tar.gz/_x64.app.tar.gz} ;;
+              *aarch64-apple-darwin*) b=${b/.app.tar.gz/_${V}_aarch64.app.tar.gz} ;;
+              *x86_64-apple-darwin*)  b=${b/.app.tar.gz/_${V}_x64.app.tar.gz} ;;
             esac
             cp "$f" "flat/$b"
           done
@@ -294,10 +298,28 @@ jobs:
           PLATFORMS=$(node -e 'console.log(Object.keys(require(require("path").resolve(process.argv[1])).platforms).sort().join(" "))' "$MANIFEST")
           COUNT=$(echo $PLATFORMS | wc -w)
           echo "manifest lists $COUNT platform(s): $PLATFORMS"
-          if [ "$COUNT" -ne 4 ]; then
-            echo "::error::expected 4 platforms, got $COUNT"
+          # windows, darwin-aarch64, darwin-x86_64, linux (AppImage), linux-deb
+          if [ "$COUNT" -ne 5 ]; then
+            echo "::error::expected 5 platforms, got $COUNT"
             exit 1
           fi
+      # A manifest URL naming a file the release doesn't have is a platform
+      # that can never update, and nothing else notices: the macOS URLs were
+      # wrong from rc.1 to rc.10. Check every URL against the release's assets.
+      - name: Assert every manifest URL is a release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          MANIFEST=manifest-out/${{ needs.meta.outputs.channel }}/manifest.json
+          ASSETS=$(gh release view "${{ needs.meta.outputs.tag }}" --json assets -q '.assets[].name')
+          MISSING=0
+          for url in $(node -e 'const m=require(require("path").resolve(process.argv[1]));for(const p of Object.values(m.platforms))console.log(p.url)' "$MANIFEST"); do
+            name=$(basename "$url")
+            if grep -qxF "$name" <<<"$ASSETS"; then echo "ok  $name"; else echo "::error::manifest URL $url is not a release asset"; MISSING=1; fi
+          done
+          exit $MISSING
+
       # Beta is meant to be at least as new as stable, so a stable release
       # updates the beta manifest too; otherwise beta users would sit on the
       # last beta while stable moved past it.

@@ -5,9 +5,13 @@ quality gate; expanded there with automated survival/migration checks.
 
 ## Scope
 
-- **Channels:** `stable` and `beta`. A prerelease tag (`v1.2.3-beta.1`, `-rc.1`,
-  `-nightly`) or the `nightly` branch routes to **beta**; a plain `v*.*.*` tag
-  routes to **stable**. See `.github/workflows/release.yml`.
+- **Channels:** `stable` and `beta`. A plain `v*.*.*` tag or a release
+  candidate (`-rc.1`) routes to **stable**, and the beta manifest gets a copy;
+  other prerelease tags (`v1.2.3-beta.1`, `-nightly`) and the `nightly` branch
+  route to **beta**. A stable release is GitHub's "latest" release and gets
+  version-free installer copies (`Conduit_x64-setup.exe`, …), which the
+  website's `/releases/latest/download/` links serve. See
+  `.github/workflows/release.yml`.
 - **OS signing: deferred.** Bundles ship **unsigned** at the OS level
   (macOS notarization / Windows Azure Trusted Signing / Linux GPG are Phase 9/10).
   First-run Gatekeeper / SmartScreen prompts are expected and documented. The

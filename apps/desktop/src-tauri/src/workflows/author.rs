@@ -267,6 +267,16 @@ const SPECS: &[Spec] = &[
         outputs: "passages (a list; each has document, collection, text, citation), count, text (the passages numbered, with their document names)",
     },
     Spec {
+        kind: "connector_tool",
+        what: "Call one tool of a connector the user installed, to read something from another service (issues, events, files). Only tools that just read work in a workflow; a tool that changes things is refused. You cannot know the connector's id or the tool's real name: always write \"connector\": \"\" and \"tool\": \"\" (you may name the tool you have in mind in a note) and let the user pick.",
+        settings: &[
+            req("connector", "text", "the connector's id; always empty"),
+            req("tool", "text", "the tool's name; always empty"),
+            opt("arguments", "object", "the tool's arguments by name; every text value inside is a template; other values (numbers, true or false) are used as written"),
+        ],
+        outputs: "text (what the tool returned), data (its structured result or the JSON it returned, else null), connector (id, name), tool",
+    },
+    Spec {
         kind: "edit_draft",
         what: "Update a saved writing draft the same way; a section that is not in the draft yet is added at the end. Top level only. Always write \"draft\": \"\".",
         settings: &[
@@ -287,6 +297,10 @@ const EXAMPLES: &[(&str, &str)] = &[
     (
         "Check some pasted notes against my project documents",
         r##"{"name":"Check notes against my docs","description":"Find what my saved documents say about some notes and list any conflicts.","notes":["Pick the collections to search."],"definition":{"inputs":[{"id":"notes","label":"Notes to check","default":"Launch date moved to June"}],"steps":[{"id":"docs","type":"search_documents","collections":[],"query":"{{inputs.notes}}","topK":6},{"id":"check","type":"summarize","prompt":"List where these passages agree or disagree with the notes. Name the document for each point.","input":"Notes:\n{{inputs.notes}}\n\nPassages:\n{{steps.docs.text}}"},{"id":"save","type":"save_artifact","title":"Notes check","content":"{{steps.check.text}}"}]}}"##,
+    ),
+    (
+        "Every weekday, list my open issues from a connector and summarize them",
+        r##"{"name":"Open issues digest","description":"Read the open issues from a connector and summarize them.","notes":["Pick the connector and the tool. A tool like list_issues fits."],"definition":{"inputs":[{"id":"repo","label":"Repository","default":"acme/app"}],"steps":[{"id":"issues","type":"connector_tool","connector":"","tool":"","arguments":{"repo":"{{inputs.repo}}","state":"open","limit":20}},{"id":"digest","type":"summarize","prompt":"Summarize these open issues in a short list, most urgent first.","input":"{{steps.issues.text}}"},{"id":"tell","type":"notify","title":"Open issues digest","body":"{{steps.digest.text}}"}]}}"##,
     ),
     (
         "A daily briefing of two sites the user names",
@@ -355,6 +369,7 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
 - fetch_page takes at most {} addresses. for_each goes over at most {MAX_ITEMS} elements.\n\
 - research depths: {}. A research step is slow and costly: use at most one per workflow.\n\
 - search_documents keeps 1 to {} passages (default {}).\n\
+- A connector_tool step may sit at the top level or inside for_each.
 - Steps that only work at the top level (not inside for_each): condition, edit_deck, edit_draft, research, and onlyIfChanged on save_artifact or notify.\n",
         definition::CONDITION_TESTS.join(", "),
         definition::DATA_FORMATS.join(", "),
@@ -380,7 +395,7 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
         "\nRULES:\n\
 - Prefer fixed steps (fetch_page, web_search, summarize, template, save_artifact) over agent. A summarize step should do one narrow job. Add a schema only when a later step reads its fields.\n\
 - Make anything the user will vary (a web address, a topic, a file name, a person) an input with a clear label and a sensible default, and reference it with {{inputs.x}}. Do not invent web addresses the user did not give; use an input instead.\n\
-- Never invent things that exist only on the user's computer: deck ids, draft ids, collection ids, folder paths, connector ids. Leave a deck or draft id empty (\"\"), leave a search_documents step's \"collections\" as [], never write a \"folder\", and add a short note for each, such as \"Pick the deck to update.\", \"Pick the collections to search.\" or \"Choose the folder the workflow reads from.\"\n\
+- Never invent things that exist only on the user's computer: deck ids, draft ids, collection ids, folder paths, connector ids. Leave a deck or draft id empty (\"\"), leave a search_documents step's \"collections\" as [], leave a connector_tool step's \"connector\" and \"tool\" as \"\", never write a \"folder\", and add a short note for each, such as \"Pick the deck to update.\", \"Pick the collections to search.\", \"Pick the connector and the tool.\" or \"Choose the folder the workflow reads from.\"\n\
 - Never choose a model (no \"model\" setting anywhere): the user's chosen model is used.\n\
 - Never add a schedule or a trigger; the user decides that. If the user said when it should run (\"every Monday\", \"each weekday at 8\"), put that in \"notes\" as \"Turn on the schedule: <when>.\" Do not invent settings that are not listed above.\n\
 - Finish with a step that leaves the user something: save_artifact for a document, notify for a short message. A workflow must end by saving or notifying, never with just a summarize or template step.\n\
@@ -757,6 +772,9 @@ fn clear_personal_choices(definition: &mut Value) -> Vec<String> {
     if found.collections {
         notes.push("Pick the collections to search.".to_string());
     }
+    if found.connector {
+        notes.push("Pick the connector and the tool.".to_string());
+    }
     for label in inputs_without_default(definition) {
         notes.push(format!(
             "Fill in “{label}”: it has no default, so a scheduled run would have nothing to use."
@@ -795,6 +813,7 @@ struct Found {
     deck: bool,
     draft: bool,
     collections: bool,
+    connector: bool,
 }
 
 fn clear_steps(steps: Option<&mut Value>, found: &mut Found) {
@@ -820,6 +839,11 @@ fn clear_steps(steps: Option<&mut Value>, found: &mut Found) {
                 found.collections = true;
                 step.insert("collections".to_string(), json!([]));
             }
+            Some("connector_tool") => {
+                found.connector = true;
+                step.insert("connector".to_string(), json!(""));
+                step.insert("tool".to_string(), json!(""));
+            }
             _ => {}
         }
         clear_steps(step.get_mut("steps"), found);
@@ -839,6 +863,8 @@ fn expected_blank(problem: &str) -> bool {
     problem.contains(" needs a deck to update")
         || problem.contains(" needs a draft to update")
         || problem.contains(" needs at least one collection of documents to search")
+        || problem.contains(" needs a connector to use")
+        || problem.contains(" needs a tool to call")
         || problem.contains("reads a file, so choose the workflow's folder first")
 }
 
@@ -1156,6 +1182,26 @@ mod tests {
         assert_eq!(parsed.definition["steps"][0]["collections"], json!([]));
         assert!(parsed.definition["steps"][1].get("model").is_none());
         assert_eq!(parsed.notes, vec!["Pick the collections to search."]);
+        let problems = problems_of(&parsed.definition);
+        assert!(!problems.is_empty());
+        assert!(problems.iter().all(|p| expected_blank(p)), "{problems:?}");
+    }
+
+    #[test]
+    fn an_invented_connector_is_cleared_and_noted() {
+        let reply = json!({
+            "name": "Issues",
+            "definition": { "steps": [
+                { "id": "i", "type": "connector_tool", "connector": "github", "tool": "list_issues",
+                  "arguments": { "repo": "a/b" } }
+            ]}
+        })
+        .to_string();
+        let parsed = parse_reply(&reply).unwrap();
+        assert_eq!(parsed.definition["steps"][0]["connector"], "");
+        assert_eq!(parsed.definition["steps"][0]["tool"], "");
+        assert_eq!(parsed.definition["steps"][0]["arguments"]["repo"], "a/b");
+        assert_eq!(parsed.notes, vec!["Pick the connector and the tool."]);
         let problems = problems_of(&parsed.definition);
         assert!(!problems.is_empty());
         assert!(problems.iter().all(|p| expected_blank(p)), "{problems:?}");

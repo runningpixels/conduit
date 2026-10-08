@@ -62,6 +62,14 @@ pub enum Permission {
     /// Titles are part of the permission so the question can name them; a
     /// collection renamed since it was allowed asks again.
     Documents { collections: Vec<CollectionRef> },
+    /// Call this tool, which only reads, on this connector. The connector's
+    /// name is part of the permission so the question can name it; a
+    /// connector renamed since it was allowed asks again.
+    Connector {
+        connector_id: String,
+        name: String,
+        tool: String,
+    },
 }
 
 /// A collection of saved documents, as a permission names it.
@@ -87,6 +95,15 @@ pub fn search_documents(ids: &[String], title: &dyn Fn(&str) -> Option<String>) 
     collections.sort();
     collections.dedup();
     Permission::Documents { collections }
+}
+
+/// The permission to call `tool` on the connector `connector_id` named `name`.
+pub fn connector_tool(connector_id: &str, name: &str, tool: &str) -> Permission {
+    Permission::Connector {
+        connector_id: connector_id.trim().to_string(),
+        name: name.to_string(),
+        tool: tool.trim().to_string(),
+    }
 }
 
 /// The permission to change the saved deck or draft `id` titled `title`.
@@ -171,6 +188,10 @@ pub fn view(permission: Permission) -> PermissionView {
                 None,
             )
         }
+        Permission::Connector { name, tool, .. } => (
+            Some(format!("Use \u{201c}{tool}\u{201d} in {name} (reads only)")),
+            None,
+        ),
         _ => (None, None),
     };
     PermissionView {
@@ -197,6 +218,9 @@ pub struct Context<'a> {
     /// The title of a collection of documents by id; `None` leaves titles
     /// empty (they are filled in from the library when a run asks).
     pub collection_title: Option<&'a (dyn TitleLookup + 'a)>,
+    /// The name of a connector by id; `None` leaves names empty (they are
+    /// filled in from the installed connectors when a run asks).
+    pub connector_name: Option<&'a (dyn TitleLookup + 'a)>,
 }
 
 impl Context<'_> {
@@ -319,6 +343,13 @@ fn collect(
                     ctx.collection_title.unwrap_or(&none),
                 ));
             }
+            StepAction::ConnectorTool {
+                connector, tool, ..
+            } => {
+                let none = |_: &str| None;
+                let name = ctx.connector_name.unwrap_or(&none)(connector.trim());
+                set.insert(connector_tool(connector, &name.unwrap_or_default(), tool));
+            }
             StepAction::Agent { tools, .. } => {
                 set.insert(Permission::Model {
                     provider: ctx.provider_for(workflow_model, step),
@@ -372,6 +403,34 @@ pub async fn collection_titles(
         }
     }
     titles
+}
+
+/// The names of the connectors `def`'s `connector_tool` steps use, by id, for
+/// [`Context::connector_name`]. A connector that was removed is left out.
+pub async fn connector_names(
+    pool: &sqlx::SqlitePool,
+    def: &WorkflowDefinition,
+) -> std::collections::HashMap<String, String> {
+    fn ids<'a>(steps: &'a [Step], out: &mut BTreeSet<&'a str>) {
+        for step in steps {
+            match &step.action {
+                StepAction::ConnectorTool { connector, .. } => {
+                    out.insert(connector.trim());
+                }
+                StepAction::ForEach { steps, .. } => ids(steps, out),
+                _ => {}
+            }
+        }
+    }
+    let mut wanted = BTreeSet::new();
+    ids(&def.steps, &mut wanted);
+    let mut names = std::collections::HashMap::new();
+    for id in wanted.into_iter().filter(|id| !id.is_empty()) {
+        if let Ok(Some(connector)) = crate::db::repository::connectors::get(pool, id).await {
+            names.insert(id.to_string(), connector.name);
+        }
+    }
+    names
 }
 
 /// What in `required` isn't in `approved`.
@@ -434,6 +493,7 @@ mod tests {
         model: "m",
         configured: None,
         collection_title: None,
+        connector_name: None,
     };
 
     #[test]

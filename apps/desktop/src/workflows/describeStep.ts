@@ -28,8 +28,13 @@ const CONDITION_STEP_KEY: Record<ConditionTest, string> = {
 };
 
 /// The step's line, with a brief mention of its own model when it has one.
-export function describeStep(step: WorkflowStep, t: Translate, labels: InputLabels = {}): string {
-  const line = describeKind(step, t, labels);
+export function describeStep(
+  step: WorkflowStep,
+  t: Translate,
+  labels: InputLabels = {},
+  connectorNames: Record<string, string> = {},
+): string {
+  const line = describeKind(step, t, labels, connectorNames);
   const only =
     (step.type === 'notify' || step.type === 'save_artifact') && step.onlyIfChanged
       ? `${line} (${t('workspace.workflows.step.onlyIfChanged')})`
@@ -39,7 +44,7 @@ export function describeStep(step: WorkflowStep, t: Translate, labels: InputLabe
     : only;
 }
 
-function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels): string {
+function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels, connectorNames: Record<string, string>): string {
   const q = (text: string) => quote(text, labels);
   switch (step.type) {
     case 'fetch_page':
@@ -63,6 +68,13 @@ function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels): st
         count: step.collections.length,
         query: q(step.query),
       });
+    case 'connector_tool':
+      return step.connector && step.tool
+        ? t('workspace.workflows.step.connectorTool', {
+            tool: step.tool,
+            connector: connectorNames[step.connector] ?? step.connector,
+          })
+        : t('workspace.workflows.step.connectorToolEmpty');
     case 'summarize':
       return step.schema
         ? t('workspace.workflows.step.summarizeData', { prompt: q(step.prompt) })

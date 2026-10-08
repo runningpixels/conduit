@@ -180,6 +180,7 @@ fn main() {
             start_connector,
             stop_connector,
             discover_connector,
+            list_workflow_connector_tools,
             invoke_connector_tool,
             approve_connector_tool_call,
             deny_connector_tool_call,

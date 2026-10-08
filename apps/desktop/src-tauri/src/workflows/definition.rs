@@ -115,6 +115,11 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 /// - `search_documents`: `passages` (each `document, collection, text,
 ///   citation`), `count` and `text` (the passages numbered, with their
 ///   document names)
+/// - `connector_tool`: `text` (the tool's text, capped like other model
+///   text), `data` (its structured content, else its text parsed when that
+///   is a JSON object or list, else null), `isError` (always false: a tool
+///   that reports an error fails the step), `connector` (`id, name`) and
+///   `tool`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -252,6 +257,17 @@ pub enum StepAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         top_k: Option<u32>,
     },
+    /// Call a tool that only reads, on a connector the user installed.
+    ConnectorTool {
+        /// The connector's id (chosen by the user, never invented).
+        connector: String,
+        /// The tool's name, as the connector reports it.
+        tool: String,
+        /// The tool's arguments, an object. Every string anywhere inside is a
+        /// template; other values pass through.
+        #[serde(default = "empty_object")]
+        arguments: Value,
+    },
     Condition {
         /// A template: the text to test.
         value: String,
@@ -291,6 +307,26 @@ pub const RESEARCH_DEPTHS: &[&str] = &["quick", "standard"];
 /// when not told.
 pub const MAX_TOP_K: u32 = 20;
 pub const DEFAULT_TOP_K: u32 = 6;
+
+fn empty_object() -> Value {
+    Value::Object(serde_json::Map::new())
+}
+
+/// Every string in `value`, at any depth: the templates of a connector
+/// step's arguments.
+pub fn strings_in(value: &Value) -> Vec<&str> {
+    fn walk<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
+        match value {
+            Value::String(s) => out.push(s),
+            Value::Array(items) => items.iter().for_each(|v| walk(v, out)),
+            Value::Object(fields) => fields.values().for_each(|v| walk(v, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(value, &mut out);
+    out
+}
 
 fn standard_depth() -> String {
     "standard".to_string()
@@ -455,6 +491,8 @@ pub fn action_keys(step_type: &str) -> &'static [&'static str] {
         "edit_draft" => &["draft", "instructions", "input", "model"],
         "research" => &["question", "depth", "model"],
         "search_documents" => &["collections", "query", "topK"],
+        // `arguments` is the tool's own: its keys are free-form.
+        "connector_tool" => &["connector", "tool", "arguments"],
         _ => &[],
     }
 }
@@ -652,6 +690,7 @@ fn text_field(action: &StepAction) -> Option<&'static str> {
         | StepAction::Agent { .. }
         | StepAction::FetchPage { .. }
         | StepAction::ReadFile { .. }
+        | StepAction::ConnectorTool { .. }
         | StepAction::ParseData { .. } => Some("text"),
         StepAction::Ask { .. } => Some("answer"),
         _ => None,
@@ -989,6 +1028,24 @@ fn check_steps(
                     ));
                 }
                 texts.push(query);
+            }
+            StepAction::ConnectorTool {
+                connector,
+                tool,
+                arguments,
+            } => {
+                if connector.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs a connector to use."));
+                }
+                if tool.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs a tool to call."));
+                }
+                if !arguments.is_object() {
+                    problems.push(format!(
+                        "Step \"{name}\": the tool's arguments should be a set of named values."
+                    ));
+                }
+                texts.extend(strings_in(arguments));
             }
             StepAction::Condition { value, is, text } => {
                 if scope.in_loop {

@@ -53,6 +53,7 @@ import {
   type ValueRef,
 } from './editorModel';
 import { CollectionPicker } from './CollectionPicker';
+import { ConnectorStepBody } from './ConnectorStepBody';
 import { DocumentPicker } from './DocumentPicker';
 import { agentToolText } from './permissionText';
 import { ProviderModelsProvider, WorkflowModelRow } from './WorkflowModelRow';
@@ -70,6 +71,7 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   parse_data: 'workspace.workflows.editor.type.parseData',
   research: 'workspace.workflows.editor.type.research',
   search_documents: 'workspace.workflows.editor.type.searchDocuments',
+  connector_tool: 'workspace.workflows.editor.type.connectorTool',
   summarize: 'workspace.workflows.editor.type.summarize',
   template: 'workspace.workflows.editor.type.template',
   for_each: 'workspace.workflows.editor.type.forEach',
@@ -528,6 +530,15 @@ function StepCard({
             />
           </label>
         </>
+      );
+      break;
+    case 'connector_tool':
+      body = (
+        <ConnectorStepBody
+          step={step}
+          update={update}
+          renderText={(p) => <TextField label={p.label} value={p.value} refs={refs} onChange={p.onChange} multiline={p.multiline} />}
+        />
       );
       break;
     case 'summarize':

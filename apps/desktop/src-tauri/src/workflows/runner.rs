@@ -797,6 +797,9 @@ impl Exec<'_> {
                 self.search_documents(step, filled, collections, *top_k)
                     .await
             }
+            StepAction::ConnectorTool {
+                connector, tool, ..
+            } => self.connector_tool(step, filled, connector, tool).await,
             StepAction::Ask {
                 choices, default, ..
             } => {
@@ -1615,6 +1618,61 @@ impl Exec<'_> {
         }))
     }
 
+    /// Call a connector tool that only reads: see
+    /// `connector_runtime::workflow_tools`. The connector and the tool are
+    /// checked before anyone is asked, so a removed connector reads plainly.
+    async fn connector_tool(
+        &self,
+        step: &Step,
+        filled: &Value,
+        connector: &str,
+        tool: &str,
+    ) -> Result<Value, String> {
+        use crate::connector_runtime::workflow_tools as tools;
+
+        let state = self.runner.state;
+        let connectors = self.runner.connectors.ok_or("This step can't run here.")?;
+        let tool = tool.trim();
+        if tool.is_empty() {
+            return Err("Choose the tool this step calls.".to_string());
+        }
+        let arguments = &filled["arguments"];
+        if !arguments.is_object() {
+            return Err("The tool's arguments should be a set of named values.".to_string());
+        }
+        let target = tools::resolve(state, connector).await?;
+        let name = target.definition.name.clone();
+        self.allow(
+            &step.id,
+            permissions::connector_tool(connector, &name, tool),
+            None,
+        )
+        .await?;
+        let result = self
+            .unless_stopped(tools::call(
+                state,
+                connectors,
+                &target,
+                tool,
+                arguments,
+                self.run_id,
+            ))
+            .await?;
+        let capped = cap_text(&result.text, MAX_MODEL_TEXT_CHARS);
+        let truncated = capped.len() != result.text.len();
+        let mut output = json!({
+            "text": capped,
+            "data": result.data,
+            "isError": false,
+            "connector": { "id": target.definition.id, "name": name },
+            "tool": tool,
+        });
+        if truncated {
+            output["truncated"] = json!(true);
+        }
+        Ok(output)
+    }
+
     /// Update a saved deck or draft: see the module notes. `filled` holds the
     /// step's `deck`/`draft` id, `instructions` and optional `input`.
     async fn edit_document(
@@ -2135,6 +2193,14 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "type": "search_documents", "collections": collections, "query": render(query)?,
             "topK": top_k,
         }),
+        StepAction::ConnectorTool {
+            connector,
+            tool,
+            arguments,
+        } => json!({
+            "type": "connector_tool", "connector": connector, "tool": tool,
+            "arguments": render_strings(arguments, &render)?,
+        }),
         StepAction::Ask {
             question,
             choices,
@@ -2161,6 +2227,30 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
     })
 }
 
+/// `value` with every string in it (at any depth, not object keys) rendered
+/// as a template; numbers, booleans and null pass through.
+fn render_strings(
+    value: &Value,
+    render: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<Value, String> {
+    Ok(match value {
+        Value::String(text) => Value::String(render(text)?),
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|v| render_strings(v, render))
+                .collect::<Result<_, _>>()?,
+        ),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(k, v)| Ok((k.clone(), render_strings(v, render)?)))
+                .collect::<Result<_, String>>()?,
+        ),
+        other => other.clone(),
+    })
+}
+
 /// Most characters of a condition's value kept in the run record: the
 /// recorded step keeps the hash, not the page.
 const MAX_RECORDED_CONDITION_CHARS: usize = 200;
@@ -2176,6 +2266,11 @@ fn recorded_input(action: &StepAction, filled: &Value) -> Value {
         if let Some(value) = filled["value"].as_str() {
             input["value"] = json!(cap_text(value, MAX_RECORDED_CONDITION_CHARS));
         }
+    }
+    // The arguments a connector tool ran with, as they would be shown: with
+    // anything that looks like a secret hidden.
+    if matches!(action, StepAction::ConnectorTool { .. }) {
+        input["arguments"] = mcp_runtime::redact::redact_value(&filled["arguments"]);
     }
     // The data being parsed is already in the step that produced it.
     if matches!(action, StepAction::ParseData { .. }) {
@@ -2349,6 +2444,7 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::ParseData { .. } => "parse_data",
         StepAction::Research { .. } => "research",
         StepAction::SearchDocuments { .. } => "search_documents",
+        StepAction::ConnectorTool { .. } => "connector_tool",
     }
 }
 

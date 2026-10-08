@@ -101,6 +101,22 @@ pub async fn stop_connector(
         .await
 }
 
+/// The tools a connector offers right now, for the workflow editor's tool
+/// picker: `[{ name, description, inputSchema, readOnly, permissionLevel }]`.
+/// `readOnly` is the same live classification a workflow step applies when it
+/// runs (only read-only tools can be used). Starts the connector when it isn't
+/// running (up to 20 seconds); fails in plain words when it was removed, is
+/// turned off or needs signing in.
+#[tauri::command]
+pub async fn list_workflow_connector_tools(
+    state: State<'_, AppState>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+    connector_id: String,
+) -> Result<Vec<crate::connector_runtime::workflow_tools::ToolInfo>, String> {
+    crate::connector_runtime::workflow_tools::list_tools(state.inner(), &runtime, &connector_id)
+        .await
+}
+
 #[tauri::command]
 pub async fn discover_connector(
     state: State<'_, AppState>,

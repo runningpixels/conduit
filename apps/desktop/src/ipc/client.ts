@@ -90,6 +90,7 @@ import type {
   MemoryItem,
   WorkflowDefinition,
   WorkflowDraftResult,
+  WorkflowConnectorTool,
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
@@ -953,6 +954,12 @@ export async function listConnectorVersions(connectorId: string): Promise<Connec
 
 export async function listConnectorGrants(status?: 'active' | 'revoked' | 'pending' | 'provisioned'): Promise<ConnectorGrant[]> {
   return invokeCommand<ConnectorGrant[]>('list_connector_grants', { status });
+}
+
+/// A connector's tools as a workflow step sees them, with whether each only
+/// reads. Starts the connector if it isn't running (up to ~20 s).
+export async function listWorkflowConnectorTools(connectorId: string): Promise<WorkflowConnectorTool[]> {
+  return invokeCommand<WorkflowConnectorTool[]>('list_workflow_connector_tools', { connectorId });
 }
 
 export async function listConnectorCapabilities(connectorVersionId: string): Promise<ConnectorCapability[]> {

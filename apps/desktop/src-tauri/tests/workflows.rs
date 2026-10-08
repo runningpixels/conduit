@@ -757,6 +757,8 @@ impl Harness {
         let def: WorkflowDefinition = serde_json::from_value(workflow.definition).unwrap();
         let titles = permissions::collection_titles(&self.state.db, &def).await;
         let title = |id: &str| titles.get(id).cloned();
+        let names = permissions::connector_names(&self.state.db, &def).await;
+        let connector_name = |id: &str| names.get(id).cloned();
         permissions::required(
             &def,
             &permissions::Context {
@@ -765,6 +767,7 @@ impl Harness {
                 model: "echo",
                 configured: None,
                 collection_title: Some(&title),
+                connector_name: Some(&connector_name),
             },
         )
     }
@@ -5200,4 +5203,444 @@ async fn a_scheduled_documents_step_is_reviewed_by_collection_title() {
     };
     let (detail, ()) = tokio::join!(run, answer);
     assert_eq!(detail.unwrap().run.status, "completed");
+}
+
+// ── Connector steps ──────────────────────────────────────────────────────────
+
+fn echo_bin() -> &'static Path {
+    static BIN: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    BIN.get_or_init(|| {
+        // Build next to the test binary (target/<dir>/debug/deps/x.exe), so a
+        // custom --target-dir is honoured and no second tree appears.
+        let exe = std::env::current_exe().unwrap();
+        let debug = exe.parent().unwrap().parent().unwrap().to_path_buf();
+        let target = debug.parent().unwrap().to_path_buf();
+        let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--bin", "echo_connector", "-p", "mcp-runtime"])
+            .arg("--target-dir")
+            .arg(&target)
+            .current_dir(&workspace_root)
+            .status()
+            .expect("failed to invoke cargo to build echo_connector");
+        assert!(status.success(), "cargo build echo_connector failed");
+        let bin = debug.join(format!("echo_connector{}", std::env::consts::EXE_SUFFIX));
+        assert!(bin.exists(), "{bin:?}");
+        bin
+    })
+}
+
+fn connector_manager() -> conduit_desktop::connector_runtime::ConnectorRuntimeManager {
+    conduit_desktop::connector_runtime::ConnectorRuntimeManager::new_with(
+        std::time::Duration::from_millis(80),
+        std::time::Duration::from_secs(5),
+    )
+}
+
+/// Install the echo connector as "Echo" (id `echo`); `grant` is the grant's
+/// status and `support` the version's support state.
+async fn echo_connector(h: &Harness, grant: &str, support: Option<&str>) -> String {
+    use conduit_desktop::db::repository::connectors as c;
+    c::upsert_definition(
+        &h.state.db,
+        &c::ConnectorDefinition {
+            id: "echo".into(),
+            name: "Echo".into(),
+            description: "fixture".into(),
+            transport: "stdio".into(),
+            owner: "test".into(),
+            icon: None,
+            support_url: None,
+            consent_copy: None,
+            policy_metadata: None,
+            cloud_id: None,
+            created_at: "2026-06-22T00:00:00Z".into(),
+            updated_at: "2026-06-22T00:00:00Z".into(),
+        },
+    )
+    .await
+    .unwrap();
+    c::insert_version(
+        &h.state.db,
+        &c::ConnectorVersion {
+            id: "echo:1.0.0".into(),
+            connector_id: "echo".into(),
+            version: "1.0.0".into(),
+            transport_config: json!({
+                "command": echo_bin().to_string_lossy(), "args": [], "env": {}
+            }),
+            scope_grants: None,
+            capability_allowlist: None,
+            rollout_channel: None,
+            support_state: support.map(str::to_string),
+            created_at: "2026-06-22T00:00:00Z".into(),
+        },
+    )
+    .await
+    .unwrap();
+    c::upsert_grant(
+        &h.state.db,
+        &c::ConnectorGrant {
+            id: "g-echo".into(),
+            connector_version_id: "echo:1.0.0".into(),
+            scope: "user".into(),
+            status: grant.into(),
+            credential_ref: None,
+            approved_by: Some("test".into()),
+            revoked_at: None,
+            notes: None,
+            created_at: "2026-06-22T00:00:00Z".into(),
+        },
+    )
+    .await
+    .unwrap();
+    "echo:1.0.0".into()
+}
+
+fn connector_workflow(connector: &str, tool: &str, arguments: Value) -> Value {
+    json!({
+        "inputs": [{ "id": "repo", "label": "Repo", "default": "acme/app" }],
+        "steps": [{ "id": "call", "type": "connector_tool", "connector": connector,
+                    "tool": tool, "arguments": arguments }]
+    })
+}
+
+async fn run_connector_step(
+    h: &Harness,
+    mgr: &conduit_desktop::connector_runtime::ConnectorRuntimeManager,
+    definition: Value,
+) -> repo::WorkflowRunDetail {
+    let id = h.save(definition).await;
+    let runner = Runner {
+        connectors: Some(mgr),
+        ..h.manual_runner()
+    };
+    runner.run(&id, &HashMap::new(), "manual").await.unwrap()
+}
+
+#[tokio::test]
+async fn a_read_only_connector_tool_runs_with_templated_string_arguments() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    // The connector isn't running: the step starts it.
+    assert!(mgr.active_version_ids().is_empty());
+    let run = run_connector_step(
+        &h,
+        &mgr,
+        connector_workflow(
+            "echo",
+            "list_items",
+            json!({ "repo": "{{inputs.repo}}", "limit": 3, "state": ["open", "{{inputs.repo}}"] }),
+        ),
+    )
+    .await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert!(mgr.active_version_ids().contains("echo:1.0.0"));
+    let s = step(&run, "call", None);
+    let out = s.output.as_ref().unwrap();
+    assert_eq!(out["isError"], json!(false));
+    assert_eq!(out["connector"], json!({ "id": "echo", "name": "Echo" }));
+    assert_eq!(out["tool"], "list_items");
+    // The number passed through as a number (three items), the string was filled.
+    assert_eq!(out["data"].as_array().unwrap().len(), 3);
+    assert_eq!(out["data"][0]["repo"], "acme/app");
+    assert!(out["text"].as_str().unwrap().starts_with("[{"));
+    let input = s.input.as_ref().unwrap();
+    assert_eq!(input["connector"], "echo");
+    assert_eq!(input["arguments"]["repo"], "acme/app");
+    assert_eq!(input["arguments"]["limit"], 3);
+    assert_eq!(input["arguments"]["state"], json!(["open", "acme/app"]));
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn structured_content_becomes_data_and_plain_text_leaves_it_null() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let run = run_connector_step(
+        &h,
+        &mgr,
+        connector_workflow("echo", "structured", json!({})),
+    )
+    .await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let out = step(&run, "call", None).output.clone().unwrap();
+    assert_eq!(out["text"], "2 issues");
+    assert_eq!(out["data"], json!({ "count": 2, "labels": ["bug", "ui"] }));
+    let run = run_connector_step(
+        &h,
+        &mgr,
+        connector_workflow("echo", "echo", json!({ "text": "plain words" })),
+    )
+    .await;
+    let out = step(&run, "call", None).output.clone().unwrap();
+    assert_eq!(out["text"], "plain words");
+    assert!(out["data"].is_null());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn a_tool_that_can_change_things_is_refused_without_asking() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    for tool in ["post_message", "unmarked"] {
+        let run = run_connector_step(
+            &h,
+            &mgr,
+            connector_workflow("echo", tool, json!({ "channel": "general", "text": "hi" })),
+        )
+        .await;
+        assert_eq!(run.run.status, "failed", "{tool}");
+        let error = step(&run, "call", None).error.clone().unwrap();
+        assert_eq!(
+            error,
+            format!(
+                "\u{201c}{tool}\u{201d} can change things in Echo, and workflows can only use tools that just read, for now."
+            )
+        );
+    }
+    assert!(h.reviews.list().is_empty());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn connector_problems_fail_the_step_in_plain_words() {
+    use conduit_desktop::db::repository::connectors as c;
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let fail = |run: &repo::WorkflowRunDetail| {
+        assert_eq!(run.run.status, "failed");
+        step(run, "call", None).error.clone().unwrap()
+    };
+
+    let run = run_connector_step(&h, &mgr, connector_workflow("nope", "echo", json!({}))).await;
+    assert_eq!(
+        fail(&run),
+        "The connector this step uses was removed. Choose it again."
+    );
+    let run = run_connector_step(&h, &mgr, connector_workflow("echo", "vanished", json!({}))).await;
+    assert_eq!(
+        fail(&run),
+        "Echo no longer has a tool called \u{201c}vanished\u{201d}."
+    );
+    let run = run_connector_step(
+        &h,
+        &mgr,
+        connector_workflow("echo", "list_items", json!({})),
+    )
+    .await;
+    assert_eq!(
+        fail(&run),
+        "\u{201c}list_items\u{201d} needs \u{201c}repo\u{201d}."
+    );
+    let run = run_connector_step(
+        &h,
+        &mgr,
+        connector_workflow("echo", "list_items", json!({ "repo": null })),
+    )
+    .await;
+    assert_eq!(
+        fail(&run),
+        "\u{201c}list_items\u{201d} needs \u{201c}repo\u{201d}."
+    );
+    mgr.shutdown_all().await;
+
+    // Switched off.
+    c::revoke_grant(&h.state.db, "g-echo", None).await.unwrap();
+    let run = run_connector_step(&h, &mgr, connector_workflow("echo", "echo", json!({}))).await;
+    assert_eq!(
+        fail(&run),
+        "Echo is turned off. Open Connectors to turn it back on."
+    );
+    assert!(mgr.active_version_ids().is_empty());
+
+    // Needs signing in.
+    let h2 = Harness::new(EchoModel::default()).await;
+    echo_connector(&h2, "active", Some("authRequired")).await;
+    let run = run_connector_step(&h2, &mgr, connector_workflow("echo", "echo", json!({}))).await;
+    assert_eq!(
+        fail(&run),
+        "Echo needs you to sign in again \u{2014} open Connectors."
+    );
+    assert!(mgr.active_version_ids().is_empty());
+}
+
+#[tokio::test]
+async fn a_tool_that_reports_an_error_fails_the_step_with_its_redacted_text() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let run =
+        run_connector_step(&h, &mgr, connector_workflow("echo", "fail_read", json!({}))).await;
+    assert_eq!(run.run.status, "failed");
+    let error = step(&run, "call", None).error.clone().unwrap();
+    assert!(
+        error.starts_with("Echo reported an error: rate limited"),
+        "{error}"
+    );
+    assert!(!error.contains("abc123supersecret"), "{error}");
+
+    // onError: skip carries on.
+    let mut skipping = connector_workflow("echo", "fail_read", json!({}));
+    skipping["steps"][0]["onError"] = json!("skip");
+    let run = run_connector_step(&h, &mgr, skipping).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert_eq!(step(&run, "call", None).status, "skipped");
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn a_connector_step_works_inside_a_loop_and_its_secrets_stay_out_of_the_record() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let run = run_connector_step(
+        &h,
+        &mgr,
+        json!({
+            "inputs": [{ "id": "q", "label": "Q", "default": "x" }],
+            "steps": [
+                { "id": "data", "type": "parse_data", "format": "json", "input": "[{\"a\": 1}]" },
+                { "id": "each", "type": "for_each", "items": "steps.data.rows", "steps": [
+                    { "id": "call", "type": "connector_tool", "connector": "echo", "tool": "echo",
+                      "arguments": { "text": "token=Bearer abc123supersecret" } } ] }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let s = step(&run, "call", Some(0));
+    let recorded = s.input.as_ref().unwrap().to_string();
+    assert!(!recorded.contains("abc123supersecret"), "{recorded}");
+    assert!(!s
+        .output
+        .as_ref()
+        .unwrap()
+        .to_string()
+        .contains("abc123supersecret"));
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn a_scheduled_connector_step_is_reviewed_by_connector_name_and_tool() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let id = h
+        .save(connector_workflow("echo", "echo", json!({ "text": "hi" })))
+        .await;
+    let expected = Permission::Connector {
+        connector_id: "echo".into(),
+        name: "Echo".into(),
+        tool: "echo".into(),
+    };
+    assert_eq!(h.required(&id).await, vec![expected.clone()]);
+    assert_eq!(
+        serde_json::to_value(&expected).unwrap(),
+        json!({ "kind": "connector", "connectorId": "echo", "name": "Echo", "tool": "echo" })
+    );
+
+    let runner = Runner {
+        connectors: Some(&mgr),
+        ..h.unattended_runner(vec![], CancellationToken::new())
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(review.permission.permission, expected);
+        assert_eq!(
+            review.permission.label.as_deref(),
+            Some("Use \u{201c}echo\u{201d} in Echo (reads only)")
+        );
+        // Nothing has run, and the connector hasn't been started, yet.
+        assert!(mgr.active_version_ids().is_empty());
+        assert!(h.reviews.answer(&review.run_id, Decision::AllowOnce));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
+
+    // Approved ahead of time: no question.
+    let runner = Runner {
+        connectors: Some(&mgr),
+        ..h.unattended_runner(vec![expected], CancellationToken::new())
+    };
+    let detail = runner.run(&id, &no_inputs, "schedule").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert!(h.reviews.list().is_empty());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn the_tool_picker_lists_tools_with_their_read_only_flag() {
+    use conduit_desktop::connector_runtime::workflow_tools::list_tools;
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let tools = list_tools(&h.state, &mgr, "echo").await.unwrap();
+    let value = serde_json::to_value(&tools).unwrap();
+    let find = |name: &str| {
+        value
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(find("list_items")["readOnly"], json!(true));
+    assert_eq!(
+        find("list_items")["inputSchema"]["required"],
+        json!(["repo"])
+    );
+    assert_eq!(find("post_message")["readOnly"], json!(false));
+    assert_eq!(find("unmarked")["readOnly"], json!(false));
+    assert!(list_tools(&h.state, &mgr, "gone").await.is_err());
+    mgr.shutdown_all().await;
+}
+
+#[test]
+fn a_connector_step_is_checked_when_the_workflow_is_saved() {
+    use conduit_desktop::workflows::definition::check_value;
+    let check = |step: Value| check_value(&json!({ "steps": [step] }));
+    assert!(check(
+        json!({ "id": "c", "type": "connector_tool", "connector": "x", "tool": "t",
+        "arguments": { "any key": { "nested": ["{{run.date}}"] } } })
+    )
+    .is_ok());
+    assert!(
+        check(json!({ "id": "c", "type": "connector_tool", "connector": "x", "tool": "t" }))
+            .is_ok()
+    );
+    assert!(
+        check(json!({ "id": "c", "type": "connector_tool", "connector": "", "tool": "t" }))
+            .unwrap_err()
+            .contains("needs a connector")
+    );
+    assert!(
+        check(json!({ "id": "c", "type": "connector_tool", "connector": "x", "tool": " " }))
+            .unwrap_err()
+            .contains("needs a tool")
+    );
+    assert!(check(
+        json!({ "id": "c", "type": "connector_tool", "connector": "x", "tool": "t",
+        "arguments": ["a"] })
+    )
+    .unwrap_err()
+    .contains("arguments"));
+    assert!(check(
+        json!({ "id": "c", "type": "connector_tool", "connector": "x", "tool": "t",
+        "arguments": { "q": "{{steps.nope.text}}" } })
+    )
+    .is_err());
+    assert!(check(
+        json!({ "id": "c", "type": "connector_tool", "connector": "x", "tool": "t",
+        "argumentz": {} })
+    )
+    .unwrap_err()
+    .contains("unknown setting"));
 }

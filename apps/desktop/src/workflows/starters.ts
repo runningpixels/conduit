@@ -206,6 +206,52 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
     },
   },
   {
+    id: 'new-posts-digest',
+    nameKey: 'workspace.workflows.starter.newPosts.name',
+    blurbKey: 'workspace.workflows.starter.newPosts.blurb',
+    definition: {
+      // Starts a run for each new post once "Run automatically" is on.
+      trigger: { kind: 'feed', url: 'https://blog.rust-lang.org/feed.xml', everyMinutes: 30 },
+      steps: [
+        { id: 'fetch', type: 'fetch_page', urls: ['{{trigger.link}}'] },
+        {
+          id: 'summary',
+          type: 'summarize',
+          prompt: 'Summarize this post in four bullet points, then one sentence on who should read it.',
+          input: '{{trigger.title}}\n\n{{steps.fetch.text}}',
+        },
+        {
+          id: 'save',
+          type: 'save_artifact',
+          title: 'New post: {{trigger.title}}',
+          content: '{{steps.summary.text}}\n\nSource: {{trigger.link}}',
+          mode: 'create',
+        },
+        { id: 'notify', type: 'notify', title: 'New post', body: '{{trigger.title}}' },
+      ],
+    },
+  },
+  {
+    id: 'inbox-folder',
+    nameKey: 'workspace.workflows.starter.inboxFolder.name',
+    blurbKey: 'workspace.workflows.starter.inboxFolder.blurb',
+    definition: {
+      // The folder is picked in the editor: a starter cannot know which one is yours.
+      trigger: { kind: 'folder' },
+      steps: [
+        { id: 'file', type: 'read_file', path: '{{trigger.path}}' },
+        {
+          id: 'summary',
+          type: 'summarize',
+          prompt: 'Summarize this file in five bullet points and list any action items.',
+          input: '{{steps.file.text}}',
+        },
+        { id: 'export', type: 'export_file', name: 'summary-{{trigger.name}}.md', content: '{{steps.summary.text}}' },
+        { id: 'notify', type: 'notify', title: 'New file summarized', body: '{{trigger.name}}' },
+      ],
+    },
+  },
+  {
     id: 'check-notes-against-docs',
     nameKey: 'workspace.workflows.starter.checkNotes.name',
     blurbKey: 'workspace.workflows.starter.checkNotes.blurb',

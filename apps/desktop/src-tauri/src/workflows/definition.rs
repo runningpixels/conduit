@@ -35,7 +35,74 @@ pub struct WorkflowDefinition {
     /// nothing outside it. Its existence is checked when a step runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
+    /// What starts a run on its own, besides the user and a time schedule: a
+    /// new post in a feed, or a new file in the workflow's folder. Turned on
+    /// with the same "Run automatically" switch as a schedule; the item that
+    /// started a run is read as `{{trigger.<field>}}`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<Trigger>,
     pub steps: Vec<Step>,
+}
+
+/// Fewest and most minutes between two looks at a feed, and the default.
+pub const MIN_FEED_MINUTES: u32 = 15;
+pub const MAX_FEED_MINUTES: u32 = 1440;
+pub const DEFAULT_FEED_MINUTES: u32 = 30;
+
+/// What starts a workflow on its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum Trigger {
+    /// A new post in an RSS or Atom feed. `{{trigger.title}}`, `.link`,
+    /// `.summary`, `.published` and `.id`.
+    Feed {
+        url: String,
+        /// Minutes between looks, [`MIN_FEED_MINUTES`] to [`MAX_FEED_MINUTES`].
+        #[serde(default = "default_feed_minutes")]
+        every_minutes: u32,
+    },
+    /// A new file in the workflow's folder (needs `folder`), looked for every
+    /// minute. `{{trigger.path}}` (inside the folder), `.name`, `.modified`
+    /// and `.bytes`.
+    Folder,
+}
+
+fn default_feed_minutes() -> u32 {
+    DEFAULT_FEED_MINUTES
+}
+
+/// What a `{{trigger.<field>}}` reads, for each kind.
+pub const FEED_FIELDS: &[&str] = &["title", "link", "summary", "published", "id"];
+pub const FOLDER_FIELDS: &[&str] = &["path", "name", "modified", "bytes"];
+
+impl Trigger {
+    /// `feed` or `folder`: also the `trigger` of the runs it starts.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Trigger::Feed { .. } => "feed",
+            Trigger::Folder => "folder",
+        }
+    }
+
+    /// The fields a template may read from the item that started a run.
+    pub fn fields(&self) -> &'static [&'static str] {
+        match self {
+            Trigger::Feed { .. } => FEED_FIELDS,
+            Trigger::Folder => FOLDER_FIELDS,
+        }
+    }
+
+    /// Minutes between looks.
+    pub fn poll_minutes(&self) -> u32 {
+        match self {
+            Trigger::Feed { every_minutes, .. } => *every_minutes,
+            Trigger::Folder => 1,
+        }
+    }
 }
 
 /// A provider and one of its models, chosen for a workflow or a step.
@@ -120,6 +187,9 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 ///   is a JSON object or list, else null), `isError` (always false: a tool
 ///   that reports an error fails the step), `connector` (`id, name`) and
 ///   `tool`
+/// - `export_file`: `path` (absolute), `name` (as written, with its
+///   extension) and `bytes`
+/// - `save_memory`: `memoryId` and `status` (always `pending`)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -280,7 +350,29 @@ pub enum StepAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         text: Option<String>,
     },
+    /// Write text to a file in the app's exports folder, in a subfolder named
+    /// after the workflow. A file with the same name is overwritten.
+    ExportFile {
+        /// A template: a plain file name ([`EXPORT_EXTENSIONS`]; `.md` when
+        /// it has no extension), never a path.
+        name: String,
+        /// A template: what to write.
+        content: String,
+    },
+    /// Suggest something to remember. The user sees it under "Needs you" /
+    /// Memory and accepts or drops it; it is never remembered by itself.
+    SaveMemory {
+        /// A template: the fact, up to [`MAX_MEMORY_CHARS`] characters.
+        text: String,
+    },
 }
+
+/// The file types `export_file` writes.
+pub const EXPORT_EXTENSIONS: &[&str] = &["md", "txt", "csv", "json", "html"];
+/// Longest file name `export_file` accepts.
+pub const MAX_EXPORT_NAME_CHARS: usize = 120;
+/// Longest text `save_memory` suggests.
+pub const MAX_MEMORY_CHARS: usize = 1000;
 
 fn is_false(b: &bool) -> bool {
     !*b
@@ -429,7 +521,8 @@ fn plain_parse_error(message: &str) -> String {
     message.to_string()
 }
 
-const DEFINITION_KEYS: &[&str] = &["inputs", "model", "folder", "steps"];
+const DEFINITION_KEYS: &[&str] = &["inputs", "model", "folder", "trigger", "steps"];
+const TRIGGER_KEYS: &[&str] = &["kind", "url", "everyMinutes"];
 const MODEL_KEYS: &[&str] = &["provider", "model"];
 const INPUT_KEYS: &[&str] = &["id", "label", "default"];
 const STEP_KEYS: &[&str] = &["id", "type", "onError", "retries"];
@@ -493,6 +586,8 @@ pub fn action_keys(step_type: &str) -> &'static [&'static str] {
         "search_documents" => &["collections", "query", "topK"],
         // `arguments` is the tool's own: its keys are free-form.
         "connector_tool" => &["connector", "tool", "arguments"],
+        "export_file" => &["name", "content"],
+        "save_memory" => &["text"],
         _ => &[],
     }
 }
@@ -531,6 +626,20 @@ pub fn unknown_settings(raw: &Value) -> Vec<String> {
                 problems.push(format!(
                     "Input \"{id}\": unknown setting \"{key}\"{}",
                     suggestion(key, INPUT_KEYS)
+                ));
+            }
+        }
+    }
+    if let Some(trigger) = def.get("trigger").and_then(Value::as_object) {
+        for key in trigger.keys() {
+            let own = match trigger.get("kind").and_then(Value::as_str) {
+                Some("feed") => TRIGGER_KEYS,
+                _ => &TRIGGER_KEYS[..1],
+            };
+            if !own.contains(&key.as_str()) {
+                problems.push(format!(
+                    "Unknown setting \"{key}\" in the trigger{}",
+                    suggestion(key, own)
                 ));
             }
         }
@@ -620,6 +729,10 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
                 .to_string(),
         );
     }
+    let trigger = def.trigger.as_ref().map(|t| (t.kind(), t.fields()));
+    if let Some(trigger) = &def.trigger {
+        check_trigger(trigger, folder.is_some(), &mut problems);
+    }
     let mut input_ids = HashSet::new();
     for input in &def.inputs {
         if !is_id(&input.id) {
@@ -639,6 +752,7 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
         steps: Vec::new(),
         in_loop: false,
         has_folder: folder.is_some(),
+        trigger,
         loops: Vec::new(),
         own: Vec::new(),
         item_is_loop_result: false,
@@ -665,6 +779,9 @@ struct Scope<'a> {
     in_loop: bool,
     /// The workflow has a folder to read files from.
     has_folder: bool,
+    /// The kind of the workflow's trigger and the fields of the item that
+    /// started the run, which `{{trigger.<field>}}` may read.
+    trigger: Option<(&'static str, &'static [&'static str])>,
     /// The `for_each` steps before this one: its id and its own steps (id and
     /// a text-like output to suggest), which is all a result item holds.
     loops: Vec<LoopShape>,
@@ -1082,6 +1199,22 @@ fn check_steps(
                     texts.push(text);
                 }
             }
+            StepAction::ExportFile {
+                name: file,
+                content,
+            } => {
+                if file.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs a file name."));
+                }
+                texts.push(file);
+                texts.push(content);
+            }
+            StepAction::SaveMemory { text } => {
+                if text.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs something to remember."));
+                }
+                texts.push(text);
+            }
             StepAction::ForEach { items, steps: body } => {
                 check_path(items, &scope, name, problems);
                 if body.is_empty() {
@@ -1160,6 +1293,36 @@ fn only_if_changed_in_loop(name: &str) -> String {
     )
 }
 
+fn check_trigger(trigger: &Trigger, has_folder: bool, problems: &mut Vec<String>) {
+    match trigger {
+        Trigger::Feed { url, every_minutes } => {
+            let url = url.trim();
+            if url.is_empty() {
+                problems.push("A feed trigger needs the feed's address.".to_string());
+            } else if !url::Url::parse(url)
+                .is_ok_and(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some())
+            {
+                problems.push(format!(
+                    "The feed address \"{url}\" should start with https:// and name a site."
+                ));
+            }
+            if !(MIN_FEED_MINUTES..=MAX_FEED_MINUTES).contains(every_minutes) {
+                problems.push(format!(
+                    "Look at the feed every {MIN_FEED_MINUTES} to {MAX_FEED_MINUTES} minutes."
+                ));
+            }
+        }
+        Trigger::Folder => {
+            if !has_folder {
+                problems.push(
+                    "A folder trigger watches the workflow's folder, so choose the folder first."
+                        .to_string(),
+                );
+            }
+        }
+    }
+}
+
 fn check_model(model: &ModelChoice, whose: &str, problems: &mut Vec<String>) {
     if model.provider.trim().is_empty() || model.model.trim().is_empty() {
         problems.push(format!("{whose} needs both a provider and a model."));
@@ -1176,6 +1339,24 @@ fn check_path(path: &str, scope: &Scope<'_>, step: &str, problems: &mut Vec<Stri
             .is_some_and(|id| scope.steps.iter().any(|s| s == id)),
         "run" => true,
         "item" | "index" => scope.in_loop,
+        "trigger" => match scope.trigger {
+            Some((kind, fields)) => {
+                let field = parts.next();
+                if !field.is_some_and(|f| fields.contains(&f)) {
+                    problems.push(format!(
+                        "Step \"{step}\" reads {path}, but a {kind} trigger only has: {}.",
+                        fields.join(", ")
+                    ));
+                }
+                return;
+            }
+            None => {
+                problems.push(format!(
+                    "Step \"{step}\" reads {path}, but the workflow has no trigger. Choose what starts it first."
+                ));
+                return;
+            }
+        },
         _ => false,
     };
     if !ok {

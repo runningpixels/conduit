@@ -87,6 +87,10 @@ function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels, con
       return (step.format ?? 'markdown') === 'html'
         ? t('workspace.workflows.step.saveHtml', { title: q(step.title) })
         : t('workspace.workflows.step.saveMarkdown', { title: q(step.title) });
+    case 'export_file':
+      return t('workspace.workflows.step.exportFile', { name: q(step.name) });
+    case 'save_memory':
+      return t('workspace.workflows.step.saveMemory', { text: q(step.text) });
     case 'agent':
       return t('workspace.workflows.step.agent', { prompt: q(step.prompt) });
     case 'edit_deck':

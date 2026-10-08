@@ -144,4 +144,48 @@ describe('ScheduleSection approval', () => {
     await waitFor(() => expect(screen.queryByRole('group', { name: 'It needs your OK for more' })).not.toBeInTheDocument());
     expect(screen.getByText('When it runs on its own, it may: Send text to OpenAI, online · Save documents')).toBeInTheDocument();
   });
+
+  it('turns a trigger on as a watch, stores the trigger kind and names what it watches', async () => {
+    const feed = { kind: 'feed', url: 'https://blog.rust-lang.org/feed.xml', everyMinutes: 30 } as const;
+    render(<ScheduleSection workflowId="w1" trigger={feed} onStatus={vi.fn()} />);
+    const toggle = await screen.findByRole('checkbox', { name: 'Run automatically' });
+    // Not timed: no time or frequency controls, only what it will watch once on.
+    expect(screen.getByText('Turn on Run automatically to start watching.')).toBeInTheDocument();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(ipc.setWorkflowSchedule).toHaveBeenCalledWith('w1', { kind: 'trigger' }, true));
+    expect(await screen.findByText('Watching blog.rust-lang.org every 30 min')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'How often' })).not.toBeInTheDocument();
+  });
+
+  it('names the folder a folder trigger watches', async () => {
+    ipc.getWorkflowSchedule.mockResolvedValue({
+      workflowId: 'w1',
+      spec: { kind: 'trigger' },
+      enabled: true,
+      nextRunAt: '2026-09-30T05:15:00.000Z',
+      lastRunAt: null,
+    });
+    render(<ScheduleSection workflowId="w1" trigger={{ kind: 'folder' }} folder="E:\inbox" onStatus={vi.fn()} />);
+    expect(await screen.findByText('Watching E:\\inbox')).toBeInTheDocument();
+  });
+
+  it('shows why a watch is paused, as the backend reports it', async () => {
+    ipc.getWorkflowSchedule.mockResolvedValue({
+      workflowId: 'w1',
+      spec: { kind: 'trigger' },
+      enabled: true,
+      nextRunAt: '2026-09-30T05:15:00.000Z',
+      lastRunAt: null,
+      watch: {
+        kind: 'feed',
+        target: 'blog.rust-lang.org',
+        everyMinutes: 30,
+        pausedReason: 'The feed could not be reached.',
+        lastCheckedAt: null,
+      },
+    });
+    const feed = { kind: 'feed', url: 'https://blog.rust-lang.org/feed.xml', everyMinutes: 30 } as const;
+    render(<ScheduleSection workflowId="w1" trigger={feed} onStatus={vi.fn()} />);
+    expect(await screen.findByText(/The feed could not be reached\./)).toBeInTheDocument();
+  });
 });

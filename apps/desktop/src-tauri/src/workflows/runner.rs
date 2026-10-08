@@ -63,6 +63,7 @@ use uuid::Uuid;
 use super::ask::{PendingQuestion, Questions};
 use super::data;
 use super::definition::{self, ArtifactFormat, ModelChoice, OnError, SaveMode, Step, StepAction};
+use super::exports;
 use super::models::{self, Resolved};
 use super::permissions::{self, Decision, PendingReview, Permission, Reviews};
 use super::{extract, template};
@@ -214,6 +215,24 @@ impl Runner<'_> {
         trigger: &str,
         resume: Option<&Resume>,
     ) -> Result<WorkflowRunDetail, String> {
+        self.run_triggered(workflow_id, inputs, trigger, resume, None)
+            .await
+    }
+
+    /// [`Runner::run_from`] for a workflow that something started: `item` is
+    /// what `{{trigger.<field>}}` reads (a feed post, a file; see
+    /// `triggers`) and is kept with the run so a rerun can use it again.
+    /// Without one, "Run now" (`trigger` is `manual`) on a workflow that has
+    /// a trigger uses the newest item there is, so it can be tried; if there
+    /// is none, the run doesn't start.
+    pub async fn run_triggered(
+        &self,
+        workflow_id: &str,
+        inputs: &HashMap<String, String>,
+        trigger: &str,
+        resume: Option<&Resume>,
+        item: Option<Value>,
+    ) -> Result<WorkflowRunDetail, String> {
         let pool = &self.state.db;
         let enc = &self.state.encryption;
         let workflow = repo::get(pool, enc, workflow_id)
@@ -227,6 +246,20 @@ impl Runner<'_> {
         let (start, reused) = match resume {
             Some(resume) => reusable(&def.steps, resume)?,
             None => (0, Vec::new()),
+        };
+        let item = match (item, &def.trigger) {
+            (Some(item), _) => Some(item),
+            (None, Some(watched)) if trigger == "manual" => Some(
+                super::triggers::latest(
+                    watched,
+                    def.folder.as_deref(),
+                    self.fetch_policy,
+                    &workflow.id,
+                )
+                .await?
+                .value,
+            ),
+            (None, _) => None,
         };
 
         let conversation_id = self.conversation_for(&workflow).await?;
@@ -243,7 +276,11 @@ impl Runner<'_> {
                 .unwrap_or_default();
             input_values.insert(input.id.clone(), Value::String(value));
         }
-        repo::set_run_inputs(pool, enc, &run.id, &Value::Object(input_values.clone()))
+        let mut stored_inputs = input_values.clone();
+        if let Some(item) = &item {
+            stored_inputs.insert(repo::TRIGGER_ITEM_KEY.to_string(), item.clone());
+        }
+        repo::set_run_inputs(pool, enc, &run.id, &Value::Object(stored_inputs))
             .await
             .map_err(|e| e.to_string())?;
         // The user's own clock: a briefing run at 9 pm is dated today, not tomorrow.
@@ -258,6 +295,9 @@ impl Runner<'_> {
             },
         });
 
+        if let Some(item) = item {
+            ctx["trigger"] = item;
+        }
         let exec = Exec {
             runner: self,
             run_id: &run.id,
@@ -878,6 +918,15 @@ impl Exec<'_> {
                     None
                 };
                 Ok(evaluate_condition(is, value, text, previous.as_deref()))
+            }
+            StepAction::ExportFile { .. } => {
+                let name = filled["name"].as_str().unwrap_or_default();
+                let content = filled["content"].as_str().unwrap_or_default();
+                self.export_file(name, content).await
+            }
+            StepAction::SaveMemory { .. } => {
+                let text = filled["text"].as_str().unwrap_or_default();
+                self.save_memory(text).await
             }
             StepAction::ForEach { items, steps } => {
                 let list = lookup(ctx, items)
@@ -2052,6 +2101,69 @@ impl Exec<'_> {
         }
     }
 
+    /// Write `content` to `<exports>/<workflow>/<name>`, replacing a file of
+    /// that name.
+    async fn export_file(&self, name: &str, content: &str) -> Result<Value, String> {
+        let exports = &self.runner.state.paths.exports;
+        let (path, name) = exports::target(exports, self.workflow_name, name)?;
+        if content.len() > exports::MAX_BYTES {
+            return Err(format!(
+                "That's too much to export ({} MB at most).",
+                exports::MAX_BYTES / (1024 * 1024)
+            ));
+        }
+        if let Some(dir) = path.parent() {
+            tokio::fs::create_dir_all(dir)
+                .await
+                .map_err(|e| format!("The exports folder can't be written to: {e}"))?;
+        }
+        if tokio::fs::metadata(&path)
+            .await
+            .is_ok_and(|meta| !meta.is_file())
+        {
+            return Err(format!("\"{name}\" is a folder, not a file."));
+        }
+        tokio::fs::write(&path, content)
+            .await
+            .map_err(|e| format!("The file couldn't be written: {e}"))?;
+        Ok(json!({
+            "path": path.to_string_lossy(),
+            "name": name,
+            "bytes": content.len(),
+        }))
+    }
+
+    /// Suggest a memory for the user to accept; it is never one by itself.
+    async fn save_memory(&self, text: &str) -> Result<Value, String> {
+        use crate::db::repository::memory::{self, MemoryKind, MemoryStatus, NewMemory};
+        let text = text.trim();
+        if text.is_empty() {
+            return Err("There was nothing to remember: the text came out empty.".to_string());
+        }
+        let length = text.chars().count();
+        if length > definition::MAX_MEMORY_CHARS {
+            return Err(format!(
+                "A memory can be up to {} characters; this one is {length}.",
+                definition::MAX_MEMORY_CHARS
+            ));
+        }
+        let state = self.runner.state;
+        let item = memory::create(
+            &state.db,
+            &state.encryption,
+            NewMemory {
+                kind: MemoryKind::Core,
+                body: text.to_string(),
+                source_conversation_id: Some(self.conversation_id.to_string()),
+                pinned: false,
+                status: MemoryStatus::Pending,
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(json!({ "memoryId": item.id, "status": "pending" }))
+    }
+
     async fn save_artifact(
         &self,
         title: &str,
@@ -2224,6 +2336,10 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "type": "condition", "value": render(value)?, "is": is,
             "text": text.as_deref().map(render).transpose()?,
         }),
+        StepAction::ExportFile { name, content } => {
+            json!({ "type": "export_file", "name": render(name)?, "content": render(content)? })
+        }
+        StepAction::SaveMemory { text } => json!({ "type": "save_memory", "text": render(text)? }),
     })
 }
 
@@ -2445,6 +2561,8 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::Research { .. } => "research",
         StepAction::SearchDocuments { .. } => "search_documents",
         StepAction::ConnectorTool { .. } => "connector_tool",
+        StepAction::ExportFile { .. } => "export_file",
+        StepAction::SaveMemory { .. } => "save_memory",
     }
 }
 

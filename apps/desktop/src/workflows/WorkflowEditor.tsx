@@ -56,6 +56,7 @@ import { CollectionPicker } from './CollectionPicker';
 import { ConnectorStepBody } from './ConnectorStepBody';
 import { DocumentPicker } from './DocumentPicker';
 import { agentToolText } from './permissionText';
+import { TriggerSection } from './TriggerSection';
 import { ProviderModelsProvider, WorkflowModelRow } from './WorkflowModelRow';
 
 export interface WorkflowDraft {
@@ -76,6 +77,8 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   template: 'workspace.workflows.editor.type.template',
   for_each: 'workspace.workflows.editor.type.forEach',
   save_artifact: 'workspace.workflows.editor.type.saveArtifact',
+  export_file: 'workspace.workflows.editor.type.exportFile',
+  save_memory: 'workspace.workflows.editor.type.saveMemory',
   notify: 'workspace.workflows.editor.type.notify',
   ask: 'workspace.workflows.editor.type.ask',
   agent: 'workspace.workflows.editor.type.agent',
@@ -140,6 +143,19 @@ const FIELD_KEY: Record<string, string> = {
   citation: 'workspace.workflows.editor.field.citation',
 };
 
+/// Names for what a trigger hands the run (`{{trigger.<field>}}`), by trigger kind.
+const TRIGGER_FIELD_KEY: Record<string, string> = {
+  title: 'workspace.workflows.editor.trigger.title',
+  link: 'workspace.workflows.editor.trigger.link',
+  summary: 'workspace.workflows.editor.trigger.summary',
+  published: 'workspace.workflows.editor.trigger.published',
+  id: 'workspace.workflows.editor.trigger.id',
+  path: 'workspace.workflows.editor.trigger.path',
+  name: 'workspace.workflows.editor.trigger.name',
+  modified: 'workspace.workflows.editor.trigger.modified',
+  bytes: 'workspace.workflows.editor.trigger.bytes',
+};
+
 export function refLabel(ref: ValueRef, t: Translate): string {
   const field = (name: string) => (FIELD_KEY[name] ? t(FIELD_KEY[name]) : name);
   switch (ref.source.kind) {
@@ -147,6 +163,8 @@ export function refLabel(ref: ValueRef, t: Translate): string {
       return ref.source.label || ref.field;
     case 'run':
       return field('date');
+    case 'trigger':
+      return TRIGGER_FIELD_KEY[ref.field] ? t(TRIGGER_FIELD_KEY[ref.field]) : ref.field;
     case 'item': {
       // `summary.text` inside an earlier loop's items: step, then field.
       const [first, ...rest] = ref.field.split('.');
@@ -199,6 +217,8 @@ export function WorkflowEditor({
       </section>
 
       <FolderRow folder={def.folder} onChange={(folder) => setDefinition(withFolder(def, folder))} />
+
+      <TriggerSection def={def} onChange={setDefinition} />
 
       <section className="grp" aria-label={t('workspace.workflows.editor.inputs.title')}>
         <div className="grp-label">{t('workspace.workflows.editor.inputs.title')}</div>
@@ -655,6 +675,40 @@ function StepCard({
         </>
       );
       break;
+    case 'export_file':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.export.name')}
+            value={step.name}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'export_file' ? { ...s, name: v } : s))}
+          />
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.export.content')}
+            value={step.content}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'export_file' ? { ...s, content: v } : s))}
+          />
+          <p className="wf-muted">{t('workspace.workflows.editor.export.hint')}</p>
+        </>
+      );
+      break;
+    case 'save_memory':
+      body = (
+        <>
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.memory.text')}
+            value={step.text}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'save_memory' ? { ...s, text: v } : s))}
+          />
+          <p className="wf-muted">{t('workspace.workflows.editor.memory.hint')}</p>
+        </>
+      );
+      break;
     case 'agent':
       body = (
         <>
@@ -929,6 +983,7 @@ function TextField({
   };
   const groups: { key: string; refs: ValueRef[] }[] = [
     { key: 'workspace.workflows.editor.insert.inputs', refs: refs.filter((r) => r.source.kind === 'input' || r.source.kind === 'run') },
+    { key: 'workspace.workflows.editor.insert.trigger', refs: refs.filter((r) => r.source.kind === 'trigger') },
     { key: 'workspace.workflows.editor.insert.item', refs: refs.filter((r) => r.source.kind === 'item') },
     { key: 'workspace.workflows.editor.insert.steps', refs: refs.filter((r) => r.source.kind === 'step') },
   ].filter((g) => g.refs.length > 0);

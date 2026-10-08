@@ -63,6 +63,32 @@ export function connectorStepSummary(step: Pick<WorkflowRunStep, 'output'>, t: T
   return first.length > MAX_SUMMARY ? `${first.slice(0, MAX_SUMMARY - 1)}…` : first;
 }
 
+/// A finished export step's file: "summary.md · 2 KB", with its absolute path to reveal.
+export function exportedFile(
+  step: Pick<WorkflowRunStep, 'output'>,
+): { name: string; path: string; bytes: number } | null {
+  const o = step.output as Record<string, unknown> | null;
+  if (!o || typeof o !== 'object') return null;
+  if (typeof o.path !== 'string' || typeof o.name !== 'string' || typeof o.bytes !== 'number') return null;
+  return { name: o.name, path: o.path, bytes: o.bytes };
+}
+
+export function exportStepSummary(
+  step: Pick<WorkflowRunStep, 'output'>,
+  t: Translate,
+  formatSize: (bytes: number) => string,
+): string | null {
+  const file = exportedFile(step);
+  return file ? t('workspace.workflows.runDetail.exported', { name: file.name, size: formatSize(file.bytes) }) : null;
+}
+
+/// A finished memory step: the suggestion waits for the user to accept it.
+export function memoryStepSummary(step: Pick<WorkflowRunStep, 'output'>, t: Translate): string | null {
+  const o = step.output as Record<string, unknown> | null;
+  if (!o || typeof o !== 'object' || typeof o.memoryId !== 'string' || o.status !== 'pending') return null;
+  return t('workspace.workflows.runDetail.memoryPending');
+}
+
 export function dataStepSummary(
   step: Pick<WorkflowRunStep, 'output'>,
   t: Translate,

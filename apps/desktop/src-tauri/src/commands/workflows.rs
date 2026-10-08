@@ -23,6 +23,7 @@ use crate::workflows::{
     runner::{search_backend, Resume, RunBudget, Runner},
     schedule::ScheduleSpec,
     scheduler::{next_run, show_notification, RunningWorkflows, SchedulerWake},
+    triggers,
 };
 
 const MAX_NAME_CHARS: usize = 120;
@@ -181,7 +182,9 @@ pub async fn delete_workflow(state: State<'_, AppState>, id: String) -> Result<(
     }
     repo::delete(&state.db, &id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    triggers::remove_cursor(&state.paths.root, &id);
+    Ok(())
 }
 
 /// Run `workflow_id` with the user watching (not gated), from `resume` when
@@ -192,6 +195,7 @@ async fn run_manually(
     inputs: &HashMap<String, String>,
     trigger: &str,
     resume: Option<&Resume>,
+    item: Option<Value>,
 ) -> Result<WorkflowRunDetail, String> {
     use tauri::Manager;
     let state = app.state::<AppState>();
@@ -216,7 +220,9 @@ async fn run_manually(
         connectors: Some(connectors.inner()),
         documents: Some(documents.inner()),
     };
-    runner.run_from(workflow_id, inputs, trigger, resume).await
+    runner
+        .run_triggered(workflow_id, inputs, trigger, resume, item)
+        .await
 }
 
 /// Run a workflow now and return what it did. Waits for the whole run.
@@ -226,7 +232,7 @@ pub async fn run_workflow(
     id: String,
     inputs: Option<HashMap<String, String>>,
 ) -> Result<WorkflowRunDetail, String> {
-    run_manually(&app, &id, &inputs.unwrap_or_default(), "manual", None).await
+    run_manually(&app, &id, &inputs.unwrap_or_default(), "manual", None, None).await
 }
 
 /// Run a workflow again from `step_id`, reusing what an earlier run did
@@ -242,18 +248,23 @@ pub async fn rerun_workflow_from(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "That run no longer exists.".to_string())?;
-    let inputs: HashMap<String, String> =
-        repo::get_run_inputs(&state.db, &state.encryption, &run_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .and_then(|v| serde_json::from_value(v).ok())
-            .unwrap_or_default();
+    let mut stored = repo::get_run_inputs(&state.db, &state.encryption, &run_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    // The post or file that started the earlier run is used again.
+    let item = stored
+        .as_mut()
+        .and_then(Value::as_object_mut)
+        .and_then(|fields| fields.remove(repo::TRIGGER_ITEM_KEY));
+    let inputs: HashMap<String, String> = stored
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
     let workflow_id = earlier.run.workflow_id.clone();
     let resume = Resume {
         from_step: step_id,
         earlier: earlier.steps,
     };
-    run_manually(&app, &workflow_id, &inputs, "rerun", Some(&resume)).await
+    run_manually(&app, &workflow_id, &inputs, "rerun", Some(&resume), item).await
 }
 
 /// Stop a workflow's run in progress. The run ends as `stopped` after the
@@ -269,9 +280,13 @@ pub async fn list_workflow_runs(
     id: String,
     limit: Option<i64>,
 ) -> Result<Vec<WorkflowRun>, String> {
-    repo::list_runs(&state.db, &id, limit.unwrap_or(30).clamp(1, 200))
+    let mut runs = repo::list_runs(&state.db, &id, limit.unwrap_or(30).clamp(1, 200))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    repo::add_trigger_items(&state.db, &state.encryption, &mut runs)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(runs)
 }
 
 #[tauri::command]
@@ -290,9 +305,30 @@ pub async fn get_workflow_schedule(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Option<WorkflowSchedule>, String> {
-    repo::get_schedule(&state.db, &id)
+    let Some(mut schedule) = repo::get_schedule(&state.db, &id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    // A trigger schedule says what it watches and whether it is stuck.
+    if serde_json::from_value::<ScheduleSpec>(schedule.spec.clone()).ok()
+        == Some(ScheduleSpec::Trigger)
+    {
+        if let Some(workflow) = repo::get(&state.db, &state.encryption, &id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            let def =
+                serde_json::from_value::<definition::WorkflowDefinition>(workflow.definition).ok();
+            schedule.watch = def.as_ref().and_then(|def| {
+                def.trigger.as_ref().map(|trigger| {
+                    triggers::watch_status(&state.paths.root, &id, trigger, def.folder.as_deref())
+                })
+            });
+        }
+    }
+    Ok(Some(schedule))
 }
 
 /// Set a workflow's schedule (`spec: null` removes it). The next run is worked
@@ -312,21 +348,46 @@ pub async fn set_workflow_schedule(
     {
         return Err("That workflow no longer exists.".to_string());
     }
+    // Turning a trigger off or on again starts it afresh: the first look
+    // after it is on only notes what is already there.
+    let was_watching = repo::get_schedule(&state.db, &id)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some_and(|s| s.enabled && s.spec["kind"] == "trigger");
     let Some(spec_value) = spec else {
         repo::delete_schedule(&state.db, &id)
             .await
             .map_err(|e| e.to_string())?;
+        triggers::remove_cursor(&state.paths.root, &id);
         wake.poke();
         return Ok(None);
     };
     let spec: ScheduleSpec = serde_json::from_value(spec_value.clone())
         .map_err(|e| format!("The schedule can't be read: {e}"))?;
     spec.validate()?;
-    let next = if enabled {
-        Some(next_run(&spec, chrono::Utc::now(), &chrono::Local)?)
-    } else {
+    let next = if !enabled {
         None
+    } else if spec == ScheduleSpec::Trigger {
+        let workflow = repo::get(&state.db, &state.encryption, &id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "That workflow no longer exists.".to_string())?;
+        let watched = serde_json::from_value::<definition::WorkflowDefinition>(workflow.definition)
+            .ok()
+            .and_then(|def| def.trigger);
+        if watched.is_none() {
+            return Err(
+                "This workflow has nothing to watch. Choose what starts it first.".to_string(),
+            );
+        }
+        // The first look, right away, is the baseline.
+        Some(crate::workflows::scheduler::to_iso(chrono::Utc::now()))
+    } else {
+        Some(next_run(&spec, chrono::Utc::now(), &chrono::Local)?)
     };
+    if spec != ScheduleSpec::Trigger || !enabled || !was_watching {
+        triggers::remove_cursor(&state.paths.root, &id);
+    }
     let saved = repo::put_schedule(&state.db, &id, &spec_value, enabled, next.as_deref())
         .await
         .map_err(|e| e.to_string())?;

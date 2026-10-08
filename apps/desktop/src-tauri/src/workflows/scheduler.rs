@@ -36,9 +36,11 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use super::ask::Questions;
-use super::permissions::Reviews;
+use super::definition::WorkflowDefinition;
+use super::permissions::{Permission, Reviews};
 use super::runner::{Notifier, RunBudget, Runner, Unattended};
 use super::schedule::ScheduleSpec;
+use super::triggers::{self, Polled};
 use crate::artifact_network::AddressPolicy;
 use crate::db::repository::workflows as repo;
 use crate::state::AppState;
@@ -191,8 +193,12 @@ pub struct RunFinished {
     /// but has nothing to report, so no "finished" notification is shown.
     /// `None` for every other run.
     pub outcome: Option<String>,
-    /// `schedule`, or `catch_up` for a run that was due while Conduit was closed.
+    /// `schedule`, `catch_up` for a run that was due while the app was closed,
+    /// or `feed` / `folder` for a run a trigger started.
     pub trigger: String,
+    /// For a `feed` or `folder` run: the post (`title, link, summary,
+    /// published, id`) or file (`path, name, modified, bytes`) it ran for.
+    pub trigger_item: Option<serde_json::Value>,
     pub documents: Vec<SavedDocument>,
 }
 
@@ -256,6 +262,9 @@ pub struct Claimed {
     pub trigger: String,
     /// Why it can't run (its schedule no longer reads), if so.
     pub error: Option<String>,
+    /// A trigger look rather than a timed run: the scheduler polls the
+    /// workflow's feed or folder and runs it once for each new item.
+    pub poll: bool,
 }
 
 /// Claim every schedule due at `now`, reading schedule times in `tz`. Each
@@ -277,12 +286,8 @@ pub async fn claim_due<Tz: TimeZone>(
     let mut claimed = Vec::new();
     for schedule in due {
         let id = schedule.workflow_id.clone();
-        let name = repo::get(pool, &state.encryption, &id)
-            .await
-            .ok()
-            .flatten()
-            .map(|w| w.name)
-            .unwrap_or_default();
+        let record = repo::get(pool, &state.encryption, &id).await.ok().flatten();
+        let name = record.as_ref().map(|w| w.name.clone()).unwrap_or_default();
         let late = schedule
             .next_run_at
             .as_deref()
@@ -292,10 +297,26 @@ pub async fn claim_due<Tz: TimeZone>(
 
         let spec: Result<ScheduleSpec, String> =
             serde_json::from_value(schedule.spec.clone()).map_err(|e| e.to_string());
-        let next = spec
-            .as_ref()
-            .map_err(Clone::clone)
-            .and_then(|spec| next_run(spec, now, tz));
+        let polling = matches!(spec, Ok(ScheduleSpec::Trigger));
+        let next = match &spec {
+            // A trigger is looked at as often as its own settings say.
+            Ok(ScheduleSpec::Trigger) => {
+                let watched = record
+                    .as_ref()
+                    .and_then(|w| {
+                        serde_json::from_value::<WorkflowDefinition>(w.definition.clone()).ok()
+                    })
+                    .and_then(|def| def.trigger);
+                match watched {
+                    Some(trigger) => Ok(to_iso(
+                        now + ChronoDuration::minutes(i64::from(trigger.poll_minutes())),
+                    )),
+                    None => Err("this workflow has no trigger any more".to_string()),
+                }
+            }
+            Ok(spec) => next_run(spec, now, tz),
+            Err(e) => Err(e.clone()),
+        };
         // A spec that no longer reads turns the schedule off (no next time).
         if let Err(e) = repo::mark_schedule_ran(pool, &id, &to_iso(now), next.as_deref().ok()).await
         {
@@ -305,10 +326,11 @@ pub async fn claim_due<Tz: TimeZone>(
         claimed.push(Claimed {
             workflow_id: id,
             workflow_name: name,
-            trigger,
+            trigger: if polling { "poll".to_string() } else { trigger },
             error: next
                 .err()
                 .map(|e| format!("The schedule can't be read: {e}")),
+            poll: polling,
         });
     }
     claimed
@@ -341,17 +363,189 @@ pub async fn run_claimed(
 ) -> Vec<RunFinished> {
     let finished = Mutex::new(Vec::new());
     let runs = claimed.into_iter().map(|claim| async {
-        let event = run_one(ctx, claim).await;
-        on_finished(&event);
-        if let Ok(mut finished) = finished.lock() {
-            finished.push(event);
+        for event in run_one(ctx, claim).await {
+            on_finished(&event);
+            if let Ok(mut finished) = finished.lock() {
+                finished.push(event);
+            }
         }
     });
     futures::future::join_all(runs).await;
     finished.into_inner().unwrap_or_default()
 }
 
-async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
+/// Runs one claim. A timed run is one event; a trigger look is one event for
+/// each item it ran for (none when nothing was new).
+async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> {
+    if claim.poll {
+        return poll_and_run(ctx, claim).await;
+    }
+    vec![run_timed(ctx, claim).await]
+}
+
+/// What a notification says when a trigger can't be looked at any more.
+fn paused_notice(workflow_name: &str, reason: &str) -> (String, String) {
+    (workflow_name.to_string(), format!("Paused: {reason}"))
+}
+
+/// Look at a trigger workflow's feed or folder and run it once for each new
+/// item, oldest first, at most [`triggers::MAX_RUNS_PER_POLL`] of them.
+async fn poll_and_run(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> {
+    let RunContext {
+        state,
+        streams,
+        running,
+        reviews,
+        questions,
+        documents,
+        connectors,
+        fetch_policy,
+        notify,
+    } = *ctx;
+    let Claimed {
+        workflow_id,
+        workflow_name,
+        error,
+        ..
+    } = claim;
+    let event = |status: &str, error: Option<String>| RunFinished {
+        workflow_id: workflow_id.clone(),
+        workflow_name: workflow_name.clone(),
+        run_id: None,
+        status: status.into(),
+        error,
+        outcome: None,
+        trigger: String::new(),
+        trigger_item: None,
+        documents: Vec::new(),
+    };
+    if let Some(error) = error {
+        return vec![event("failed", Some(error))];
+    }
+    let record = match repo::get(&state.db, &state.encryption, &workflow_id).await {
+        Ok(Some(record)) => record,
+        _ => return Vec::new(),
+    };
+    let Some((def, watched)) = serde_json::from_value::<WorkflowDefinition>(record.definition)
+        .ok()
+        .and_then(|def| def.trigger.clone().map(|t| (def, t)))
+    else {
+        return vec![event(
+            "failed",
+            Some("The workflow has no trigger to watch.".to_string()),
+        )];
+    };
+    // One run per workflow at a time: if it is busy, look again next time
+    // (nothing is marked seen until a look is made).
+    let Some(guard) = running.try_start(&workflow_id) else {
+        return Vec::new();
+    };
+    let approved = repo::get_permissions(&state.db, &state.encryption, &workflow_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|(approved, _)| approved)
+        .unwrap_or_default();
+    // Looking is something the user approved when they turned it on; a
+    // changed address or folder needs approving again.
+    let allowed = match triggers::permission(&watched, def.folder.as_deref()) {
+        Some(needed) if !approved.contains(&needed) => Err(match &needed {
+            Permission::Host { host } => {
+                format!("Turn the trigger on again to allow reading {host}.")
+            }
+            _ => "Turn the trigger on again to allow reading the folder.".to_string(),
+        }),
+        _ => Ok(()),
+    };
+    let polled = triggers::poll(
+        &state.paths.root,
+        &workflow_id,
+        &watched,
+        def.folder.as_deref(),
+        fetch_policy,
+        Utc::now(),
+        allowed,
+    )
+    .await;
+    let items = match polled {
+        Ok(Polled::Items(items)) => items,
+        Ok(Polled::Failed { error, paused_now }) => {
+            tracing::info!(%workflow_id, %error, "a workflow trigger could not be checked");
+            if paused_now {
+                if let Some(notify) = notify {
+                    let (title, body) = paused_notice(&workflow_name, &error);
+                    if let Err(e) = notify(&title, &body) {
+                        tracing::warn!(error = %e, "could not show a paused-trigger notification");
+                    }
+                }
+            }
+            return Vec::new();
+        }
+        Err(error) => {
+            tracing::warn!(%workflow_id, %error, "could not save a workflow trigger's progress");
+            return Vec::new();
+        }
+    };
+    let kind = watched.kind();
+    let mut events = Vec::new();
+    for item in items {
+        if guard.stop_token().is_cancelled() {
+            break;
+        }
+        // Read again each time: "Always allow" in an earlier run counts.
+        let approved = repo::get_permissions(&state.db, &state.encryption, &workflow_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|(approved, _)| approved)
+            .unwrap_or_default();
+        let runner = Runner {
+            state,
+            streams,
+            fetch_policy,
+            stop: guard.stop_token(),
+            unattended: Some(Unattended::new(reviews, approved)),
+            budget: RunBudget::default(),
+            notify,
+            questions: Some(questions),
+            connectors,
+            documents,
+        };
+        let outcome = runner
+            .run_triggered(
+                &workflow_id,
+                &HashMap::new(),
+                kind,
+                None,
+                Some(item.value.clone()),
+            )
+            .await;
+        let base = RunFinished {
+            trigger: kind.to_string(),
+            trigger_item: Some(item.value),
+            ..event("", None)
+        };
+        events.push(match outcome {
+            Ok(detail) => RunFinished {
+                run_id: Some(detail.run.id.clone()),
+                status: detail.run.status.clone(),
+                error: detail.run.error.clone(),
+                outcome: detail.run.outcome.clone(),
+                documents: saved_documents(&detail),
+                ..base
+            },
+            Err(error) => RunFinished {
+                status: "failed".into(),
+                error: Some(error),
+                ..base
+            },
+        });
+    }
+    drop(guard);
+    events
+}
+
+async fn run_timed(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
     let RunContext {
         state,
         streams,
@@ -368,6 +562,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         workflow_name,
         trigger,
         error,
+        ..
     } = claim;
     let finished = |status: &str, error: Option<String>| RunFinished {
         workflow_id: workflow_id.clone(),
@@ -377,6 +572,7 @@ async fn run_one(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         error,
         outcome: None,
         trigger: trigger.clone(),
+        trigger_item: None,
         documents: Vec::new(),
     };
     if error.is_some() {

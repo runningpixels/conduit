@@ -854,7 +854,8 @@ describe('WorkflowsPage', () => {
     it('treats a run paused for approval as still going', async () => {
       ipc.listWorkflowRuns.mockResolvedValue([{ ...live, status: 'paused' as const }]);
       render(<WorkflowsPage onStatus={vi.fn()} />);
-      expect(await screen.findByRole('button', { name: 'Running…' })).toBeDisabled();
+      // The button says it is waiting, not running.
+      expect(await screen.findByRole('button', { name: 'Waiting for you' })).toBeDisabled();
     });
 
     it('ignores a live run of another workflow', async () => {

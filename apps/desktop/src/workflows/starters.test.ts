@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowStep } from '../ipc/contracts';
-import { documentTarget, isDocumentEdit, needsDocumentTarget, valuesAt } from './editorModel';
+import { documentTarget, isDocumentEdit, needsCollections, needsDocumentTarget, valuesAt } from './editorModel';
 import { STARTER_WORKFLOWS } from './starters';
 
 const briefing = STARTER_WORKFLOWS.find((s) => s.id === 'briefing')!;
@@ -75,6 +75,24 @@ describe('starters', () => {
     expect(steps.map((x) => x.type)).toEqual(['fetch_page', 'summarize', 'edit_draft']);
     expect(steps[2]).toMatchObject({ type: 'edit_draft', draft: '', input: '{{steps.summary.text}}' });
     expect(needsDocumentTarget(starter.definition)).toBe(true);
+  });
+
+  it('weekly research digest researches, updates one document and notifies', () => {
+    const starter = STARTER_WORKFLOWS.find((x) => x.id === 'weekly-research-digest')!;
+    const steps = starter.definition.steps;
+    expect(steps.map((x) => x.type)).toEqual(['research', 'save_artifact', 'notify']);
+    expect(steps[0]).toMatchObject({ depth: 'quick', question: '{{inputs.topic}}: what changed this week?' });
+    expect(steps[1]).toMatchObject({ mode: 'update', content: '{{steps.research.text}}' });
+    expect(needsCollections(starter.definition)).toBe(false);
+  });
+
+  it('check notes against my docs reads, searches, summarizes and saves, with collections still to pick', () => {
+    const starter = STARTER_WORKFLOWS.find((x) => x.id === 'check-notes-against-docs')!;
+    const steps = starter.definition.steps;
+    expect(steps.map((x) => x.type)).toEqual(['read_file', 'search_documents', 'summarize', 'save_artifact']);
+    expect(steps[1]).toMatchObject({ collections: [], query: '{{steps.notes.text}}' });
+    // Nothing is chosen for the user: the editor opens so they pick the collections.
+    expect(needsCollections(starter.definition)).toBe(true);
   });
 
   it('every other starter can be saved as it is, and every reference in the new ones resolves', () => {

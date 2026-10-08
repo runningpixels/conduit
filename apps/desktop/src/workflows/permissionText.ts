@@ -24,6 +24,11 @@ export function agentToolsText(tools: readonly string[], t: Translate): string {
   return tools.map((tool) => agentToolText(tool, t)).join(', ');
 }
 
+/// The titles of a documents permission's collections, joined ("Notes, Specs").
+export function documentTitles(p: Extract<WorkflowPermissionView, { kind: 'documents' }>): string {
+  return p.collections.map((c) => c.title).join(', ');
+}
+
 /// One line of "When it runs on its own, it will be allowed to: …".
 export function permissionText(p: WorkflowPermissionView, t: Translate): string {
   switch (p.kind) {
@@ -43,6 +48,10 @@ export function permissionText(p: WorkflowPermissionView, t: Translate): string 
       return t('workspace.workflows.permissions.readFolder', { folder: p.path });
     case 'agentTools':
       return t('workspace.workflows.permissions.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
+    case 'research':
+      return t('workspace.workflows.permissions.research');
+    case 'documents':
+      return t('workspace.workflows.permissions.documents', { titles: documentTitles(p) });
     case 'editDocument':
       return t(
         p.documentKind === 'deck' ? 'workspace.workflows.permissions.editDeck' : 'workspace.workflows.permissions.editDraft',
@@ -71,6 +80,10 @@ export function reviewText(review: WorkflowReview, t: Translate): string {
       return t('workspace.workflows.review.readFolder', { folder: p.path });
     case 'agentTools':
       return t('workspace.workflows.review.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
+    case 'research':
+      return t('workspace.workflows.review.research');
+    case 'documents':
+      return t('workspace.workflows.review.documents', { titles: documentTitles(p) });
     case 'editDocument':
       return t(
         p.documentKind === 'deck' ? 'workspace.workflows.review.editDeck' : 'workspace.workflows.review.editDraft',

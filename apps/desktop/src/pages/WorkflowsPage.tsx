@@ -15,7 +15,7 @@ import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { documentEditSummary } from '../workflows/documentEditSummary';
 import { UndoUpdate } from '../workflows/UndoUpdate';
-import { dataStepSummary } from '../workflows/stepSummary';
+import { dataStepSummary, documentsStepSummary, researchReport, researchStepSummary } from '../workflows/stepSummary';
 import {
   createWorkflow,
   deleteWorkflow,
@@ -53,7 +53,7 @@ import type {
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
-import { needsDocumentTarget, newStep } from '../workflows/editorModel';
+import { needsCollections, needsDocumentTarget, newStep } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { reviewText } from '../workflows/permissionText';
 import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
@@ -461,7 +461,7 @@ export function WorkflowsPage({
   async function startFrom(starter: StarterWorkflow) {
     // A starter that changes a deck or draft cannot be saved until the user
     // picks which one, so it opens in the editor with that step flagged.
-    if (needsDocumentTarget(starter.definition)) {
+    if (needsDocumentTarget(starter.definition) || needsCollections(starter.definition)) {
       setEditError(null);
       setMode({
         kind: 'draft',
@@ -876,7 +876,11 @@ export function WorkflowsPage({
           ))}
           <div className="mem-actions">
             <button type="button" className="btn primary" onClick={() => void run()} disabled={running || busy}>
-              {running ? t('workspace.workflows.run.running') : t('workspace.workflows.run.now')}
+              {liveRun?.status === 'paused'
+                ? t('workspace.workflows.run.paused')
+                : running
+                  ? t('workspace.workflows.run.running')
+                  : t('workspace.workflows.run.now')}
             </button>
             {running ? (
               <button type="button" className="btn" onClick={() => void stop()} disabled={stopping}>
@@ -1273,6 +1277,7 @@ function RunDetail({
             key={step.id}
             step={step}
             statusLabel={statusLabel}
+            onOpenDocument={onOpenDocument}
             onOpenDeck={onOpenDeck}
             onOpenDraft={onOpenDraft}
             onRestoreDocument={onRestoreDocument}
@@ -1288,6 +1293,7 @@ function RunDetail({
 function RunStepRow({
   step,
   statusLabel,
+  onOpenDocument,
   onOpenDeck,
   onOpenDraft,
   onRestoreDocument,
@@ -1296,6 +1302,7 @@ function RunStepRow({
 }: {
   step: WorkflowRunStep;
   statusLabel: (s: string) => string;
+  onOpenDocument?: (conversationId: string, artifactId: string) => void;
   onOpenDeck?: (deckId: string) => void;
   onOpenDraft?: (draftId: string) => void;
   onRestoreDocument?: (kind: 'deck' | 'draft', id: string, snapshotId: string) => Promise<void>;
@@ -1310,7 +1317,11 @@ function RunStepRow({
     step.iteration != null
       ? t('workspace.workflows.runDetail.iteration', { step: step.stepId, n: step.iteration + 1 })
       : step.stepId;
-  const dataSummary = dataStepSummary(step, t, (bytes) => fmt.size(bytes));
+  const dataSummary =
+    dataStepSummary(step, t, (bytes) => fmt.size(bytes)) ??
+    researchStepSummary(step, t) ??
+    documentsStepSummary(step, t);
+  const report = researchReport(step);
   const edit = documentEditSummary(step, t);
   const open = edit?.target
     ? edit.target.kind === 'deck'
@@ -1353,6 +1364,11 @@ function RunStepRow({
           </>
         ) : null}
       </details>
+      {report && onOpenDocument ? (
+        <button type="button" className="btn ghost" onClick={() => onOpenDocument(report.conversationId, report.artifactId)}>
+          {t('workspace.workflows.runDetail.openReport')}
+        </button>
+      ) : null}
       {edit?.note ? <p className="wf-muted">{edit.note}</p> : null}
       {open ? (
         <button type="button" className="btn ghost" onClick={open}>

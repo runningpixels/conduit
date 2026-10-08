@@ -34,7 +34,7 @@ export function describeStep(step: WorkflowStep, t: Translate, labels: InputLabe
     (step.type === 'notify' || step.type === 'save_artifact') && step.onlyIfChanged
       ? `${line} (${t('workspace.workflows.step.onlyIfChanged')})`
       : line;
-  return (step.type === 'summarize' || step.type === 'agent' || step.type === 'edit_deck' || step.type === 'edit_draft') && step.model
+  return (step.type === 'summarize' || step.type === 'agent' || step.type === 'edit_deck' || step.type === 'edit_draft' || step.type === 'research') && step.model
     ? `${line} ${t('workspace.workflows.step.usingModel', { model: step.model.model })}`
     : only;
 }
@@ -53,6 +53,16 @@ function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels): st
       return t('workspace.workflows.step.readFile', { path: q(step.path) });
     case 'parse_data':
       return t('workspace.workflows.step.parseData', { format: step.format.toUpperCase() });
+    case 'research':
+      return t(
+        step.depth === 'standard' ? 'workspace.workflows.step.researchStandard' : 'workspace.workflows.step.researchQuick',
+        { question: q(step.question) },
+      );
+    case 'search_documents':
+      return t('workspace.workflows.step.searchDocuments', {
+        count: step.collections.length,
+        query: q(step.query),
+      });
     case 'summarize':
       return step.schema
         ? t('workspace.workflows.step.summarizeData', { prompt: q(step.prompt) })

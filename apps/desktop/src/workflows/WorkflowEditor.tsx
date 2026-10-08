@@ -24,6 +24,9 @@ import {
   CONDITION_TESTS,
   conditionNeedsText,
   DATA_FORMATS,
+  DEFAULT_TOP_K,
+  MAX_TOP_K,
+  RESEARCH_DEPTHS,
   defaultRetries,
   insertStep,
   listSourcesAt,
@@ -37,7 +40,9 @@ import {
   updateStep,
   withDocumentTarget,
   withOptionalInput,
+  withCollection,
   withConditionTest,
+  withTopK,
   withFolder,
   withOnlyIfChanged,
   withStepModel,
@@ -47,6 +52,7 @@ import {
   type StepType,
   type ValueRef,
 } from './editorModel';
+import { CollectionPicker } from './CollectionPicker';
 import { DocumentPicker } from './DocumentPicker';
 import { agentToolText } from './permissionText';
 import { ProviderModelsProvider, WorkflowModelRow } from './WorkflowModelRow';
@@ -62,6 +68,8 @@ const STEP_TYPE_KEY: Record<StepType, string> = {
   web_search: 'workspace.workflows.editor.type.webSearch',
   read_file: 'workspace.workflows.editor.type.readFile',
   parse_data: 'workspace.workflows.editor.type.parseData',
+  research: 'workspace.workflows.editor.type.research',
+  search_documents: 'workspace.workflows.editor.type.searchDocuments',
   summarize: 'workspace.workflows.editor.type.summarize',
   template: 'workspace.workflows.editor.type.template',
   for_each: 'workspace.workflows.editor.type.forEach',
@@ -79,6 +87,11 @@ const DATA_FORMAT_KEY: Record<DataFormat, string> = {
   tsv: 'workspace.workflows.editor.parseData.tsv',
   json: 'workspace.workflows.editor.parseData.json',
 };
+
+const RESEARCH_DEPTH_KEY = {
+  quick: 'workspace.workflows.editor.research.quick',
+  standard: 'workspace.workflows.editor.research.standard',
+} as const;
 
 const CONDITION_TEST_KEY = {
   changed: 'workspace.workflows.editor.condition.changed',
@@ -115,6 +128,14 @@ const FIELD_KEY: Record<string, string> = {
   columns: 'workspace.workflows.editor.field.columns',
   reply: 'workspace.workflows.editor.field.reply',
   changed: 'workspace.workflows.editor.field.changed',
+  summary: 'workspace.workflows.editor.field.summary',
+  reportArtifactId: 'workspace.workflows.editor.field.reportArtifactId',
+  sources: 'workspace.workflows.editor.field.sources',
+  credibility: 'workspace.workflows.editor.field.credibility',
+  passages: 'workspace.workflows.editor.field.passages',
+  document: 'workspace.workflows.editor.field.document',
+  collection: 'workspace.workflows.editor.field.collection',
+  citation: 'workspace.workflows.editor.field.citation',
 };
 
 export function refLabel(ref: ValueRef, t: Translate): string {
@@ -442,6 +463,69 @@ function StepCard({
                 </option>
               ))}
             </select>
+          </label>
+        </>
+      );
+      break;
+    case 'research':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.research.question')}
+            value={step.question}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'research' ? { ...s, question: v } : s))}
+          />
+          <label className="wf-field wf-narrow">
+            <span>{t('workspace.workflows.editor.research.depth')}</span>
+            <select
+              className="sel"
+              value={step.depth}
+              onChange={(e) =>
+                update((s) => (s.type === 'research' ? { ...s, depth: e.target.value as typeof step.depth } : s))
+              }
+            >
+              {RESEARCH_DEPTHS.map((depth) => (
+                <option key={depth} value={depth}>
+                  {t(RESEARCH_DEPTH_KEY[depth])}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="wf-muted">{t('workspace.workflows.editor.research.hint')}</p>
+          <WorkflowModelRow
+            kind="step"
+            idPrefix={`wf-model-${step.id}`}
+            model={step.model}
+            onChange={(model) => update((s) => withStepModel(s, model))}
+          />
+        </>
+      );
+      break;
+    case 'search_documents':
+      body = (
+        <>
+          <CollectionPicker
+            value={step.collections}
+            onToggle={(id, on) => update((s) => withCollection(s, id, on))}
+          />
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.searchDocs.query')}
+            value={step.query}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'search_documents' ? { ...s, query: v } : s))}
+          />
+          <label className="wf-field wf-narrow">
+            <span>{t('workspace.workflows.editor.searchDocs.topK')}</span>
+            <input
+              className="mem-input"
+              type="number"
+              min={1}
+              max={MAX_TOP_K}
+              value={step.topK ?? DEFAULT_TOP_K}
+              onChange={(e) => update((s) => withTopK(s, Number(e.target.value)))}
+            />
           </label>
         </>
       );

@@ -46,8 +46,11 @@
 use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+
+use async_trait::async_trait;
 
 use provider_core::schema::{
     Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest,
@@ -72,6 +75,7 @@ use crate::db::repository::workflows::{
 use crate::db::repository::{drafts, slides, tool_calls};
 use crate::document_prompts;
 use crate::event_sink;
+use crate::research::{FetchedPage, ResearchIo, SearchHit};
 use crate::state::AppState;
 use crate::stream_manager::{StreamManager, TurnGuard, TurnOptions, TurnOwner};
 use crate::time::now_iso8601;
@@ -786,6 +790,13 @@ impl Exec<'_> {
             }
             StepAction::EditDeck { .. } => self.edit_document(step, filled, DocKind::Deck).await,
             StepAction::EditDraft { .. } => self.edit_document(step, filled, DocKind::Draft).await,
+            StepAction::Research { depth, .. } => self.research(step, filled, depth).await,
+            StepAction::SearchDocuments {
+                collections, top_k, ..
+            } => {
+                self.search_documents(step, filled, collections, *top_k)
+                    .await
+            }
             StepAction::Ask {
                 choices, default, ..
             } => {
@@ -941,10 +952,10 @@ impl Exec<'_> {
     }
 
     /// `work`, abandoned as soon as the run is stopped or out of time.
-    async fn unless_stopped(
+    async fn unless_stopped<T>(
         &self,
-        work: impl Future<Output = Result<Value, String>>,
-    ) -> Result<Value, String> {
+        work: impl Future<Output = Result<T, String>>,
+    ) -> Result<T, String> {
         tokio::select! {
             result = work => result,
             _ = self.runner.stop.cancelled() => Err(STOPPED.to_string()),
@@ -1364,6 +1375,244 @@ impl Exec<'_> {
             .map_err(|_| "the reply could not be read".to_string())?;
         let (reply, called) = self.read_reply(&events)?;
         Ok(json!({ "text": reply, "toolCalls": called }))
+    }
+
+    /// Research the step's question: the same run as in chat, with its brief
+    /// drafted without asking and the report saved in the workflow's
+    /// conversation. See [`ResearchStepIo`].
+    async fn research(&self, step: &Step, filled: &Value, depth: &str) -> Result<Value, String> {
+        use crate::research::service;
+        use provider_core::schema::{ResearchDepth, ResearchStatus};
+
+        let state = self.runner.state;
+        let question = filled["question"].as_str().unwrap_or_default().trim();
+        if question.is_empty() {
+            return Err("There was nothing to research: the question came out empty.".to_string());
+        }
+        service::availability(&state.settings()?)?;
+        let model = self.resolve_model(step)?;
+        self.allow(&step.id, Permission::Research, None).await?;
+        self.allow(
+            &step.id,
+            Permission::Model {
+                provider: model.provider.clone(),
+            },
+            None,
+        )
+        .await?;
+        let depth = if depth == "quick" {
+            ResearchDepth::Quick
+        } else {
+            ResearchDepth::Standard
+        };
+        let run = service::start_headless(state, self.conversation_id, question).await?;
+        let io = ResearchStepIo {
+            exec: self,
+            model: model.clone(),
+            hidden: run.hidden_conversation_id.clone(),
+            tokens: AtomicU64::new(0),
+            reported: AtomicBool::new(false),
+        };
+        // Stop and the run's time limit end the research the way they end
+        // every step; what it had verified by then is still saved.
+        let halted = || {
+            if self.runner.stop.is_cancelled() {
+                Some(ResearchStatus::Stopped)
+            } else if self.over_budget().is_some() || self.time_left().is_zero() {
+                Some(ResearchStatus::Failed)
+            } else {
+                None
+            }
+        };
+        let done = service::run_headless(
+            state,
+            &io,
+            &run.run_id,
+            question,
+            depth,
+            self.runner.fetch_policy.public_only,
+            &halted,
+        )
+        .await;
+        if self.runner.stop.is_cancelled() {
+            return Err(STOPPED.to_string());
+        }
+        if let Some(reason) = self.over_budget().or_else(|| self.check_time()) {
+            return Err(reason);
+        }
+        let done = done?;
+        let outcome = &done.outcome;
+        if let Some(error) = &outcome.error {
+            return Err(error.clone());
+        }
+        let (Some(rendered), Some(artifact_id)) = (&outcome.report, &done.artifact_id) else {
+            return Err("The research didn't produce a report.".to_string());
+        };
+        let mut cited: Vec<(u32, &crate::research::run::SourceRecord)> = outcome
+            .sources
+            .iter()
+            .filter_map(|s| rendered.footnotes.get(&s.id).map(|k| (*k, s)))
+            .collect();
+        cited.sort_by_key(|(k, _)| *k);
+        let sources: Vec<Value> = cited
+            .into_iter()
+            .map(|(_, s)| {
+                json!({
+                    "title": s.title.clone().filter(|t| !t.trim().is_empty()).unwrap_or_else(|| s.host.clone()),
+                    "url": s.shown_url(),
+                    "credibility": s.rating.credibility.as_str(),
+                })
+            })
+            .collect();
+        let output = json!({
+            "reportArtifactId": artifact_id,
+            "conversationId": self.conversation_id,
+            "title": done.title,
+            "text": rendered.markdown,
+            "summary": rendered.summary,
+            "sources": sources,
+            "unanswered": outcome.unanswered,
+            "verifiedQuotes": outcome.claims.iter().filter(|c| c.verified).count(),
+            "droppedClaims": outcome.unverified_dropped,
+        });
+        Ok(with_model(output, &model))
+    }
+
+    /// Search the step's collections of saved documents: see
+    /// `commands::knowledge::retrieve_groups`. An unattended run never asks
+    /// for the user's OK to send text to an embedding provider: without it
+    /// the step fails and says where to give it.
+    async fn search_documents(
+        &self,
+        step: &Step,
+        filled: &Value,
+        collections: &[String],
+        top_k: Option<u32>,
+    ) -> Result<Value, String> {
+        use crate::commands::knowledge as knowledge_commands;
+        use crate::db::repository::knowledge as library;
+        use crate::knowledge::search::{DocumentFilter, GroupMember};
+
+        let state = self.runner.state;
+        let query = filled["query"].as_str().unwrap_or_default().trim();
+        if query.is_empty() {
+            return Err("There was nothing to search for: the query came out empty.".to_string());
+        }
+        let mut ids: Vec<String> = Vec::new();
+        for id in collections
+            .iter()
+            .map(|c| c.trim())
+            .filter(|c| !c.is_empty())
+        {
+            if !ids.iter().any(|i| i == id) {
+                ids.push(id.to_string());
+            }
+        }
+        if ids.is_empty() {
+            return Err("Choose the collections of documents to search.".to_string());
+        }
+        let top_k = top_k.unwrap_or(definition::DEFAULT_TOP_K);
+        if !(1..=definition::MAX_TOP_K).contains(&top_k) {
+            return Err(format!(
+                "Choose how many passages to keep, from 1 to {}.",
+                definition::MAX_TOP_K
+            ));
+        }
+        let mut groups: Vec<((String, String), Vec<GroupMember>)> = Vec::new();
+        let mut titles: HashMap<String, String> = HashMap::new();
+        for id in &ids {
+            let collection = library::get_collection(&state.db, id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or(
+                    "A collection this step searches was deleted. Choose the collections again.",
+                )?;
+            titles.insert(id.clone(), collection.name.clone());
+            // Consent first and always: this path has nobody to ask.
+            let label = models::provider_label(&collection.provider_id);
+            if knowledge_commands::ensure_provider_allowed_offline(state, &collection.provider_id)
+                .is_err()
+            {
+                return Err(format!(
+                    "{} is in local-only mode, so \u{201c}{}\u{201d} can't be searched with {label}.",
+                    crate::brand::app_name(),
+                    collection.name
+                ));
+            }
+            if knowledge_commands::ensure_consented(state, &collection.provider_id).is_err() {
+                return Err(format!(
+                    "Documents search needs your OK to use {label} \u{2014} open Documents to allow it."
+                ));
+            }
+            let document_ids = library::list_documents_by_collection(&state.db, &collection.id)
+                .await
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .map(|d| d.id)
+                .collect();
+            let key = (collection.provider_id, collection.embedding_model);
+            let member = GroupMember {
+                collection_id: collection.id,
+                collection_name: collection.name,
+                document_ids,
+            };
+            match groups.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, members)) => members.push(member),
+                None => groups.push((key, vec![member])),
+            }
+        }
+        self.allow(
+            &step.id,
+            permissions::search_documents(&ids, &|id| titles.get(id).cloned()),
+            None,
+        )
+        .await?;
+        let streams = self.runner.streams;
+        let adapters = |provider: &str| streams.resolve_adapter(provider);
+        let context = self
+            .unless_stopped(async {
+                knowledge_commands::retrieve_groups(
+                    state,
+                    &adapters,
+                    groups,
+                    &DocumentFilter::unrestricted(),
+                    query,
+                    top_k as usize,
+                )
+                .await
+                .map_err(|e| e.fallback)
+            })
+            .await?;
+        if !context.unavailable_collections.is_empty() {
+            return Err(format!(
+                "Documents search couldn't search {}. Check that its embedding provider is set up.",
+                context.unavailable_collections.join(", ")
+            ));
+        }
+        let passages: Vec<Value> = context
+            .passages
+            .iter()
+            .zip(&context.citations)
+            .map(|(p, c)| {
+                json!({
+                    "document": p.document,
+                    "collection": p.collection,
+                    "text": p.text,
+                    "citation": format!("{} ({})", c.document_title, c.collection_name),
+                })
+            })
+            .collect();
+        let numbered: Vec<String> = context
+            .passages
+            .iter()
+            .enumerate()
+            .map(|(i, p)| format!("[{}] {} ({})\n{}", i + 1, p.document, p.collection, p.text))
+            .collect();
+        Ok(json!({
+            "count": passages.len(),
+            "passages": passages,
+            "text": cap_text(&numbered.join("\n\n"), MAX_MODEL_TEXT_CHARS),
+        }))
     }
 
     /// Update a saved deck or draft: see the module notes. `filled` holds the
@@ -1875,6 +2124,17 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "input": input.as_deref().map(render).transpose()?
                 .map(|text| cap_text(&text, MAX_MODEL_TEXT_CHARS)),
         }),
+        StepAction::Research { question, depth } => json!({
+            "type": "research", "question": render(question)?, "depth": depth,
+        }),
+        StepAction::SearchDocuments {
+            collections,
+            query,
+            top_k,
+        } => json!({
+            "type": "search_documents", "collections": collections, "query": render(query)?,
+            "topK": top_k,
+        }),
         StepAction::Ask {
             question,
             choices,
@@ -2087,6 +2347,117 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::Condition { .. } => "condition",
         StepAction::ReadFile { .. } => "read_file",
         StepAction::ParseData { .. } => "parse_data",
+        StepAction::Research { .. } => "research",
+        StepAction::SearchDocuments { .. } => "search_documents",
+    }
+}
+
+/// A research step's search, page reads and model calls, as the run sees
+/// them: web search through the settings' backend, pages through the same
+/// guarded fetch as `fetch_page` (the run's address policy), and tool-less
+/// model calls with the step's own resolved model in a hidden conversation
+/// of the research run. Stopping, the run's time limit and its token budget
+/// end every call the way they end any step's.
+struct ResearchStepIo<'e, 'a> {
+    exec: &'e Exec<'a>,
+    model: Resolved,
+    /// The research run's hidden conversation, where the model calls land.
+    hidden: String,
+    /// Tokens the replies reported, for the research run's own budget.
+    tokens: AtomicU64,
+    reported: AtomicBool,
+}
+
+#[async_trait]
+impl ResearchIo for ResearchStepIo<'_, '_> {
+    async fn search(&self, query: &str) -> Result<Vec<SearchHit>, String> {
+        let state = self.exec.runner.state;
+        self.exec
+            .unless_stopped(crate::research::app::search_hits(state, query))
+            .await
+            .map_err(|e| plain_error(&e))
+    }
+
+    async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
+        let policy = self.exec.runner.fetch_policy;
+        // The app's network path speaks https only; most http pages are
+        // served there too. A test policy talks to a plain server as given.
+        let url = if policy.public_only {
+            web_page::upgrade_to_https(url)
+        } else {
+            url.to_string()
+        };
+        let principal = format!("research:{}", self.exec.run_id);
+        self.exec
+            .unless_stopped(async {
+                let page = web_page::fetch(
+                    &url,
+                    &principal,
+                    policy,
+                    crate::research::app::RESEARCH_PAGE_CHARS,
+                )
+                .await
+                .map_err(|e| plain_error(&e.to_string()))?;
+                Ok(FetchedPage {
+                    url: page.url,
+                    title: page.title,
+                    text: page.text,
+                })
+            })
+            .await
+    }
+
+    async fn complete(&self, system: &str, user: &str) -> Result<String, String> {
+        let exec = self.exec;
+        if let Some(reason) = exec.over_budget().or_else(|| exec.check_time()) {
+            return Err(reason);
+        }
+        if exec.runner.stop.is_cancelled() {
+            return Err(STOPPED.to_string());
+        }
+        let mut request = exec.request(
+            &[(MessageRole::User, user.to_string())],
+            system,
+            Vec::new(),
+            &self.model,
+        )?;
+        request.conversation_id = self.hidden.clone();
+        for message in &mut request.messages {
+            message.conversation_id = self.hidden.clone();
+        }
+        // Each call is a narrow task; a thinking model otherwise spends a
+        // minute on it.
+        request.generation_controls = crate::research::app::low_effort(&self.model.provider);
+        let request_id = request.request_id.clone();
+        let (sink, events) = event_sink::collector::<ProviderEvent>();
+        exec.until_done(
+            &request_id,
+            exec.runner.streams.start_chat_stream_with(
+                exec.runner.state,
+                request,
+                sink,
+                self.model.chosen.then_some(self.model.provider.as_str()),
+            ),
+        )
+        .await?;
+        let events = events
+            .lock()
+            .map_err(|_| "the reply could not be read".to_string())?;
+        for event in events.iter() {
+            if let ProviderEvent::Usage { usage, .. } = event {
+                let used = usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
+                self.tokens.fetch_add(used, Ordering::Relaxed);
+                self.reported.store(true, Ordering::Relaxed);
+            }
+        }
+        // Counts the tokens against the run's budget, too.
+        Ok(exec.read_reply(&events)?.0)
+    }
+
+    fn tokens_used(&self) -> Option<u64> {
+        self.reported
+            .load(Ordering::Relaxed)
+            .then(|| self.tokens.load(Ordering::Relaxed))
     }
 }
 

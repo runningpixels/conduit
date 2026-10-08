@@ -9,6 +9,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Research and Documents search in workflows.** A Research step runs the
+  same research as in chat — sub-questions, quotes checked against their
+  sources, sources rated — and saves the report, at quick or standard depth
+  and on the step's own model; "Weekly research digest" is a starter for it.
+  A Documents search step finds the passages in your collections that answer
+  a question, with citations, for later steps to use ("Check notes against
+  my docs" starter). Scheduled runs ask before researching the web or
+  searching your collections, and a Documents search never asks to send your
+  documents for embedding on its own — it says so and stops.
+
 - **Describe a workflow and Conduit drafts it.** Say what you want in your
   own words — on the Workflows page, or with the Automate chip on Home — and
   the chat model drafts a workflow, checks it, and fixes what doesn't check
@@ -55,6 +65,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **Research reports no longer show internal labels** like "[C51–C53]" when
+  the writer cites a range of facts; each becomes a proper numbered
+  citation.
 - **A dead site no longer breaks a workflow.** A step set to skip on error
   now really lets the run go on: later steps see it as skipped with empty
   text, a page with no title no longer stops a template, and a summary of an

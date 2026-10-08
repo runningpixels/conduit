@@ -56,6 +56,37 @@ pub enum Permission {
         id: String,
         title: String,
     },
+    /// Research on the web: search it and read any site it turns up.
+    Research,
+    /// Search these collections of the user's saved documents (sorted by id).
+    /// Titles are part of the permission so the question can name them; a
+    /// collection renamed since it was allowed asks again.
+    Documents { collections: Vec<CollectionRef> },
+}
+
+/// A collection of saved documents, as a permission names it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionRef {
+    pub id: String,
+    pub title: String,
+}
+
+/// The permission to search the collections `ids` (as the step wrote them),
+/// titled by `title`: sorted by id, blanks and repeats dropped.
+pub fn search_documents(ids: &[String], title: &dyn Fn(&str) -> Option<String>) -> Permission {
+    let mut collections: Vec<CollectionRef> = ids
+        .iter()
+        .map(|id| id.trim())
+        .filter(|id| !id.is_empty())
+        .map(|id| CollectionRef {
+            id: id.to_string(),
+            title: title(id).unwrap_or_default(),
+        })
+        .collect();
+    collections.sort();
+    collections.dedup();
+    Permission::Documents { collections }
 }
 
 /// The permission to change the saved deck or draft `id` titled `title`.
@@ -133,6 +164,13 @@ pub fn view(permission: Permission) -> PermissionView {
             title,
             ..
         } => (Some(format!("Change the {document_kind} “{title}”")), None),
+        Permission::Documents { collections } => {
+            let titles: Vec<&str> = collections.iter().map(|c| c.title.as_str()).collect();
+            (
+                Some(format!("Search your documents: {}", titles.join(", "))),
+                None,
+            )
+        }
         _ => (None, None),
     };
     PermissionView {
@@ -141,6 +179,10 @@ pub fn view(permission: Permission) -> PermissionView {
         local,
     }
 }
+
+/// Finds a collection's title by id.
+pub trait TitleLookup: Fn(&str) -> Option<String> {}
+impl<F: Fn(&str) -> Option<String>> TitleLookup for F {}
 
 /// What the current settings answer for the parts of a definition that
 /// depend on them.
@@ -152,6 +194,9 @@ pub struct Context<'a> {
     pub model: &'a str,
     /// Whether a provider can be called; `None` takes every provider as set up.
     pub configured: Option<&'a dyn Fn(&str) -> bool>,
+    /// The title of a collection of documents by id; `None` leaves titles
+    /// empty (they are filled in from the library when a run asks).
+    pub collection_title: Option<&'a (dyn TitleLookup + 'a)>,
 }
 
 impl Context<'_> {
@@ -261,6 +306,19 @@ fn collect(
                     provider: ctx.provider_for(workflow_model, step),
                 });
             }
+            StepAction::Research { .. } => {
+                set.insert(Permission::Research);
+                set.insert(Permission::Model {
+                    provider: ctx.provider_for(workflow_model, step),
+                });
+            }
+            StepAction::SearchDocuments { collections, .. } => {
+                let none = |_: &str| None;
+                set.insert(search_documents(
+                    collections,
+                    ctx.collection_title.unwrap_or(&none),
+                ));
+            }
             StepAction::Agent { tools, .. } => {
                 set.insert(Permission::Model {
                     provider: ctx.provider_for(workflow_model, step),
@@ -278,6 +336,42 @@ fn collect(
             StepAction::ForEach { steps, .. } => collect(steps, workflow_model, folder, ctx, set),
         }
     }
+}
+
+/// The titles of the collections `def`'s `search_documents` steps name, by
+/// id, for [`Context::collection_title`]. A collection that no longer exists
+/// is left out.
+pub async fn collection_titles(
+    pool: &sqlx::SqlitePool,
+    def: &WorkflowDefinition,
+) -> std::collections::HashMap<String, String> {
+    fn ids<'a>(steps: &'a [Step], out: &mut BTreeSet<&'a str>) {
+        for step in steps {
+            match &step.action {
+                StepAction::SearchDocuments { collections, .. } => {
+                    out.extend(
+                        collections
+                            .iter()
+                            .map(|c| c.trim())
+                            .filter(|c| !c.is_empty()),
+                    );
+                }
+                StepAction::ForEach { steps, .. } => ids(steps, out),
+                _ => {}
+            }
+        }
+    }
+    let mut wanted = BTreeSet::new();
+    ids(&def.steps, &mut wanted);
+    let mut titles = std::collections::HashMap::new();
+    for id in wanted {
+        if let Ok(Some(collection)) =
+            crate::db::repository::knowledge::get_collection(pool, id).await
+        {
+            titles.insert(id.to_string(), collection.name);
+        }
+    }
+    titles
 }
 
 /// What in `required` isn't in `approved`.
@@ -339,6 +433,7 @@ mod tests {
         provider: "ollama",
         model: "m",
         configured: None,
+        collection_title: None,
     };
 
     #[test]
@@ -493,6 +588,21 @@ mod tests {
                 "kind": "editDocument", "documentKind": "draft", "id": "w1",
                 "title": "Monthly report",
                 "label": "Change the draft “Monthly report”", "local": null
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(Permission::Research).unwrap(),
+            json!({ "kind": "research" })
+        );
+        let docs = search_documents(&["b".into(), "a".into(), "a".into(), " ".into()], &|id| {
+            Some(format!("Title {id}"))
+        });
+        assert_eq!(
+            serde_json::to_value(view(docs)).unwrap(),
+            json!({
+                "kind": "documents",
+                "collections": [{ "id": "a", "title": "Title a" }, { "id": "b", "title": "Title b" }],
+                "label": "Search your documents: Title a, Title b", "local": null
             })
         );
         let back: Permission =

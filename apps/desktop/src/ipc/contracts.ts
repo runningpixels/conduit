@@ -758,6 +758,9 @@ export interface WorkflowInput {
 /** What a `condition` step checks (Rust `workflows::definition`). */
 export type ConditionTest = 'changed' | 'not_empty' | 'empty' | 'contains' | 'not_contains' | 'equals';
 
+/** How deep a `research` step goes (no `deep` in workflows). */
+export type ResearchStepDepth = 'quick' | 'standard';
+
 /** How a `parse_data` step reads its text (Rust `workflows::definition`). */
 export type DataFormat = 'csv' | 'tsv' | 'json';
 
@@ -781,6 +784,8 @@ export type WorkflowStep = {
   | { type: 'edit_deck'; deck: string; instructions: string; input?: string; model?: WorkflowModel }
   | { type: 'edit_draft'; draft: string; instructions: string; input?: string; model?: WorkflowModel }
   | { type: 'parse_data'; input: string; format: DataFormat }
+  | { type: 'research'; question: string; depth: ResearchStepDepth; model?: WorkflowModel }
+  | { type: 'search_documents'; collections: string[]; query: string; topK?: number | null }
 );
 
 /** What an `edit_deck` / `edit_draft` step records (Rust `workflows::runner`). */
@@ -843,6 +848,10 @@ export type WorkflowPermission =
   | { kind: 'saveDocuments' }
   | { kind: 'readFolder'; path: string }
   | { kind: 'agentTools'; stepId: string; tools: string[] }
+  /** Research on the web (Rust `Permission::Research`). */
+  | { kind: 'research' }
+  /** Search these Documents collections (Rust `Permission::Documents`). */
+  | { kind: 'documents'; collections: { id: string; title: string }[] }
   /** Change a saved deck or draft (Rust `Permission::EditDocument`); `documentKind` is the tag's payload name, since `kind` is taken. */
   | { kind: 'editDocument'; documentKind: 'deck' | 'draft'; id: string; title: string };
 

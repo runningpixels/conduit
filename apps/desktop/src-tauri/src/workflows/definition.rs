@@ -109,6 +109,12 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 ///   layout is checked when the deck is next opened) and `model`
 /// - `edit_draft`: `draftId`, `title`, `changed` (block ids), `skippedPinned`,
 ///   `reply` and `model`
+/// - `research`: `reportArtifactId`, `title`, `text` (the report, Markdown),
+///   `summary`, `sources` (each `title, url, credibility`), `unanswered`,
+///   `verifiedQuotes`, `droppedClaims` and `model`
+/// - `search_documents`: `passages` (each `document, collection, text,
+///   citation`), `count` and `text` (the passages numbered, with their
+///   document names)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -221,6 +227,31 @@ pub enum StepAction {
         #[serde(default)]
         input: Option<String>,
     },
+    /// Research a question on the web and write a cited report: the same
+    /// search, read, quote-check and write run as in chat, with the brief
+    /// drafted automatically (it is not shown for approval). Top-level steps
+    /// only.
+    Research {
+        /// What to find out; a template. When it comes out empty, the step
+        /// fails without asking a model.
+        question: String,
+        /// One of [`RESEARCH_DEPTHS`]. Kept as text so a wrong one is
+        /// reported in plain words by [`validate`].
+        #[serde(default = "standard_depth")]
+        depth: String,
+    },
+    /// Find passages in the user's saved Documents collections.
+    SearchDocuments {
+        /// The collections' ids (chosen by the user, never invented).
+        collections: Vec<String>,
+        /// What to look for; a template. When it comes out empty, the step
+        /// fails.
+        query: String,
+        /// How many passages to keep, 1 to [`MAX_TOP_K`]; [`DEFAULT_TOP_K`]
+        /// when not set.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        top_k: Option<u32>,
+    },
     Condition {
         /// A template: the text to test.
         value: String,
@@ -251,6 +282,19 @@ pub const CONDITION_TESTS: &[&str] = &[
 
 /// The formats a `parse_data` step reads.
 pub const DATA_FORMATS: &[&str] = &["csv", "tsv", "json"];
+
+/// The depths a `research` step offers (a workflow never runs a deep survey:
+/// it is long and costly).
+pub const RESEARCH_DEPTHS: &[&str] = &["quick", "standard"];
+
+/// Most passages a `search_documents` step may keep, and how many it keeps
+/// when not told.
+pub const MAX_TOP_K: u32 = 20;
+pub const DEFAULT_TOP_K: u32 = 6;
+
+fn standard_depth() -> String {
+    "standard".to_string()
+}
 
 /// Whether a condition test compares with `text`.
 pub fn condition_needs_text(is: &str) -> bool {
@@ -409,6 +453,8 @@ pub fn action_keys(step_type: &str) -> &'static [&'static str] {
         "parse_data" => &["input", "format"],
         "edit_deck" => &["deck", "instructions", "input", "model"],
         "edit_draft" => &["draft", "instructions", "input", "model"],
+        "research" => &["question", "depth", "model"],
+        "search_documents" => &["collections", "query", "topK"],
         _ => &[],
     }
 }
@@ -730,9 +776,10 @@ fn check_steps(
                     | StepAction::Agent { .. }
                     | StepAction::EditDeck { .. }
                     | StepAction::EditDraft { .. }
+                    | StepAction::Research { .. }
             ) {
                 problems.push(format!(
-                    "Step \"{name}\" can't choose a model: only summarize, agent, edit_deck and edit_draft steps use one."
+                    "Step \"{name}\" can't choose a model: only summarize, agent, edit_deck, edit_draft and research steps use one."
                 ));
             }
             check_model(model, &format!("Step \"{name}\"'s model"), problems);
@@ -905,6 +952,43 @@ fn check_steps(
                     problems,
                     &mut texts,
                 );
+            }
+            StepAction::Research { question, depth } => {
+                if scope.in_loop {
+                    problems.push(format!(
+                        "Step \"{name}\" researches the web, which only works on the steps at the top level, not inside a repeated step."
+                    ));
+                }
+                if question.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs a question to research."));
+                }
+                if !RESEARCH_DEPTHS.contains(&depth.as_str()) {
+                    problems.push(format!(
+                        "Step \"{name}\": \"{depth}\" isn't a research depth. Use one of: {}.",
+                        RESEARCH_DEPTHS.join(", ")
+                    ));
+                }
+                texts.push(question);
+            }
+            StepAction::SearchDocuments {
+                collections,
+                query,
+                top_k,
+            } => {
+                if collections.iter().all(|c| c.trim().is_empty()) {
+                    problems.push(format!(
+                        "Step \"{name}\" needs at least one collection of documents to search."
+                    ));
+                }
+                if query.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs something to search for."));
+                }
+                if top_k.is_some_and(|k| !(1..=MAX_TOP_K).contains(&k)) {
+                    problems.push(format!(
+                        "Step \"{name}\" keeps too many or too few passages; choose 1 to {MAX_TOP_K}."
+                    ));
+                }
+                texts.push(query);
             }
             StepAction::Condition { value, is, text } => {
                 if scope.in_loop {
@@ -1428,7 +1512,7 @@ mod tests {
         let problems = validate(&def(raw.clone())).unwrap_err();
         assert_eq!(
             problems,
-            vec!["Step \"t\" can't choose a model: only summarize, agent, edit_deck and edit_draft steps use one."]
+            vec!["Step \"t\" can't choose a model: only summarize, agent, edit_deck, edit_draft and research steps use one."]
         );
         // And the editor's unknown-setting check names it too.
         assert_eq!(

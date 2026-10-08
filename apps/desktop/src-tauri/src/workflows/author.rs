@@ -160,7 +160,7 @@ const SPECS: &[Spec] = &[
     },
     Spec {
         kind: "for_each",
-        what: "Repeat the steps inside it for each element of a list (up to 50). Inside it condition, edit_deck, edit_draft and onlyIfChanged do not work.",
+        what: "Repeat the steps inside it for each element of a list (up to 50). Inside it condition, edit_deck, edit_draft, research and onlyIfChanged do not work.",
         settings: &[
             req("items", "path, not a template", "the list to go through, for example steps.fetch.pages"),
             req("steps", "list of steps", "the steps to repeat; inside them {{item.field}} and {{index}} are the current element"),
@@ -247,6 +247,26 @@ const SPECS: &[Spec] = &[
         outputs: "deckId, title, changed, skippedPinned, reply",
     },
     Spec {
+        kind: "research",
+        what: "Research a question on the web and write a cited report, the way the app's research does: it searches, reads whole pages and checks every quote. Slow and costly, so use it once, for the core question. Top level only.",
+        settings: &[
+            req("question", "text (template)", "what to find out; use {{inputs.x}} for the part the user will change"),
+            opt("depth", "\"quick\" or \"standard\"", "quick for a simple fact or a short update, standard (default) for most questions"),
+            opt("model", "never set", MODEL_NOTE),
+        ],
+        outputs: "text (the report, Markdown), summary, title, reportArtifactId, sources (a list; each has title, url, credibility), unanswered (a list), verifiedQuotes, droppedClaims",
+    },
+    Spec {
+        kind: "search_documents",
+        what: "Find passages in the user's own saved documents (their Documents collections) that match a query. You cannot know the collections' ids: always write \"collections\": [] and let the user pick.",
+        settings: &[
+            req("collections", "list of text", "the collections' ids; always empty"),
+            req("query", "text (template)", "what to look for, usually an earlier step's text or an input"),
+            opt("topK", "number", "how many passages to keep, 1 to 20 (default 6)"),
+        ],
+        outputs: "passages (a list; each has document, collection, text, citation), count, text (the passages numbered, with their document names)",
+    },
+    Spec {
         kind: "edit_draft",
         what: "Update a saved writing draft the same way; a section that is not in the draft yet is added at the end. Top level only. Always write \"draft\": \"\".",
         settings: &[
@@ -260,6 +280,14 @@ const SPECS: &[Spec] = &[
 ];
 
 const EXAMPLES: &[(&str, &str)] = &[
+    (
+        "Every week, research a topic and keep a briefing up to date",
+        r##"{"name":"Weekly research digest","description":"Research a topic on the web and keep a briefing document up to date.","notes":[],"definition":{"inputs":[{"id":"topic","label":"Topic","default":"solid-state batteries"}],"steps":[{"id":"research","type":"research","question":"{{inputs.topic}}: what changed this week?","depth":"quick"},{"id":"save","type":"save_artifact","title":"Weekly research digest","content":"# {{inputs.topic}}, week of {{run.date}}\n\n{{steps.research.text}}"},{"id":"tell","type":"notify","title":"Your research digest is ready","body":"{{steps.research.summary}}"}]}}"##,
+    ),
+    (
+        "Check some pasted notes against my project documents",
+        r##"{"name":"Check notes against my docs","description":"Find what my saved documents say about some notes and list any conflicts.","notes":["Pick the collections to search."],"definition":{"inputs":[{"id":"notes","label":"Notes to check","default":"Launch date moved to June"}],"steps":[{"id":"docs","type":"search_documents","collections":[],"query":"{{inputs.notes}}","topK":6},{"id":"check","type":"summarize","prompt":"List where these passages agree or disagree with the notes. Name the document for each point.","input":"Notes:\n{{inputs.notes}}\n\nPassages:\n{{steps.docs.text}}"},{"id":"save","type":"save_artifact","title":"Notes check","content":"{{steps.check.text}}"}]}}"##,
+    ),
     (
         "A daily briefing of two sites the user names",
         r##"{"name":"Morning briefing","description":"Summarize two sites into one briefing document.","notes":[],"definition":{"inputs":[{"id":"site_one","label":"First site","default":"https://blog.rust-lang.org/"},{"id":"site_two","label":"Second site","default":"https://news.ycombinator.com/"}],"steps":[{"id":"fetch","type":"fetch_page","urls":["{{inputs.site_one}}","{{inputs.site_two}}"]},{"id":"each_page","type":"for_each","items":"steps.fetch.pages","onError":"skip","steps":[{"id":"sum","type":"summarize","prompt":"Summarize this page in two sentences.","input":"{{item.url}}\n\n{{item.text}}"}]},{"id":"doc","type":"template","template":"# Briefing for {{run.date}}\n\n{{#each steps.each_page.items}}- {{item.sum.text}}\n{{/each}}"},{"id":"save","type":"save_artifact","title":"Morning briefing","content":"{{steps.doc.text}}"}]}}"##,
@@ -325,11 +353,16 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
 - parse_data formats: {}.\n\
 - agent tools: {}.\n\
 - fetch_page takes at most {} addresses. for_each goes over at most {MAX_ITEMS} elements.\n\
-- Steps that only work at the top level (not inside for_each): condition, edit_deck, edit_draft, and onlyIfChanged on save_artifact or notify.\n",
+- research depths: {}. A research step is slow and costly: use at most one per workflow.\n\
+- search_documents keeps 1 to {} passages (default {}).\n\
+- Steps that only work at the top level (not inside for_each): condition, edit_deck, edit_draft, research, and onlyIfChanged on save_artifact or notify.\n",
         definition::CONDITION_TESTS.join(", "),
         definition::DATA_FORMATS.join(", "),
         definition::AGENT_TOOLS.join(", "),
         definition::MAX_URLS_PER_FETCH,
+        definition::RESEARCH_DEPTHS.join(", "),
+        definition::MAX_TOP_K,
+        definition::DEFAULT_TOP_K,
     ));
     out.push_str(
         "\nTEMPLATES: text settings marked \"template\" can contain references in double braces.\n\
@@ -347,7 +380,7 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
         "\nRULES:\n\
 - Prefer fixed steps (fetch_page, web_search, summarize, template, save_artifact) over agent. A summarize step should do one narrow job. Add a schema only when a later step reads its fields.\n\
 - Make anything the user will vary (a web address, a topic, a file name, a person) an input with a clear label and a sensible default, and reference it with {{inputs.x}}. Do not invent web addresses the user did not give; use an input instead.\n\
-- Never invent things that exist only on the user's computer: deck ids, draft ids, folder paths, connector ids. Leave a deck or draft id empty (\"\"), never write a \"folder\", and add a short note for each, such as \"Pick the deck to update.\" or \"Choose the folder the workflow reads from.\"\n\
+- Never invent things that exist only on the user's computer: deck ids, draft ids, collection ids, folder paths, connector ids. Leave a deck or draft id empty (\"\"), leave a search_documents step's \"collections\" as [], never write a \"folder\", and add a short note for each, such as \"Pick the deck to update.\", \"Pick the collections to search.\" or \"Choose the folder the workflow reads from.\"\n\
 - Never choose a model (no \"model\" setting anywhere): the user's chosen model is used.\n\
 - Never add a schedule or a trigger; the user decides that. Do not invent settings that are not listed above.\n\
 - Finish with a step that leaves the user something: save_artifact for a document, notify for a short message. A workflow must end by saving or notifying, never with just a summarize or template step.\n\
@@ -721,6 +754,9 @@ fn clear_personal_choices(definition: &mut Value) -> Vec<String> {
     if found.draft {
         notes.push("Pick the draft to update.".to_string());
     }
+    if found.collections {
+        notes.push("Pick the collections to search.".to_string());
+    }
     for label in inputs_without_default(definition) {
         notes.push(format!(
             "Fill in “{label}”: it has no default, so a scheduled run would have nothing to use."
@@ -758,6 +794,7 @@ struct Found {
     folder: bool,
     deck: bool,
     draft: bool,
+    collections: bool,
 }
 
 fn clear_steps(steps: Option<&mut Value>, found: &mut Found) {
@@ -779,6 +816,10 @@ fn clear_steps(steps: Option<&mut Value>, found: &mut Found) {
                 found.draft = true;
                 step.insert("draft".to_string(), json!(""));
             }
+            Some("search_documents") => {
+                found.collections = true;
+                step.insert("collections".to_string(), json!([]));
+            }
             _ => {}
         }
         clear_steps(step.get_mut("steps"), found);
@@ -797,6 +838,7 @@ fn problems_of(definition: &Value) -> Vec<String> {
 fn expected_blank(problem: &str) -> bool {
     problem.contains(" needs a deck to update")
         || problem.contains(" needs a draft to update")
+        || problem.contains(" needs at least one collection of documents to search")
         || problem.contains("reads a file, so choose the workflow's folder first")
 }
 
@@ -1094,6 +1136,26 @@ mod tests {
                 "Pick the draft to update."
             ]
         );
+        let problems = problems_of(&parsed.definition);
+        assert!(!problems.is_empty());
+        assert!(problems.iter().all(|p| expected_blank(p)), "{problems:?}");
+    }
+
+    #[test]
+    fn invented_collections_are_cleared_and_noted() {
+        let reply = json!({
+            "name": "Docs",
+            "definition": { "steps": [
+                { "id": "d", "type": "search_documents", "collections": ["made-up"], "query": "q" },
+                { "id": "r", "type": "research", "question": "Why?", "depth": "quick",
+                  "model": { "provider": "openai", "model": "gpt" } }
+            ]}
+        })
+        .to_string();
+        let parsed = parse_reply(&reply).unwrap();
+        assert_eq!(parsed.definition["steps"][0]["collections"], json!([]));
+        assert!(parsed.definition["steps"][1].get("model").is_none());
+        assert_eq!(parsed.notes, vec!["Pick the collections to search."]);
         let problems = problems_of(&parsed.definition);
         assert!(!problems.is_empty());
         assert!(problems.iter().all(|p| expected_blank(p)), "{problems:?}");

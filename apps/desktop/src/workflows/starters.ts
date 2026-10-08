@@ -181,4 +181,56 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
       ],
     },
   },
+  {
+    id: 'weekly-research-digest',
+    nameKey: 'workspace.workflows.starter.researchDigest.name',
+    blurbKey: 'workspace.workflows.starter.researchDigest.blurb',
+    definition: {
+      inputs: [{ id: 'topic', label: 'Topic', default: 'local-first software' }],
+      steps: [
+        {
+          id: 'research',
+          type: 'research',
+          question: '{{inputs.topic}}: what changed this week?',
+          depth: 'quick',
+        },
+        {
+          id: 'save',
+          type: 'save_artifact',
+          title: 'Weekly research digest',
+          content: '{{steps.research.text}}',
+          mode: 'update',
+        },
+        { id: 'notify', type: 'notify', title: 'Your research digest is ready', body: '{{steps.research.summary}}' },
+      ],
+    },
+  },
+  {
+    id: 'check-notes-against-docs',
+    nameKey: 'workspace.workflows.starter.checkNotes.name',
+    blurbKey: 'workspace.workflows.starter.checkNotes.blurb',
+    definition: {
+      // Reads from the folder chosen in the editor, like any file step.
+      inputs: [{ id: 'file', label: 'Notes file', default: 'notes.md' }],
+      steps: [
+        { id: 'notes', type: 'read_file', path: '{{inputs.file}}' },
+        {
+          id: 'docs',
+          type: 'search_documents',
+          // Picked in the editor: a starter cannot know which collections are yours.
+          collections: [],
+          query: '{{steps.notes.text}}',
+          topK: 6,
+        },
+        {
+          id: 'check',
+          type: 'summarize',
+          prompt:
+            'Compare the notes with the passages from my documents. List what agrees, what conflicts and what the documents do not cover. Cite the document for each point.',
+          input: 'Notes:\n{{steps.notes.text}}\n\nPassages:\n{{steps.docs.text}}',
+        },
+        { id: 'save', type: 'save_artifact', title: 'Notes check', content: '{{steps.check.text}}', mode: 'update' },
+      ],
+    },
+  },
 ];

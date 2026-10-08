@@ -31,6 +31,13 @@ pub struct AppPaths {
 }
 
 pub fn resolve(app_name: &str) -> Result<AppPaths, String> {
+    // Development builds only: `CONDUIT_DEV_DATA_DIR` runs the app on a separate
+    // profile, so live testing never touches the real one. Release builds
+    // ignore it.
+    #[cfg(debug_assertions)]
+    if let Some(dir) = std::env::var_os("CONDUIT_DEV_DATA_DIR").filter(|d| !d.is_empty()) {
+        return resolve_in(Path::new(&dir));
+    }
     let project = ProjectDirs::from("com", "Conduit", app_name)
         .ok_or_else(|| "unable to resolve application data directory".to_string())?;
 

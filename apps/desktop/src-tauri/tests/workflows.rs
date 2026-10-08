@@ -24,7 +24,8 @@ use conduit_desktop::{
 };
 use futures::stream::Stream;
 use provider_core::schema::{
-    AppSettings, KeychainMode, ProviderError, ProviderEvent, ProviderRequest,
+    AppSettings, EmbeddingRequest, EmbeddingResult, KeychainMode, LocalSearchBackend,
+    ProviderError, ProviderEvent, ProviderRequest,
 };
 use provider_core::{AdapterContext, ModelInfo, ProviderAdapter};
 use serde_json::{json, Value};
@@ -66,6 +67,22 @@ struct EchoModel {
     /// Replies to workflow-drafting requests, in order (the last repeats),
     /// shared by all copies.
     drafts: Arc<Mutex<Vec<String>>>,
+    /// Answers a request from (system prompt, last user text) before the
+    /// usual echo does; `None` falls through to it.
+    script: Option<Script>,
+}
+
+type Script = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
+
+/// Words the fake embedding counts, one dimension each.
+const VOCAB: [&str; 4] = ["tomato", "garden", "quantum", "qubit"];
+
+fn fake_embed(text: &str) -> Vec<f32> {
+    let lower = text.to_lowercase();
+    VOCAB
+        .iter()
+        .map(|word| lower.matches(word).count() as f32)
+        .collect()
 }
 
 impl EchoModel {
@@ -90,6 +107,12 @@ impl EchoModel {
             .and_then(|m| m.parts.first())
             .and_then(|p| p.content.clone())
             .unwrap_or_default();
+        if let Some(script) = &self.script {
+            let system = request.system_prompt.as_deref().unwrap_or_default();
+            if let Some(reply) = script(system, &text) {
+                return reply;
+            }
+        }
         if let (Some(json), true) = (self.reply_json, text.contains("wasn't valid JSON")) {
             return json.to_string();
         }
@@ -129,6 +152,16 @@ impl ProviderAdapter for EchoModel {
     }
     async fn list_models(&self, _ctx: &AdapterContext) -> Result<Vec<ModelInfo>, ProviderError> {
         Ok(Vec::new())
+    }
+    async fn generate_embeddings(
+        &self,
+        request: EmbeddingRequest,
+        _ctx: &AdapterContext,
+    ) -> Result<EmbeddingResult, ProviderError> {
+        Ok(EmbeddingResult {
+            vectors: request.inputs.iter().map(|s| fake_embed(s)).collect(),
+            model_id: request.model_id,
+        })
     }
     async fn stream_chat(
         &self,
@@ -394,6 +427,16 @@ impl Harness {
     /// Credentials live in a file store under the test's directory, never the
     /// OS keychain.
     async fn new_with(model: EchoModel, local_only: bool, keys: &[&str]) -> Self {
+        Self::new_tweaked(model, local_only, keys, |_| {}).await
+    }
+
+    /// [`Harness::new_with`], with `tweak` applied to the settings.
+    async fn new_tweaked(
+        model: EchoModel,
+        local_only: bool,
+        keys: &[&str],
+        tweak: impl FnOnce(&mut AppSettings),
+    ) -> Self {
         use base64::{engine::general_purpose::STANDARD, Engine};
         let pool = common::setup_pool().await;
         let dir = tempfile::tempdir().unwrap();
@@ -409,13 +452,14 @@ impl Harness {
                 .save_provider_secret(key, "sk-test-not-a-real-key")
                 .unwrap();
         }
-        let settings = AppSettings {
+        let mut settings = AppSettings {
             active_provider: "ollama".into(),
             active_model: "echo".into(),
             local_only,
             keychain_mode: KeychainMode::File,
             ..AppSettings::default()
         };
+        tweak(&mut settings);
         let state = AppState::test_instance_with_settings(pool, test_paths(dir.path()), settings);
         let resolver_model = model.clone();
         let streams = StreamManager::with_adapter_resolver(Arc::new(move |id: &str| {
@@ -711,6 +755,8 @@ impl Harness {
             .unwrap()
             .unwrap();
         let def: WorkflowDefinition = serde_json::from_value(workflow.definition).unwrap();
+        let titles = permissions::collection_titles(&self.state.db, &def).await;
+        let title = |id: &str| titles.get(id).cloned();
         permissions::required(
             &def,
             &permissions::Context {
@@ -718,6 +764,7 @@ impl Harness {
                 provider: "ollama",
                 model: "echo",
                 configured: None,
+                collection_title: Some(&title),
             },
         )
     }
@@ -4532,4 +4579,625 @@ mod drafting {
             .unwrap_err();
         assert_eq!(error, "That chat no longer exists.");
     }
+}
+
+// ── Research and Documents steps ─────────────────────────────────────────────
+
+const LANES_QUESTION: &str = "How many kilometres of bike lanes did the city build?";
+
+/// A search backend (SearXNG's JSON) and the one page it finds, on loopback.
+async fn serve_research() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let own = base.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let own = own.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]);
+                let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+                let filler = "The rest of this page is navigation, a newsletter sign-up form, links to older articles, a cookie notice, contact details for the press office, opening hours of the service centre, a list of upcoming public meetings, accessibility information, a site map and the usual legal notices that every page on this site carries at the bottom of the screen.";
+                let (kind, body) = if path.starts_with("/search") {
+                    (
+                        "application/json",
+                        json!({ "results": [
+                            { "url": format!("{own}/lanes"), "title": "Lanes report", "content": "City report" }
+                        ]})
+                        .to_string(),
+                    )
+                } else if path == "/lanes" {
+                    (
+                        "text/html; charset=utf-8",
+                        format!("<html><head><title>Lanes report</title></head><body><main><p>City report. In 2025 the city built 42 kilometres of protected bike lanes across six districts, the most in a single year.</p><p>{filler}</p><p>{filler}</p><p>{filler}</p></main></body></html>"),
+                    )
+                } else {
+                    ("text/plain", "missing".to_string())
+                };
+                let status = if kind == "text/plain" {
+                    "404 Not Found"
+                } else {
+                    "200 OK"
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            });
+        }
+    });
+    base
+}
+
+/// Answers each research call the way a good model would for [`serve_research`]'s page.
+fn research_script() -> Script {
+    Arc::new(|system, user| {
+        let reply = if system.contains("You plan web research") {
+            json!({ "subQuestions": [LANES_QUESTION], "scope": null,
+                    "preferDomains": [], "avoidDomains": [], "depth": "standard" })
+        } else if system.contains("You extract facts") {
+            if !user.contains("Page title: Lanes report") {
+                return Some(json!({ "claims": [] }).to_string());
+            }
+            json!({
+                "claims": [
+                    { "subQuestion": 1, "claim": "The city built 42 km of protected lanes in 2025.",
+                      "quote": "In 2025 the city built 42 kilometres of protected bike lanes" },
+                    { "subQuestion": 1, "claim": "The city built 90 km in one month.",
+                      "quote": "the city built 90 kilometres of lanes in a single month" }
+                ],
+                "source": { "kind": "official", "credibility": "high", "reason": "the city's report" }
+            })
+        } else if system.contains("You check the progress") {
+            json!({ "answered": [1], "followUps": [] })
+        } else if system.contains("You review a research report") {
+            json!({ "fixes": [] })
+        } else if system.contains("You write research reports") {
+            json!({
+                "summary": "The city built 42 km of protected lanes [C1].",
+                "findings": [{ "subQuestion": 1, "text": "42 km were built [C1]." }],
+                "disagreements": null
+            })
+        } else {
+            return None;
+        };
+        Some(reply.to_string())
+    })
+}
+
+fn research_model() -> EchoModel {
+    EchoModel {
+        script: Some(research_script()),
+        usage: Some(20),
+        ..EchoModel::default()
+    }
+}
+
+impl Harness {
+    /// Web search through the local server at `base`, switched on and agreed to.
+    async fn with_web(model: EchoModel, local_only: bool, keys: &[&str], base: &str) -> Self {
+        let base = base.to_string();
+        Self::new_tweaked(model, local_only, keys, move |s| {
+            s.web_search_enabled = true;
+            s.web_search_consent_acknowledged = true;
+            s.web_search.local_backend = LocalSearchBackend::Searxng;
+            s.web_search.searxng_base_url = Some(base);
+        })
+        .await
+    }
+
+    async fn conversation_of(&self, workflow_id: &str) -> String {
+        repo::get(&self.state.db, &self.state.encryption, workflow_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .conversation_id
+            .expect("the workflow has a conversation")
+    }
+
+    async fn research_rows(&self) -> Vec<(String, String, String)> {
+        sqlx::query_as("SELECT conversation_id, status, message_id FROM research_runs")
+            .fetch_all(&self.state.db)
+            .await
+            .unwrap()
+    }
+}
+
+fn research_workflow(extra: Value) -> Value {
+    let mut research = json!({
+        "id": "r", "type": "research",
+        "question": "{{inputs.topic}}", "depth": "quick"
+    });
+    if let (Some(extra), Some(fields)) = (extra.as_object(), research.as_object_mut()) {
+        fields.extend(extra.clone());
+    }
+    json!({
+        "inputs": [{ "id": "topic", "label": "Topic", "default": LANES_QUESTION }],
+        "steps": [research]
+    })
+}
+
+#[tokio::test]
+async fn a_research_step_runs_end_to_end_and_saves_the_report() {
+    let base = serve_research().await;
+    let h = Harness::with_web(research_model(), false, &[], &base).await;
+    let id = h.save(research_workflow(json!({}))).await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+
+    let out = step(&run, "r", None).output.as_ref().unwrap();
+    let conversation = h.conversation_of(&id).await;
+    assert_eq!(out["conversationId"], conversation.as_str());
+    assert_eq!(out["title"], LANES_QUESTION);
+    assert!(out["summary"].as_str().unwrap().contains("42 km"), "{out}");
+    assert_eq!(out["sources"].as_array().unwrap().len(), 1);
+    assert_eq!(out["sources"][0]["title"], "Lanes report");
+    assert_eq!(out["sources"][0]["url"], format!("{base}/lanes").as_str());
+    assert_eq!(out["sources"][0]["credibility"], "high");
+    assert_eq!(out["unanswered"], json!([]));
+    assert_eq!(out["verifiedQuotes"], 1);
+    assert_eq!(out["droppedClaims"], 1, "the planted quote was dropped");
+    assert_eq!(
+        out["model"],
+        json!({ "provider": "ollama", "model": "echo" })
+    );
+
+    // The report is a document in the workflow's own conversation.
+    let saved = artifacts::list(&h.state.db, &conversation).await.unwrap();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(out["reportArtifactId"], saved[0].id.as_str());
+    let content = artifacts::get(&h.state.db, &h.state.encryption, &saved[0].id)
+        .await
+        .unwrap()
+        .and_then(|a| a.content_text)
+        .unwrap();
+    assert_eq!(content, out["text"].as_str().unwrap());
+    assert!(content.contains("42 km"), "{content}");
+
+    // A research run is recorded against the workflow's conversation, with no card.
+    assert_eq!(
+        h.research_rows().await,
+        vec![(conversation.clone(), "done".to_string(), String::new())]
+    );
+    // Its model calls count: usage rows, in the research run's own conversation.
+    let usage: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM usage_summary")
+        .fetch_one(&h.state.db)
+        .await
+        .unwrap();
+    assert!(usage >= 4, "planner, extractor, gap check/writer: {usage}");
+    assert!(h
+        .model
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|r| r.conversation_id != conversation && r.tool_definitions.is_empty()));
+}
+
+#[tokio::test]
+async fn a_research_step_uses_its_own_model() {
+    let base = serve_research().await;
+    let h = Harness::with_web(research_model(), false, &["openrouter"], &base).await;
+    let id = h
+        .save(research_workflow(
+            json!({ "model": { "provider": "openrouter", "model": "cheap" } }),
+        ))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let calls = h.model.calls.lock().unwrap().clone();
+    assert!(calls.len() >= 4, "{calls:?}");
+    assert!(
+        calls
+            .iter()
+            .all(|c| c == &("openrouter".into(), "cheap".into())),
+        "{calls:?}"
+    );
+    assert_eq!(
+        step(&run, "r", None).output.as_ref().unwrap()["model"],
+        json!({ "provider": "openrouter", "model": "cheap" })
+    );
+}
+
+#[tokio::test]
+async fn stopping_a_research_step_ends_the_run_and_the_research_as_stopped() {
+    let base = serve_research().await;
+    let model = EchoModel {
+        hang: true,
+        ..research_model()
+    };
+    let h = Harness::with_web(model, false, &[], &base).await;
+    let id = h.save(research_workflow(json!({}))).await;
+    let detail = h
+        .run_and_stop(&id, std::time::Duration::from_millis(400))
+        .await;
+    assert_eq!(detail.run.status, "stopped");
+    assert_eq!(detail.steps[0].status, "stopped");
+    let rows = h.research_rows().await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].1, "stopped");
+}
+
+#[tokio::test]
+async fn the_run_time_limit_stops_research_cleanly() {
+    let base = serve_research().await;
+    let model = EchoModel {
+        hang: true,
+        ..research_model()
+    };
+    let h = Harness::with_web(model, false, &[], &base).await;
+    let id = h.save(research_workflow(json!({}))).await;
+    let runner = Runner {
+        state: &h.state,
+        streams: &h.streams,
+        fetch_policy: AddressPolicy { public_only: false },
+        stop: Default::default(),
+        unattended: None,
+        budget: RunBudget {
+            wall_clock: std::time::Duration::from_millis(500),
+            ..RunBudget::default()
+        },
+        notify: None,
+        questions: None,
+        connectors: None,
+        documents: None,
+    };
+    let detail = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        runner.run(&id, &HashMap::new(), "manual"),
+    )
+    .await
+    .expect("the run ends at its time limit")
+    .unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert!(
+        detail.run.error.as_deref().unwrap().contains("time limit"),
+        "{:?}",
+        detail.run.error
+    );
+    assert_eq!(h.research_rows().await[0].1, "failed");
+}
+
+#[tokio::test]
+async fn research_is_refused_in_local_only_mode_and_without_web_search() {
+    // Local-only (the harness default): the existing wording, no model call.
+    let h = Harness::new(research_model()).await;
+    let id = h.save(research_workflow(json!({}))).await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "failed");
+    assert!(
+        run.run
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("Research isn't available in local-only mode"),
+        "{:?}",
+        run.run.error
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty());
+    assert!(h.research_rows().await.is_empty());
+
+    // Web search not set up.
+    let h = Harness::new_with(research_model(), false, &[]).await;
+    let id = h.save(research_workflow(json!({}))).await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "failed");
+    assert!(
+        run.run
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("Research needs web search"),
+        "{:?}",
+        run.run.error
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_empty_question_fails_without_asking_a_model() {
+    let base = serve_research().await;
+    let h = Harness::with_web(research_model(), false, &[], &base).await;
+    let id = h
+        .save(json!({
+            "inputs": [{ "id": "topic", "label": "Topic", "default": "" }],
+            "steps": [{ "id": "r", "type": "research", "question": "{{inputs.topic}}" }]
+        }))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "failed");
+    assert!(
+        run.run
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("question came out empty"),
+        "{:?}",
+        run.run.error
+    );
+    assert!(h.model.requests.lock().unwrap().is_empty());
+    assert!(h.research_rows().await.is_empty());
+}
+
+#[tokio::test]
+async fn a_scheduled_research_step_asks_for_the_research_permission() {
+    let base = serve_research().await;
+    let h = Harness::with_web(research_model(), false, &[], &base).await;
+    let id = h.save(research_workflow(json!({}))).await;
+    assert_eq!(
+        h.required(&id).await,
+        vec![
+            Permission::Model {
+                provider: "ollama".into()
+            },
+            Permission::Research
+        ]
+    );
+    // Model approved, research not: the run pauses on research, and a "no" ends it
+    // before any model call.
+    let runner = h.unattended_runner(
+        vec![Permission::Model {
+            provider: "ollama".into(),
+        }],
+        CancellationToken::new(),
+    );
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(review.step_id, "r");
+        assert_eq!(review.permission.permission, Permission::Research);
+        assert!(h.reviews.answer(&review.run_id, Decision::Deny));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert!(h.model.requests.lock().unwrap().is_empty());
+
+    // Fully approved: it runs without asking.
+    let approved = h.required(&id).await;
+    let detail = h
+        .unattended_runner(approved, CancellationToken::new())
+        .run(&id, &no_inputs, "schedule")
+        .await
+        .unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert!(h.reviews.list().is_empty());
+}
+
+#[test]
+fn a_research_step_is_checked_when_the_workflow_is_saved() {
+    let check = |step: Value| {
+        conduit_desktop::workflows::definition::check_value(&json!({ "steps": [step] }))
+    };
+    assert!(check(json!({ "id": "r", "type": "research", "question": "Why?" })).is_ok());
+    let deep = check(json!({ "id": "r", "type": "research", "question": "Why?", "depth": "deep" }));
+    assert!(deep.unwrap_err().contains("isn't a research depth"));
+    let empty = check(json!({ "id": "r", "type": "research", "question": " " }));
+    assert!(empty.unwrap_err().contains("needs a question"));
+    let looped = conduit_desktop::workflows::definition::check_value(&json!({ "steps": [
+        { "id": "l", "type": "for_each", "items": "inputs.x", "steps": [
+            { "id": "r", "type": "research", "question": "Why?" } ] } ],
+        "inputs": [{ "id": "x", "label": "x" }]
+    }));
+    assert!(looped
+        .unwrap_err()
+        .contains("only works on the steps at the top level"));
+    let bounds = |k: u64| {
+        check(
+            json!({ "id": "d", "type": "search_documents", "collections": ["c"],
+                      "query": "q", "topK": k }),
+        )
+    };
+    assert!(bounds(0).is_err());
+    assert!(bounds(21).is_err());
+    assert!(bounds(1).is_ok() && bounds(20).is_ok());
+    let none =
+        check(json!({ "id": "d", "type": "search_documents", "collections": [], "query": "q" }));
+    assert!(none.unwrap_err().contains("at least one collection"));
+}
+
+// Documents search
+
+fn docs_workflow(collections: &[&str], top_k: Option<u32>) -> Value {
+    let mut step = json!({
+        "id": "docs", "type": "search_documents",
+        "collections": collections, "query": "{{inputs.q}}"
+    });
+    if let Some(k) = top_k {
+        step["topK"] = json!(k);
+    }
+    json!({ "inputs": [{ "id": "q", "label": "Query", "default": "tomato garden" }], "steps": [step] })
+}
+
+/// A collection of two documents, embedded by the fake: one about gardens,
+/// one about quantum computers.
+async fn library(h: &Harness) -> String {
+    use conduit_desktop::db::repository::knowledge as library;
+    use conduit_desktop::knowledge::ingest::{ingest_text, EmbeddingConfig};
+    let collection = library::create_collection(
+        &h.state.db,
+        library::NewCollection {
+            name: "Project notes".to_string(),
+            provider_id: "ollama".to_string(),
+            embedding_model: "fake-embed-1".to_string(),
+            embedding_dimensions: VOCAB.len() as i64,
+        },
+    )
+    .await
+    .unwrap();
+    let embedding = EmbeddingConfig {
+        provider_id: "ollama".to_string(),
+        model_id: "fake-embed-1".to_string(),
+        adapter: Box::new(EchoModel::default()),
+        adapter_ctx: AdapterContext {
+            api_key: None,
+            base_url: None,
+            http: provider_core::transport::HttpClient::new(),
+            local_only: false,
+        },
+    };
+    let garden =
+        "Growing a tomato garden starts with good soil. A tomato garden bed needs sun. ".repeat(8);
+    let physics =
+        "A qubit is the unit of a quantum computer. Quantum research keeps a qubit stable. "
+            .repeat(8);
+    for (title, text) in [("Garden notes", garden), ("Physics notes", physics)] {
+        ingest_text(
+            &h.state.db,
+            &h.state.encryption,
+            &embedding,
+            &collection.id,
+            &format!("test://{title}"),
+            title,
+            &text,
+        )
+        .await
+        .unwrap();
+    }
+    collection.id
+}
+
+async fn consenting() -> Harness {
+    Harness::new_tweaked(EchoModel::default(), true, &[], |s| {
+        s.embedding_consent_providers = vec!["ollama".to_string()];
+    })
+    .await
+}
+
+#[tokio::test]
+async fn a_documents_step_returns_cited_passages_and_honours_top_k() {
+    let h = consenting().await;
+    let collection = library(&h).await;
+    let id = h.save(docs_workflow(&[collection.as_str()], Some(1))).await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let out = step(&run, "docs", None).output.as_ref().unwrap();
+    assert_eq!(out["count"], 1);
+    let passage = &out["passages"][0];
+    assert_eq!(passage["document"], "Garden notes");
+    assert_eq!(passage["collection"], "Project notes");
+    assert_eq!(passage["citation"], "Garden notes (Project notes)");
+    assert!(passage["text"].as_str().unwrap().contains("tomato"));
+    assert!(
+        out["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("[1] Garden notes (Project notes)\n"),
+        "{}",
+        out["text"]
+    );
+
+    // Without topK, up to six; the query steers which document comes first.
+    let id = h.save(docs_workflow(&[collection.as_str()], None)).await;
+    let mut inputs = HashMap::new();
+    inputs.insert("q".to_string(), "quantum qubit".to_string());
+    let runner = Runner {
+        state: &h.state,
+        streams: &h.streams,
+        fetch_policy: AddressPolicy { public_only: false },
+        stop: Default::default(),
+        unattended: None,
+        budget: RunBudget::default(),
+        notify: None,
+        questions: None,
+        connectors: None,
+        documents: None,
+    };
+    let run = runner.run(&id, &inputs, "manual").await.unwrap();
+    let out = step(&run, "docs", None).output.as_ref().unwrap();
+    assert!(out["count"].as_u64().unwrap() >= 1 && out["count"].as_u64().unwrap() <= 6);
+    assert_eq!(out["passages"][0]["document"], "Physics notes");
+}
+
+#[tokio::test]
+async fn a_documents_step_without_consent_fails_plainly_and_never_asks() {
+    let h = Harness::new(EchoModel::default()).await;
+    let collection = library(&h).await;
+    let id = h.save(docs_workflow(&[collection.as_str()], None)).await;
+    // Unattended and nothing approved: the failure comes first, no review is raised.
+    let detail = h
+        .unattended_runner(vec![], CancellationToken::new())
+        .run(&id, &HashMap::new(), "schedule")
+        .await
+        .unwrap();
+    assert_eq!(detail.run.status, "failed");
+    let error = detail.run.error.unwrap();
+    assert!(
+        error.contains(
+            "Documents search needs your OK to use Ollama \u{2014} open Documents to allow it."
+        ),
+        "{error}"
+    );
+    assert!(h.reviews.list().is_empty());
+}
+
+#[tokio::test]
+async fn a_documents_step_reports_a_deleted_collection_and_an_empty_query() {
+    let h = consenting().await;
+    let collection = library(&h).await;
+    let id = h.save(docs_workflow(&[collection.as_str()], None)).await;
+    let mut empty = HashMap::new();
+    empty.insert("q".to_string(), "  ".to_string());
+    let runner = Runner {
+        state: &h.state,
+        streams: &h.streams,
+        fetch_policy: AddressPolicy { public_only: false },
+        stop: Default::default(),
+        unattended: None,
+        budget: RunBudget::default(),
+        notify: None,
+        questions: None,
+        connectors: None,
+        documents: None,
+    };
+    let run = runner.run(&id, &empty, "manual").await.unwrap();
+    assert_eq!(run.run.status, "failed");
+    assert!(run.run.error.unwrap().contains("query came out empty"));
+
+    conduit_desktop::db::repository::knowledge::delete_collection(&h.state.db, &collection)
+        .await
+        .unwrap();
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "failed");
+    assert!(run
+        .run
+        .error
+        .unwrap()
+        .contains("collection this step searches was deleted"),);
+}
+
+#[tokio::test]
+async fn a_scheduled_documents_step_is_reviewed_by_collection_title() {
+    let h = consenting().await;
+    let collection = library(&h).await;
+    let id = h.save(docs_workflow(&[collection.as_str()], Some(2))).await;
+    let required = h.required(&id).await;
+    let expected = Permission::Documents {
+        collections: vec![permissions::CollectionRef {
+            id: collection.clone(),
+            title: "Project notes".into(),
+        }],
+    };
+    assert_eq!(required, vec![expected.clone()]);
+
+    let runner = h.unattended_runner(vec![], CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answer = async {
+        let review = h.next_review().await;
+        assert_eq!(review.permission.permission, expected);
+        assert_eq!(
+            review.permission.label.as_deref(),
+            Some("Search your documents: Project notes")
+        );
+        assert!(h.reviews.answer(&review.run_id, Decision::AllowOnce));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
 }

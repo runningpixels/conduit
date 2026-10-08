@@ -190,6 +190,127 @@ pub async fn start(
     get(state, &run_id).await
 }
 
+/// A research run made for a workflow step: it lives in the workflow's own
+/// conversation, has no card (`message_id` is empty), and makes its model
+/// calls in a hidden conversation of its own.
+#[derive(Debug, Clone)]
+pub struct HeadlessRun {
+    pub run_id: String,
+    pub hidden_conversation_id: String,
+}
+
+/// Start a run for `question` in `conversation_id` with no chat card. Refuses
+/// as [`availability`] does. The brief is drafted by [`run_headless`].
+pub async fn start_headless(
+    state: &AppState,
+    conversation_id: &str,
+    question: &str,
+) -> Result<HeadlessRun, String> {
+    availability(&state.settings()?)?;
+    let question = question.trim();
+    if question.is_empty() {
+        return Err("There was nothing to research: the question came out empty.".to_string());
+    }
+    if question.chars().count() > brief::MAX_QUESTION_CHARS {
+        return Err(format!(
+            "Keep the question under {} characters.",
+            brief::MAX_QUESTION_CHARS
+        ));
+    }
+    let pool = &state.db;
+    let run_id = Uuid::new_v4().to_string();
+    let hidden = conversations::create(pool, Some(&clip(&one_line(question), TITLE_CHARS)))
+        .await
+        .map_err(db)?;
+    conversations::set_kind(pool, &hidden.id, "automation")
+        .await
+        .map_err(db)?;
+    repo::create_run(pool, &run_id, conversation_id, "", &hidden.id)
+        .await
+        .map_err(db)?;
+    Ok(HeadlessRun {
+        run_id,
+        hidden_conversation_id: hidden.id,
+    })
+}
+
+/// What a headless run came to.
+pub struct HeadlessOutcome {
+    pub outcome: super::run::Outcome,
+    pub status: ResearchStatus,
+    /// The saved report, when there is one.
+    pub artifact_id: Option<String>,
+    /// The title the report was saved under.
+    pub title: String,
+}
+
+/// Draft the brief for `question` at `depth` and run it to the end, with no
+/// approval in between: the planner call makes the sub-questions, the step's
+/// depth sets the budget. What was found is saved as for a chat run (sources,
+/// claims, report). `halted` says, once the loop has ended, whether the
+/// caller stopped it (the status to record instead of `done`/`failed`).
+pub async fn run_headless(
+    state: &AppState,
+    io: &dyn ResearchIo,
+    run_id: &str,
+    question: &str,
+    depth: provider_core::schema::ResearchDepth,
+    public_only: bool,
+    halted: &(dyn Fn() -> Option<ResearchStatus> + Sync),
+) -> Result<HeadlessOutcome, String> {
+    let pool = &state.db;
+    let drafted = brief::plan(io, question.trim(), &super::today()).await;
+    let brief = match drafted {
+        Ok(mut draft) => {
+            draft.depth = depth;
+            brief::checked(&draft)
+        }
+        Err(e) => Err(e),
+    };
+    let brief = match brief {
+        Ok(brief) => brief,
+        Err(e) => {
+            let status = halted().unwrap_or(ResearchStatus::Failed);
+            let _ =
+                repo::transition(pool, run_id, &[ResearchStatus::Planning], status, Some(&e)).await;
+            return Err(e);
+        }
+    };
+    repo::set_brief(
+        pool,
+        &state.encryption,
+        run_id,
+        &brief,
+        ResearchStatus::Running,
+    )
+    .await
+    .map_err(db)?;
+    let row = repo::get_row(pool, &state.encryption, run_id)
+        .await
+        .map_err(db)?
+        .ok_or_else(|| "That research no longer exists.".to_string())?;
+    let mut engine = Engine::new(io, CancellationToken::new(), row.budget);
+    engine.public_only = public_only;
+    let outcome = engine.run(&brief).await;
+    let status = halted().unwrap_or(match &outcome.error {
+        Some(_) => ResearchStatus::Failed,
+        None => ResearchStatus::Done,
+    });
+    let artifact_id = match save(state, &row, &brief, &outcome, status).await {
+        Ok(id) => id,
+        Err(e) => {
+            fail(state, run_id, &e).await;
+            return Err(e);
+        }
+    };
+    Ok(HeadlessOutcome {
+        outcome,
+        status,
+        artifact_id,
+        title: clip(&one_line(&brief.question), REPORT_TITLE_CHARS),
+    })
+}
+
 /// The run, as the card shows it.
 pub async fn get(state: &AppState, run_id: &str) -> Result<ResearchRun, String> {
     repo::get_run(&state.db, &state.encryption, run_id)
@@ -373,7 +494,7 @@ pub async fn execute(
     };
     let saved = save(state, &row, brief, &outcome, status).await;
     let status = match saved {
-        Ok(()) => status,
+        Ok(_) => status,
         Err(e) => fail(state, run_id, &e).await,
     };
     notify(run_id, status);
@@ -385,9 +506,11 @@ async fn save(
     brief: &ResearchBrief,
     outcome: &super::run::Outcome,
     status: ResearchStatus,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let pool = &state.db;
     let enc = &state.encryption;
+    // A run made for a workflow has no card to put the summary on.
+    let card = Some(row.message_id.as_str()).filter(|m| !m.is_empty());
     let empty_footnotes = Default::default();
     let empty_used = Default::default();
     let (footnotes, used) = match &outcome.report {
@@ -409,15 +532,10 @@ async fn save(
     let mut artifact_id = None;
     if let Some(rendered) = &outcome.report {
         let title = clip(&one_line(&brief.question), REPORT_TITLE_CHARS);
-        let artifact = artifacts::create(
-            pool,
-            &row.conversation_id,
-            "markdown",
-            Some(&title),
-            Some(&row.message_id),
-        )
-        .await
-        .map_err(db)?;
+        let artifact =
+            artifacts::create(pool, &row.conversation_id, "markdown", Some(&title), card)
+                .await
+                .map_err(db)?;
         artifacts::set_content(
             pool,
             &state.paths.artifacts,
@@ -436,15 +554,19 @@ async fn save(
             "{}\n\nThe full report, with its sources, is in the document \u{201C}{title}\u{201D}.",
             rendered.summary
         );
-        sqlx::query("UPDATE message_parts SET content = ? WHERE message_id = ? AND kind = 'text'")
+        if let Some(message_id) = card {
+            sqlx::query(
+                "UPDATE message_parts SET content = ? WHERE message_id = ? AND kind = 'text'",
+            )
             .bind(&text)
-            .bind(&row.message_id)
+            .bind(message_id)
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
-        conversations::touch(pool, &row.conversation_id)
-            .await
-            .map_err(db)?;
+            conversations::touch(pool, &row.conversation_id)
+                .await
+                .map_err(db)?;
+        }
         artifact_id = Some(artifact.id);
     }
     repo::finish(
@@ -462,7 +584,8 @@ async fn save(
         },
     )
     .await
-    .map_err(db)
+    .map_err(db)?;
+    Ok(artifact_id)
 }
 
 /// Stop a run after the step it is on (a partial report is written). A run

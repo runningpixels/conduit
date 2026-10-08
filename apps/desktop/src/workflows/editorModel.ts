@@ -20,6 +20,8 @@ export const STEP_TYPES: readonly StepType[] = [
   'web_search',
   'read_file',
   'parse_data',
+  'research',
+  'search_documents',
   'summarize',
   'agent',
   'edit_deck',
@@ -32,12 +34,14 @@ export const STEP_TYPES: readonly StepType[] = [
   'condition',
 ];
 
-/// The kinds offered in a list: a condition (like `onlyIfChanged`) and the
-/// steps that change a saved deck or draft only work at the top level, so a
-/// loop's body doesn't offer them.
+/// The kinds offered in a list: a condition (like `onlyIfChanged`), the
+/// steps that change a saved deck or draft, and research (long and costly)
+/// only work at the top level, so a loop's body doesn't offer them.
 export function stepTypesFor(nested: boolean): readonly StepType[] {
   return nested
-    ? STEP_TYPES.filter((type) => type !== 'condition' && type !== 'edit_deck' && type !== 'edit_draft')
+    ? STEP_TYPES.filter(
+        (type) => type !== 'condition' && type !== 'edit_deck' && type !== 'edit_draft' && type !== 'research',
+      )
     : STEP_TYPES;
 }
 
@@ -90,7 +94,7 @@ export function defaultRetries(type: StepType): number | null {
 /// Step kinds that call a model, and so may pick their own (the backend only
 /// accepts `model` on these).
 export function stepTakesModel(type: StepType): boolean {
-  return type === 'summarize' || type === 'agent' || type === 'edit_deck' || type === 'edit_draft';
+  return type === 'summarize' || type === 'agent' || type === 'edit_deck' || type === 'edit_draft' || type === 'research';
 }
 
 /// `def` with its default model set to `model`; `null` removes the key, so a
@@ -103,12 +107,20 @@ export function withWorkflowModel(def: WorkflowDefinition, model: WorkflowModel 
 /// `step` with its own model set to `model`; `null` removes the key. Other
 /// step kinds come back unchanged.
 export function withStepModel(step: WorkflowStep, model: WorkflowModel | null): WorkflowStep {
-  if (step.type !== 'summarize' && step.type !== 'agent' && step.type !== 'edit_deck' && step.type !== 'edit_draft') {
+  if (!stepTakesModel(step.type)) {
     return step;
   }
-  const { model: _drop, ...rest } = step;
+  const { model: _drop, ...rest } = step as WorkflowStep & { model?: WorkflowModel };
   return (model ? { ...rest, model } : rest) as WorkflowStep;
 }
+
+/// Depths a research step offers (workflows have no `deep`), in menu order.
+export const RESEARCH_DEPTHS = ['quick', 'standard'] as const;
+
+/// Passages a documents search returns when the step doesn't say, and its bounds
+/// (the backend's own).
+export const DEFAULT_TOP_K = 6;
+export const MAX_TOP_K = 20;
 
 /// Formats a `parse_data` step reads, in menu order.
 export const DATA_FORMATS = ['csv', 'tsv', 'json'] as const;
@@ -127,6 +139,8 @@ const ID_PREFIX: Record<StepType, string> = {
   web_search: 'search',
   read_file: 'file',
   parse_data: 'data',
+  research: 'research',
+  search_documents: 'docs',
   summarize: 'summary',
   template: 'text',
   for_each: 'each',
@@ -170,6 +184,11 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, path: '' };
     case 'parse_data':
       return { id, type, input: '', format: 'csv' };
+    case 'research':
+      return { id, type, question: '', depth: 'quick' };
+    case 'search_documents':
+      // Collections are picked in the editor: a new step cannot know yours.
+      return { id, type, collections: [], query: '', topK: DEFAULT_TOP_K };
     case 'summarize':
       return { id, type, prompt: '', input: '' };
     case 'template':
@@ -288,6 +307,10 @@ function itemFields(itemsPath: string, def: WorkflowDefinition): ValueRef[] {
   if (itemsPath.endsWith('.pages')) {
     return [item('title'), item('text'), item('url'), item('links', true)];
   }
+  if (itemsPath.endsWith('.sources')) return [item('title'), item('url'), item('credibility')];
+  if (itemsPath.endsWith('.passages')) {
+    return [item('document'), item('collection'), item('text'), item('citation')];
+  }
   if (itemsPath.endsWith('.results')) return [item('title'), item('snippet'), item('url')];
   if (itemsPath.endsWith('.items')) {
     // One object per iteration, holding that loop body's outputs by step id.
@@ -337,6 +360,19 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
         { field: 'count', list: false },
         { field: 'text', list: false },
         { field: 'columns', list: true },
+      ];
+    case 'research':
+      return [
+        { field: 'text', list: false },
+        { field: 'summary', list: false },
+        { field: 'title', list: false },
+        { field: 'reportArtifactId', list: false },
+        { field: 'sources', list: true },
+      ];
+    case 'search_documents':
+      return [
+        { field: 'text', list: false },
+        { field: 'passages', list: true },
       ];
     case 'summarize':
       return step.schema ? [{ field: 'text', list: false }, { field: 'data', list: true }] : [{ field: 'text', list: false }];
@@ -425,6 +461,24 @@ export function withDocumentTarget(step: WorkflowStep, id: string): WorkflowStep
   if (step.type === 'edit_deck') return { ...step, deck: id };
   if (step.type === 'edit_draft') return { ...step, draft: id };
   return step;
+}
+
+/// `step` with `id` added to (or removed from) a documents search's collections.
+export function withCollection(step: WorkflowStep, id: string, on: boolean): WorkflowStep {
+  if (step.type !== 'search_documents') return step;
+  const others = step.collections.filter((c) => c !== id);
+  return { ...step, collections: on ? [...others, id] : others };
+}
+
+/// `step` with its passage count clamped to 1..=MAX_TOP_K.
+export function withTopK(step: WorkflowStep, topK: number): WorkflowStep {
+  if (step.type !== 'search_documents') return step;
+  return { ...step, topK: Math.max(1, Math.min(MAX_TOP_K, Math.round(topK) || 1)) };
+}
+
+/// True when any top-level documents search still needs its collections picked.
+export function needsCollections(def: WorkflowDefinition): boolean {
+  return def.steps.some((step) => step.type === 'search_documents' && step.collections.length === 0);
 }
 
 /// `step` with its optional `input` set; blank removes the key (the step then

@@ -133,6 +133,9 @@ pub struct Engine<'a> {
     /// The run's date (`YYYY-MM-DD`): the report's, and the "today" the gap
     /// checker, writer and reviewer are told. Today when `None`.
     pub date: Option<String>,
+    /// Only public web addresses are read. Always true in the app; a test
+    /// that serves its pages from this computer turns it off.
+    pub public_only: bool,
 }
 
 impl<'a> Engine<'a> {
@@ -144,6 +147,7 @@ impl<'a> Engine<'a> {
             on_progress: None,
             rate_limit_waits: RATE_LIMIT_WAITS,
             date: None,
+            public_only: true,
         }
     }
 }
@@ -375,7 +379,7 @@ impl Engine<'_> {
                     }
                     Err(reason) => return (Some(reason), None),
                 };
-                for url in choose(&hits, brief, &work.seen, &work.per_host) {
+                for url in choose_with(&hits, brief, &work.seen, &work.per_host, self.public_only) {
                     if let Some(canonical) = urls::canonical(&url) {
                         work.seen.insert(canonical);
                     }
@@ -782,11 +786,22 @@ pub fn choose(
     seen: &HashSet<String>,
     per_host: &HashMap<String, u32>,
 ) -> Vec<String> {
+    choose_with(hits, brief, seen, per_host, true)
+}
+
+/// [`choose`]; with `public_only` off, an address on this computer is read too.
+pub fn choose_with(
+    hits: &[SearchHit],
+    brief: &ResearchBrief,
+    seen: &HashSet<String>,
+    per_host: &HashMap<String, u32>,
+    public_only: bool,
+) -> Vec<String> {
     let mut fresh: Vec<(String, String)> = Vec::new();
     let mut batch: HashSet<String> = HashSet::new();
     for hit in hits {
         let url = hit.url.trim();
-        if !urls::is_public_web_url(url) {
+        if public_only && !urls::is_public_web_url(url) {
             continue;
         }
         let (Some(canonical), Some(host)) = (urls::canonical(url), urls::host(url)) else {

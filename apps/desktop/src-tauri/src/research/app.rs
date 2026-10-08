@@ -62,32 +62,7 @@ impl AppIo {
 #[async_trait]
 impl ResearchIo for AppIo {
     async fn search(&self, query: &str) -> Result<Vec<SearchHit>, String> {
-        let state = self.app.state::<AppState>();
-        let settings = state.settings()?;
-        let backend = settings.web_search.local_backend;
-        let api_key = crate::search::credential_id(backend).and_then(|id| {
-            match state.credential_store().get_secret(id) {
-                Ok(secret) if !secret.trim().is_empty() => Some(secret),
-                _ => None,
-            }
-        });
-        let config = crate::search::LocalSearchConfig {
-            backend,
-            api_key,
-            searxng_base_url: settings.web_search.searxng_base_url.clone(),
-        };
-        let results = crate::search::search(&config, query).await?;
-        Ok(results
-            .into_iter()
-            .filter_map(|r| {
-                let url = r["url"].as_str()?.trim().to_string();
-                (!url.is_empty()).then(|| SearchHit {
-                    title: r["title"].as_str().unwrap_or_default().to_string(),
-                    url,
-                    snippet: r["snippet"].as_str().unwrap_or_default().to_string(),
-                })
-            })
-            .collect())
+        search_hits(&self.app.state::<AppState>(), query).await
     }
 
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
@@ -176,6 +151,38 @@ impl ResearchIo for AppIo {
     }
 }
 
+/// The settings' local search backend's results for `query`, as hits.
+pub(crate) async fn search_hits(state: &AppState, query: &str) -> Result<Vec<SearchHit>, String> {
+    let settings = state.settings()?;
+    let backend = settings.web_search.local_backend;
+    let api_key = crate::search::credential_id(backend).and_then(|id| {
+        match state.credential_store().get_secret(id) {
+            Ok(secret) if !secret.trim().is_empty() => Some(secret),
+            _ => None,
+        }
+    });
+    let config = crate::search::LocalSearchConfig {
+        backend,
+        api_key,
+        searxng_base_url: settings.web_search.searxng_base_url.clone(),
+    };
+    let results = crate::search::search(&config, query).await?;
+    Ok(results
+        .into_iter()
+        .filter_map(|r| {
+            let url = r["url"].as_str()?.trim().to_string();
+            (!url.is_empty()).then(|| SearchHit {
+                title: r["title"].as_str().unwrap_or_default().to_string(),
+                url,
+                snippet: r["snippet"].as_str().unwrap_or_default().to_string(),
+            })
+        })
+        .collect())
+}
+
+/// Readable text kept per page by a research run's fetch.
+pub(crate) const RESEARCH_PAGE_CHARS: usize = MAX_PAGE_CHARS;
+
 /// A one-turn, tool-less request in `conversation_id` with the settings' model.
 fn request(
     state: &AppState,
@@ -231,7 +238,7 @@ fn request(
 /// drops it for the rest, and the Anthropic adapter sends it only to models
 /// that accept it. Plain OpenAI-style endpoints reject the field on models
 /// without reasoning, so they get nothing.
-fn low_effort(provider: &str) -> Option<GenerationControls> {
+pub(crate) fn low_effort(provider: &str) -> Option<GenerationControls> {
     matches!(provider, "openrouter" | "anthropic").then(|| GenerationControls {
         temperature: None,
         top_p: None,

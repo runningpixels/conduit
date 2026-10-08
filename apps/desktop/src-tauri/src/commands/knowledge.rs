@@ -255,6 +255,19 @@ pub struct KnowledgeContext {
     /// user's library looks like the model got worse, with nothing to
     /// discover. So they are named.
     pub unavailable_collections: Vec<String>,
+    /// The passages one by one, after redaction and the reinjection gate, for
+    /// callers that lay them out themselves (workflow steps). Not sent to the
+    /// renderer.
+    #[serde(skip)]
+    pub passages: Vec<RetrievedPassage>,
+}
+
+/// One retrieved passage, as text the model may be shown.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RetrievedPassage {
+    pub document: String,
+    pub collection: String,
+    pub text: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -293,7 +306,10 @@ fn resolve_embedding_provider(state: &AppState) -> Result<(String, String, i64),
 /// `local_only` refuses cloud providers for embedding the same way
 /// `stream_manager` refuses them for chat, and names the provider so the
 /// dead end is legible instead of mysterious.
-fn ensure_provider_allowed_offline(state: &AppState, provider_id: &str) -> Result<(), AppError> {
+pub(crate) fn ensure_provider_allowed_offline(
+    state: &AppState,
+    provider_id: &str,
+) -> Result<(), AppError> {
     let settings = state
         .settings()
         .map_err(|e| err("error.knowledge.storage", e))?;
@@ -323,7 +339,7 @@ fn ensure_provider_allowed_offline(state: &AppState, provider_id: &str) -> Resul
 /// The gate that actually holds. The renderer checks the same list to decide
 /// whether to raise a dialog; this check is what makes skipping the dialog
 /// insufficient.
-fn ensure_consented(state: &AppState, provider_id: &str) -> Result<(), AppError> {
+pub(crate) fn ensure_consented(state: &AppState, provider_id: &str) -> Result<(), AppError> {
     let settings = state
         .settings()
         .map_err(|e| err("error.knowledge.storage", e))?;
@@ -346,7 +362,21 @@ fn embedding_config(
     provider_id: &str,
     model_id: &str,
 ) -> Result<EmbeddingConfig, AppError> {
-    let adapter = provider_core::get_adapter(provider_id).ok_or_else(|| {
+    embedding_config_with(state, &provider_core::get_adapter, provider_id, model_id)
+}
+
+/// Finds the adapter for a provider id: the built-in registry in the app, a
+/// scripted one in tests.
+pub type AdapterLookup<'a> =
+    &'a (dyn Fn(&str) -> Option<Box<dyn provider_core::ProviderAdapter>> + Sync);
+
+fn embedding_config_with(
+    state: &AppState,
+    adapters: AdapterLookup<'_>,
+    provider_id: &str,
+    model_id: &str,
+) -> Result<EmbeddingConfig, AppError> {
+    let adapter = adapters(provider_id).ok_or_else(|| {
         err(
             "error.knowledge.unknownProvider",
             format!("Unknown provider: {provider_id}"),
@@ -814,10 +844,37 @@ pub async fn retrieve_knowledge_context(
         (groups, search::DocumentFilter::only(found_ids))
     };
 
+    retrieve_groups(
+        &state,
+        &provider_core::get_adapter,
+        groups,
+        &filter,
+        &query,
+        RETRIEVAL_TOP_K,
+    )
+    .await
+}
+
+/// Search the planned `groups` (collections grouped by the embedding model
+/// that built them) for `query` and return the best `top_k` passages as the
+/// block that reaches the model. The body of [`retrieve_knowledge_context`],
+/// shared with the workflow step that searches documents.
+///
+/// A group that can't be searched (its provider is cloud under local-only
+/// mode, has no consent, has lost its credentials or failed to embed) is
+/// skipped and named in `unavailable_collections` rather than failing.
+pub async fn retrieve_groups(
+    state: &AppState,
+    adapters: AdapterLookup<'_>,
+    groups: Vec<((String, String), Vec<search::GroupMember>)>,
+    filter: &search::DocumentFilter,
+    query: &str,
+    top_k: usize,
+) -> Result<KnowledgeContext, AppError> {
     // D5: a group left with nothing searchable (references that named none of
     // its documents, or an exclusion set covering all of them) makes no
     // embedding call and is not reported — nothing is wrong with it.
-    let plan = search::plan_retrieval_groups(groups, &filter);
+    let plan = search::plan_retrieval_groups(groups, filter);
 
     let mut scored: Vec<search::Scored> = Vec::new();
     let mut unavailable_collections: Vec<String> = Vec::new();
@@ -827,13 +884,15 @@ pub async fn retrieve_knowledge_context(
         // failing the turn — but it is recorded, so the user is told which
         // part of their library went quiet instead of inferring it from a
         // worse answer.
-        if ensure_provider_allowed_offline(&state, &group.provider_id).is_err()
-            || ensure_consented(&state, &group.provider_id).is_err()
+        if ensure_provider_allowed_offline(state, &group.provider_id).is_err()
+            || ensure_consented(state, &group.provider_id).is_err()
         {
             unavailable_collections.extend(group.collection_names.clone());
             continue;
         }
-        let Ok(config) = embedding_config(&state, &group.provider_id, &group.model_id) else {
+        let Ok(config) =
+            embedding_config_with(state, adapters, &group.provider_id, &group.model_id)
+        else {
             unavailable_collections.extend(group.collection_names.clone());
             continue;
         };
@@ -842,7 +901,7 @@ pub async fn retrieve_knowledge_context(
             .generate_embeddings(
                 provider_core::schema::EmbeddingRequest {
                     model_id: group.model_id.clone(),
-                    inputs: vec![query.clone()],
+                    inputs: vec![query.to_string()],
                 },
                 &config.adapter_ctx,
             )
@@ -861,9 +920,9 @@ pub async fn retrieve_knowledge_context(
             &state.encryption,
             &group.collection_ids,
             &query_vector,
-            &query,
-            RETRIEVAL_TOP_K,
-            &filter,
+            query,
+            top_k,
+            filter,
         )
         .await
         .map_err(db_err)?;
@@ -873,9 +932,9 @@ pub async fn retrieve_knowledge_context(
     // RRF scores are on the same scale across groups, so a plain sort is a
     // fair merge.
     scored.sort_by(|a, b| b.score.total_cmp(&a.score));
-    scored.truncate(RETRIEVAL_TOP_K);
+    scored.truncate(top_k);
 
-    let mut context = build_context(&state, scored).await?;
+    let mut context = build_context(state, scored).await?;
     context.unavailable_collections = unavailable_collections;
     Ok(context)
 }
@@ -893,6 +952,7 @@ async fn build_context(
     let mut citations = Vec::new();
     let mut refused_titles: Vec<String> = Vec::new();
     let mut blocks: Vec<String> = Vec::new();
+    let mut passages: Vec<RetrievedPassage> = Vec::new();
 
     for hit in scored {
         let title = match titles.get(&hit.document_id) {
@@ -933,6 +993,11 @@ async fn build_context(
         }
 
         blocks.push(format!("[{}] {}", title, redacted));
+        passages.push(RetrievedPassage {
+            document: title.clone(),
+            collection: collection_name.clone(),
+            text: redacted,
+        });
         citations.push(KnowledgeCitation {
             document_id: hit.document_id,
             document_title: title,
@@ -962,5 +1027,6 @@ async fn build_context(
         refused_titles,
         // Filled in by the caller, which is where provider availability is known.
         unavailable_collections: Vec::new(),
+        passages,
     })
 }

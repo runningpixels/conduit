@@ -420,6 +420,8 @@ async fn workflow_permissions(state: &AppState, id: &str) -> Result<WorkflowPerm
         provider_core::get_adapter(provider).is_some()
             && StreamManager::build_adapter_context(state, provider).is_ok()
     };
+    let titles = permissions::collection_titles(&state.db, &def).await;
+    let collection_title = |id: &str| titles.get(id).cloned();
     let required = permissions::required(
         &def,
         &permissions::Context {
@@ -427,6 +429,7 @@ async fn workflow_permissions(state: &AppState, id: &str) -> Result<WorkflowPerm
             provider: &settings.active_provider,
             model: &settings.active_model,
             configured: Some(&configured),
+            collection_title: Some(&collection_title),
         },
     );
     let stored = repo::get_permissions(&state.db, &state.encryption, id)

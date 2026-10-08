@@ -10,7 +10,7 @@
 /// item's fields. It mirrors the backend's validation (`workflows::definition`),
 /// so anything offered here is accepted on save.
 
-import type { WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep } from '../ipc/contracts';
+import type { WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep, WorkflowTrigger } from '../ipc/contracts';
 
 export type StepType = WorkflowStep['type'];
 export type StepPath = readonly number[];
@@ -30,6 +30,8 @@ export const STEP_TYPES: readonly StepType[] = [
   'template',
   'for_each',
   'save_artifact',
+  'export_file',
+  'save_memory',
   'ask',
   'notify',
   'condition',
@@ -132,6 +134,40 @@ export function withFolder(def: WorkflowDefinition, folder: string | null): Work
   return folder && folder.trim() ? { ...rest, folder } : rest;
 }
 
+/// Longest a feed is left between checks, and the shortest (the backend's own).
+export const MIN_FEED_MINUTES = 15;
+export const MAX_FEED_MINUTES = 1440;
+export const DEFAULT_FEED_MINUTES = 30;
+/// Choices offered for "check every N minutes".
+export const FEED_MINUTE_CHOICES = [15, 30, 60, 120, 360, 720, 1440] as const;
+
+/// `def` with its trigger set; `null` removes the key (manual and timed runs only).
+export function withTrigger(def: WorkflowDefinition, trigger: WorkflowTrigger | null): WorkflowDefinition {
+  const { trigger: _drop, ...rest } = def;
+  return trigger ? { ...rest, trigger } : rest;
+}
+
+/// A new trigger of `kind`; a feed starts with no address and the default interval.
+export function newTrigger(kind: WorkflowTrigger['kind']): WorkflowTrigger {
+  return kind === 'feed' ? { kind, url: '', everyMinutes: DEFAULT_FEED_MINUTES } : { kind };
+}
+
+/// `minutes` kept within what a feed may ask for.
+export function clampFeedMinutes(minutes: number): number {
+  return Math.max(MIN_FEED_MINUTES, Math.min(MAX_FEED_MINUTES, Math.round(minutes) || DEFAULT_FEED_MINUTES));
+}
+
+/// True when a folder trigger has no folder to watch yet.
+export function triggerNeedsFolder(def: WorkflowDefinition): boolean {
+  return def.trigger?.kind === 'folder' && !(def.folder && def.folder.trim());
+}
+
+/// What each trigger offers a template as `{{trigger.<field>}}`, in menu order.
+export const TRIGGER_FIELDS = {
+  feed: ['title', 'link', 'summary', 'published', 'id'],
+  folder: ['path', 'name', 'modified', 'bytes'],
+} as const;
+
 /// Most pages one fetch step may list (the backend's `MAX_URLS_PER_FETCH`).
 export const MAX_URLS = 10;
 
@@ -147,6 +183,8 @@ const ID_PREFIX: Record<StepType, string> = {
   template: 'text',
   for_each: 'each',
   save_artifact: 'save',
+  export_file: 'export',
+  save_memory: 'memory',
   agent: 'agent',
   edit_deck: 'update_deck',
   edit_draft: 'update_draft',
@@ -202,6 +240,10 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, items: '', steps: [] };
     case 'save_artifact':
       return { id, type, title: '', content: '', format: 'markdown', mode: 'update' };
+    case 'export_file':
+      return { id, type, name: '', content: '' };
+    case 'save_memory':
+      return { id, type, text: '' };
     case 'agent':
       return { id, type, prompt: '', input: '', tools: ['web_search', 'web_fetch'] };
     case 'edit_deck':
@@ -294,7 +336,7 @@ export function moveStep(steps: readonly WorkflowStep[], path: StepPath, delta: 
 export interface ValueRef {
   path: string;
   /// Where it comes from: an input, the run, a step (by id), or the loop item.
-  source: { kind: 'input'; label: string } | { kind: 'run' } | { kind: 'step'; stepId: string } | { kind: 'item' };
+  source: { kind: 'input'; label: string } | { kind: 'run' } | { kind: 'trigger' } | { kind: 'step'; stepId: string } | { kind: 'item' };
   /// What it is, e.g. `text`, `pages`, `title`, `date`.
   field: string;
   /// True when it is a list (usable as a loop's items).
@@ -392,6 +434,17 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       return [{ field: 'items', list: true }];
     case 'save_artifact':
       return [{ field: 'artifactId', list: false }];
+    case 'export_file':
+      return [
+        { field: 'path', list: false },
+        { field: 'name', list: false },
+        { field: 'bytes', list: false },
+      ];
+    case 'save_memory':
+      return [
+        { field: 'memoryId', list: false },
+        { field: 'status', list: false },
+      ];
     case 'agent':
       return [
         { field: 'text', list: false },
@@ -420,6 +473,11 @@ export function valuesAt(def: WorkflowDefinition, path: StepPath): ValueRef[] {
     refs.push({ path: `inputs.${input.id}`, source: { kind: 'input', label: input.label }, field: input.id, list: false });
   }
   refs.push({ path: 'run.date', source: { kind: 'run' }, field: 'date', list: false });
+  if (def.trigger) {
+    for (const field of TRIGGER_FIELDS[def.trigger.kind]) {
+      refs.push({ path: `trigger.${field}`, source: { kind: 'trigger' }, field, list: false });
+    }
+  }
 
   const earlier: ValueRef[] = [];
   let list: readonly WorkflowStep[] = def.steps;

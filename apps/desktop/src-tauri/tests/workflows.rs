@@ -5644,3 +5644,488 @@ fn a_connector_step_is_checked_when_the_workflow_is_saved() {
     .unwrap_err()
     .contains("unknown setting"));
 }
+
+// ── Triggers and outputs ─────────────────────────────────────────────────────
+
+#[derive(Default)]
+struct FeedState {
+    body: String,
+    etag: Option<String>,
+    status: u16,
+    requests: usize,
+    not_modified: usize,
+}
+
+/// A feed on loopback that answers 304 to a matching `If-None-Match`.
+async fn serve_feed(state: Arc<Mutex<FeedState>>) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]).to_lowercase();
+                let sent_etag = request
+                    .lines()
+                    .find_map(|l| l.strip_prefix("if-none-match:"))
+                    .map(|v| v.trim().to_string());
+                let response = {
+                    let mut s = state.lock().unwrap();
+                    s.requests += 1;
+                    let etag = s.etag.clone();
+                    if s.status != 200 {
+                        format!(
+                            "HTTP/1.1 {} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                            s.status
+                        )
+                    } else if etag.is_some() && sent_etag == etag.as_ref().map(|e| e.to_lowercase())
+                    {
+                        s.not_modified += 1;
+                        "HTTP/1.1 304 Not Modified\r\nConnection: close\r\n\r\n".to_string()
+                    } else {
+                        let tag = etag.map(|e| format!("ETag: {e}\r\n")).unwrap_or_default();
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/rss+xml\r\n{tag}Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            s.body.len(),
+                            s.body
+                        )
+                    }
+                };
+                let _ = socket.write_all(response.as_bytes()).await;
+            });
+        }
+    });
+    format!("http://{addr}/feed.xml")
+}
+
+/// An RSS feed of posts `from..=to`, newest first.
+fn rss(from: u32, to: u32) -> String {
+    let items: String = (from..=to)
+        .rev()
+        .map(|n| {
+            format!(
+                "<item><title>Post {n}</title><link>http://example.test/{n}</link><guid>g{n}</guid>\
+                 <pubDate>2026-09-{n:02}T10:00:00Z</pubDate><description>About {n}</description></item>"
+            )
+        })
+        .collect();
+    format!(
+        "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>T</title>{items}</channel></rss>"
+    )
+}
+
+fn feed_state(body: String, etag: Option<&str>) -> Arc<Mutex<FeedState>> {
+    Arc::new(Mutex::new(FeedState {
+        body,
+        etag: etag.map(str::to_string),
+        status: 200,
+        ..FeedState::default()
+    }))
+}
+
+fn feed_workflow(url: &str) -> Value {
+    json!({
+        "trigger": { "kind": "feed", "url": url, "everyMinutes": 30 },
+        "steps": [
+            { "id": "t", "type": "template", "template": "{{trigger.title}}|{{trigger.link}}|{{trigger.summary}}|{{trigger.published}}|{{trigger.id}}" }
+        ]
+    })
+}
+
+async fn tick_notifying(
+    h: &Harness,
+    running: &Arc<RunningWorkflows>,
+    now: &str,
+    notices: &Mutex<Vec<(String, String)>>,
+) -> Vec<conduit_desktop::workflows::scheduler::RunFinished> {
+    let tz = FixedOffset::east_opt(2 * 3600).unwrap();
+    let notify = |title: &str, body: &str| {
+        notices
+            .lock()
+            .unwrap()
+            .push((title.to_string(), body.to_string()));
+        Ok(())
+    };
+    let questions = Questions::default();
+    let ctx = RunContext {
+        state: &h.state,
+        streams: &h.streams,
+        running,
+        reviews: &h.reviews,
+        questions: &questions,
+        documents: None,
+        connectors: None,
+        fetch_policy: AddressPolicy { public_only: false },
+        notify: Some(&notify),
+    };
+    let claimed = claim_due(&h.state, utc(now), &tz).await;
+    run_claimed(&ctx, claimed, &|_| {}).await
+}
+
+fn titles(finished: &[conduit_desktop::workflows::scheduler::RunFinished]) -> Vec<String> {
+    finished
+        .iter()
+        .map(|e| {
+            e.trigger_item.as_ref().unwrap()["title"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_feed_baselines_then_runs_once_per_new_post_oldest_first_five_at_a_time() {
+    let state = feed_state(rss(1, 3), Some("\"v1\""));
+    let url = serve_feed(state.clone()).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(feed_workflow(&url)).await;
+    h.schedule(
+        &id,
+        json!({ "kind": "trigger" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    let running = Arc::new(RunningWorkflows::default());
+
+    // The first look only notes what is there.
+    assert!(h.tick(&running, "2026-09-29T06:00:00Z").await.is_empty());
+    assert!(repo::list_runs(&h.state.db, &id, 10)
+        .await
+        .unwrap()
+        .is_empty());
+    // Nothing changed: the feed answers 304 and nothing runs.
+    assert!(h.tick(&running, "2026-09-29T06:31:00Z").await.is_empty());
+    assert_eq!(state.lock().unwrap().not_modified, 1);
+
+    // Seven new posts: five run now, oldest first.
+    {
+        let mut s = state.lock().unwrap();
+        s.body = rss(1, 10);
+        s.etag = Some("\"v2\"".into());
+    }
+    let finished = h.tick(&running, "2026-09-29T07:02:00Z").await;
+    assert_eq!(
+        titles(&finished),
+        ["Post 4", "Post 5", "Post 6", "Post 7", "Post 8"]
+    );
+    assert!(finished
+        .iter()
+        .all(|e| e.status == "completed" && e.trigger == "feed"));
+    // The rest wait for the next look.
+    let finished = h.tick(&running, "2026-09-29T07:33:00Z").await;
+    assert_eq!(titles(&finished), ["Post 9", "Post 10"]);
+    assert!(h.tick(&running, "2026-09-29T08:04:00Z").await.is_empty());
+
+    let runs = repo::list_runs(&h.state.db, &id, 20).await.unwrap();
+    assert_eq!(runs.len(), 7);
+    assert!(runs.iter().all(|r| r.trigger == "feed"));
+    let run = repo::get_run(
+        &h.state.db,
+        &h.state.encryption,
+        finished[0].run_id.as_ref().unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        step(&run, "t", None).output.as_ref().unwrap()["text"],
+        "Post 9|http://example.test/9|About 9|2026-09-09T10:00:00Z|g9"
+    );
+    assert_eq!(run.run.trigger_item.as_ref().unwrap()["title"], "Post 9");
+}
+
+#[tokio::test]
+async fn an_atom_feed_works_too() {
+    let atom = "<feed xmlns=\"http://www.w3.org/2005/Atom\">\
+        <entry><title>B</title><link href=\"http://example.test/b\"/><id>b</id><updated>2026-09-02T10:00:00Z</updated><summary>sb</summary></entry>\
+        <entry><title>A</title><link href=\"http://example.test/a\"/><id>a</id><updated>2026-09-01T10:00:00Z</updated></entry></feed>";
+    let state = feed_state(atom.to_string(), None);
+    let url = serve_feed(state.clone()).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(feed_workflow(&url)).await;
+    h.schedule(
+        &id,
+        json!({ "kind": "trigger" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    let running = Arc::new(RunningWorkflows::default());
+    assert!(h.tick(&running, "2026-09-29T06:00:00Z").await.is_empty());
+    state.lock().unwrap().body = atom.replace(
+        "<entry><title>B",
+        "<entry><title>C</title><link href=\"http://example.test/c\"/><id>c</id><updated>2026-09-03T10:00:00Z</updated></entry><entry><title>B",
+    );
+    let finished = h.tick(&running, "2026-09-29T06:31:00Z").await;
+    assert_eq!(titles(&finished), ["C"]);
+}
+
+#[tokio::test]
+async fn trigger_values_are_checked_and_run_now_uses_the_newest_item() {
+    use conduit_desktop::workflows::definition::check_value;
+    let h = Harness::new(EchoModel::default()).await;
+    let no_trigger =
+        json!({ "steps": [{ "id": "t", "type": "template", "template": "{{trigger.title}}" }] });
+    let problems = check_value(&no_trigger).unwrap_err();
+    assert!(problems.contains("no trigger"), "{problems}");
+    let wrong = json!({
+        "trigger": { "kind": "feed", "url": "https://a.test/f", "everyMinutes": 30 },
+        "steps": [{ "id": "t", "type": "template", "template": "{{trigger.path}}" }]
+    });
+    let problems = check_value(&wrong).unwrap_err();
+    assert!(
+        problems.contains("only has: title, link, summary, published, id"),
+        "{problems}"
+    );
+    let no_folder = json!({ "trigger": { "kind": "folder" }, "steps": [{ "id": "t", "type": "template", "template": "x" }] });
+    let problems = check_value(&no_folder).unwrap_err();
+    assert!(
+        problems.contains(
+            "A folder trigger watches the workflow's folder, so choose the folder first."
+        ),
+        "{problems}"
+    );
+    let too_often = json!({
+        "trigger": { "kind": "feed", "url": "https://a.test/f", "everyMinutes": 5 },
+        "steps": [{ "id": "t", "type": "template", "template": "x" }]
+    });
+    assert!(check_value(&too_often).is_err());
+
+    let state = feed_state(rss(1, 4), None);
+    let url = serve_feed(state).await;
+    let id = h.save(feed_workflow(&url)).await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert_eq!(run.run.trigger, "manual");
+    assert_eq!(
+        step(&run, "t", None).output.as_ref().unwrap()["text"],
+        "Post 4|http://example.test/4|About 4|2026-09-04T10:00:00Z|g4"
+    );
+}
+
+#[tokio::test]
+async fn the_permissions_come_from_the_trigger() {
+    let h = Harness::new(EchoModel::default()).await;
+    let feed = h
+        .save(feed_workflow("https://blog.example.com/feed.xml"))
+        .await;
+    let required = h.required(&feed).await;
+    assert!(
+        required.contains(&Permission::Host {
+            host: "blog.example.com".into()
+        }),
+        "{required:?}"
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let folder = h
+        .save(json!({
+            "trigger": { "kind": "folder" }, "folder": dir.path().to_str().unwrap(),
+            "steps": [{ "id": "t", "type": "template", "template": "{{trigger.name}}" }]
+        }))
+        .await;
+    let required = h.required(&folder).await;
+    assert!(
+        required.contains(&permissions::read_folder(dir.path().to_str().unwrap())),
+        "{required:?}"
+    );
+}
+
+fn age(path: &Path, seconds: u64) {
+    let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(seconds))
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_folder_runs_for_new_finished_files_only() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("old.txt"), "old").unwrap();
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({
+            "trigger": { "kind": "folder" }, "folder": dir.path().to_str().unwrap(),
+            "steps": [
+                { "id": "r", "type": "read_file", "path": "{{trigger.path}}" },
+                { "id": "t", "type": "template", "template": "{{trigger.name}}|{{trigger.bytes}}|{{steps.r.text}}" }
+            ]
+        }))
+        .await;
+    h.schedule(
+        &id,
+        json!({ "kind": "trigger" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    let running = Arc::new(RunningWorkflows::default());
+    assert!(h.tick(&running, "2026-09-29T06:00:00Z").await.is_empty());
+
+    // Hidden and temporary files never count; a fresh file waits.
+    for name in [".hidden", "~$lock.docx", "x.tmp", "y.part", ".DS_Store"] {
+        std::fs::write(dir.path().join(name), "z").unwrap();
+        age(&dir.path().join(name), 3600);
+    }
+    std::fs::write(dir.path().join("fresh.txt"), "fresh").unwrap();
+    std::fs::create_dir_all(dir.path().join("sub")).unwrap();
+    std::fs::write(dir.path().join("sub").join("deep.txt"), "deep").unwrap();
+    age(&dir.path().join("sub").join("deep.txt"), 7200);
+    std::fs::write(dir.path().join("b.txt"), "bee").unwrap();
+    age(&dir.path().join("b.txt"), 3600);
+
+    let finished = h.tick(&running, "2026-09-29T06:01:00Z").await;
+    let names: Vec<_> = finished
+        .iter()
+        .map(|e| {
+            e.trigger_item.as_ref().unwrap()["path"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    // Oldest first; the old file, the fresh one and the ignored ones are not here.
+    assert_eq!(names, ["sub/deep.txt", "b.txt"]);
+    assert!(
+        finished
+            .iter()
+            .all(|e| e.status == "completed" && e.trigger == "folder"),
+        "{finished:?}"
+    );
+    let run = repo::get_run(
+        &h.state.db,
+        &h.state.encryption,
+        finished[1].run_id.as_ref().unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        step(&run, "t", None).output.as_ref().unwrap()["text"],
+        "b.txt|3|bee"
+    );
+
+    // Once it has been left alone, the fresh file runs.
+    age(&dir.path().join("fresh.txt"), 60);
+    let finished = h.tick(&running, "2026-09-29T06:02:00Z").await;
+    assert_eq!(finished.len(), 1);
+    assert_eq!(
+        finished[0].trigger_item.as_ref().unwrap()["name"],
+        "fresh.txt"
+    );
+    assert!(h.tick(&running, "2026-09-29T06:03:00Z").await.is_empty());
+
+    // Run now uses the most recent file (old.txt was written last).
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert_eq!(run.run.trigger_item.as_ref().unwrap()["name"], "old.txt");
+}
+
+#[tokio::test]
+async fn three_failed_looks_pause_with_one_notice_and_a_good_look_clears_it() {
+    let state = feed_state(rss(1, 2), None);
+    let url = serve_feed(state.clone()).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(feed_workflow(&url)).await;
+    h.schedule(
+        &id,
+        json!({ "kind": "trigger" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    state.lock().unwrap().status = 500;
+    let running = Arc::new(RunningWorkflows::default());
+    let notices = Mutex::new(Vec::new());
+    let watch = || async {
+        let workflow = repo::get(&h.state.db, &h.state.encryption, &id)
+            .await
+            .unwrap()
+            .unwrap();
+        let def: WorkflowDefinition = serde_json::from_value(workflow.definition).unwrap();
+        conduit_desktop::workflows::triggers::watch_status(
+            &h.state.paths.root,
+            &id,
+            def.trigger.as_ref().unwrap(),
+            def.folder.as_deref(),
+        )
+    };
+    for now in ["2026-09-29T06:00:00Z", "2026-09-29T06:31:00Z"] {
+        assert!(tick_notifying(&h, &running, now, &notices).await.is_empty());
+    }
+    assert!(notices.lock().unwrap().is_empty());
+    assert!(watch().await.paused_reason.is_none());
+    tick_notifying(&h, &running, "2026-09-29T07:02:00Z", &notices).await;
+    assert_eq!(notices.lock().unwrap().len(), 1);
+    assert!(watch().await.paused_reason.unwrap().contains("500"));
+    tick_notifying(&h, &running, "2026-09-29T07:33:00Z", &notices).await;
+    assert_eq!(notices.lock().unwrap().len(), 1, "one notice only");
+
+    state.lock().unwrap().status = 200;
+    tick_notifying(&h, &running, "2026-09-29T08:04:00Z", &notices).await;
+    assert!(watch().await.paused_reason.is_none());
+}
+
+#[tokio::test]
+async fn export_file_writes_in_the_workflows_subfolder_and_overwrites() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({
+            "inputs": [{ "id": "name", "label": "Name", "default": "digest" }],
+            "steps": [{ "id": "out", "type": "export_file", "name": "{{inputs.name}}", "content": "hello {{run.date}}" }]
+        }))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let out = step(&run, "out", None).output.clone().unwrap();
+    let path = std::path::PathBuf::from(out["path"].as_str().unwrap());
+    assert_eq!(out["name"], "digest.md");
+    assert_eq!(out["bytes"], std::fs::read_to_string(&path).unwrap().len());
+    assert_eq!(
+        path.parent().unwrap(),
+        h.state.paths.exports.join("Morning briefing")
+    );
+    // A second run overwrites the same file.
+    std::fs::write(&path, "stale").unwrap();
+    h.run(&id).await;
+    assert!(std::fs::read_to_string(&path)
+        .unwrap()
+        .starts_with("hello "));
+
+    for bad in ["../x.md", "a/b.md", "run.exe", "C:evil.md"] {
+        let id = h
+            .save(json!({ "steps": [{ "id": "out", "type": "export_file", "name": bad, "content": "x" }] }))
+            .await;
+        let run = h.run(&id).await;
+        assert_eq!(run.run.status, "failed", "{bad:?}");
+    }
+    assert!(!h.state.paths.exports.join("x.md").exists());
+}
+
+#[tokio::test]
+async fn save_memory_only_suggests() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [{ "id": "m", "type": "save_memory", "text": "Prefers short summaries" }] }))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    let out = step(&run, "m", None).output.clone().unwrap();
+    assert_eq!(out["status"], "pending");
+    let items =
+        conduit_desktop::db::repository::memory::list(&h.state.db, &h.state.encryption, None)
+            .await
+            .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, out["memoryId"].as_str().unwrap());
+    assert_eq!(
+        items[0].status,
+        conduit_desktop::db::repository::memory::MemoryStatus::Pending
+    );
+    let long = h
+        .save(json!({ "steps": [{ "id": "m", "type": "save_memory", "text": "x".repeat(1001) }] }))
+        .await;
+    assert_eq!(h.run(&long).await.run.status, "failed");
+}

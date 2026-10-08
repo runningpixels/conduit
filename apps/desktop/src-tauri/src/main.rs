@@ -206,6 +206,7 @@ fn main() {
             get_diagnostics_disclosure_acknowledged,
             acknowledge_diagnostics_disclosure,
             reveal_path,
+            reveal_exported_file,
             reveal_artifacts_dir,
             reveal_artifact,
             open_external_url,

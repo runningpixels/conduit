@@ -358,6 +358,22 @@ pub fn reveal_path(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<
         .map_err(|e| e.to_string().into())
 }
 
+/// Show the folder that holds a file an export wrote. `path` must be inside
+/// the exports directory; anything else is refused.
+#[tauri::command]
+#[allow(deprecated)]
+pub fn reveal_exported_file(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), AppError> {
+    use tauri_plugin_shell::ShellExt;
+    let target = crate::workflows::exports::reveal_target(&state.paths.exports, &path)?;
+    app.shell()
+        .open(target.to_string_lossy(), None)
+        .map_err(|e| e.to_string().into())
+}
+
 /// Reveal the artifacts workspace directory in the OS file manager.
 #[tauri::command]
 #[allow(deprecated)]

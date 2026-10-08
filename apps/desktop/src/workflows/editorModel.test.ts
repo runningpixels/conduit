@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import {
   allStepIds,
+  clampFeedMinutes,
+  newTrigger,
+  triggerNeedsFolder,
+  withTrigger,
   conditionNeedsText,
   defaultRetries,
   documentTarget,
@@ -326,5 +330,49 @@ describe('a fetch step offers the first page', () => {
   it('offers its text on its own, for steps that read a single page (data files)', () => {
     const outputs = stepOutputs({ id: 'fetch', type: 'fetch_page', urls: ['{{inputs.url}}'] });
     expect(outputs).toContainEqual({ field: 'pages.0.text', list: false });
+  });
+});
+
+describe('triggers and outputs', () => {
+  const feedDef: WorkflowDefinition = {
+    trigger: { kind: 'feed', url: 'https://example.com/feed.xml', everyMinutes: 30 },
+    steps: [{ id: 'text', type: 'template', template: 'x' }],
+  };
+
+  it('offers the trigger fields as values only when the workflow has a trigger', () => {
+    const paths = valuesAt(feedDef, [1]).map((r) => r.path);
+    expect(paths).toEqual(expect.arrayContaining(['trigger.title', 'trigger.link', 'trigger.summary', 'trigger.published', 'trigger.id']));
+    expect(valuesAt({ steps: feedDef.steps }, [1]).some((r) => r.path.startsWith('trigger.'))).toBe(false);
+    const folder = valuesAt({ trigger: { kind: 'folder' }, steps: [] }, [0]).map((r) => r.path);
+    expect(folder).toEqual(expect.arrayContaining(['trigger.path', 'trigger.name', 'trigger.modified', 'trigger.bytes']));
+  });
+
+  it('sets, replaces and removes the trigger', () => {
+    const none = withTrigger(feedDef, null);
+    expect('trigger' in none).toBe(false);
+    expect(withTrigger(none, newTrigger('feed')).trigger).toEqual({ kind: 'feed', url: '', everyMinutes: 30 });
+    expect(newTrigger('folder')).toEqual({ kind: 'folder' });
+  });
+
+  it('keeps the feed interval within 15 minutes to a day', () => {
+    expect(clampFeedMinutes(5)).toBe(15);
+    expect(clampFeedMinutes(90000)).toBe(1440);
+    expect(clampFeedMinutes(Number.NaN)).toBe(30);
+    expect(clampFeedMinutes(45)).toBe(45);
+  });
+
+  it('asks for a folder before a folder trigger can work', () => {
+    expect(triggerNeedsFolder({ trigger: { kind: 'folder' }, steps: [] })).toBe(true);
+    expect(triggerNeedsFolder({ trigger: { kind: 'folder' }, folder: 'E:\\inbox', steps: [] })).toBe(false);
+    expect(triggerNeedsFolder(feedDef)).toBe(false);
+  });
+
+  it('creates the two output steps and says what they produce', () => {
+    const taken = new Set<string>();
+    expect(newStep('export_file', taken)).toEqual({ id: 'export', type: 'export_file', name: '', content: '' });
+    expect(newStep('save_memory', taken)).toEqual({ id: 'memory', type: 'save_memory', text: '' });
+    expect(stepOutputs(newStep('export_file', taken)).map((o) => o.field)).toEqual(['path', 'name', 'bytes']);
+    expect(stepOutputs(newStep('save_memory', taken)).map((o) => o.field)).toEqual(['memoryId', 'status']);
+    expect(stepTypesFor(false)).toEqual(expect.arrayContaining(['export_file', 'save_memory']));
   });
 });

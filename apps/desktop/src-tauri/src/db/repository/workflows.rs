@@ -55,7 +55,17 @@ pub struct WorkflowRun {
     pub outcome_step: Option<String>,
     pub started_at: String,
     pub finished_at: Option<String>,
+    /// For a run a trigger started (`trigger` is `feed` or `folder`, or a manual run or rerun of such a workflow): the post
+    /// (`title, link, summary, published, id`) or file (`path, name,
+    /// modified, bytes`) it ran for. Filled in by [`get_run`] and
+    /// [`add_trigger_items`]; `None` otherwise.
+    #[serde(default)]
+    pub trigger_item: Option<Value>,
 }
+
+/// The key under which a run's stored inputs keep the item that started it.
+/// Not a valid input id, so it can't clash with one.
+pub const TRIGGER_ITEM_KEY: &str = "$trigger";
 
 /// The run outcome of a run stopped by a condition. Kept in the run's `error`
 /// column, which a completed run never otherwise uses, so no migration is
@@ -287,6 +297,7 @@ pub async fn start_run(
         outcome_step: None,
         started_at: now_iso8601(),
         finished_at: None,
+        trigger_item: None,
     };
     sqlx::query(
         "INSERT INTO workflow_runs (id, workflow_id, version, trigger, status, started_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -471,7 +482,23 @@ fn run_from(row: RunRow) -> WorkflowRun {
         outcome_step,
         started_at,
         finished_at,
+        trigger_item: None,
     }
+}
+
+/// Fill `trigger_item` on runs that were given an item (those a trigger
+/// started, and "Run now" / reruns of a triggered workflow).
+pub async fn add_trigger_items(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    runs: &mut [WorkflowRun],
+) -> Result<(), DbError> {
+    for run in runs.iter_mut() {
+        run.trigger_item = get_run_inputs(pool, enc, &run.id)
+            .await?
+            .and_then(|inputs| inputs.get(TRIGGER_ITEM_KEY).cloned());
+    }
+    Ok(())
 }
 
 const RUN_COLUMNS: &str =
@@ -545,10 +572,9 @@ pub async fn get_run(
             finished_at,
         });
     }
-    Ok(Some(WorkflowRunDetail {
-        run: run_from(row),
-        steps,
-    }))
+    let mut run = run_from(row);
+    add_trigger_items(pool, enc, std::slice::from_mut(&mut run)).await?;
+    Ok(Some(WorkflowRunDetail { run, steps }))
 }
 
 /// A workflow's schedule (migration 0021). `spec` is a
@@ -562,6 +588,10 @@ pub struct WorkflowSchedule {
     /// UTC. `None` when the schedule is off.
     pub next_run_at: Option<String>,
     pub last_run_at: Option<String>,
+    /// For a trigger schedule (`{"kind":"trigger"}`), what it is watching and
+    /// why it may be paused. Filled in by the command; `None` otherwise.
+    #[serde(default)]
+    pub watch: Option<crate::workflows::triggers::WatchStatus>,
 }
 
 type ScheduleRow = (String, String, i64, Option<String>, Option<String>);
@@ -575,6 +605,7 @@ fn schedule_from(row: ScheduleRow) -> Result<WorkflowSchedule, DbError> {
         enabled: enabled != 0,
         next_run_at,
         last_run_at,
+        watch: None,
     })
 }
 

@@ -277,6 +277,21 @@ const SPECS: &[Spec] = &[
         outputs: "text (what the tool returned), data (its structured result or the JSON it returned, else null), connector (id, name), tool",
     },
     Spec {
+        kind: "export_file",
+        what: "Write text to a file in the app's exports folder, in a subfolder named after the workflow. A file with the same name is overwritten, so put {{run.date}} in the name to keep each run's file.",
+        settings: &[
+            req("name", "text (template)", "a plain file name with no folders; .md, .txt, .csv, .json or .html (.md when it has no extension)"),
+            req("content", "text (template)", "what to write"),
+        ],
+        outputs: "path (the file's full path), name, bytes",
+    },
+    Spec {
+        kind: "save_memory",
+        what: "Suggest something for the app to remember about the user. It only appears for the user to accept or dismiss; it is never remembered by itself. Use it sparingly, for lasting facts.",
+        settings: &[req("text", "text (template)", "the fact, in one or two sentences, up to 1000 characters")],
+        outputs: "memoryId, status (always pending)",
+    },
+    Spec {
         kind: "edit_draft",
         what: "Update a saved writing draft the same way; a section that is not in the draft yet is added at the end. Top level only. Always write \"draft\": \"\".",
         settings: &[
@@ -309,6 +324,14 @@ const EXAMPLES: &[(&str, &str)] = &[
     (
         "Watch a page and tell me when it changes",
         r##"{"name":"Watch a page","description":"Notify when a page's text changes.","notes":[],"definition":{"inputs":[{"id":"page","label":"Page to watch","default":"https://example.com/pricing"}],"steps":[{"id":"page","type":"fetch_page","urls":["{{inputs.page}}"]},{"id":"changed","type":"condition","value":"{{steps.page.text}}","is":"changed"},{"id":"what","type":"summarize","prompt":"Summarize what the page says now.","input":"{{steps.page.text}}"},{"id":"tell","type":"notify","title":"The page changed","body":"{{steps.what.text}}"}]}}"##,
+    ),
+    (
+        "Whenever a blog posts something new, summarize it and keep the summary",
+        r##"{"name":"New posts digest","description":"Summarize each new post in a feed and save the summary.","notes":["Turn on \"Run automatically\" to start watching the feed."],"definition":{"trigger":{"kind":"feed","url":"https://blog.rust-lang.org/feed.xml","everyMinutes":30},"steps":[{"id":"page","type":"fetch_page","urls":["{{trigger.link}}"]},{"id":"sum","type":"summarize","prompt":"Summarize this post in three short bullet points.","input":"{{trigger.title}}\n\n{{steps.page.text}}"},{"id":"save","type":"save_artifact","title":"{{trigger.title}}","content":"# {{trigger.title}}\n\n{{trigger.link}}\n\n{{steps.sum.text}}","mode":"create"},{"id":"tell","type":"notify","title":"New post: {{trigger.title}}","body":"{{steps.sum.text}}"}]}}"##,
+    ),
+    (
+        "When a file lands in my inbox folder, summarize it and export the summary",
+        r##"{"name":"Inbox folder","description":"Summarize each new file in a folder and export the summary.","notes":["Choose the folder to watch.","Turn on \"Run automatically\" to start watching it."],"definition":{"trigger":{"kind":"folder"},"steps":[{"id":"read","type":"read_file","path":"{{trigger.path}}"},{"id":"sum","type":"summarize","prompt":"Summarize this file in a short paragraph.","input":"{{steps.read.text}}"},{"id":"out","type":"export_file","name":"{{trigger.name}} summary.md","content":"# {{trigger.name}}\n\n{{steps.sum.text}}"},{"id":"tell","type":"notify","title":"New file: {{trigger.name}}","body":"{{steps.sum.text}}"}]}}"##,
     ),
     (
         "Every week, put the numbers from my spreadsheet into my deck",
@@ -379,6 +402,15 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
         definition::MAX_TOP_K,
         definition::DEFAULT_TOP_K,
     ));
+    out.push_str(&format!(
+        "\nTRIGGERS: a workflow may have one optional \"trigger\" next to \"inputs\" and \"steps\", so it runs by itself once for each new item:\n\
+- {{\"kind\": \"feed\", \"url\": \"https://...\", \"everyMinutes\": 30}}: a new post in an RSS or Atom feed, looked at every {} to {} minutes (default {}). Inside the steps, {{{{trigger.title}}}}, {{{{trigger.link}}}}, {{{{trigger.summary}}}}, {{{{trigger.published}}}} and {{{{trigger.id}}}} are that post.\n\
+- {{\"kind\": \"folder\"}}: a new file in the workflow's folder (the user chooses it), looked at every minute. Inside the steps, {{{{trigger.path}}}} (the file's path inside the folder, so read_file can open it), {{{{trigger.name}}}}, {{{{trigger.modified}}}} and {{{{trigger.bytes}}}} are that file.\n\
+- {{{{trigger.*}}}} can be read only when the workflow has a trigger. The first look only notes what is already there; after that each new item is one run.\n",
+        definition::MIN_FEED_MINUTES,
+        definition::MAX_FEED_MINUTES,
+        definition::DEFAULT_FEED_MINUTES,
+    ));
     out.push_str(
         "\nTEMPLATES: text settings marked \"template\" can contain references in double braces.\n\
 - {{inputs.x}} is the input with id x.\n\
@@ -397,7 +429,8 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
 - Make anything the user will vary (a web address, a topic, a file name, a person) an input with a clear label and a sensible default, and reference it with {{inputs.x}}. Do not invent web addresses the user did not give; use an input instead.\n\
 - Never invent things that exist only on the user's computer: deck ids, draft ids, collection ids, folder paths, connector ids. Leave a deck or draft id empty (\"\"), leave a search_documents step's \"collections\" as [], leave a connector_tool step's \"connector\" and \"tool\" as \"\", never write a \"folder\", and add a short note for each, such as \"Pick the deck to update.\", \"Pick the collections to search.\", \"Pick the connector and the tool.\" or \"Choose the folder the workflow reads from.\"\n\
 - Never choose a model (no \"model\" setting anywhere): the user's chosen model is used.\n\
-- Never add a schedule or a trigger; the user decides that. If the user said when it should run (\"every Monday\", \"each weekday at 8\"), put that in \"notes\" as \"Turn on the schedule: <when>.\" Do not invent settings that are not listed above.\n\
+- Never add a schedule; the user decides that. If the user said when it should run (\"every Monday\", \"each weekday at 8\"), put that in \"notes\" as \"Turn on the schedule: <when>.\" Do not invent settings that are not listed above.\n\
+- Add a \"trigger\" only when the user wants it to start by itself on something new: a feed trigger only with a feed address the user gave you (never guess one), a folder trigger when they talk about files arriving in a folder (and then never write the \"folder\"; add the note \"Choose the folder to watch.\"). Without a trigger the workflow runs when the user starts it, so never add one otherwise. With a trigger, add the note \"Turn on Run automatically to start watching.\"\n\
 - Finish with a step that leaves the user something: save_artifact for a document, notify for a short message. A workflow must end by saving or notifying, never with just a summarize or template step.\n\
 - Pick a short name (under 60 characters) and a one-sentence description in plain words.\n",
     );
@@ -757,11 +790,22 @@ fn clear_personal_choices(definition: &mut Value) -> Vec<String> {
         if object.remove("folder").is_some() {
             found.folder = true;
         }
+        if object
+            .get("trigger")
+            .and_then(|t| t.get("kind"))
+            .and_then(Value::as_str)
+            == Some("folder")
+        {
+            found.watched_folder = true;
+        }
         clear_steps(object.get_mut("steps"), &mut found);
     }
     let mut notes = Vec::new();
     if found.folder {
         notes.push("Choose the folder the workflow reads from.".to_string());
+    }
+    if found.watched_folder {
+        notes.push("Choose the folder to watch.".to_string());
     }
     if found.deck {
         notes.push("Pick the deck to update.".to_string());
@@ -810,6 +854,7 @@ fn inputs_without_default(definition: &Value) -> Vec<String> {
 #[derive(Default)]
 struct Found {
     folder: bool,
+    watched_folder: bool,
     deck: bool,
     draft: bool,
     collections: bool,
@@ -866,6 +911,7 @@ fn expected_blank(problem: &str) -> bool {
         || problem.contains(" needs a connector to use")
         || problem.contains(" needs a tool to call")
         || problem.contains("reads a file, so choose the workflow's folder first")
+        || problem.contains("A folder trigger watches the workflow's folder")
 }
 
 fn finish(parsed: Parsed, description: &str, attempts: u32) -> DraftResult {

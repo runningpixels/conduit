@@ -698,7 +698,9 @@ export interface WorkflowSummary {
 export type ScheduleSpec =
   | { kind: 'daily'; time: string }
   | { kind: 'weekdays'; time: string }
-  | { kind: 'interval'; hours: number };
+  | { kind: 'interval'; hours: number }
+  /** Polled for new items instead of timed: the definition's `trigger` says what to watch. */
+  | { kind: 'trigger' };
 
 export interface WorkflowSchedule {
   workflowId: string;
@@ -707,6 +709,14 @@ export interface WorkflowSchedule {
   /** UTC; null while the schedule is off. */
   nextRunAt: string | null;
   lastRunAt: string | null;
+  /** Only for a `{kind:'trigger'}` schedule: what is watched and how it is going. */
+  watch?: {
+    kind: 'feed' | 'folder';
+    target: string;
+    everyMinutes: number;
+    pausedReason: string | null;
+    lastCheckedAt: string | null;
+  } | null;
 }
 
 /** Sent when a scheduled run ends (Rust `workflows::scheduler::RunFinished`). */
@@ -716,7 +726,7 @@ export interface WorkflowRunFinished {
   runId: string | null;
   status: 'completed' | 'failed' | 'stopped' | 'skipped' | 'running';
   error: string | null;
-  trigger: 'schedule' | 'catch_up';
+  trigger: 'schedule' | 'catch_up' | 'feed' | 'folder';
   documents: { artifactId: string; conversationId: string; title: string }[];
   /** `nothing_new` when a condition stopped the run. */
   outcome?: string | null;
@@ -728,12 +738,19 @@ export interface WorkflowModel {
   model: string;
 }
 
+/** What starts a workflow on its own (Rust `workflows::definition::Trigger`). */
+export type WorkflowTrigger =
+  | { kind: 'feed'; url: string; everyMinutes: number }
+  | { kind: 'folder' };
+
 export interface WorkflowDefinition {
   /** The workflow's default model for steps that use one. */
   model?: WorkflowModel;
   inputs?: WorkflowInput[];
   /** Absolute directory that `read_file` steps read from (relative paths only). */
   folder?: string;
+  /** Starts a run for each new feed item or new file in `folder`; absent means manual and timed runs only. */
+  trigger?: WorkflowTrigger;
   steps: WorkflowStep[];
 }
 
@@ -785,6 +802,8 @@ export type WorkflowStep = {
   | { type: 'template'; template: string }
   | { type: 'for_each'; items: string; steps: WorkflowStep[] }
   | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create'; onlyIfChanged?: boolean }
+  | { type: 'export_file'; name: string; content: string }
+  | { type: 'save_memory'; text: string }
   | { type: 'notify'; title: string; body?: string; onlyIfChanged?: boolean }
   | { type: 'condition'; value: string; is: ConditionTest; text?: string }
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
@@ -821,7 +840,10 @@ export interface WorkflowRun {
   id: string;
   workflowId: string;
   version: number;
+  /** `schedule`, `catch_up`, `manual`, or `feed` / `folder` for a run a trigger started. */
   trigger: string;
+  /** What a trigger run was started for: a feed item's `title` or a file's `name`. */
+  triggerItem?: { title?: string; name?: string } | null;
   status: WorkflowRunStatus;
   error: string | null;
   startedAt: string;

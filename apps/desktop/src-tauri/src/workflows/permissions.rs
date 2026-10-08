@@ -277,6 +277,11 @@ pub fn for_fetch(step_id: &str, template: &str, url: &str) -> Permission {
 pub fn required(def: &WorkflowDefinition, ctx: &Context) -> Vec<Permission> {
     let mut set = BTreeSet::new();
     let folder = def.folder.as_deref().filter(|f| !f.trim().is_empty());
+    // What starts a run on its own is looked at on the user's behalf: the
+    // feed's site, or the folder.
+    if let Some(trigger) = &def.trigger {
+        set.extend(super::triggers::permission(trigger, folder));
+    }
     collect(&def.steps, def.model.as_ref(), folder, ctx, &mut set);
     set.into_iter().collect()
 }
@@ -322,6 +327,9 @@ fn collect(
             | StepAction::Notify { .. }
             | StepAction::Ask { .. }
             | StepAction::Condition { .. } => {}
+            // Files go to the app's own exports folder, and a suggested
+            // memory waits for the user to accept it: neither needs leave.
+            StepAction::ExportFile { .. } | StepAction::SaveMemory { .. } => {}
             // The model, now. Which document is only known when the step
             // runs (its title is part of the permission), so a scheduled run
             // asks about each one the first time.

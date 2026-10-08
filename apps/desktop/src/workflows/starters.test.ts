@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowStep } from '../ipc/contracts';
-import { documentTarget, isDocumentEdit, needsCollections, needsDocumentTarget, valuesAt } from './editorModel';
+import { documentTarget, isDocumentEdit, needsCollections, needsDocumentTarget, triggerNeedsFolder, valuesAt } from './editorModel';
 import { STARTER_WORKFLOWS } from './starters';
 
 const briefing = STARTER_WORKFLOWS.find((s) => s.id === 'briefing')!;
@@ -109,5 +109,21 @@ describe('starters', () => {
         }
       });
     }
+  });
+
+  it('new posts digest starts from a feed, and inbox folder from a folder the user still has to pick', () => {
+    const posts = STARTER_WORKFLOWS.find((x) => x.id === 'new-posts-digest')!;
+    expect(posts.definition.trigger).toMatchObject({ kind: 'feed', everyMinutes: 30 });
+    expect(posts.definition.steps.map((x) => x.type)).toEqual(['fetch_page', 'summarize', 'save_artifact', 'notify']);
+    expect(posts.definition.steps[0]).toMatchObject({ urls: ['{{trigger.link}}'] });
+    expect(posts.definition.steps[2]).toMatchObject({ mode: 'create' });
+    expect(triggerNeedsFolder(posts.definition)).toBe(false);
+
+    const inbox = STARTER_WORKFLOWS.find((x) => x.id === 'inbox-folder')!;
+    expect(inbox.definition.trigger).toEqual({ kind: 'folder' });
+    expect(inbox.definition.steps.map((x) => x.type)).toEqual(['read_file', 'summarize', 'export_file', 'notify']);
+    expect(inbox.definition.steps[0]).toMatchObject({ path: '{{trigger.path}}' });
+    // Nothing is chosen for the user: the editor opens so they pick the folder.
+    expect(triggerNeedsFolder(inbox.definition)).toBe(true);
   });
 });

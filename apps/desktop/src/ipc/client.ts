@@ -568,6 +568,11 @@ export async function acknowledgeDiagnosticsDisclosure(): Promise<void> {
 /// Reveal the app's exports directory in the OS file manager. Takes no path —
 /// the Rust command opens `AppPaths::exports` server-side, so the renderer
 /// cannot direct the shell to open an arbitrary path/URL.
+/// Open the folder holding an exported file. Refused for paths outside the exports folder.
+export async function revealExportedFile(path: string): Promise<void> {
+  await invokeCommand<void>('reveal_exported_file', { path });
+}
+
 export async function revealPath(): Promise<void> {
   await invokeCommand('reveal_path');
 }

@@ -27,6 +27,10 @@ pub enum ScheduleSpec {
     Weekdays { time: String },
     /// Every `hours` hours from the last run.
     Interval { hours: u32 },
+    /// Whenever the workflow's trigger (a feed or its folder) has something
+    /// new. It is looked at about once a minute here; the workflow's own
+    /// trigger says how often (see `triggers`), which the scheduler reads.
+    Trigger,
 }
 
 impl ScheduleSpec {
@@ -34,6 +38,7 @@ impl ScheduleSpec {
     pub fn validate(&self) -> Result<(), String> {
         match self {
             Self::Daily { time } | Self::Weekdays { time } => parse_time(time).map(|_| ()),
+            Self::Trigger => Ok(()),
             Self::Interval { hours } => {
                 if (1..=MAX_INTERVAL_HOURS).contains(hours) {
                     Ok(())
@@ -51,6 +56,7 @@ impl ScheduleSpec {
                 self.validate()?;
                 Ok(after.clone() + Duration::hours(i64::from(*hours)))
             }
+            Self::Trigger => Ok(after.clone() + Duration::minutes(1)),
             Self::Daily { time } | Self::Weekdays { time } => {
                 let at = parse_time(time)?;
                 let weekdays_only = matches!(self, Self::Weekdays { .. });
@@ -182,6 +188,15 @@ mod tests {
         assert_eq!(
             serde_json::to_value(ScheduleSpec::Interval { hours: 4 }).unwrap(),
             serde_json::json!({ "kind": "interval", "hours": 4 })
+        );
+        assert_eq!(
+            serde_json::to_value(ScheduleSpec::Trigger).unwrap(),
+            serde_json::json!({ "kind": "trigger" })
+        );
+        assert_eq!(
+            serde_json::from_value::<ScheduleSpec>(serde_json::json!({ "kind": "trigger" }))
+                .unwrap(),
+            ScheduleSpec::Trigger
         );
     }
 }

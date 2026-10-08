@@ -498,3 +498,54 @@ describe('update a deck or draft', () => {
     expect(within(screen.getByRole('combobox', { name: 'Add a step…' })).getByRole('option', { name: 'Update a deck' })).toBeInTheDocument();
   });
 });
+
+describe('start when', () => {
+  it('chooses a feed, sets its address and interval, and shows the post fields as values', async () => {
+    const latest = renderEditor({ steps: [{ id: 'note', type: 'notify', title: '', body: '' }] });
+    const when = screen.getByRole('combobox', { name: 'Starts when' });
+    expect(when).toHaveValue('none');
+    expect(screen.queryByLabelText('Feed address')).not.toBeInTheDocument();
+
+    fireEvent.change(when, { target: { value: 'feed' } });
+    expect(latest.draft.definition.trigger).toEqual({ kind: 'feed', url: '', everyMinutes: 30 });
+    fireEvent.change(screen.getByLabelText('Feed address'), { target: { value: 'https://blog.rust-lang.org/feed.xml' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Check every' }), { target: { value: '60' } });
+    expect(latest.draft.definition.trigger).toEqual({
+      kind: 'feed',
+      url: 'https://blog.rust-lang.org/feed.xml',
+      everyMinutes: 60,
+    });
+    const insert = within(card(/^1\. Show a notification/)).getByRole('combobox', { name: 'Insert a value into Title' });
+    expect(within(insert).getByRole('option', { name: 'Post title' })).toHaveValue('trigger.title');
+    expect(within(insert).getByRole('option', { name: 'Post link' })).toHaveValue('trigger.link');
+
+    fireEvent.change(when, { target: { value: 'none' } });
+    expect('trigger' in latest.draft.definition).toBe(false);
+  });
+
+  it('asks for the folder first when a folder trigger has none, and offers the file fields', () => {
+    const latest = renderEditor({ steps: [{ id: 'note', type: 'notify', title: '', body: '' }] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Starts when' }), { target: { value: 'folder' } });
+    expect(latest.draft.definition.trigger).toEqual({ kind: 'folder' });
+    expect(screen.getByText("A folder trigger watches the workflow's folder, so choose the folder first.")).toBeInTheDocument();
+    const insert = within(card(/^1\. Show a notification/)).getByRole('combobox', { name: 'Insert a value into Title' });
+    expect(within(insert).getByRole('option', { name: 'File path' })).toHaveValue('trigger.path');
+  });
+
+  it('edits a file export and a memory suggestion', () => {
+    const latest = renderEditor({
+      trigger: { kind: 'folder' },
+      folder: 'E:\\inbox',
+      steps: [
+        { id: 'export', type: 'export_file', name: 'a.md', content: '' },
+        { id: 'memory', type: 'save_memory', text: '' },
+      ],
+    });
+    expect(screen.queryByText("A folder trigger watches the workflow's folder, so choose the folder first.")).not.toBeInTheDocument();
+    typeInto(within(card(/^1\. Save a file/)).getByRole('textbox', { name: 'File name' }), 'out.md');
+    typeInto(within(card(/^2\. Suggest a memory/)).getByRole('textbox', { name: 'What to remember' }), 'Likes short answers');
+    const [exportStep, memoryStep] = latest.draft.definition.steps;
+    expect(exportStep).toMatchObject({ type: 'export_file', name: 'out.md' });
+    expect(memoryStep).toMatchObject({ type: 'save_memory', text: 'Likes short answers' });
+  });
+});

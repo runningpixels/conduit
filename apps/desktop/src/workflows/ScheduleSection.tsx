@@ -16,13 +16,22 @@ import {
   getWorkflowSchedule,
   setWorkflowSchedule,
 } from '../ipc/client';
-import type { ScheduleSpec, WorkflowPermissions, WorkflowPermissionView, WorkflowSchedule } from '../ipc/contracts';
+import type {
+  ScheduleSpec,
+  WorkflowPermissions,
+  WorkflowPermissionView,
+  WorkflowSchedule,
+  WorkflowTrigger,
+} from '../ipc/contracts';
 import { BackgroundSection } from './BackgroundSection';
 import { permissionText } from './permissionText';
+import { loadWatchStatus, watchingText, type WatchStatus } from './triggers';
 
 /// What a schedule starts as when it is first switched on.
 export const DEFAULT_TIME = '08:00';
-export const DEFAULT_SCHEDULE: ScheduleSpec = { kind: 'daily', time: DEFAULT_TIME };
+export const DEFAULT_SCHEDULE: Extract<ScheduleSpec, { kind: 'daily' }> = { kind: 'daily', time: DEFAULT_TIME };
+/// What a triggered workflow stores: it is polled, not timed.
+export const TRIGGER_SCHEDULE: ScheduleSpec = { kind: 'trigger' };
 /// Choices for "every N hours".
 export const INTERVAL_HOURS = [1, 2, 3, 4, 6, 8, 12, 24] as const;
 
@@ -57,6 +66,8 @@ export function ScheduleSection({
   workflowId,
   refreshKey,
   definitionVersion,
+  trigger,
+  folder,
   onStatus,
   onChanged,
 }: {
@@ -65,6 +76,10 @@ export function ScheduleSection({
   refreshKey?: number;
   /// The workflow's version: an edit can change what it needs approved.
   definitionVersion?: number;
+  /// What the workflow watches, if anything: it is then polled instead of timed.
+  trigger?: WorkflowTrigger;
+  /// The workflow's folder, named when a folder trigger is on.
+  folder?: string;
   onStatus: (message: string) => void;
   /// Called after a change is saved (the list shows the next run too).
   onChanged?: () => void;
@@ -80,6 +95,8 @@ export function ScheduleSection({
   const [permissions, setPermissions] = useState<WorkflowPermissions | null>(null);
   /// Turning the schedule on, waiting for the user to approve what it may do.
   const [approving, setApproving] = useState(false);
+  /// Whether a trigger's polling has paused, once the backend can say.
+  const [watch, setWatch] = useState<WatchStatus | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,10 +130,30 @@ export function ScheduleSection({
     };
   }, [workflowId, refreshKey]);
 
-  const save = async (spec: ScheduleSpec, enabled: boolean) => {
+  const watching = trigger != null && schedule?.enabled === true;
+  useEffect(() => {
+    if (!watching) {
+      setWatch(null);
+      return;
+    }
+    let cancelled = false;
+    void loadWatchStatus(workflowId).then(
+      (next) => {
+        if (!cancelled) setWatch(next);
+      },
+      () => {
+        if (!cancelled) setWatch(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [workflowId, watching, refreshKey]);
+
+  const save = async (next: ScheduleSpec, enabled: boolean) => {
     setSaving(true);
     try {
-      const saved = await setWorkflowSchedule(workflowId, spec, enabled);
+      const saved = await setWorkflowSchedule(workflowId, trigger ? TRIGGER_SCHEDULE : next, enabled);
       setSchedule(saved);
       onChanged?.();
     } catch (e) {
@@ -142,7 +179,8 @@ export function ScheduleSection({
 
   if (!loaded) return null;
   const enabled = schedule?.enabled ?? false;
-  const spec = schedule?.spec ?? DEFAULT_SCHEDULE;
+  // A stored `trigger` spec carries no time: the timed controls start from the default.
+  const spec = schedule && schedule.spec.kind !== 'trigger' ? schedule.spec : DEFAULT_SCHEDULE;
   const kind = spec.kind;
   const missing = permissions?.missing ?? [];
 
@@ -205,7 +243,19 @@ export function ScheduleSection({
           })}
         </p>
       ) : null}
-      {enabled ? (
+      {trigger ? (
+        <>
+          <p className="wf-muted wf-watching">
+            {enabled ? watchingText(trigger, folder, t) : t('workspace.workflows.trigger.turnOn')}
+          </p>
+          {watching && watch?.pausedReason ? (
+            <p className="wf-error" role="status">
+              {t('workspace.workflows.trigger.paused', { reason: watch.pausedReason })}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      {enabled && !trigger ? (
         <>
           <div className="wf-input-row">
             <label className="wf-field">

@@ -16,7 +16,16 @@ import { useFormatters } from '../i18n/formatters';
 import { documentEditSummary } from '../workflows/documentEditSummary';
 import { UndoUpdate } from '../workflows/UndoUpdate';
 import { useConnectorNames } from '../workflows/useConnectorNames';
-import { connectorStepSummary, dataStepSummary, documentsStepSummary, researchReport, researchStepSummary } from '../workflows/stepSummary';
+import {
+  connectorStepSummary,
+  dataStepSummary,
+  documentsStepSummary,
+  exportedFile,
+  exportStepSummary,
+  memoryStepSummary,
+  researchReport,
+  researchStepSummary,
+} from '../workflows/stepSummary';
 import {
   createWorkflow,
   deleteWorkflow,
@@ -54,11 +63,12 @@ import type {
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
-import { needsCollections, needsDocumentTarget, newStep } from '../workflows/editorModel';
+import { needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { reviewText } from '../workflows/permissionText';
 import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
 import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
+import { revealExportedFile, runTriggerLabel } from '../workflows/triggers';
 import { STARTER_WORKFLOWS, type StarterWorkflow } from '../workflows/starters';
 import { WorkflowEditor, type WorkflowDraft } from '../workflows/WorkflowEditor';
 
@@ -462,7 +472,7 @@ export function WorkflowsPage({
   async function startFrom(starter: StarterWorkflow) {
     // A starter that changes a deck or draft cannot be saved until the user
     // picks which one, so it opens in the editor with that step flagged.
-    if (needsDocumentTarget(starter.definition) || needsCollections(starter.definition)) {
+    if (needsDocumentTarget(starter.definition) || needsCollections(starter.definition) || triggerNeedsFolder(starter.definition)) {
       setEditError(null);
       setMode({
         kind: 'draft',
@@ -895,6 +905,8 @@ export function WorkflowsPage({
           workflowId={record.id}
           refreshKey={refreshKey}
           definitionVersion={record.version}
+          trigger={record.definition.trigger}
+          folder={record.definition.folder}
           onStatus={onStatus}
           onChanged={() => void refreshList()}
         />
@@ -919,6 +931,7 @@ export function WorkflowsPage({
                         {isNothingNew(r) ? t('workspace.workflows.run.nothingNew') : statusLabel(r.status)}
                       </span>
                       <span>{fmt.timeAgo(r.startedAt)}</span>
+                      {runTriggerLabel(r, t) ? <span className="wf-muted wf-run-trigger">{runTriggerLabel(r, t)}</span> : null}
                       {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
                     </button>
                   </li>
@@ -1255,6 +1268,7 @@ function RunDetail({
           when: started,
         })}
       </div>
+      {runTriggerLabel(detail.run, t) ? <p className="wf-muted wf-run-trigger">{runTriggerLabel(detail.run, t)}</p> : null}
       {nothingNew ? (
         <p className="wf-muted" role="status">
           {nothingNew.stepId
@@ -1333,7 +1347,10 @@ function RunStepRow({
     dataStepSummary(step, t, (bytes) => fmt.size(bytes)) ??
     researchStepSummary(step, t) ??
     documentsStepSummary(step, t) ??
-    connectorStepSummary(step, t);
+    connectorStepSummary(step, t) ??
+    exportStepSummary(step, t, (bytes) => fmt.size(bytes)) ??
+    memoryStepSummary(step, t);
+  const exported = exportedFile(step);
   const report = researchReport(step);
   const edit = documentEditSummary(step, t);
   const open = edit?.target
@@ -1377,6 +1394,11 @@ function RunStepRow({
           </>
         ) : null}
       </details>
+      {exported ? (
+        <button type="button" className="btn ghost" onClick={() => void revealExportedFile(exported.path).catch(() => undefined)}>
+          {t('workspace.workflows.runDetail.showInFolder')}
+        </button>
+      ) : null}
       {report && onOpenDocument ? (
         <button type="button" className="btn ghost" onClick={() => onOpenDocument(report.conversationId, report.artifactId)}>
           {t('workspace.workflows.runDetail.openReport')}

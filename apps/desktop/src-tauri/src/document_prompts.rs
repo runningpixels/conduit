@@ -104,7 +104,7 @@ whose result you don't need. When you are done, reply with one sentence saying w
 
 /// Extra for a deck update.
 pub const HEADLESS_DECK_SUFFIX: &str = "The layout is checked later, when the user next opens the \
-deck; do not worry about slides looking dense, but keep to each layout's limits. When you change a number, update every place in the deck that cites it: charts, text and speaker notes. Keep a chart's other settings (highlighted bar, labels, units) unless the instructions say otherwise. Don't change anything the instructions don't ask for.";
+deck; do not worry about slides looking dense, but keep to each layout's limits. When you change a number, update every place in the deck that cites it: charts, text and speaker notes. Keep a chart's other settings (highlighted bar, labels, units) unless the instructions say otherwise; if the highlighted bar marks the latest period, move the highlight to the new latest one. Don't change anything the instructions don't ask for.";
 
 /// Extra for a draft update.
 pub const HEADLESS_DRAFT_SUFFIX: &str = "To add a new section, call write_section with a new \

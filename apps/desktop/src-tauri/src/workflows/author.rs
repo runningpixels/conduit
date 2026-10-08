@@ -262,11 +262,11 @@ const SPECS: &[Spec] = &[
 const EXAMPLES: &[(&str, &str)] = &[
     (
         "A daily briefing of two sites the user names",
-        r##"{"name":"Morning briefing","description":"Summarize two sites into one briefing document.","notes":[],"definition":{"inputs":[{"id":"site_one","label":"First site","default":""},{"id":"site_two","label":"Second site","default":""}],"steps":[{"id":"fetch","type":"fetch_page","urls":["{{inputs.site_one}}","{{inputs.site_two}}"]},{"id":"each_page","type":"for_each","items":"steps.fetch.pages","onError":"skip","steps":[{"id":"sum","type":"summarize","prompt":"Summarize this page in two sentences.","input":"{{item.url}}\n\n{{item.text}}"}]},{"id":"doc","type":"template","template":"# Briefing for {{run.date}}\n\n{{#each steps.each_page.items}}- {{item.sum.text}}\n{{/each}}"},{"id":"save","type":"save_artifact","title":"Morning briefing","content":"{{steps.doc.text}}"}]}}"##,
+        r##"{"name":"Morning briefing","description":"Summarize two sites into one briefing document.","notes":[],"definition":{"inputs":[{"id":"site_one","label":"First site","default":"https://blog.rust-lang.org/"},{"id":"site_two","label":"Second site","default":"https://news.ycombinator.com/"}],"steps":[{"id":"fetch","type":"fetch_page","urls":["{{inputs.site_one}}","{{inputs.site_two}}"]},{"id":"each_page","type":"for_each","items":"steps.fetch.pages","onError":"skip","steps":[{"id":"sum","type":"summarize","prompt":"Summarize this page in two sentences.","input":"{{item.url}}\n\n{{item.text}}"}]},{"id":"doc","type":"template","template":"# Briefing for {{run.date}}\n\n{{#each steps.each_page.items}}- {{item.sum.text}}\n{{/each}}"},{"id":"save","type":"save_artifact","title":"Morning briefing","content":"{{steps.doc.text}}"}]}}"##,
     ),
     (
         "Watch a page and tell me when it changes",
-        r##"{"name":"Watch a page","description":"Notify when a page's text changes.","notes":[],"definition":{"inputs":[{"id":"page","label":"Page to watch","default":""}],"steps":[{"id":"page","type":"fetch_page","urls":["{{inputs.page}}"]},{"id":"changed","type":"condition","value":"{{steps.page.text}}","is":"changed"},{"id":"what","type":"summarize","prompt":"Summarize what the page says now.","input":"{{steps.page.text}}"},{"id":"tell","type":"notify","title":"The page changed","body":"{{steps.what.text}}"}]}}"##,
+        r##"{"name":"Watch a page","description":"Notify when a page's text changes.","notes":[],"definition":{"inputs":[{"id":"page","label":"Page to watch","default":"https://example.com/pricing"}],"steps":[{"id":"page","type":"fetch_page","urls":["{{inputs.page}}"]},{"id":"changed","type":"condition","value":"{{steps.page.text}}","is":"changed"},{"id":"what","type":"summarize","prompt":"Summarize what the page says now.","input":"{{steps.page.text}}"},{"id":"tell","type":"notify","title":"The page changed","body":"{{steps.what.text}}"}]}}"##,
     ),
     (
         "Every week, put the numbers from my spreadsheet into my deck",
@@ -282,7 +282,7 @@ pub fn catalog_text() -> String {
     let mut out = String::new();
     out.push_str(
         "A workflow is a JSON object: {\"inputs\": [...], \"steps\": [...]}. \
-\"inputs\" are values the user can change each run: {\"id\", \"label\", \"default\"}. Steps run top to bottom.\n\n",
+\"inputs\" are values the user can change each run: {\"id\", \"label\", \"default\"}. Give every input a real default (the address, the file name, the topic the user mentioned); a scheduled run only has the defaults. Steps run top to bottom.\n\n",
     );
     out.push_str(&format!(
         "Every step has \"id\" (lowercase letters, digits and _, up to 40, unique across the whole workflow, \
@@ -721,7 +721,36 @@ fn clear_personal_choices(definition: &mut Value) -> Vec<String> {
     if found.draft {
         notes.push("Pick the draft to update.".to_string());
     }
+    for label in inputs_without_default(definition) {
+        notes.push(format!(
+            "Fill in “{label}”: it has no default, so a scheduled run would have nothing to use."
+        ));
+    }
     notes
+}
+
+/// Labels of the inputs whose default is missing or blank.
+fn inputs_without_default(definition: &Value) -> Vec<String> {
+    let Some(inputs) = definition.get("inputs").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    inputs
+        .iter()
+        .filter(|input| {
+            input
+                .get("default")
+                .and_then(Value::as_str)
+                .is_none_or(|d| d.trim().is_empty())
+        })
+        .map(|input| {
+            input
+                .get("label")
+                .or_else(|| input.get("id"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect()
 }
 
 #[derive(Default)]
@@ -1068,6 +1097,30 @@ mod tests {
         let problems = problems_of(&parsed.definition);
         assert!(!problems.is_empty());
         assert!(problems.iter().all(|p| expected_blank(p)), "{problems:?}");
+    }
+
+    #[test]
+    fn an_input_without_a_default_is_noted() {
+        let reply = json!({
+            "name": "Briefing",
+            "definition": {
+                "inputs": [
+                    { "id": "site", "label": "Site", "default": "  " },
+                    { "id": "other", "label": "Other site" },
+                    { "id": "ok", "label": "Fine", "default": "https://example.com" }
+                ],
+                "steps": [{ "id": "n", "type": "notify", "title": "{{inputs.site}}" }]
+            }
+        })
+        .to_string();
+        let parsed = parse_reply(&reply).unwrap();
+        assert_eq!(
+            parsed.notes,
+            vec![
+                "Fill in \u{201c}Site\u{201d}: it has no default, so a scheduled run would have nothing to use.",
+                "Fill in \u{201c}Other site\u{201d}: it has no default, so a scheduled run would have nothing to use."
+            ]
+        );
     }
 
     #[test]

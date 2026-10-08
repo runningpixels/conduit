@@ -4157,7 +4157,7 @@ mod drafting {
             "description": "Summarize a page.",
             "notes": [],
             "definition": {
-                "inputs": [{ "id": "page", "label": "Page", "default": "" }],
+                "inputs": [{ "id": "page", "label": "Page", "default": "https://example.com" }],
                 "steps": [
                     { "id": "fetch", "type": "fetch_page", "urls": ["{{inputs.page}}"] },
                     { "id": "sum", "type": "summarize", "prompt": "Summarize.", "input": "{{steps.fetch.text}}" },

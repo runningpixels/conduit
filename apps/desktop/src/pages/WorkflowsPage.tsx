@@ -876,7 +876,11 @@ export function WorkflowsPage({
           ))}
           <div className="mem-actions">
             <button type="button" className="btn primary" onClick={() => void run()} disabled={running || busy}>
-              {running ? t('workspace.workflows.run.running') : t('workspace.workflows.run.now')}
+              {liveRun?.status === 'paused'
+                ? t('workspace.workflows.run.paused')
+                : running
+                  ? t('workspace.workflows.run.running')
+                  : t('workspace.workflows.run.now')}
             </button>
             {running ? (
               <button type="button" className="btn" onClick={() => void stop()} disabled={stopping}>

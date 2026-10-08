@@ -402,13 +402,50 @@ pub fn apply_fixes(draft: &mut Draft, fixes: &[Fix], claims: &[Labelled<'_>]) ->
 fn labels_in(text: &str) -> Vec<usize> {
     label_re()
         .find_iter(text)
-        .flat_map(|m| {
-            m.as_str()
-                .split(|c: char| !c.is_ascii_digit())
-                .filter_map(|d| d.parse::<usize>().ok())
-                .collect::<Vec<_>>()
-        })
+        .flat_map(|m| label_numbers(m.as_str()))
         .collect()
+}
+
+/// The label numbers in one `[C…]` group. A range like `C51–C53` (hyphen,
+/// en or em dash) stands for every label in it, up to 50 of them.
+fn label_numbers(group: &str) -> Vec<usize> {
+    let mut numbers = Vec::new();
+    // The number before a dash, while a range is open.
+    let mut range_from: Option<usize> = None;
+    let mut in_range = false;
+    let mut digits = String::new();
+    let mut chars = group.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c.is_ascii_digit() {
+            digits.push(c);
+            if chars.peek().is_some_and(|n| n.is_ascii_digit()) {
+                continue;
+            }
+            let Ok(n) = digits.parse::<usize>() else {
+                digits.clear();
+                continue;
+            };
+            digits.clear();
+            match range_from {
+                Some(from) if in_range && n > from && n - from <= 50 => {
+                    numbers.extend(from + 1..=n)
+                }
+                _ => numbers.push(n),
+            }
+            range_from = Some(n);
+            in_range = false;
+            continue;
+        }
+        match c {
+            '-' | '\u{2013}' | '\u{2014}' => in_range = range_from.is_some(),
+            ',' | ';' => {
+                in_range = false;
+                range_from = None;
+            }
+            _ => {}
+        }
+    }
+    numbers
 }
 
 /// `text` with its one occurrence of `find` replaced; an empty `replace`
@@ -658,11 +695,7 @@ impl<'a> Citations<'a> {
             out.push_str(between);
             last = found.end();
             let mut numbers: Vec<usize> = Vec::new();
-            for label in found
-                .as_str()
-                .split(|c: char| !c.is_ascii_digit())
-                .filter_map(|d| d.parse::<usize>().ok())
-            {
+            for label in label_numbers(found.as_str()) {
                 if let Some(k) = self.number_for(label) {
                     if !numbers.contains(&k) {
                         numbers.push(k);
@@ -698,7 +731,8 @@ impl<'a> Citations<'a> {
 fn label_re() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"\[\s*[Cc]\s*\d+(?:\s*[,;]\s*[Cc]?\s*\d+)*\s*\]").expect("label regex")
+        Regex::new(r"\[\s*[Cc]\s*\d+(?:\s*[,;\-\u{2013}\u{2014}]\s*[Cc]?\s*\d+)*\s*\]")
+            .expect("label regex")
     })
 }
 
@@ -940,6 +974,17 @@ fn date_of(at: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn label_ranges_are_read_as_every_label_in_them() {
+        assert_eq!(label_numbers("[C9, C10]"), vec![9, 10]);
+        assert_eq!(label_numbers("[C51\u{2013}C53]"), vec![51, 52, 53]);
+        assert_eq!(label_numbers("[C1-3; C7]"), vec![1, 2, 3, 7]);
+        assert_eq!(label_numbers("[C4\u{2014}C2]"), vec![4, 2]);
+        let text = "Prices rose. [C9, C10, C11, C51\u{2013}C53]";
+        assert_eq!(label_re().find_iter(text).count(), 1);
+        assert_eq!(labels_in(text), vec![9, 10, 11, 51, 52, 53]);
+    }
 
     fn source(id: &str, host: &str) -> SourceRecord {
         SourceRecord {

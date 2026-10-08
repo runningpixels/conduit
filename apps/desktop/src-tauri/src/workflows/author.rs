@@ -251,7 +251,7 @@ const SPECS: &[Spec] = &[
         what: "Research a question on the web and write a cited report, the way the app's research does: it searches, reads whole pages and checks every quote. Slow and costly, so use it once, for the core question. Top level only.",
         settings: &[
             req("question", "text (template)", "what to find out; use {{inputs.x}} for the part the user will change"),
-            opt("depth", "\"quick\" or \"standard\"", "quick for a simple fact or a short update, standard (default) for most questions"),
+            opt("depth", "\"quick\" or \"standard\"", "quick for a simple fact, a short update or anything that repeats (a daily or weekly digest); standard (default) for one deep question; standard takes several minutes and costs a few times more"),
             opt("model", "never set", MODEL_NOTE),
         ],
         outputs: "text (the report, Markdown), summary, title, reportArtifactId, sources (a list; each has title, url, credibility), unanswered (a list), verifiedQuotes, droppedClaims",
@@ -382,7 +382,7 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
 - Make anything the user will vary (a web address, a topic, a file name, a person) an input with a clear label and a sensible default, and reference it with {{inputs.x}}. Do not invent web addresses the user did not give; use an input instead.\n\
 - Never invent things that exist only on the user's computer: deck ids, draft ids, collection ids, folder paths, connector ids. Leave a deck or draft id empty (\"\"), leave a search_documents step's \"collections\" as [], never write a \"folder\", and add a short note for each, such as \"Pick the deck to update.\", \"Pick the collections to search.\" or \"Choose the folder the workflow reads from.\"\n\
 - Never choose a model (no \"model\" setting anywhere): the user's chosen model is used.\n\
-- Never add a schedule or a trigger; the user decides that. Do not invent settings that are not listed above.\n\
+- Never add a schedule or a trigger; the user decides that. If the user said when it should run (\"every Monday\", \"each weekday at 8\"), put that in \"notes\" as \"Turn on the schedule: <when>.\" Do not invent settings that are not listed above.\n\
 - Finish with a step that leaves the user something: save_artifact for a document, notify for a short message. A workflow must end by saving or notifying, never with just a summarize or template step.\n\
 - Pick a short name (under 60 characters) and a one-sentence description in plain words.\n",
     );

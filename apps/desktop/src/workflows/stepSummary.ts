@@ -8,6 +8,9 @@ import type { WorkflowRunStep } from '../ipc/contracts';
 /// Columns named on the row before "…".
 const MAX_COLUMNS = 4;
 
+/// Longest first line a connector step shows on its run row.
+const MAX_SUMMARY = 80;
+
 /// Sources a research step rated low credibility ("weak" on the run row).
 function weakSources(sources: unknown[]): number {
   return sources.filter(
@@ -47,6 +50,17 @@ export function researchReport(
   const o = step.output as Record<string, unknown> | null;
   if (!o || typeof o !== 'object' || typeof o.reportArtifactId !== 'string') return null;
   return typeof o.conversationId === 'string' ? { artifactId: o.reportArtifactId, conversationId: o.conversationId } : null;
+}
+
+/// A connector step's result: the first line of its text, or "N items" when it returned a list.
+export function connectorStepSummary(step: Pick<WorkflowRunStep, 'output'>, t: Translate): string | null {
+  const o = step.output as Record<string, unknown> | null;
+  if (!o || typeof o !== 'object' || typeof o.tool !== 'string' || !('isError' in o)) return null;
+  if (Array.isArray(o.data)) return t('workspace.workflows.runDetail.connectorItems', { count: o.data.length });
+  if (typeof o.text !== 'string') return null;
+  const first = o.text.split('\n').find((line) => line.trim() !== '')?.trim();
+  if (!first) return null;
+  return first.length > MAX_SUMMARY ? `${first.slice(0, MAX_SUMMARY - 1)}…` : first;
 }
 
 export function dataStepSummary(

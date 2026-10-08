@@ -422,6 +422,8 @@ async fn workflow_permissions(state: &AppState, id: &str) -> Result<WorkflowPerm
     };
     let titles = permissions::collection_titles(&state.db, &def).await;
     let collection_title = |id: &str| titles.get(id).cloned();
+    let names = permissions::connector_names(&state.db, &def).await;
+    let connector_name = |id: &str| names.get(id).cloned();
     let required = permissions::required(
         &def,
         &permissions::Context {
@@ -430,6 +432,7 @@ async fn workflow_permissions(state: &AppState, id: &str) -> Result<WorkflowPerm
             model: &settings.active_model,
             configured: Some(&configured),
             collection_title: Some(&collection_title),
+            connector_name: Some(&connector_name),
         },
     );
     let stored = repo::get_permissions(&state.db, &state.encryption, id)

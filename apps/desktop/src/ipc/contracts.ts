@@ -738,6 +738,15 @@ export interface WorkflowDefinition {
 }
 
 /** What drafting a workflow from a description (or a chat) returns: an unsaved definition. */
+/** One tool of a connector, as `list_workflow_connector_tools` reports it. */
+export interface WorkflowConnectorTool {
+  name: string;
+  description: string | null;
+  inputSchema: Record<string, unknown>;
+  readOnly: boolean;
+  permissionLevel: 'readOnly' | 'sideEffectful' | 'sensitive';
+}
+
 export interface WorkflowDraftResult {
   name: string;
   description: string;
@@ -786,6 +795,8 @@ export type WorkflowStep = {
   | { type: 'parse_data'; input: string; format: DataFormat }
   | { type: 'research'; question: string; depth: ResearchStepDepth; model?: WorkflowModel }
   | { type: 'search_documents'; collections: string[]; query: string; topK?: number | null }
+  /** A read-only tool of an installed connector; every string inside `arguments` is a template. */
+  | { type: 'connector_tool'; connector: string; tool: string; arguments: Record<string, unknown> }
 );
 
 /** What an `edit_deck` / `edit_draft` step records (Rust `workflows::runner`). */
@@ -853,7 +864,9 @@ export type WorkflowPermission =
   /** Search these Documents collections (Rust `Permission::Documents`). */
   | { kind: 'documents'; collections: { id: string; title: string }[] }
   /** Change a saved deck or draft (Rust `Permission::EditDocument`); `documentKind` is the tag's payload name, since `kind` is taken. */
-  | { kind: 'editDocument'; documentKind: 'deck' | 'draft'; id: string; title: string };
+  | { kind: 'editDocument'; documentKind: 'deck' | 'draft'; id: string; title: string }
+  /** Use a read-only connector tool (Rust `Permission::Connector`). */
+  | { kind: 'connector'; connectorId: string; name: string; tool: string };
 
 /** A permission with its display name (provider, search backend) and, for a model, where it runs. */
 export type WorkflowPermissionView = WorkflowPermission & { label: string | null; local: boolean | null };

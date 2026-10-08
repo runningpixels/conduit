@@ -31,8 +31,16 @@ pub async fn discover(
         // connector cannot block startup or manual refresh forever.
         let lists = async {
             let tools = t.list_tools(&cancel).await.map_err(|e| e.message)?;
-            let resources = t.list_resources(&cancel).await.map_err(|e| e.message)?;
-            let prompts = t.list_prompts(&cancel).await.map_err(|e| e.message)?;
+            // Resources and prompts are optional in MCP: a tools-only server
+            // answers "Method not found", which must not cost it its tools.
+            let resources = t.list_resources(&cancel).await.unwrap_or_else(|e| {
+                tracing::warn!(error = %e.message, "connector lists no resources");
+                Vec::new()
+            });
+            let prompts = t.list_prompts(&cancel).await.unwrap_or_else(|e| {
+                tracing::warn!(error = %e.message, "connector lists no prompts");
+                Vec::new()
+            });
             Ok::<_, String>((tools, resources, prompts))
         };
         tokio::time::timeout(timeout, lists)
@@ -94,20 +102,23 @@ fn apply_allowlist(
     caps: Vec<ConnectorCapability>,
     allowlist: &Option<serde_json::Value>,
 ) -> Vec<ConnectorCapability> {
-    let Some(value) = allowlist else {
-        return caps;
-    };
-    let Some(arr) = value.as_array() else {
-        warn!(target: "mcp_connector", "capability_allowlist is not an array; ignoring");
-        return caps;
-    };
-    let allowed: std::collections::HashSet<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
-    if allowed.is_empty() {
-        return caps;
+    if let Some(value) = allowlist {
+        if !value.is_array() {
+            warn!(target: "mcp_connector", "capability_allowlist is not an array; ignoring");
+        }
     }
     caps.into_iter()
-        .filter(|c| allowed.contains(c.name.as_str()))
+        .filter(|c| allowed_by(allowlist, &c.name))
         .collect()
+}
+
+/// Whether the version's allowlist lets the capability `name` through. An
+/// absent, non-array or empty allowlist means no filter.
+pub fn allowed_by(allowlist: &Option<serde_json::Value>, name: &str) -> bool {
+    let Some(arr) = allowlist.as_ref().and_then(|v| v.as_array()) else {
+        return true;
+    };
+    arr.is_empty() || arr.iter().filter_map(|v| v.as_str()).any(|n| n == name)
 }
 
 #[cfg(test)]

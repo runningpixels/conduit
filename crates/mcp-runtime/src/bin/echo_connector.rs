@@ -8,6 +8,10 @@
 //! - `slow`        (readOnly)    — sleeps ~60s before responding (timeout/cancel)
 //! - `secret_leak` (readOnly)    — returns a `Bearer …` token (redaction test)
 //! - `big`         (readOnly)    — returns ~2 MiB of text (output size-cap test)
+//! - `list_items`  (readOnly, requires `repo`) — text that is a JSON array
+//! - `structured`  (readOnly)    — text plus a `structuredContent` object
+//! - `fail_read`   (readOnly)    — a result with `isError: true`
+//! - `unmarked`    (no hint)     — a tool that never says it only reads
 //!
 //! With `ECHO_CONNECTOR_CAPABILITIES=full` it additionally serves resources
 //! (`resources/list` + `resources/read`) and prompts (`prompts/list` +
@@ -60,6 +64,33 @@ fn tools_list() -> Value {
             "permissionLevel": "readOnly"
         },
         {
+            "name": "list_items",
+            "description": "List the items in a repo (JSON text).",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "repo": { "type": "string" }, "limit": { "type": "number" } },
+                "required": ["repo"]
+            },
+            "permissionLevel": "readOnly"
+        },
+        {
+            "name": "structured",
+            "description": "Text plus structured content.",
+            "inputSchema": { "type": "object", "properties": {} },
+            "permissionLevel": "readOnly"
+        },
+        {
+            "name": "fail_read",
+            "description": "A read that reports an error.",
+            "inputSchema": { "type": "object", "properties": {} },
+            "permissionLevel": "readOnly"
+        },
+        {
+            "name": "unmarked",
+            "description": "Declares nothing about whether it changes things.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
             "name": "big",
             "description": "Return a payload larger than the 1 MiB output cap (size-cap fixture).",
             "inputSchema": { "type": "object", "properties": {} },
@@ -74,6 +105,12 @@ fn tools_list() -> Value {
 /// capability has `kind == "tool"`). Set it to `full` to serve them.
 fn extended_capabilities() -> bool {
     std::env::var("ECHO_CONNECTOR_CAPABILITIES").is_ok_and(|v| v == "full")
+}
+
+/// `ECHO_CONNECTOR_CAPABILITIES=tools`: answer the resource and prompt list
+/// methods with "Method not found", like a server that only has tools.
+fn tools_only() -> bool {
+    std::env::var("ECHO_CONNECTOR_CAPABILITIES").is_ok_and(|v| v == "tools")
 }
 
 fn resources_list() -> Value {
@@ -211,6 +248,23 @@ fn call_tool(name: &str, args: &Value) -> (Value, bool) {
                 false,
             )
         }
+        "list_items" => {
+            let repo = args.get("repo").and_then(|v| v.as_str()).unwrap_or("");
+            let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(2);
+            let items: Vec<Value> = (1..=limit)
+                .map(|n| json!({ "n": n, "repo": repo }))
+                .collect();
+            (
+                json!([{ "type": "text", "text": Value::Array(items).to_string() }]),
+                false,
+            )
+        }
+        "structured" => (json!([{ "type": "text", "text": "2 issues" }]), false),
+        "fail_read" => (
+            json!([{ "type": "text", "text": "rate limited, token=Bearer abc123supersecret" }]),
+            true,
+        ),
+        "unmarked" => (json!([{ "type": "text", "text": "changed" }]), false),
         "slow" => {
             std::thread::sleep(Duration::from_secs(60));
             (json!([{ "type": "text", "text": "finally done" }]), false)
@@ -276,6 +330,21 @@ fn main() {
                 }))
             }
             "tools/list" => Some(json!({ "tools": tools_list() })),
+            // `ECHO_CONNECTOR_CAPABILITIES=tools` plays a tools-only server
+            // that doesn't know the resource and prompt methods at all.
+            "resources/list" | "prompts/list" if tools_only() => {
+                let _ = writeln!(
+                    out,
+                    "{}",
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32601, "message": "Method not found" }
+                    })
+                );
+                let _ = out.flush();
+                continue;
+            }
             "resources/list" => Some(json!({ "resources": resources_list() })),
             "prompts/list" => Some(json!({ "prompts": prompts_list() })),
             "resources/read" => {
@@ -311,7 +380,11 @@ fn main() {
                     .cloned()
                     .unwrap_or(json!({}));
                 let (content, is_error) = call_tool(name, &args);
-                let resp = json!({ "jsonrpc": "2.0", "id": id, "result": { "content": content, "isError": is_error } });
+                let mut result = json!({ "content": content, "isError": is_error });
+                if name == "structured" {
+                    result["structuredContent"] = json!({ "count": 2, "labels": ["bug", "ui"] });
+                }
+                let resp = json!({ "jsonrpc": "2.0", "id": id, "result": result });
                 let _ = writeln!(out, "{resp}");
                 let _ = out.flush();
                 if name == "exit" {

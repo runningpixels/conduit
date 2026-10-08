@@ -15,7 +15,8 @@ import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { documentEditSummary } from '../workflows/documentEditSummary';
 import { UndoUpdate } from '../workflows/UndoUpdate';
-import { dataStepSummary, documentsStepSummary, researchReport, researchStepSummary } from '../workflows/stepSummary';
+import { useConnectorNames } from '../workflows/useConnectorNames';
+import { connectorStepSummary, dataStepSummary, documentsStepSummary, researchReport, researchStepSummary } from '../workflows/stepSummary';
 import {
   createWorkflow,
   deleteWorkflow,
@@ -1078,15 +1079,26 @@ function StarterPicker({
   );
 }
 
-function StepList({ steps, labels }: { steps: WorkflowStep[]; labels: InputLabels }) {
+function StepList({
+  steps,
+  labels,
+  connectorNames,
+}: {
+  steps: WorkflowStep[];
+  labels: InputLabels;
+  /// Set by a nested list; the top-level list looks the names up.
+  connectorNames?: Record<string, string>;
+}) {
   const t = useT();
+  const looked = useConnectorNames(steps, connectorNames !== undefined);
+  const names = connectorNames ?? looked;
   return (
     <ol className="wf-steps">
       {steps.map((step) => (
         <li key={step.id}>
-          <span>{describeStep(step, t, labels)}</span>
+          <span>{describeStep(step, t, labels, names)}</span>
           {step.onError === 'skip' ? <span className="wf-flag">{t('workspace.workflows.step.continuesOnError')}</span> : null}
-          {step.type === 'for_each' ? <StepList steps={step.steps} labels={labels} /> : null}
+          {step.type === 'for_each' ? <StepList steps={step.steps} labels={labels} connectorNames={names} /> : null}
         </li>
       ))}
     </ol>
@@ -1320,7 +1332,8 @@ function RunStepRow({
   const dataSummary =
     dataStepSummary(step, t, (bytes) => fmt.size(bytes)) ??
     researchStepSummary(step, t) ??
-    documentsStepSummary(step, t);
+    documentsStepSummary(step, t) ??
+    connectorStepSummary(step, t);
   const report = researchReport(step);
   const edit = documentEditSummary(step, t);
   const open = edit?.target

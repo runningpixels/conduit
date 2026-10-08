@@ -52,15 +52,23 @@ pub struct PendingConsentMeta {
 
 pub type PendingConsentMetas = Arc<StdMutex<HashMap<String, PendingConsentMeta>>>;
 
+/// A running connector's tool declarations right now (a fresh `tools/list`).
+pub async fn list_live_tools(active: &Arc<ActiveConnector>) -> Result<Vec<McpTool>, McpError> {
+    let mut t = active.transport.lock().await;
+    t.list_tools(&active.cancel).await
+}
+
+/// Whether a tool declares that it only reads, so it runs without asking.
+pub fn is_read_only(tool: &McpTool) -> bool {
+    classify(tool).required == ConsentKind::Auto
+}
+
 /// Look up a tool's live declaration on a running connector.
 pub async fn classify_live(
     active: &Arc<ActiveConnector>,
     tool_name: &str,
 ) -> Result<McpTool, McpError> {
-    let tools = {
-        let mut t = active.transport.lock().await;
-        t.list_tools(&active.cancel).await?
-    };
+    let tools = list_live_tools(active).await?;
     tools
         .into_iter()
         .find(|t| t.name == tool_name)

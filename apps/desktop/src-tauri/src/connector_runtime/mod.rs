@@ -21,6 +21,7 @@ pub mod execution;
 pub mod prompts;
 pub mod resources;
 pub mod supervisor;
+pub mod workflow_tools;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};

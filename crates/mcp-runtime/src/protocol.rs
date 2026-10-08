@@ -255,6 +255,10 @@ pub struct ToolOutput {
     pub content: Vec<ToolContent>,
     #[serde(default)]
     pub is_error: bool,
+    /// The result's `structuredContent`, when the server sends one (a typed
+    /// JSON value beside the text). Counted in `size_bytes`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_content: Option<Value>,
     pub size_bytes: u64,
     #[serde(default)]
     pub mime_hints: Vec<String>,
@@ -309,13 +313,20 @@ pub fn decode_tool_output(result: &Value) -> Result<ToolOutput, McpError> {
         content: Vec<ToolContent>,
         #[serde(default)]
         is_error: bool,
+        #[serde(default)]
+        structured_content: Option<Value>,
     }
     let wire: Wire = serde_json::from_value(result.clone())
         .map_err(|e| McpError::protocol(format!("decode tools/call result failed: {e}")))?;
 
     let size_bytes = serde_json::to_vec(&wire.content)
         .map(|v| v.len() as u64)
-        .unwrap_or(0);
+        .unwrap_or(0)
+        + wire
+            .structured_content
+            .as_ref()
+            .and_then(|v| serde_json::to_vec(v).ok())
+            .map_or(0, |v| v.len() as u64);
     let mime_hints: Vec<String> = wire
         .content
         .iter()
@@ -328,6 +339,7 @@ pub fn decode_tool_output(result: &Value) -> Result<ToolOutput, McpError> {
     Ok(ToolOutput {
         content: wire.content,
         is_error: wire.is_error,
+        structured_content: wire.structured_content.filter(|v| !v.is_null()),
         size_bytes,
         mime_hints,
     })

@@ -22,6 +22,7 @@ export const STEP_TYPES: readonly StepType[] = [
   'parse_data',
   'research',
   'search_documents',
+  'connector_tool',
   'summarize',
   'agent',
   'edit_deck',
@@ -141,6 +142,7 @@ const ID_PREFIX: Record<StepType, string> = {
   parse_data: 'data',
   research: 'research',
   search_documents: 'docs',
+  connector_tool: 'connector',
   summarize: 'summary',
   template: 'text',
   for_each: 'each',
@@ -189,6 +191,9 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
     case 'search_documents':
       // Collections are picked in the editor: a new step cannot know yours.
       return { id, type, collections: [], query: '', topK: DEFAULT_TOP_K };
+    case 'connector_tool':
+      // The connector and its tool are picked in the editor: a new step cannot know yours.
+      return { id, type, connector: '', tool: '', arguments: {} };
     case 'summarize':
       return { id, type, prompt: '', input: '' };
     case 'template':
@@ -373,6 +378,11 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       return [
         { field: 'text', list: false },
         { field: 'passages', list: true },
+      ];
+    case 'connector_tool':
+      return [
+        { field: 'text', list: false },
+        { field: 'data', list: true },
       ];
     case 'summarize':
       return step.schema ? [{ field: 'text', list: false }, { field: 'data', list: true }] : [{ field: 'text', list: false }];

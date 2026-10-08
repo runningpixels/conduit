@@ -9,6 +9,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Workflows can use your connected apps.** A "Use a connector tool" step
+  calls a tool from one of your connectors — list a folder, read a file,
+  list a repository's open issues — and later steps can summarize or save
+  what comes back. For now only tools that just read can run: anything that
+  could change something is shown greyed out and refused when run, without
+  asking. The step starts the connector if it isn't running, says plainly
+  when it's turned off or needs you to sign in again, and a scheduled run
+  asks before using a connector it hasn't used before.
+
 - **Research and Documents search in workflows.** A Research step runs the
   same research as in chat — sub-questions, quotes checked against their
   sources, sources rated — and saves the report, at quick or standard depth
@@ -65,6 +74,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **Connectors that only offer tools now work.** A connector that has no
+  resources or prompts — the official filesystem server, for one — showed
+  "0 tools" and couldn't be used; its tools are found now.
+- **"npx" works as a local connector's command on Windows.** A bare name
+  like `npx` is found the way the command line finds it (`npx.cmd`), instead
+  of failing with "program not found".
 - **Research reports no longer show internal labels** like "[C51–C53]" when
   the writer cites a range of facts; each becomes a proper numbered
   citation.

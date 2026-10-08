@@ -52,6 +52,8 @@ export function permissionText(p: WorkflowPermissionView, t: Translate): string 
       return t('workspace.workflows.permissions.research');
     case 'documents':
       return t('workspace.workflows.permissions.documents', { titles: documentTitles(p) });
+    case 'connector':
+      return t('workspace.workflows.permissions.connector', { tool: p.tool, connector: p.name });
     case 'editDocument':
       return t(
         p.documentKind === 'deck' ? 'workspace.workflows.permissions.editDeck' : 'workspace.workflows.permissions.editDraft',
@@ -84,6 +86,8 @@ export function reviewText(review: WorkflowReview, t: Translate): string {
       return t('workspace.workflows.review.research');
     case 'documents':
       return t('workspace.workflows.review.documents', { titles: documentTitles(p) });
+    case 'connector':
+      return t('workspace.workflows.review.connector', { tool: p.tool, connector: p.name });
     case 'editDocument':
       return t(
         p.documentKind === 'deck' ? 'workspace.workflows.review.editDeck' : 'workspace.workflows.review.editDraft',

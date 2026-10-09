@@ -1481,7 +1481,7 @@
   "settings.updates.channel.label": "Canal",
   "settings.updates.channel.stable": "Estável",
   "settings.updates.checkbox.allow": "Permitir verificação de atualizações",
-  "settings.updates.disclosure.body": "O {appName} contata o servidor de atualizações apenas quando você pede, ou cerca de uma vez por dia se você escolheu uma opção automática acima — nunca com algo que identifique você. É enviado: sua versão do {appName}, as notas da versão e a URL de download. As atualizações são verificadas por assinatura e só são aplicadas depois que um ensaio de migração confirma que seus dados locais estão seguros. Uma atualização automática espera você fechar; o {appName} nunca se reinicia sozinho.",
+  "settings.updates.disclosure.body": "O {appName} contata o servidor de atualizações apenas quando você pede, ou cerca de uma vez por dia se você escolheu uma opção automática acima — nunca com algo que identifique você. Uma verificação baixa um arquivo pequeno que informa a versão mais recente, suas notas da versão e o link de download; a solicitação leva apenas o nome e a versão do atualizador, nada sobre você nem seus dados. As atualizações são verificadas por assinatura e só são aplicadas depois que um ensaio de migração confirma que seus dados locais estão seguros. Uma atualização automática espera você fechar; o {appName} nunca se reinicia sozinho.",
   "settings.updates.header.title": "Atualizações",
   "settings.updates.lastChecked": "Última verificação: {when}.",
   "settings.updates.noCheckYet.hint": "Nenhuma atualização verificada ainda — use \"{action}\".",

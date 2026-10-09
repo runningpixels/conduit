@@ -16,6 +16,10 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
   const [installing, setInstalling] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // True only after a manual check in this session came back with nothing
+  // newer; cleared when the next check starts. The persisted `lastChecked`
+  // alone cannot say that, so it stays false on a fresh panel load.
+  const [upToDate, setUpToDate] = useState(false);
   const [remote, setRemote] = useState<UpdateStatus | null>(null);
 
   // Non-networked read: when this machine last checked, and whether the
@@ -32,9 +36,11 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
   async function handleCheck() {
     setChecking(true);
     setError(null);
+    setUpToDate(false);
     try {
       const found = await checkForUpdate();
       setUpdate(found);
+      setUpToDate(!found);
       onStatus(
         found
           ? t('settings.updates.status.available', { version: found.version })
@@ -149,6 +155,11 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
         {remote?.staged && (
           <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
             {t('settings.updates.staged.notice', { version: remote.staged.version })}
+          </span>
+        )}
+        {upToDate && !update && !checking && (
+          <span role="status" style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
+            {t('settings.updates.status.upToDate')}
           </span>
         )}
         {!update && !checking && settings.updateCheckEnabled && (

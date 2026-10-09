@@ -1481,7 +1481,7 @@
   "settings.updates.channel.label": "Channel",
   "settings.updates.channel.stable": "Stable",
   "settings.updates.checkbox.allow": "Allow update checks",
-  "settings.updates.disclosure.body": "{appName} contacts the update server only when you ask it to, or about once a day if you chose an automatic option above — never with anything that identifies you. Sent: your {appName} version, release notes, and the download URL. Updates are signature-verified and applied only after a migration dry-run confirms your local data is safe. An automatic update waits until you quit; {appName} never restarts itself.",
+  "settings.updates.disclosure.body": "{appName} contacts the update server only when you ask it to, or about once a day if you chose an automatic option above — never with anything that identifies you. A check downloads a small file naming the newest version, its release notes and its download link; the request carries only the updater's name and version, nothing about you or your data. Updates are signature-verified and applied only after a migration dry-run confirms your local data is safe. An automatic update waits until you quit; {appName} never restarts itself.",
   "settings.updates.header.title": "Updates",
   "settings.updates.lastChecked": "Last checked {when}.",
   "settings.updates.noCheckYet.hint": "No update checked yet — use \"{action}\".",

@@ -1,10 +1,10 @@
 //! Generate a committed SQLite fixture at the `0001` schema level.
 //!
 //! Usage (from the repo root):
-//!   cargo run -p conduit-desktop --bin generate-migration-fixture
+//!   cargo run -p conduit-desktop --features migration-fixture --bin generate-migration-fixture
 //!
 //! Or with an explicit output path:
-//!   cargo run -p conduit-desktop --bin generate-migration-fixture -- \
+//!   cargo run -p conduit-desktop --features migration-fixture --bin generate-migration-fixture -- \
 //!     apps/desktop/src-tauri/tests/fixtures/db/0001_initial_schema.sqlite
 
 use std::path::PathBuf;

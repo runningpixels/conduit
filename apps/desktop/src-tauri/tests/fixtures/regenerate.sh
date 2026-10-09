@@ -4,7 +4,7 @@
 # Two workflows:
 #
 # 1. Synthetic historical fixture (use now, before the first tagged release):
-#      cargo run -p conduit-desktop --bin generate-migration-fixture
+#      cargo run -p conduit-desktop --features migration-fixture --bin generate-migration-fixture
 #    Writes tests/fixtures/db/0001_initial_schema.sqlite — a DB at migration
 #    0001 only, used to prove 0004+ migrations apply forward cleanly.
 #
@@ -22,5 +22,5 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 
 echo "Regenerating synthetic 0001 fixture..."
-cargo run -p conduit-desktop --bin generate-migration-fixture
+cargo run -p conduit-desktop --features migration-fixture --bin generate-migration-fixture
 echo "Done. Commit tests/fixtures/db/0001_initial_schema.sqlite if it changed."

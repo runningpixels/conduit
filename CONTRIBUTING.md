@@ -86,7 +86,7 @@ modified`. Add a new migration instead.
 If you must change one before release, regenerate the fixtures:
 
 ```bash
-cargo run -p conduit-desktop --bin generate-migration-fixture
+cargo run -p conduit-desktop --features migration-fixture --bin generate-migration-fixture
 ```
 
 `.gitattributes` marks `migrations/**` as `-text` to keep their bytes stable.

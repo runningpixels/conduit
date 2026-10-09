@@ -1481,7 +1481,7 @@
   "settings.updates.channel.label": "Kanal",
   "settings.updates.channel.stable": "Stabil",
   "settings.updates.checkbox.allow": "Update-Prüfungen erlauben",
-  "settings.updates.disclosure.body": "{appName} kontaktiert den Update-Server nur, wenn du es verlangst, oder etwa einmal täglich, wenn du oben eine automatische Option gewählt hast — nie mit Angaben, die dich identifizieren. Gesendet werden: deine {appName}-Version, Release Notes und die Download-URL. Updates sind signaturgeprüft und werden erst angewendet, nachdem ein Migrations-Testlauf bestätigt hat, dass deine lokalen Daten sicher sind. Ein automatisches Update wartet, bis du beendest; {appName} startet sich nie selbst neu.",
+  "settings.updates.disclosure.body": "{appName} kontaktiert den Update-Server nur, wenn du es verlangst, oder etwa einmal täglich, wenn du oben eine automatische Option gewählt hast — nie mit Angaben, die dich identifizieren. Eine Prüfung lädt eine kleine Datei herunter, die die neueste Version, ihre Release Notes und ihren Download-Link nennt; die Anfrage enthält nur Name und Version des Updaters, nichts über dich oder deine Daten. Updates sind signaturgeprüft und werden erst angewendet, nachdem ein Migrations-Testlauf bestätigt hat, dass deine lokalen Daten sicher sind. Ein automatisches Update wartet, bis du beendest; {appName} startet sich nie selbst neu.",
   "settings.updates.header.title": "Updates",
   "settings.updates.lastChecked": "Zuletzt geprüft: {when}.",
   "settings.updates.noCheckYet.hint": "Noch nicht auf Updates geprüft — verwende „{action}“.",

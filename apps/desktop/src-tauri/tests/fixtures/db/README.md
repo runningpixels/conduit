@@ -18,7 +18,7 @@ and has `schema_migrations` mirrored from `_sqlx_migrations`.
 From the repo root:
 
 ```bash
-cargo run -p conduit-desktop --bin generate-migration-fixture
+cargo run -p conduit-desktop --features migration-fixture --bin generate-migration-fixture
 ```
 
 This writes `0001_initial_schema.sqlite` using the same SQL as

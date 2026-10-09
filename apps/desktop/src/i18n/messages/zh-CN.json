@@ -1481,7 +1481,7 @@
   "settings.updates.channel.label": "渠道",
   "settings.updates.channel.stable": "稳定版",
   "settings.updates.checkbox.allow": "允许检查更新",
-  "settings.updates.disclosure.body": "只有在你主动要求时，{appName} 才会连接更新服务器；如果你在上面选择了自动选项，则大约每天一次。发送的内容绝不包含任何可以识别你的信息，只有你的 {appName} 版本、发行说明和下载地址。更新经过签名验证，并且只有在迁移预演确认你的本地数据安全之后才会应用。自动更新会等到你退出时再进行，{appName} 绝不会自行重启。",
+  "settings.updates.disclosure.body": "只有在你主动要求时，{appName} 才会连接更新服务器；如果你在上面选择了自动选项，则大约每天一次。每次检查都会下载一个小文件，其中列出最新版本、发行说明和下载链接；请求只带有更新程序的名称和版本，不包含任何与你或你的数据有关的信息。更新经过签名验证，并且只有在迁移预演确认你的本地数据安全之后才会应用。自动更新会等到你退出时再进行，{appName} 绝不会自行重启。",
   "settings.updates.header.title": "更新",
   "settings.updates.lastChecked": "上次检查：{when}。",
   "settings.updates.noCheckYet.hint": "尚未检查过更新——请使用“{action}”。",

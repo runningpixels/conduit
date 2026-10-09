@@ -18,7 +18,26 @@ pub struct Extracted {
     pub text: String,
     /// Absolute http(s) links, deduplicated, in page order, at most 100.
     pub links: Vec<String>,
+    /// The same links with the words they were shown as, for a reader that
+    /// has to choose which one to follow. Absolute http(s), no fragment,
+    /// deduplicated by URL (the distinct texts of one URL are joined with
+    /// " | "), in page order, at most [`MAX_ANCHORS`].
+    pub anchors: Vec<Link>,
 }
+
+/// One link on a page and the text it was shown as (empty for an image link
+/// with no `title` or `aria-label`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Link {
+    pub url: String,
+    pub text: String,
+}
+
+/// Most anchors [`extract_readable`] keeps; callers cap further.
+pub const MAX_ANCHORS: usize = 500;
+
+/// Longest joined text kept for one anchor URL.
+const MAX_ANCHOR_TEXT_CHARS: usize = 200;
 
 /// Tags whose entire subtree (tag + contents) contributes nothing readable
 /// and is dropped outright.
@@ -65,11 +84,17 @@ pub fn extract_readable(html: &str, base_url: &str) -> Extracted {
     let cleaned = remove_dropped(html);
     let region = choose_region(&cleaned);
 
-    let (raw_text, raw_hrefs) = render_region(region);
-    let text = normalize_whitespace(&raw_text);
-    let links = resolve_links(&raw_hrefs, base_url);
+    let rendered = render_region(region);
+    let text = normalize_whitespace(&rendered.text);
+    let links = resolve_links(&rendered.hrefs, base_url);
+    let anchors = resolve_anchors(&rendered.anchors, base_url);
 
-    Extracted { title, text, links }
+    Extracted {
+        title,
+        text,
+        links,
+        anchors,
+    }
 }
 
 /// True when the extracted text is too thin to be the page's content — the
@@ -292,7 +317,7 @@ fn choose_region(cleaned: &str) -> &str {
     for tag in ["article", "main"] {
         if let Some((s, e)) = find_element(cleaned, tag) {
             let region = &cleaned[s..e];
-            if non_ws_count(&render_region(region).0) >= MIN_REGION_CHARS {
+            if non_ws_count(&render_region(region).text) >= MIN_REGION_CHARS {
                 return region;
             }
         }
@@ -308,11 +333,42 @@ fn choose_region(cleaned: &str) -> &str {
 // Rendering a region to text + links
 // ---------------------------------------------------------------------------
 
+/// A region rendered to text, with its links as found.
+struct Rendered {
+    text: String,
+    /// Raw (unresolved, undecoded) `href` values, in document order.
+    hrefs: Vec<String>,
+    /// Raw `href` values with the text each `<a>` wrapped (whitespace
+    /// collapsed; the `title`/`aria-label` when it wrapped no text).
+    anchors: Vec<(String, String)>,
+}
+
+/// An `<a>` whose text is still being collected.
+struct OpenAnchor {
+    href: String,
+    label: Option<String>,
+    text_start: usize,
+}
+
+fn close_anchor(open: &mut Option<OpenAnchor>, text: &str, anchors: &mut Vec<(String, String)>) {
+    if let Some(anchor) = open.take() {
+        let shown = collapse_all_whitespace(&text[anchor.text_start..]);
+        let shown = if shown.is_empty() {
+            anchor.label.unwrap_or_default()
+        } else {
+            shown
+        };
+        anchors.push((anchor.href, shown));
+    }
+}
+
 /// Render one HTML region to text, collecting raw (unresolved, undecoded)
 /// `href` values from `<a>` tags in document order along the way.
-fn render_region(html: &str) -> (String, Vec<String>) {
+fn render_region(html: &str) -> Rendered {
     let mut text = String::new();
     let mut links = Vec::new();
+    let mut anchors = Vec::new();
+    let mut open: Option<OpenAnchor> = None;
     let mut i = 0;
     while i < html.len() {
         match html[i..].find('<') {
@@ -332,9 +388,23 @@ fn render_region(html: &str) -> (String, Vec<String>) {
                 let name = read_tag_name(html, name_start);
                 let tag_end = skip_tag_end(html, lt);
 
-                if !closing && name == "a" {
-                    if let Some(href) = get_attr(&html[lt..tag_end], "href") {
-                        links.push(href);
+                if name == "a" {
+                    // An `<a>` inside an open one (invalid, but real pages do
+                    // it) ends the first.
+                    close_anchor(&mut open, &text, &mut anchors);
+                    if !closing {
+                        let tag = &html[lt..tag_end];
+                        if let Some(href) = get_attr(tag, "href") {
+                            links.push(href.clone());
+                            let label = get_attr(tag, "aria-label")
+                                .or_else(|| get_attr(tag, "title"))
+                                .map(|l| collapse_all_whitespace(&decode_entities(&l)));
+                            open = Some(OpenAnchor {
+                                href,
+                                label,
+                                text_start: text.len(),
+                            });
+                        }
                     }
                 }
 
@@ -356,7 +426,12 @@ fn render_region(html: &str) -> (String, Vec<String>) {
             }
         }
     }
-    (text, links)
+    close_anchor(&mut open, &text, &mut anchors);
+    Rendered {
+        text,
+        hrefs: links,
+        anchors,
+    }
 }
 
 /// Read an attribute's raw value out of a tag's raw text (`<a href="...">`).
@@ -526,6 +601,51 @@ fn resolve_links(raw_hrefs: &[String], base_url: &str) -> Vec<String> {
     out
 }
 
+fn resolve_anchors(raw: &[(String, String)], base_url: &str) -> Vec<Link> {
+    let base = Url::parse(base_url).ok();
+    let mut out: Vec<Link> = Vec::new();
+    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (href, text) in raw {
+        let decoded = decode_entities(href);
+        let resolved = match &base {
+            Some(b) => b.join(decoded.trim()).ok(),
+            None => Url::parse(decoded.trim()).ok(),
+        };
+        let Some(mut url) = resolved else { continue };
+        if url.scheme() != "http" && url.scheme() != "https" {
+            continue;
+        }
+        url.set_fragment(None);
+        let url = url.to_string();
+        match index.get(&url) {
+            Some(&at) => {
+                let existing = &mut out[at].text;
+                let already = existing.split(" | ").any(|t| t == text);
+                if !text.is_empty()
+                    && !already
+                    && existing.chars().count() + text.chars().count() + 3 <= MAX_ANCHOR_TEXT_CHARS
+                {
+                    if !existing.is_empty() {
+                        existing.push_str(" | ");
+                    }
+                    existing.push_str(text);
+                }
+            }
+            None => {
+                if out.len() >= MAX_ANCHORS {
+                    continue;
+                }
+                index.insert(url.clone(), out.len());
+                out.push(Link {
+                    url,
+                    text: text.chars().take(MAX_ANCHOR_TEXT_CHARS).collect(),
+                });
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -614,6 +734,40 @@ mod tests {
             vec![
                 "https://example.com/a".to_string(),
                 "https://other.example/b".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn anchors_keep_their_text_and_merge_duplicates() {
+        let html = r##"<body>
+            <a href="/item?id=1">3 hours ago</a>
+            <a href="/item?id=1">142&nbsp;comments</a>
+            <a href="/item?id=1#c">142&nbsp;comments</a>
+            <a href="https://other.example/story">A <b>bold</b>
+               story</a>
+            <a href="/logo"><img src="x.png"></a>
+            <a href="/labelled" aria-label="Go home"><img src="y.png"></a>
+            <a href="javascript:void(0)">js</a>
+            <a href="/open">never closed
+        </body>"##;
+        let out = extract_readable(html, "https://news.example/");
+        let pairs: Vec<(&str, &str)> = out
+            .anchors
+            .iter()
+            .map(|l| (l.url.as_str(), l.text.as_str()))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![
+                (
+                    "https://news.example/item?id=1",
+                    "3 hours ago | 142 comments"
+                ),
+                ("https://other.example/story", "A bold story"),
+                ("https://news.example/logo", ""),
+                ("https://news.example/labelled", "Go home"),
+                ("https://news.example/open", "never closed"),
             ]
         );
     }

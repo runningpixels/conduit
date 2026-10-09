@@ -1591,7 +1591,7 @@
   "settings.webSearch.hostedOnlyNotice": "Las opciones de búsqueda del proveedor solo se aplican cuando la fuente de búsqueda es la alojada por el proveedor.",
   "settings.webSearch.includeSources.help": "Si está activado, el proveedor devuelve la lista de fuentes sin procesar junto con las citas. Puede aumentar el tamaño de la respuesta.",
   "settings.webSearch.includeSources.label": "Mostrar la lista de fuentes en los resultados de búsqueda",
-  "settings.webSearch.intro": "Usar <strong>Fuente de búsqueda</strong> para elegir entre la búsqueda alojada por el proveedor o el backend local de {appName} (Exa, Tavily, Brave, SearXNG o DuckDuckGo). Exa funciona sin clave. La búsqueda alojada por el proveedor puede generar costos del proveedor. El icono de búsqueda del campo de mensaje activa la búsqueda para el chat hasta que se desactive.",
+  "settings.webSearch.intro": "Usar <strong>Fuente de búsqueda</strong> para elegir entre la búsqueda alojada por el proveedor o el backend local de {appName} (Exa, Tavily, Brave, SearXNG o DuckDuckGo). Exa funciona sin clave. La búsqueda alojada por el proveedor puede generar costos del proveedor. El icono de búsqueda del campo de mensaje activa la búsqueda para el chat hasta que se desactive. Mientras la búsqueda web esté activada, el modelo también puede abrir en cualquier chat una página web pública que indiques, sin el icono de búsqueda.",
   "settings.webSearch.localBackend.brave.help": "Resultados en vivo. Requiere una clave de API de Brave Search.",
   "settings.webSearch.localBackend.brave.label": "Brave Search",
   "settings.webSearch.localBackend.duckduckgo.help": "Sin clave de API. Fragmentos enciclopédicos — no es un rastreo web en vivo.",

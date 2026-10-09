@@ -28,8 +28,13 @@ pub struct Page {
     pub title: Option<String>,
     /// Readable text, at most the `max_chars` asked for.
     pub text: String,
+    /// Whether `text` was cut at the `max_chars` asked for.
+    pub truncated: bool,
     /// Absolute links found on an HTML page (empty for plain text).
     pub links: Vec<String>,
+    /// The same links with the text they were shown as (empty for plain
+    /// text). See [`extract::Extracted::anchors`].
+    pub anchors: Vec<extract::Link>,
     /// The response's media type, lowercase and without parameters
     /// (`text/html`, `text/csv`); empty when the site sent none.
     pub content_type: String,
@@ -136,12 +141,14 @@ pub async fn fetch(
         .trim()
         .to_string();
     if content_type.contains("application/pdf") || bytes.starts_with(b"%PDF-") {
-        let text = pdf_text(bytes).await?;
+        let (text, truncated) = clip(&pdf_text(bytes).await?, max_chars);
         return Ok(Page {
             title: pdf_title(&response.url),
             url: response.url,
-            text: text.chars().take(max_chars).collect(),
+            text,
+            truncated,
             links: Vec::new(),
+            anchors: Vec::new(),
             content_type: media_type,
         });
     }
@@ -149,33 +156,47 @@ pub async fn fetch(
     // Data (a CSV, JSON or plain-text file) is handed over as it is: reading
     // it as an article would throw away the rows.
     if is_data(&media_type, &response.url) {
+        let (text, truncated) = clip(&body, max_chars);
         return Ok(Page {
             url: response.url,
             title: None,
-            text: body.chars().take(max_chars).collect(),
+            text,
+            truncated,
             links: Vec::new(),
+            anchors: Vec::new(),
             content_type: media_type,
         });
     }
     let is_html = content_type.contains("html") || body.trim_start().starts_with('<');
-    let (title, text, links) = if is_html {
+    let (title, text, links, anchors) = if is_html {
         let page = extract::extract_readable(&body, &response.url);
-        (page.title, page.text, page.links)
+        (page.title, page.text, page.links, page.anchors)
     } else if content_type.is_empty()
         || content_type.starts_with("text/")
         || content_type.contains("json")
     {
-        (None, body.trim().to_string(), Vec::new())
+        (None, body.trim().to_string(), Vec::new(), Vec::new())
     } else {
         return Err(FetchError::NotAPage(content_type));
     };
+    let (text, truncated) = clip(&text, max_chars);
     Ok(Page {
         url: response.url,
         title,
-        text: text.chars().take(max_chars).collect(),
+        text,
+        truncated,
         links,
+        anchors,
         content_type: media_type,
     })
+}
+
+/// The first `max_chars` characters of `text`, and whether anything was cut.
+fn clip(text: &str, max_chars: usize) -> (String, bool) {
+    match text.char_indices().nth(max_chars) {
+        Some((at, _)) => (text[..at].to_string(), true),
+        None => (text.to_string(), false),
+    }
 }
 
 /// Whether a response is data to pass on untouched: by its media type, or,
@@ -269,6 +290,13 @@ mod tests {
         );
         assert_eq!(upgrade_to_https("ftp://example.com"), "ftp://example.com");
         assert_eq!(upgrade_to_https("http"), "http");
+    }
+
+    #[test]
+    fn clip_reports_whether_it_cut() {
+        assert_eq!(clip("héllo", 5), ("héllo".to_string(), false));
+        assert_eq!(clip("héllo", 2), ("hé".to_string(), true));
+        assert_eq!(clip("", 0), (String::new(), false));
     }
 
     #[test]

@@ -1591,7 +1591,7 @@
   "settings.webSearch.hostedOnlyNotice": "공급자 검색 옵션은 검색 소스가 공급자 호스팅으로 결정될 때만 적용됩니다.",
   "settings.webSearch.includeSources.help": "켜면 공급자가 인용과 함께 원본 출처 목록을 반환합니다. 응답 크기가 커질 수 있습니다.",
   "settings.webSearch.includeSources.label": "검색 결과에 출처 목록 표시",
-  "settings.webSearch.intro": "<strong>검색 소스</strong>에서 공급자가 호스팅하는 검색과 {appName}의 로컬 백엔드(Exa, Tavily, Brave, SearXNG, DuckDuckGo) 중에서 고릅니다. Exa는 키 없이 작동합니다. 공급자 호스팅 검색은 공급자 쪽 비용이 발생할 수 있습니다. 입력 영역의 검색 아이콘을 누르면 끌 때까지 그 채팅에서 검색이 켜집니다.",
+  "settings.webSearch.intro": "<strong>검색 소스</strong>에서 공급자가 호스팅하는 검색과 {appName}의 로컬 백엔드(Exa, Tavily, Brave, SearXNG, DuckDuckGo) 중에서 고릅니다. Exa는 키 없이 작동합니다. 공급자 호스팅 검색은 공급자 쪽 비용이 발생할 수 있습니다. 입력 영역의 검색 아이콘을 누르면 끌 때까지 그 채팅에서 검색이 켜집니다. 웹 검색이 켜져 있는 동안에는 검색 아이콘 없이도 어느 채팅에서든 모델이 지정한 공개 웹 페이지를 열 수 있습니다.",
   "settings.webSearch.localBackend.brave.help": "실시간 결과를 제공합니다. Brave Search API 키가 필요합니다.",
   "settings.webSearch.localBackend.brave.label": "Brave Search",
   "settings.webSearch.localBackend.duckduckgo.help": "API 키가 필요 없습니다. 백과사전식 요약이며, 실시간 웹 크롤링이 아닙니다.",

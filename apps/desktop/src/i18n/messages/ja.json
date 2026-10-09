@@ -1591,7 +1591,7 @@
   "settings.webSearch.hostedOnlyNotice": "プロバイダー検索のオプションは、検索ソースがプロバイダーのホスト型に解決される場合にのみ適用されます。",
   "settings.webSearch.includeSources.help": "オンにすると、プロバイダーが引用とあわせて生のソース一覧を返します。応答のサイズが増える場合があります。",
   "settings.webSearch.includeSources.label": "検索結果にソース一覧を表示",
-  "settings.webSearch.intro": "<strong>検索ソース</strong>で、プロバイダーのホスト型検索か、{appName} のローカルバックエンド（Exa、Tavily、Brave、SearXNG、DuckDuckGo）かを選びます。Exa はキーなしで使えます。プロバイダーのホスト型検索では、プロバイダー側の費用が発生する場合があります。入力エリアの検索アイコンを押すと、オフにするまでそのチャットで検索が有効になります。",
+  "settings.webSearch.intro": "<strong>検索ソース</strong>で、プロバイダーのホスト型検索か、{appName} のローカルバックエンド（Exa、Tavily、Brave、SearXNG、DuckDuckGo）かを選びます。Exa はキーなしで使えます。プロバイダーのホスト型検索では、プロバイダー側の費用が発生する場合があります。入力エリアの検索アイコンを押すと、オフにするまでそのチャットで検索が有効になります。Web 検索が有効な間は、検索アイコンを使わなくても、どのチャットでも指定した公開 Web ページをモデルが開けます。",
   "settings.webSearch.localBackend.brave.help": "ライブの結果を返します。Brave Search API キーが必要です。",
   "settings.webSearch.localBackend.brave.label": "Brave Search",
   "settings.webSearch.localBackend.duckduckgo.help": "API キーは不要です。百科事典的なスニペットで、ライブのウェブクロールではありません。",

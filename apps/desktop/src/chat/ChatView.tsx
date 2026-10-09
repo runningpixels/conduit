@@ -90,6 +90,7 @@ import { KnowledgeCitations } from './KnowledgeCitations';
 import { modelAcceptsImages } from './modelAcceptsImages';
 import {
   webSearchCreateDeveloperPromptFor,
+  webFetchDeveloperPromptFor,
   webSearchDeveloperPromptFor,
   localWebSearchDeveloperPromptFor,
 } from './webSearchDeveloperPrompt';
@@ -157,6 +158,8 @@ import {
   isDocumentContentTool,
   selectBuiltinTurnTools,
   selectBuiltinWebTools,
+  selectTurnWebTools,
+  dedupeToolsByName,
   type DocumentToolActivity,
 } from './agentTools';
 import type { DeckDetail, DraftDetail, ResearchMaterial } from '../ipc/contracts';
@@ -580,6 +583,12 @@ export function buildProviderRequest(
       : searchBackend === 'local'
         ? localWebSearchDeveloperPromptFor(settings.webSearch.localBackend)
         : webSearchDeveloperPromptFor();
+  // Pages without search: a normal chat declares web_fetch whenever web
+  // access is on, and the model must be told it may open a site the user names.
+  const webFetchDevPrompt =
+    !searchActive && !bound && toolDefinitions.some((tool) => tool.name === 'web_fetch')
+      ? webFetchDeveloperPromptFor({ creating: isCreationIntent })
+      : undefined;
   const compactionDevPrompt = chatOverrides?.compactionSummary?.trim()
     ? formatCompactionDeveloperPrompt(chatOverrides.compactionSummary)
     : undefined;
@@ -601,6 +610,7 @@ export function buildProviderRequest(
       deckDevPrompt,
       draftDevPrompt,
       webSearchDevPrompt,
+      webFetchDevPrompt,
     ]
       .filter(Boolean)
       .join('\n\n') || undefined;
@@ -1576,10 +1586,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       imageOverride,
     );
     // Local web_search only when this turn resolved to local — never alongside
-    // ProviderRequest.web_search (same name). Hosted turns still get web_fetch.
-    // A draft's turn already has them from its own selection.
-    const webTools = searchBackend && !(draft && !deck) ? selectBuiltinWebTools(searchBackend) : [];
-    return [...builtinTools, ...webTools, ...connectorTools];
+    // ProviderRequest.web_search (same name). Hosted turns still get web_fetch,
+    // and so does a normal chat's turn that does not search, whenever web
+    // access is on: reading a page the user names needs no search. A draft's
+    // turn already has its web tools from its own selection; a deck chat gets
+    // them only on a search turn.
+    const webTools =
+      draft && !deck
+        ? []
+        : deck
+          ? searchBackend
+            ? selectBuiltinWebTools(searchBackend)
+            : []
+          : selectTurnWebTools(searchBackend, settings);
+    return dedupeToolsByName([...builtinTools, ...webTools, ...connectorTools]);
   }
 
   function applyRuntimeEventToActiveStream(

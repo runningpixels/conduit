@@ -1591,7 +1591,7 @@
   "settings.webSearch.hostedOnlyNotice": "只有当搜索来源解析为提供商托管时，提供商的搜索选项才会生效。",
   "settings.webSearch.includeSources.help": "开启后，提供商会在引用之外一并返回原始来源列表。可能会让响应变大。",
   "settings.webSearch.includeSources.label": "在搜索结果中显示来源列表",
-  "settings.webSearch.intro": "用<strong>搜索来源</strong>选择提供商托管的搜索，还是 {appName} 的本地后端（Exa、Tavily、Brave、SearXNG 或 DuckDuckGo）。Exa 无需密钥即可使用。提供商托管的搜索可能产生提供商侧的费用。输入区里的搜索图标会为该聊天开启搜索，直到你把它关掉。",
+  "settings.webSearch.intro": "用<strong>搜索来源</strong>选择提供商托管的搜索，还是 {appName} 的本地后端（Exa、Tavily、Brave、SearXNG 或 DuckDuckGo）。Exa 无需密钥即可使用。提供商托管的搜索可能产生提供商侧的费用。输入区里的搜索图标会为该聊天开启搜索，直到你把它关掉。启用网页搜索后，模型在任何聊天中都能打开你指定的公开网页，无需搜索图标。",
   "settings.webSearch.localBackend.brave.help": "实时结果。需要 Brave Search API 密钥。",
   "settings.webSearch.localBackend.brave.label": "Brave Search",
   "settings.webSearch.localBackend.duckduckgo.help": "无需 API 密钥。百科式摘要——不是实时的网页抓取。",

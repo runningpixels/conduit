@@ -328,6 +328,50 @@ pub async fn set_workspace_root(
     Ok(())
 }
 
+/// Key in `conversations.metadata` set when the user turned folder access off
+/// for this chat (the folder chip's ×). The Settings default folder then does
+/// not apply to it; picking a folder again clears the key.
+pub const WORKSPACE_DISABLED_KEY: &str = "workspaceDisabled";
+
+/// True when folder access is turned off for this conversation.
+pub fn workspace_disabled(conversation: &Conversation) -> bool {
+    conversation
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get(WORKSPACE_DISABLED_KEY))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Turn folder access off (or back on) for one conversation, keeping the rest
+/// of its metadata.
+pub async fn set_workspace_disabled(
+    pool: &SqlitePool,
+    id: &str,
+    disabled: bool,
+) -> Result<(), DbError> {
+    let sql = if disabled {
+        "UPDATE conversations SET metadata = json_set(COALESCE(metadata, '{}'), '$.workspaceDisabled', json('true')), \
+         updated_at = ? WHERE id = ?"
+    } else {
+        "UPDATE conversations SET metadata = CASE WHEN metadata IS NULL THEN NULL \
+         ELSE json_remove(metadata, '$.workspaceDisabled') END, \
+         updated_at = ? WHERE id = ?"
+    };
+    sqlx::query(sql)
+        .bind(now_iso8601())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// The `metadata` a fork starts with: only the folder-access switch carries
+/// over, like the workspace root itself.
+fn fork_metadata(source: &Conversation) -> Option<String> {
+    workspace_disabled(source).then(|| format!("{{\"{WORKSPACE_DISABLED_KEY}\":true}}"))
+}
+
 /// Set or clear per-conversation generation controls and user instructions.
 /// `None` on either argument clears that override (inherit app defaults).
 /// User instructions are encrypted when `enc` is On.
@@ -741,8 +785,8 @@ pub async fn fork_at(
         "INSERT INTO conversations \
          (id, title, forked_from_conversation_id, fork_point_message_id, \
           workspace_root, generation_controls, user_instructions, folder_id, \
-          created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          metadata, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&fork_id)
     .bind(label)
@@ -754,6 +798,7 @@ pub async fn fork_at(
     ))
     .bind(&source.user_instructions)
     .bind(&source_folder_id)
+    .bind(fork_metadata(&source))
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)
@@ -778,7 +823,7 @@ pub async fn fork_at(
         created_at: now.clone(),
         updated_at: now,
         cloud_id: None,
-        metadata: None,
+        metadata: fork_metadata(&source).and_then(|s| serde_json::from_str(&s).ok()),
         workspace_root: source.workspace_root,
         generation_controls: source.generation_controls,
         user_instructions: source.user_instructions,
@@ -871,8 +916,8 @@ pub async fn fork_before(
         "INSERT INTO conversations \
          (id, title, forked_from_conversation_id, fork_point_message_id, \
           workspace_root, generation_controls, user_instructions, folder_id, \
-          created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          metadata, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&fork_id)
     .bind(label)
@@ -884,6 +929,7 @@ pub async fn fork_before(
     ))
     .bind(&source.user_instructions)
     .bind(&source_folder_id)
+    .bind(fork_metadata(&source))
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)
@@ -908,7 +954,7 @@ pub async fn fork_before(
         created_at: now.clone(),
         updated_at: now,
         cloud_id: None,
-        metadata: None,
+        metadata: fork_metadata(&source).and_then(|s| serde_json::from_str(&s).ok()),
         workspace_root: source.workspace_root,
         generation_controls: source.generation_controls,
         user_instructions: source.user_instructions,
@@ -949,5 +995,55 @@ mod tests {
         // because the name is a translated sentence.
         assert_eq!(resolve_display_title(None, None), None);
         assert_eq!(resolve_display_title(Some("   "), Some("   ")), None);
+    }
+
+    async fn memory_pool() -> SqlitePool {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::migrations::MIGRATOR.run(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn workspace_disabled_round_trips_and_keeps_other_metadata() {
+        let pool = memory_pool().await;
+        let conv = create(&pool, None).await.unwrap();
+        assert!(!workspace_disabled(&conv));
+
+        sqlx::query("UPDATE conversations SET metadata = '{\"other\":1}' WHERE id = ?")
+            .bind(&conv.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        set_workspace_disabled(&pool, &conv.id, true).await.unwrap();
+        let off = get(&pool, &conv.id).await.unwrap().unwrap();
+        assert!(workspace_disabled(&off));
+        assert_eq!(off.metadata.as_ref().unwrap()["other"], 1);
+        assert_eq!(
+            fork_metadata(&off).as_deref(),
+            Some("{\"workspaceDisabled\":true}")
+        );
+
+        set_workspace_disabled(&pool, &conv.id, false)
+            .await
+            .unwrap();
+        let on = get(&pool, &conv.id).await.unwrap().unwrap();
+        assert!(!workspace_disabled(&on));
+        assert_eq!(on.metadata.as_ref().unwrap()["other"], 1);
+        assert_eq!(fork_metadata(&on), None);
+    }
+
+    #[tokio::test]
+    async fn turning_workspace_back_on_leaves_null_metadata_null() {
+        let pool = memory_pool().await;
+        let conv = create(&pool, None).await.unwrap();
+        set_workspace_disabled(&pool, &conv.id, false)
+            .await
+            .unwrap();
+        let row = get(&pool, &conv.id).await.unwrap().unwrap();
+        assert!(row.metadata.is_none());
     }
 }

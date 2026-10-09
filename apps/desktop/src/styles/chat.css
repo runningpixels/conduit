@@ -1149,6 +1149,13 @@
   word-break: break-all;
 }
 
+/* "Default folder from Settings" under the path, in running text. */
+.composer-workspace-note {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--ink-3);
+}
+
 /* The "+" slot: the one button that replaced the row of composer icons, and
  * the anchor every composer popover opens upward from. */
 .composer-plus { position: relative; display: inline-flex; }

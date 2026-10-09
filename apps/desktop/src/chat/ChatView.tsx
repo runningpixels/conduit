@@ -151,8 +151,10 @@ import {
 import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
-  documentWritesHistoryNote,
-  webToolsHistoryNote,
+  toolActivityHistoryNote,
+  conversationWorkspaceDisabled,
+  resolveActiveWorkspaceRoot,
+  type HistoryNoteArtifact,
   isDeckTool,
   START_DECK_TOOL_NAME,
   isDocumentContentTool,
@@ -177,7 +179,6 @@ import {
 import { markDocumentWritesHeld, readDocumentWriteStreaming, recordDocumentWrite } from './streamingBehavior';
 import { placeholderSections } from './documentBuild';
 import {
-  classifyDocumentTurnIntent,
   documentWriteDeveloperPromptFor,
   informationalDeveloperPromptFor,
   type DocumentTurnIntent,
@@ -197,7 +198,7 @@ import type { Idea } from '../ideas/catalog';
 import { getIdeaState, noteChipOffered, noteChipUsed, noteFirstMessage, useIdeaState } from '../ideas/ideaState';
 import { ideaById } from '../ideas/catalog';
 import { capabilityChip } from '../ideas/capabilityChips';
-import { hasDocumentInScope, resolveRecentDocumentArtifactId } from './artifactFollowUpContext';
+import { resolveRecentDocumentArtifactId, resolveTurnDocumentScope } from './artifactFollowUpContext';
 import { summarizeStreamState } from '../inspector/turnActivity';
 import { IdeaGallery } from '../ideas/IdeaGallery';
 import { YourAppsRow } from '../apps/YourAppsRow';
@@ -412,25 +413,28 @@ export interface ChatRequestOverrides {
   draftSources?: DraftPromptSources;
   /** Verified claims of the Research reports attached to the draft. */
   draftResearch?: ResearchMaterial[] | null;
+  /** This chat's artifacts: the history notes name the documents earlier
+   *  turns wrote by their artifact ids. */
+  artifacts?: readonly HistoryNoteArtifact[];
 }
 
 /**
  * The text a past turn contributes to the next request's history.
  *
  * History carries display text only — tool calls never reach it — and turns
- * with no text are dropped. A turn that ended right after writing a document
- * (the agent loop no longer spends a round on a confirmation) has no text, so
- * it would vanish and the model would not know it had written anything. Such
- * a turn contributes a short note naming what it wrote instead. A turn that
- * searched or fetched the web leads with a note saying so, so a later turn
- * without those tools does not mistake its cited findings for invented ones.
+ * with no text are dropped. An assistant turn that called tools leads with a
+ * short record of them (`toolActivityHistoryNote`): which documents it wrote
+ * or edited, with their artifact ids, and which pages it read. Without it a
+ * turn that ended right after writing a document vanished from history, a
+ * later turn read cited findings as invented, and a follow-up could not find
+ * the document it was asked to change. `artifacts` (this chat's) supplies the
+ * ids of documents the turn created.
  */
-export function historyContentForTurn(turn: ChatTurn): string {
+export function historyContentForTurn(turn: ChatTurn, artifacts: readonly HistoryNoteArtifact[] = []): string {
   if (turn.role !== 'assistant') return turn.content;
-  const webNote = webToolsHistoryNote(turn.streamState);
-  const body = turn.content.trim() !== '' ? turn.content : documentWritesHistoryNote(turn.streamState);
-  if (!webNote) return body;
-  return body.trim() !== '' ? `${webNote}\n\n${body}` : webNote;
+  const note = toolActivityHistoryNote(turn.streamState, { turnId: turn.id, artifacts });
+  if (!note) return turn.content;
+  return turn.content.trim() !== '' ? `${note}\n\n${turn.content}` : note;
 }
 
 export function buildProviderRequest(
@@ -446,7 +450,7 @@ export function buildProviderRequest(
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
-    .map((turn) => ({ ...turn, content: historyContentForTurn(turn) }))
+    .map((turn) => ({ ...turn, content: historyContentForTurn(turn, chatOverrides?.artifacts) }))
     .filter((turn) => {
       if (turn.role !== 'user' && turn.role !== 'assistant') return false;
       if (turn.content.trim() !== '') return true;
@@ -568,10 +572,17 @@ export function buildProviderRequest(
           includeSources: settings.webSearch.includeSources,
         }
       : undefined;
+  // A document in scope for this turn (`followUpArtifact`) takes the place of
+  // the "answer in text only" prompt: a question about the open document is
+  // still answered in text (the edit prompt says so), but a request worded as
+  // a question — "can you make a nice chart in it?" — or in another language
+  // must be able to change it.
   const infoDevPrompt =
-    !bound && !isCreationIntent && !searchActive ? informationalDeveloperPromptFor(prompt) : undefined;
+    !bound && !isCreationIntent && !searchActive && !followUpArtifact
+      ? informationalDeveloperPromptFor(prompt)
+      : undefined;
   const editDevPrompt =
-    !bound && !isCreationIntent && !infoDevPrompt && followUpArtifact
+    !bound && !isCreationIntent && followUpArtifact
       ? buildArtifactEditDeveloperPrompt(followUpArtifact, prompt)
       : undefined;
   // A draft teaches its own search rule (draftSystemAppendix): the chat's
@@ -621,7 +632,7 @@ export function buildProviderRequest(
         ? [deckSystemAppendix()]
         : draft
         ? [draftSystemAppendix(chatOverrides?.draftSources)]
-        : searchActive && !isCreationIntent
+        : searchActive && !isCreationIntent && !followUpArtifact
         ? []
         : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })]),
       ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
@@ -942,10 +953,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     toolSettings: Parameters<typeof selectBuiltinTurnTools>[1],
     intent?: DocumentTurnIntent,
     imageOverride?: boolean,
-  ): ToolDefinition[] =>
-    draft && !deck
-      ? selectDraftTurnTools(toolSettings, conversationWorkspaceRoot, draft.stage, draftWebOn)
-      : selectBuiltinTurnTools(text, toolSettings, conversationWorkspaceRoot, intent, imageOverride, deck?.stage).tools;
+  ): ToolDefinition[] => {
+    // Folder access off for this chat: no workspace tool, even with a Settings default.
+    const turnSettings = { ...toolSettings, chatWorkspaceDisabled: workspaceOffForChat };
+    return draft && !deck
+      ? selectDraftTurnTools(turnSettings, conversationWorkspaceRoot, draft.stage, draftWebOn)
+      : selectBuiltinTurnTools(text, turnSettings, conversationWorkspaceRoot, intent, imageOverride, deck?.stage).tools;
+  };
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -1008,6 +1022,21 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return settings.imageGenerationConsentAcknowledged || imageGenerationConsentGrantedThisSessionRef.current;
   }
   const [conversationWorkspaceRoot, setConversationWorkspaceRoot] = useState<string | null>(null);
+  /** Folder access turned off for this chat (the folder chip's ×): not even
+   *  the Settings default applies. Persisted in the conversation's metadata. */
+  const [workspaceOffForChat, setWorkspaceOffForChat] = useState(false);
+  /** The folder this chat's workspace tools use: its own, else the Settings default. */
+  const activeWorkspaceRoot = resolveActiveWorkspaceRoot(conversationWorkspaceRoot, {
+    ...settings,
+    chatWorkspaceDisabled: workspaceOffForChat,
+  });
+  /** The active folder is the Settings default rather than one picked for this chat. */
+  const workspaceFromSettings =
+    activeWorkspaceRoot != null &&
+    (!conversationWorkspaceRoot ||
+      (settings.workspaceToolsEnabled === true &&
+        settings.workspaceToolsConsentAcknowledged === true &&
+        settings.workspaceRoot?.trim() === conversationWorkspaceRoot));
   const [conversationGenerationControls, setConversationGenerationControls] =
     useState<GenerationControls | null>(null);
   const [conversationUserInstructions, setConversationUserInstructions] = useState<string | null>(
@@ -1250,6 +1279,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (!conversationId) {
       setTurns([]);
       setConversationWorkspaceRoot(null);
+      setWorkspaceOffForChat(false);
       setConversationGenerationControls(null);
       setConversationUserInstructions(null);
       setDiscoveredSkills([]);
@@ -1287,6 +1317,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           setTurns(visible);
           setCompaction(latestCompaction);
           setConversationWorkspaceRoot(conversation?.workspaceRoot?.trim() || null);
+          setWorkspaceOffForChat(conversationWorkspaceDisabled(conversation?.metadata));
           setConversationGenerationControls(conversation?.generationControls ?? null);
           setConversationUserInstructions(conversation?.userInstructions ?? null);
           const pending = pendingSendText?.trim();
@@ -1906,28 +1937,27 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             settings.activeProvider,
             settings.providerEndpoints,
           );
-    // An edit-sounding prompt with nothing to edit ("…and add a summary" in a
-    // fresh chat) would get edit tools only, which need an existing artifact_id.
-    const toolIntent: DocumentTurnIntent | undefined =
-      turnIntent === undefined &&
-      classifyDocumentTurnIntent(trimmed) === 'edit' &&
-      !hasDocumentInScope(history.slice(0, -1), artifacts, activeArtifact?.id)
-        ? 'general'
-        : turnIntent;
+    const priorHistory = history.slice(0, -1);
+    // A document open or written in this chat is in scope for every turn that
+    // does not ask for a new one, in any language (`resolveTurnDocumentScope`).
+    // Deck and draft chats route their own tools.
+    const documentScope =
+      deck || draftChat
+        ? { toolIntent: turnIntent, forceEdit: turnIntent === 'edit', fromScope: false }
+        : resolveTurnDocumentScope(trimmed, priorHistory, artifacts, activeArtifact, turnIntent);
     const toolDefinitions = await loadToolDefinitions(
       trimmed,
       searchBackend,
-      toolIntent,
+      documentScope.toolIntent,
       pickedIdea?.needs.includes('imageGen'),
     );
-    const priorHistory = history.slice(0, -1);
     const followUpArtifact = await resolveFollowUpArtifactContext(
       priorHistory,
       trimmed,
       artifacts,
       getArtifact,
       activeArtifact,
-      { forceEdit: turnIntent === 'edit' },
+      { forceEdit: documentScope.forceEdit, fromScope: documentScope.fromScope },
     );
     const providerHistory = [
       ...historyForProviderRequest(priorHistory, activeCompaction),
@@ -1992,6 +2022,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         draft,
         draftSources: draftChat ? draftPromptSources() : undefined,
         draftResearch,
+        artifacts,
       },
     );
     // Keep the chat-bar search toggle armed until the user turns it off.
@@ -2496,11 +2527,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     try {
       const updated = await setConversationWorkspace(conversationId, path);
       setConversationWorkspaceRoot(updated.workspaceRoot?.trim() || path);
-      // Remember as Settings default for future new chats (does not force enable).
-      await updateSettings({
-        workspaceRoot: path,
-        workspaceToolsConsentAcknowledged: true,
-      });
+      // Picking a folder turns folder access back on for this chat.
+      setWorkspaceOffForChat(conversationWorkspaceDisabled(updated.metadata));
+      // The folder is this chat's only. The default for other chats is set in
+      // Settings → Workspace; a pick here used to overwrite it silently, so a
+      // folder chosen once gave every later chat access to it.
+      if (!settings.workspaceToolsConsentAcknowledged) {
+        await updateSettings({ workspaceToolsConsentAcknowledged: true });
+      }
       onStatus(t('chat.view.status.workingInFolder', { path }));
     } catch (error) {
       onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotSetWorkspaceFolder'));
@@ -2528,8 +2562,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   async function handleWorkspaceClear() {
     if (!conversationId) return;
     try {
+      // Off for this chat, the Settings default included (Rust records it in
+      // the conversation's metadata and enforces it when tools run).
       await setConversationWorkspace(conversationId, null);
       setConversationWorkspaceRoot(null);
+      setWorkspaceOffForChat(true);
       onStatus(t('chat.view.status.workspaceFolderCleared'));
     } catch (error) {
       onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotClearWorkspaceFolder'));
@@ -3183,7 +3220,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 <BotGlyph className="brand-mark" aria-hidden="true" />
                 {t('chat.view.welcomeTitle')}
               </h1>
-              {!conversationWorkspaceRoot && conversationId ? (
+              {!activeWorkspaceRoot && conversationId ? (
                 <p style={{ marginTop: 12, fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', maxWidth: 360 }}>
                   {tr('chat.view.welcomeWorkspaceHint', {
                     action: (chunks: ReactNode[]) => (
@@ -3701,7 +3738,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onWebSearchToggle={handleWebSearchToggle}
         researchOn={researchOn}
         onResearchToggle={handleResearchToggle}
-        workspaceRoot={conversationWorkspaceRoot}
+        workspaceRoot={activeWorkspaceRoot}
+        workspaceFromSettings={workspaceFromSettings}
         onWorkspacePick={() => void handleWorkspacePick()}
         onWorkspaceClear={() => void handleWorkspaceClear()}
         generationControls={conversationGenerationControls}

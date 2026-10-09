@@ -1802,25 +1802,7 @@ impl StreamManager {
             .await
             .ok()
             .flatten();
-        let from_conversation = conversation
-            .as_ref()
-            .and_then(|c| c.workspace_root.as_ref())
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-        let from_settings =
-            if settings.workspace_tools_enabled && settings.workspace_tools_consent_acknowledged {
-                settings
-                    .workspace_root
-                    .as_ref()
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-            } else {
-                None
-            };
-        // Conversation bind wins; settings default applies when enabled + consent.
-        let workspace_root = from_conversation.or(from_settings);
+        let workspace_root = resolve_workspace_root(conversation.as_ref(), &settings);
         let workspace_config =
             workspace_root.map(|root| crate::workspace_tools::WorkspaceToolConfig {
                 root: std::path::PathBuf::from(root),
@@ -3911,6 +3893,102 @@ async fn persist_usage(
 impl Default for StreamManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// The folder a turn's workspace tools may use. The chat's own folder wins;
+/// otherwise the Settings default applies while workspace tools are enabled
+/// and acknowledged — unless the user turned folder access off for this chat,
+/// in which case no folder applies at all. Mirrors `resolveActiveWorkspaceRoot`
+/// in `chat/agentTools.ts`.
+fn resolve_workspace_root(
+    conversation: Option<&provider_core::schema::Conversation>,
+    settings: &provider_core::schema::AppSettings,
+) -> Option<String> {
+    if conversation.is_some_and(conversations::workspace_disabled) {
+        return None;
+    }
+    let from_conversation = conversation
+        .and_then(|c| c.workspace_root.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let from_settings =
+        if settings.workspace_tools_enabled && settings.workspace_tools_consent_acknowledged {
+            settings
+                .workspace_root
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        } else {
+            None
+        };
+    from_conversation.or(from_settings)
+}
+
+#[cfg(test)]
+mod workspace_root_tests {
+    use super::resolve_workspace_root;
+    use provider_core::schema::{AppSettings, Conversation};
+
+    fn conversation(root: Option<&str>, metadata: Option<serde_json::Value>) -> Conversation {
+        Conversation {
+            id: "c1".into(),
+            title: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            cloud_id: None,
+            metadata,
+            workspace_root: root.map(str::to_string),
+            generation_controls: None,
+            user_instructions: None,
+        }
+    }
+
+    fn default_on() -> AppSettings {
+        AppSettings {
+            workspace_tools_enabled: true,
+            workspace_tools_consent_acknowledged: true,
+            workspace_root: Some("D:\\Downloads".into()),
+            ..AppSettings::default()
+        }
+    }
+
+    #[test]
+    fn the_chat_folder_wins_then_the_settings_default() {
+        let settings = default_on();
+        assert_eq!(
+            resolve_workspace_root(Some(&conversation(Some("D:\\proj"), None)), &settings)
+                .as_deref(),
+            Some("D:\\proj")
+        );
+        assert_eq!(
+            resolve_workspace_root(Some(&conversation(None, None)), &settings).as_deref(),
+            Some("D:\\Downloads")
+        );
+        assert_eq!(
+            resolve_workspace_root(
+                Some(&conversation(None, None)),
+                &AppSettings {
+                    workspace_tools_enabled: false,
+                    ..default_on()
+                }
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_chat_with_folder_access_off_gets_no_folder_not_even_the_default() {
+        let off = conversation(None, Some(serde_json::json!({ "workspaceDisabled": true })));
+        assert_eq!(resolve_workspace_root(Some(&off), &default_on()), None);
+        // Other chats keep the default.
+        let other = conversation(None, Some(serde_json::json!({ "something": 1 })));
+        assert_eq!(
+            resolve_workspace_root(Some(&other), &default_on()).as_deref(),
+            Some("D:\\Downloads")
+        );
     }
 }
 

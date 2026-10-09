@@ -2,8 +2,10 @@ import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState } from './streamState';
 import { resolveDocumentArtifactId } from './agentTools';
 import {
+  classifyDocumentTurnIntent,
   looksLikeArtifactEditFollowUp,
   looksLikeInformationalQuestion,
+  type DocumentTurnIntent,
 } from './documentTurnIntent';
 import { looksLikeArtifactCreationRequest } from './artifactPrompt';
 import { detectArtifactCandidates } from './artifactCandidates';
@@ -32,6 +34,11 @@ const FENCE_LANG_BY_KIND: Record<string, string> = {
 /** Max artifact body chars injected into the developer prompt (token guard). */
 export const ARTIFACT_CONTEXT_CONTENT_CAP = 48_000;
 
+/** A document in scope only because it is open or recent (the turn did not
+ *  read as an edit) is pasted only up to this size; a longer one is named and
+ *  the model reads it with `read_document` when it needs to. */
+export const ARTIFACT_SCOPE_CONTENT_CAP = 16_000;
+
 export interface ChatTurnForContext {
   role: 'user' | 'assistant';
   content: string;
@@ -45,6 +52,9 @@ export interface FollowUpArtifactContext {
   content: string;
   /** True when content comes from an unpromoted inline fence in chat. */
   inlineOnly?: boolean;
+  /** In scope because it is open or recent, not because the turn read as an
+   *  edit: a long body is left out (`ARTIFACT_SCOPE_CONTENT_CAP`). */
+  fromScope?: boolean;
 }
 
 /**
@@ -200,20 +210,28 @@ export function buildArtifactEditDeveloperPrompt(
     ].join('\n');
   }
 
+  // In scope without edit wording (a question, another language): a long
+  // document is named, not pasted, so a "thanks!" does not resend it in full.
+  const contentOmitted = context.fromScope === true && context.content.length > ARTIFACT_SCOPE_CONTENT_CAP;
+  const quoteFrom = contentOmitted ? 'the read_document result' : 'the content below';
   return [
     'An existing document artifact is in scope for this conversation.',
     `${titleLine}- artifact_id: ${context.artifactId}`,
     `- kind: ${context.kind}`,
     `The user follow-up: "${userPrompt.trim()}"`,
+    ...(context.fromScope
+      ? ['The follow-up may be about this document even if it does not name it, in any language.']
+      : []),
+    'This document is stored in the app, not as a file in a workspace folder: change it with the document tools and its artifact_id, and do not search files for it.',
     'Only call a document tool if the user explicitly asked to create or revise this document.',
-    `If they asked to change part of it, use patch_document with artifact_id "${context.artifactId}", quoting the exact text to replace from the content below.`,
+    ...(contentOmitted
+      ? [`Its content is not included here: call read_document with artifact_id "${context.artifactId}" before changing it.`]
+      : []),
+    `If they asked to change part of it, use patch_document with artifact_id "${context.artifactId}", quoting the exact text to replace from ${quoteFrom}.`,
     `If most of it changes, use ${editTool} with artifact_id "${context.artifactId}" and the full updated body in ${contentField}.`,
     'If they only asked a question or made a general comment, answer in text and do NOT call document tools.',
     'Do NOT call write_*_document without artifact_id unless the user explicitly asked for a separate or new document.',
-    `Current content:${truncatedNote}`,
-    `\`\`\`${fence}`,
-    text,
-    '```',
+    ...(contentOmitted ? [] : [`Current content:${truncatedNote}`, `\`\`\`${fence}`, text, '```']),
   ].join('\n');
 }
 
@@ -234,14 +252,19 @@ export async function resolveFollowUpArtifactContext(
   preferredArtifact?: Artifact | null,
   /** The prompt is known to revise the document in scope (an app-authored
    *  follow-up such as "Continue building"), whatever its wording. */
-  options: { forceEdit?: boolean } = {},
+  options: {
+    forceEdit?: boolean;
+    /** The document is in scope because it is open or recent, not because of
+     *  the prompt's wording (`resolveTurnDocumentScope`). Implies `forceEdit`. */
+    fromScope?: boolean;
+  } = {},
 ): Promise<FollowUpArtifactContext | undefined> {
   const preferredId =
     preferredArtifact && isDocumentArtifact(preferredArtifact)
       ? preferredArtifact.id
       : undefined;
   const artifactId = resolveRecentDocumentArtifactId(history, listed, preferredId);
-  const include = options.forceEdit
+  const include = options.forceEdit || options.fromScope
     ? Boolean(artifactId)
     : shouldIncludeArtifactFollowUpContext(prompt, history, artifactId);
   if (!include) {
@@ -316,5 +339,57 @@ export async function resolveFollowUpArtifactContext(
   if (!artifactId) {
     result.inlineOnly = true;
   }
+  if (options.fromScope) {
+    result.fromScope = true;
+  }
   return result;
+}
+
+/** How a chat turn relates to the documents in scope for it. */
+export interface TurnDocumentScope {
+  /** Intent for tool selection; `undefined` lets the selection classify the prompt. */
+  toolIntent: DocumentTurnIntent | undefined;
+  /** Resolve the follow-up context of the document in scope whatever the wording. */
+  forceEdit: boolean;
+  /** The document is in scope by being open or recent, not by edit wording. */
+  fromScope: boolean;
+}
+
+/**
+ * Decide a normal chat turn's document routing (deck and draft chats have
+ * their own).
+ *
+ * The intent regexes read English only, and a request worded as a question
+ * ("nice, can you make a nice chart in it?") classified as informational:
+ * no edit tools, no document named anywhere, so the model looked for the
+ * dashboard in the user's files and then wrote a new one. So when a document
+ * artifact is in scope — open in the panel, or the latest one in this chat —
+ * every turn that is not a request for a new document gets the edit tools and
+ * the document's id. Questions about it are still answered in text (the edit
+ * prompt says so). A turn with no document in scope is classified as before.
+ */
+export function resolveTurnDocumentScope(
+  prompt: string,
+  history: ChatTurnForContext[],
+  listed: Artifact[],
+  preferredArtifact: Artifact | null | undefined,
+  /** Intent an app-authored prompt or a picked chip already fixed. */
+  explicitIntent?: DocumentTurnIntent,
+): TurnDocumentScope {
+  if (explicitIntent !== undefined) {
+    return { toolIntent: explicitIntent, forceEdit: explicitIntent === 'edit', fromScope: false };
+  }
+  const classified = classifyDocumentTurnIntent(prompt);
+  if (classified === 'create') return { toolIntent: undefined, forceEdit: false, fromScope: false };
+  const preferredId =
+    preferredArtifact && isDocumentArtifact(preferredArtifact) ? preferredArtifact.id : undefined;
+  if (resolveRecentDocumentArtifactId(history, listed, preferredId) != null) {
+    return { toolIntent: 'edit', forceEdit: classified === 'edit', fromScope: classified !== 'edit' };
+  }
+  // An edit-sounding prompt with nothing to edit ("…and add a summary" in a
+  // fresh chat) would get edit tools only, which need an existing artifact_id.
+  if (classified === 'edit' && !hasDocumentInScope(history, listed, preferredId)) {
+    return { toolIntent: 'general', forceEdit: false, fromScope: false };
+  }
+  return { toolIntent: undefined, forceEdit: false, fromScope: false };
 }

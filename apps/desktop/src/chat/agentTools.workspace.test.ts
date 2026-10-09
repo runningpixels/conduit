@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  conversationWorkspaceDisabled,
   resolveActiveWorkspaceRoot,
   selectBuiltinWorkspaceTools,
   WORKSPACE_TOOL_NAMES,
@@ -25,6 +26,21 @@ describe('resolveActiveWorkspaceRoot', () => {
         workspaceToolsConsentAcknowledged: true,
       }),
     ).toBe('/settings/default');
+  });
+
+  it('gives a chat with folder access turned off no folder, not even the default', () => {
+    const settings = {
+      workspaceToolsEnabled: true,
+      workspaceRoot: '/settings/default',
+      workspaceToolsConsentAcknowledged: true,
+    };
+    expect(resolveActiveWorkspaceRoot(null, { ...settings, chatWorkspaceDisabled: true })).toBeNull();
+    expect(selectBuiltinWorkspaceTools({ ...settings, chatWorkspaceDisabled: true }, null)).toEqual([]);
+    // Other chats keep the default.
+    expect(selectBuiltinWorkspaceTools(settings, null).length).toBeGreaterThan(0);
+    expect(conversationWorkspaceDisabled({ workspaceDisabled: true })).toBe(true);
+    expect(conversationWorkspaceDisabled({})).toBe(false);
+    expect(conversationWorkspaceDisabled(undefined)).toBe(false);
   });
 
   it('ignores settings when disabled or no consent', () => {

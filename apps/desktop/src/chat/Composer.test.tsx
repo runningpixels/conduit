@@ -624,6 +624,26 @@ describe('Composer "+" menu', () => {
       expect(onWorkspaceClear).toHaveBeenCalledTimes(1);
     });
 
+    it('shows the Settings default folder as the default, and its × turns it off', () => {
+      const onWorkspaceClear = vi.fn();
+      renderComposer({
+        onWorkspacePick: vi.fn(),
+        onWorkspaceClear,
+        workspaceRoot: 'D:/Desktop/Chrome Downloads',
+        workspaceFromSettings: true,
+      });
+      const row = screen.getByRole('group', { name: 'Active in this chat' });
+      expect(row).toHaveTextContent('Chrome Downloads (default)');
+      expect(row.querySelector('.composer-context-chip')).toHaveAttribute(
+        'title',
+        'Default folder from Settings: D:/Desktop/Chrome Downloads',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Chrome Downloads (default)' }));
+      expect(screen.getByText(/Clearing it turns folder access off for this chat only/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Stop using folder Chrome Downloads in this chat' }));
+      expect(onWorkspaceClear).toHaveBeenCalledTimes(1);
+    });
+
     it('opens the folder menu from the folder chip', () => {
       renderComposer({ onWorkspacePick: vi.fn(), onWorkspaceClear: vi.fn(), workspaceRoot: 'C:/work/garden' });
       fireEvent.click(screen.getByRole('button', { name: 'garden' }));

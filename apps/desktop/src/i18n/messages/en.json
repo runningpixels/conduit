@@ -2469,7 +2469,7 @@
   "workspace.workflows.notify.saved": "Saved “{title}”",
   "workspace.workflows.notify.unnamed": "A workflow",
   "workspace.workflows.notify.waitingTitle": "{name} is waiting for you",
-  "workspace.workflows.page.about": "A workflow is a list of steps: fetch pages, search the web, ask the model to summarize, and save the result as a document. Each step can use what earlier steps produced. Only the summarize step calls the model, and it can't use tools, so text from a web page can shape a summary but can't make anything happen. Runs are started by hand for now, and every run records what each step did.",
+  "workspace.workflows.page.about": "A workflow is a list of steps that run in order: fetch pages, read files, ask the model, check a condition, save a document, notify you and more. Each step can use what earlier steps produced. Run it by hand, on a schedule, or when a feed or folder gets something new; before it runs on its own, you approve what it may do. An “Ask the model” step has no tools, so text from a web page can shape its answer but can't make anything happen. Every run records what each step did.",
   "workspace.workflows.page.subtitle": "Routines that fetch, summarize and save for you.",
   "workspace.workflows.page.title": "Workflows",
   "workspace.workflows.permissions.agentTools": "Let step “{step}”: {tools}",

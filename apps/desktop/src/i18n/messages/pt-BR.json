@@ -2469,7 +2469,7 @@
   "workspace.workflows.notify.saved": "“{title}” salvo",
   "workspace.workflows.notify.unnamed": "Um fluxo de trabalho",
   "workspace.workflows.notify.waitingTitle": "{name} precisa de você",
-  "workspace.workflows.page.about": "Um fluxo de trabalho é uma lista de etapas: buscar páginas, pesquisar na web, pedir um resumo ao modelo e salvar o resultado como documento. Cada etapa pode usar o que as etapas anteriores produziram. Somente a etapa de resumo chama o modelo, e ela não pode usar ferramentas — então o texto de uma página web pode influenciar um resumo, mas não pode fazer nada acontecer. Por enquanto, as execuções são iniciadas manualmente, e cada execução registra o que cada etapa fez.",
+  "workspace.workflows.page.about": "Um fluxo de trabalho é uma lista de etapas que rodam em ordem: buscar páginas, ler arquivos, perguntar ao modelo, verificar uma condição, salvar um documento, notificar você e mais. Cada etapa pode usar o que as etapas anteriores produziram. Execute-o manualmente, em um agendamento ou quando um feed ou uma pasta receber algo novo; antes que ele rode sozinho, você aprova o que ele pode fazer. Uma etapa “Perguntar ao modelo” não tem ferramentas, então o texto de uma página web pode influenciar a resposta, mas não pode fazer nada acontecer. Cada execução registra o que cada etapa fez.",
   "workspace.workflows.page.subtitle": "Rotinas que buscam, resumem e salvam conteúdo automaticamente.",
   "workspace.workflows.page.title": "Fluxos de trabalho",
   "workspace.workflows.permissions.agentTools": "Permitir à etapa “{step}”: {tools}",

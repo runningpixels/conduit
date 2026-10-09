@@ -2469,7 +2469,7 @@
   "workspace.workflows.notify.saved": "已保存“{title}”",
   "workspace.workflows.notify.unnamed": "工作流",
   "workspace.workflows.notify.waitingTitle": "“{name}”待处理",
-  "workspace.workflows.page.about": "工作流是一系列步骤的列表：获取页面、进行网页搜索、让模型生成总结、并将结果保存为文档。每个步骤都可以使用之前步骤产生的内容。只有总结步骤会调用模型，而且它不能使用工具，所以网页中的文本只能影响总结内容，不能触发任何操作。目前所有运行都需要手动启动，每次运行都会记录每个步骤做了什么。",
+  "workspace.workflows.page.about": "工作流是按顺序运行的一系列步骤：获取页面、读取文件、询问模型、检查条件、保存文档、通知你等。每个步骤都可以使用之前步骤产生的内容。你可以手动运行它、按计划运行，或在订阅源或文件夹出现新内容时运行；在它自动运行之前，你需要批准它可以做哪些事。“询问模型”步骤不能使用工具，所以网页中的文本只能影响它的回答，不能触发任何操作。每次运行都会记录每个步骤做了什么。",
   "workspace.workflows.page.subtitle": "自动获取、总结并保存内容的例程。",
   "workspace.workflows.page.title": "工作流",
   "workspace.workflows.permissions.agentTools": "允许步骤“{step}”：{tools}",

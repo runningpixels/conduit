@@ -2177,6 +2177,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               toolName: event.toolName,
               artifactId:
                 typeof artifactId === 'string' && artifactId.trim() !== '' ? artifactId : undefined,
+              requestId: next.requestId,
             });
           }
         } else if (event.kind === 'toolCallComplete') {

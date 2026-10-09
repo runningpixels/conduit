@@ -10,6 +10,7 @@ import {
   isDocumentCreateTool,
   isDocumentContentTool,
   resolveDocumentArtifactId,
+  resolveWrittenArtifactId,
 } from './agentTools';
 import { enTranslate } from '../test/enTranslate';
 
@@ -117,6 +118,45 @@ describe('document tool activity helpers', () => {
       },
     ];
     expect(resolveDocumentArtifactId(state, listed)).toBe('newest');
+  });
+
+  // Live: the model passed its own slug ('otd') as artifact_id; the tool made
+  // a new artifact under a fresh id, and the panel tried to open 'otd'.
+  const turnArtifacts: Artifact[] = [
+    { id: 'other-turn', conversationId: 'c1', kind: 'html', sourceMessageId: 'm0', createdAt: '2026-01-03T00:00:00Z' },
+    { id: 'real-uuid', conversationId: 'c1', kind: 'html', sourceMessageId: 'm1', createdAt: '2026-01-02T00:00:00Z' },
+    { id: 'notes', conversationId: 'c1', kind: 'markdown', sourceMessageId: 'm1', createdAt: '2026-01-01T00:00:00Z' },
+  ];
+
+  it('resolveDocumentArtifactId ignores a write artifact_id no artifact has, and opens the one the turn wrote', () => {
+    const state = makeStreamState([
+      makeToolCall('write_html_document', { artifact_id: 'otd', html: '<html></html>' }),
+    ]);
+    expect(resolveDocumentArtifactId(state, turnArtifacts, 'm1')).toBe('real-uuid');
+    // Without the turn's message: the newest listed, as for a write with no id.
+    expect(resolveDocumentArtifactId(state, turnArtifacts)).toBe('other-turn');
+  });
+
+  it('resolveDocumentArtifactId keeps a write artifact_id that names a listed artifact', () => {
+    const state = makeStreamState([
+      makeToolCall('write_html_document', { artifact_id: 'real-uuid', html: '<html></html>' }),
+    ]);
+    expect(resolveDocumentArtifactId(state, turnArtifacts, 'm1')).toBe('real-uuid');
+  });
+
+  it('resolveWrittenArtifactId: slug for a write → the turn artifact of that kind; known or edit ids stay', () => {
+    expect(resolveWrittenArtifactId('write_html_document', 'on-this-day.html', turnArtifacts, 'm1')).toBe('real-uuid');
+    expect(resolveWrittenArtifactId('write_markdown_document', 'notes-md', turnArtifacts, 'm1')).toBe('notes');
+    expect(resolveWrittenArtifactId('write_html_document', 'other-turn', turnArtifacts, 'm1')).toBe('other-turn');
+    // No argument: unchanged — the turn's artifact, else the newest listed.
+    expect(resolveWrittenArtifactId('write_html_document', undefined, turnArtifacts, 'm1')).toBe('real-uuid');
+    expect(resolveWrittenArtifactId('write_html_document', undefined, turnArtifacts)).toBe('other-turn');
+    expect(resolveWrittenArtifactId('write_html_document', undefined, [])).toBeUndefined();
+    // An edit or patch on an unknown id fails in the tool; a finished one is real.
+    expect(resolveWrittenArtifactId('edit_html_document', 'existing-1', turnArtifacts)).toBe('existing-1');
+    expect(resolveWrittenArtifactId('patch_document', undefined, turnArtifacts)).toBeUndefined();
+    // An empty list is a failed refresh: keep the argument.
+    expect(resolveWrittenArtifactId('write_html_document', 'otd', [])).toBe('otd');
   });
 });
 

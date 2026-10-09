@@ -1591,7 +1591,7 @@
   "settings.webSearch.hostedOnlyNotice": "Die Anbieter-Sucheinstellungen gelten nur, wenn die Suchquelle auf anbieterseitig gehostet aufgelöst wird.",
   "settings.webSearch.includeSources.help": "Wenn aktiviert, liefert der Anbieter die Rohliste der Quellen zusammen mit den Zitaten. Kann die Antwortgröße erhöhen.",
   "settings.webSearch.includeSources.label": "Quellenliste in Suchergebnissen anzeigen",
-  "settings.webSearch.intro": "Verwende <strong>Suchquelle</strong>, um zwischen anbieterseitig gehosteter Suche und dem lokalen Backend von {appName} (Exa, Tavily, Brave, SearXNG oder DuckDuckGo) zu wählen. Exa funktioniert ohne Schlüssel. Anbieterseitig gehostete Suche kann Kosten beim Anbieter verursachen. Das Suchsymbol im Eingabebereich schaltet die Suche für den Chat ein, bis du sie wieder ausschaltest.",
+  "settings.webSearch.intro": "Verwende <strong>Suchquelle</strong>, um zwischen anbieterseitig gehosteter Suche und dem lokalen Backend von {appName} (Exa, Tavily, Brave, SearXNG oder DuckDuckGo) zu wählen. Exa funktioniert ohne Schlüssel. Anbieterseitig gehostete Suche kann Kosten beim Anbieter verursachen. Das Suchsymbol im Eingabebereich schaltet die Suche für den Chat ein, bis du sie wieder ausschaltest. Solange die Websuche aktiviert ist, kann das Modell in jedem Chat auch eine öffentliche Webseite öffnen, die du nennst – ohne das Suchsymbol.",
   "settings.webSearch.localBackend.brave.help": "Live-Ergebnisse. Erfordert einen API-Schlüssel für Brave Search.",
   "settings.webSearch.localBackend.brave.label": "Brave Search",
   "settings.webSearch.localBackend.duckduckgo.help": "Kein API-Schlüssel. Enzyklopädische Ausschnitte — kein Live-Web-Crawl.",

@@ -832,7 +832,9 @@ pub const MAX_WEB_SEARCH_PER_TURN: u32 = 3;
 /// results (Exa, Tavily, Brave, SearXNG). Live, a question comparing renting a
 /// house against buying a condo in two cities needed more than three.
 pub const MAX_WEB_SEARCH_PER_TURN_FULL: u32 = 8;
-pub const MAX_WEB_FETCH_PER_TURN: u32 = 5;
+/// `web_fetch` calls per agent turn. A front page and the stories or threads
+/// it links to ("read the main stories on Hacker News") needs about a dozen.
+pub const MAX_WEB_FETCH_PER_TURN: u32 = 12;
 /// Rounds in a row whose every call was refused by a web cap before the turn
 /// ends with an error. The refusal tells the model to answer; one that keeps
 /// asking anyway would otherwise run to `max_steps`.
@@ -849,7 +851,7 @@ pub fn max_web_searches_per_turn(backend: provider_core::schema::LocalSearchBack
 const WEB_SEARCH_CAP_REJECT: &str =
     "This turn already used the maximum number of web_search calls. Answer with the results you have (or say search could not cover this query). Do not call web_search again.";
 const WEB_FETCH_CAP_REJECT: &str =
-    "This turn already used the maximum number of web_fetch calls. Answer with the content you have. Do not call web_fetch again.";
+    "This turn already read the maximum number of pages with web_fetch. Finish the task with the pages you have read. Do not call web_fetch again.";
 
 /// Plan web-tool clamps for a round: at most `search_cap` `web_search` (see
 /// [`max_web_searches_per_turn`]) and [`MAX_WEB_FETCH_PER_TURN`] `web_fetch`
@@ -899,7 +901,7 @@ pub fn classify_web_tool_clamps(
 /// per-turn cap ([`MAX_WEB_CAP_ONLY_ROUNDS`] rounds of nothing but refusals).
 pub fn web_cap_stalled_message(search_cap: u32) -> String {
     format!(
-        "The model kept asking to search after this turn's limit of {search_cap} searches, so {} stopped it before it answered. Retry, or ask it to answer from what it has found.",
+        "The model kept asking to search or read pages after this turn's limit of {search_cap} searches and {MAX_WEB_FETCH_PER_TURN} pages, so {} stopped it before it answered. Retry, or ask it to answer from what it has found.",
         crate::brand::app_name()
     )
 }

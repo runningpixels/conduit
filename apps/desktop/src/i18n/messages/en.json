@@ -1591,7 +1591,7 @@
   "settings.webSearch.hostedOnlyNotice": "Provider search options apply only when the search source resolves to provider-hosted.",
   "settings.webSearch.includeSources.help": "When on, the provider returns the raw source list alongside citations. May increase response size.",
   "settings.webSearch.includeSources.label": "Show source list in search results",
-  "settings.webSearch.intro": "Use <strong>Search source</strong> to choose provider-hosted search or {appName}’s local backend (Exa, Tavily, Brave, SearXNG or DuckDuckGo). Exa works without a key. Provider-hosted search may incur provider cost. The search icon in the composer turns search on for the chat until you turn it off.",
+  "settings.webSearch.intro": "Use <strong>Search source</strong> to choose provider-hosted search or {appName}’s local backend (Exa, Tavily, Brave, SearXNG or DuckDuckGo). Exa works without a key. Provider-hosted search may incur provider cost. The search icon in the composer turns search on for the chat until you turn it off. While web search is enabled, the model can also open a public web page you name in any chat, without the search icon.",
   "settings.webSearch.localBackend.brave.help": "Live results. Needs a Brave Search API key.",
   "settings.webSearch.localBackend.brave.label": "Brave Search",
   "settings.webSearch.localBackend.duckduckgo.help": "No API key. Encyclopedic snippets — not a live web crawl.",

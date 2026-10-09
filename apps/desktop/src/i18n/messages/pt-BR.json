@@ -1591,7 +1591,7 @@
   "settings.webSearch.hostedOnlyNotice": "As opções de busca do provedor valem apenas quando a fonte de busca resolve para a busca hospedada pelo provedor.",
   "settings.webSearch.includeSources.help": "Quando ativado, o provedor retorna a lista bruta de fontes junto com as citações. Pode aumentar o tamanho da resposta.",
   "settings.webSearch.includeSources.label": "Mostrar a lista de fontes nos resultados",
-  "settings.webSearch.intro": "Use <strong>Fonte de busca</strong> para escolher entre a busca hospedada pelo provedor ou o backend local do {appName} (Exa, Tavily, Brave, SearXNG ou DuckDuckGo). O Exa funciona sem chave. A busca hospedada pelo provedor pode gerar custo do provedor. O ícone de busca no campo de mensagem ativa a busca para o chat até você desativá-la.",
+  "settings.webSearch.intro": "Use <strong>Fonte de busca</strong> para escolher entre a busca hospedada pelo provedor ou o backend local do {appName} (Exa, Tavily, Brave, SearXNG ou DuckDuckGo). O Exa funciona sem chave. A busca hospedada pelo provedor pode gerar custo do provedor. O ícone de busca no campo de mensagem ativa a busca para o chat até você desativá-la. Enquanto a busca na web estiver ativada, o modelo também pode abrir em qualquer chat uma página web pública que você indicar, sem o ícone de busca.",
   "settings.webSearch.localBackend.brave.help": "Resultados ao vivo. Exige uma chave de API do Brave Search.",
   "settings.webSearch.localBackend.brave.label": "Brave Search",
   "settings.webSearch.localBackend.duckduckgo.help": "Sem chave de API. Trechos enciclopédicos — não é uma varredura ao vivo da web.",

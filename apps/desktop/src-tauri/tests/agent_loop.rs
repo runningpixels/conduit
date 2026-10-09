@@ -1207,6 +1207,25 @@ fn web_search_cap_counts_prior_rounds() {
 }
 
 #[test]
+fn web_fetch_cap_allows_a_dozen_pages_per_turn() {
+    use conduit_desktop::stream_manager::{classify_web_tool_clamps, MAX_WEB_FETCH_PER_TURN};
+    assert_eq!(MAX_WEB_FETCH_PER_TURN, 12);
+    let calls: Vec<_> = (0..13)
+        .map(|i| call("web_fetch", &format!("wf{i}")))
+        .collect();
+    let rejects = classify_web_tool_clamps(&calls, 0, 0, 3);
+    assert!(rejects[..12].iter().all(Option::is_none));
+    assert!(
+        rejects[12].is_some_and(|m| m.contains("Do not call web_fetch again")),
+        "{:?}",
+        rejects[12]
+    );
+    // Prior rounds count too.
+    assert!(classify_web_tool_clamps(&[call("web_fetch", "wf")], 0, 12, 3)[0].is_some());
+    assert!(classify_web_tool_clamps(&[call("web_fetch", "wf")], 0, 11, 3)[0].is_none());
+}
+
+#[test]
 fn real_search_backends_get_a_larger_search_cap() {
     use conduit_desktop::stream_manager::{
         classify_web_tool_clamps, max_web_searches_per_turn, MAX_WEB_SEARCH_PER_TURN,

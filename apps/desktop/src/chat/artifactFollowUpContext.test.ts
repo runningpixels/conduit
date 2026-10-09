@@ -2,16 +2,18 @@ import { describe, expect, it } from 'vitest';
 import type { Artifact } from '../ipc/contracts';
 import type { AssistantStreamState, ToolCallState } from './streamState';
 import {
+  ARTIFACT_SCOPE_CONTENT_CAP,
   buildArtifactEditDeveloperPrompt,
   looksLikeArtifactEditFollowUp,
   looksLikeExplicitNewArtifactRequest,
   resolveFollowUpArtifactContext,
   resolveRecentDocumentArtifactId,
+  resolveTurnDocumentScope,
   shouldIncludeArtifactFollowUpContext,
 } from './artifactFollowUpContext';
 import { baseSystemPrompt, buildProviderRequest } from './ChatView';
 import { CONDUIT_ARTIFACT_SYSTEM_APPENDIX } from './artifactPrompt';
-import { builtinToolDefinitions } from './agentTools';
+import { builtinToolDefinitions, selectBuiltinTurnTools } from './agentTools';
 
 function makeToolCall(name: string, args: Record<string, unknown>): ToolCallState {
   return {
@@ -459,6 +461,117 @@ describe('buildProviderRequest follow-up artifact context', () => {
     const req = buildProviderRequest(baseSettings, 'hello', [], 'c1', []);
     expect(req.systemPrompt).not.toMatch(/write_\*_document|edit_\*_document|patch_document/);
     expect(req.systemPrompt).toContain('No document tools are available for this message');
+  });
+});
+
+describe('a document in scope reaches every follow-up (resolveTurnDocumentScope)', () => {
+  const dashboard: Artifact = {
+    id: '799435b7-aaaa-4bbb-8ccc-dddddddddddd',
+    conversationId: 'c1',
+    kind: 'html',
+    title: 'Ridgewood Weather Dashboard',
+    contentText: '<main><h1>Ridgewood</h1></main>',
+    sourceMessageId: 'a2',
+    createdAt: '2026-10-09T10:00:00Z',
+  };
+  const history = [
+    { role: 'user' as const, content: 'Make a weather dashboard for Paris' },
+    {
+      role: 'assistant' as const,
+      content: 'Here it is.',
+      streamState: makeStreamState([makeToolCall('write_html_document', { title: 'Paris', html: '<p>' })]),
+    },
+  ];
+  const get = async () => dashboard;
+
+  async function turnFor(prompt: string, options: { open?: Artifact | null; listed?: Artifact[]; search?: 'hosted' | null } = {}) {
+    const listed = options.listed ?? [dashboard];
+    const open = options.open === undefined ? dashboard : options.open;
+    const turnHistory = listed.length > 0 ? history : [];
+    const scope = resolveTurnDocumentScope(prompt, turnHistory, listed, open);
+    const { tools } = selectBuiltinTurnTools(prompt, { ...baseSettings }, null, scope.toolIntent);
+    const followUp = await resolveFollowUpArtifactContext(turnHistory, prompt, listed, get, open, {
+      forceEdit: scope.forceEdit,
+      fromScope: scope.fromScope,
+    });
+    const request = buildProviderRequest(
+      baseSettings,
+      prompt,
+      [{ id: 'u9', role: 'user', content: prompt }],
+      'c1',
+      tools,
+      followUp,
+      options.search ?? null,
+    );
+    return { scope, names: tools.map((t) => t.name), followUp, request };
+  }
+
+  it('the question-shaped request from the failed chat gets edit tools and the document id', async () => {
+    const { scope, names, request } = await turnFor('nice, can you make a nice chart in it?', { search: 'hosted' });
+    expect(scope.toolIntent).toBe('edit');
+    expect(names).toEqual(expect.arrayContaining(['edit_html_document', 'patch_document', 'read_document']));
+    expect(names).not.toContain('write_html_document');
+    expect(request.developerPrompt).toContain(`artifact_id: ${dashboard.id}`);
+    expect(request.developerPrompt).toContain('Ridgewood Weather Dashboard');
+    expect(request.developerPrompt).toContain('do not search files for it');
+    expect(request.developerPrompt).not.toContain('Answer in text only');
+    // The artifact appendix stays on a search turn when a document is in scope.
+    expect(request.systemPrompt).toContain('patch_document');
+  });
+
+  it('works the same in another language', async () => {
+    const { names, request } = await turnFor('tu peux ajouter un joli graphique dedans ?');
+    expect(names).toEqual(expect.arrayContaining(['edit_html_document', 'patch_document', 'read_document']));
+    expect(request.developerPrompt).toContain(`artifact_id: ${dashboard.id}`);
+    expect(request.developerPrompt).toContain('in any language');
+  });
+
+  it('the latest document in the chat counts when the panel is closed', async () => {
+    const { names, request } = await turnFor('und jetzt bitte mit Regenradar', { open: null });
+    expect(names).toContain('patch_document');
+    expect(request.developerPrompt).toContain(dashboard.id);
+  });
+
+  it('names a long document instead of pasting it when the turn did not read as an edit', async () => {
+    const long = { ...dashboard, contentText: `<main>${'x'.repeat(ARTIFACT_SCOPE_CONTENT_CAP + 10)}</main>` };
+    const scope = resolveTurnDocumentScope('nice!', history, [long], long);
+    const followUp = await resolveFollowUpArtifactContext(history, 'nice!', [long], async () => long, long, scope);
+    const prompt = buildArtifactEditDeveloperPrompt(followUp!, 'nice!');
+    expect(prompt).toContain(`call read_document with artifact_id "${dashboard.id}"`);
+    expect(prompt).not.toContain('xxxxxxxxxx');
+    // An edit-worded turn still gets the content to patch against.
+    const edit = await resolveFollowUpArtifactContext(history, 'make it dark mode', [long], async () => long, long, {
+      forceEdit: true,
+    });
+    expect(buildArtifactEditDeveloperPrompt(edit!, 'make it dark mode')).toContain('xxxxxxxxxx');
+  });
+
+  it('an explicit request for a new document still gets the create tools', async () => {
+    const { scope, names, followUp } = await turnFor('make a new weather dashboard for Tokyo');
+    expect(scope.toolIntent).toBeUndefined();
+    expect(names).toContain('write_html_document');
+    expect(followUp).toBeUndefined();
+  });
+
+  it('a fresh chat with no document behaves as before', async () => {
+    const { scope, names, followUp, request } = await turnFor('what is the capital of France?', {
+      open: null,
+      listed: [],
+    });
+    expect(scope).toEqual({ toolIntent: undefined, forceEdit: false, fromScope: false });
+    expect(names.some((n) => /document/.test(n))).toBe(false);
+    expect(followUp).toBeUndefined();
+    expect(request.developerPrompt).toContain('Answer in text only');
+    // An edit-sounding prompt with nothing to edit gets no edit-only tool set.
+    expect(resolveTurnDocumentScope('add a summary', [], [], null).toolIntent).toBe('general');
+  });
+
+  it('an app-authored intent wins', () => {
+    expect(resolveTurnDocumentScope('Continue building', history, [dashboard], dashboard, 'edit')).toEqual({
+      toolIntent: 'edit',
+      forceEdit: true,
+      fromScope: false,
+    });
   });
 });
 

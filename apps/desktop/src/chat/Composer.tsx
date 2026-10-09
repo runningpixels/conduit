@@ -88,11 +88,14 @@ export interface ComposerProps {
    *  Absent hides the "+" item. */
   researchOn?: boolean;
   onResearchToggle?: () => void;
-  /** Absolute workspace folder for this conversation, if bound. */
+  /** Absolute workspace folder this conversation's tools use, if any: its own
+   *  or the Settings default. */
   workspaceRoot?: string | null;
+  /** `workspaceRoot` is the default folder from Settings, not one picked for this chat. */
+  workspaceFromSettings?: boolean;
   /** Pick / change folder (parent handles consent). */
   onWorkspacePick?: () => void;
-  /** Clear per-conversation workspace binding. */
+  /** Turn folder access off for this conversation (the default folder too). */
   onWorkspaceClear?: () => void;
   /** Per-conversation generation / instructions override. */
   generationControls?: GenerationControls | null;
@@ -175,6 +178,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   researchOn = false,
   onResearchToggle,
   workspaceRoot = null,
+  workspaceFromSettings = false,
   onWorkspacePick,
   onWorkspaceClear,
   generationControls = null,
@@ -454,6 +458,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const workspaceBound = Boolean(workspaceRoot?.trim());
   const workspaceLabel = workspaceBound ? workspaceFolderLabel(workspaceRoot!) : null;
+  // The Settings default shows like a picked folder, marked as the default, so
+  // a chat never has file access it does not show.
+  const workspaceTitle = workspaceBound
+    ? workspaceFromSettings
+      ? t('chat.composer.workspace.defaultTitle', { path: workspaceRoot! })
+      : workspaceRoot!
+    : null;
   const searchBackend = resolveSearchBackend(
     settings.webSearch.mode,
     settings.activeProvider,
@@ -768,7 +779,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       id: 'workspace',
       label: t('chat.composer.plus.workspace'),
       icon: <FolderIcon />,
-      title: workspaceBound ? workspaceRoot! : t('chat.composer.workspace.unbound'),
+      title: workspaceTitle ?? t('chat.composer.workspace.unbound'),
       disabled: !conversationId,
       onSelect: selectWorkspace,
     });
@@ -826,9 +837,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   if (onWorkspacePick && workspaceBound) {
     chips.push({
       id: 'workspace',
-      label: workspaceLabel!,
+      label: workspaceFromSettings
+        ? t('chat.composer.workspace.defaultChipLabel', { label: workspaceLabel! })
+        : workspaceLabel!,
       icon: <FolderIcon />,
-      title: workspaceRoot!,
+      title: workspaceTitle!,
       onOpen: conversationId ? () => togglePop('workspace') : undefined,
       onRemove: onWorkspaceClear,
       removeLabel: t('chat.composer.chips.removeWorkspace', { label: workspaceLabel }),
@@ -1118,9 +1131,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 label={t('chat.composer.workspace.ariaBound', { label: workspaceLabel ?? '' })}
                 dismissOnOutsidePress
               >
-                <p className="composer-workspace-path" title={workspaceRoot!}>
+                <p className="composer-workspace-path" title={workspaceTitle!}>
                   {workspaceRoot}
                 </p>
+                {workspaceFromSettings ? (
+                  <p className="composer-workspace-note">{t('chat.composer.workspace.defaultNote')}</p>
+                ) : null}
                 <button
                   className="btn"
                   type="button"

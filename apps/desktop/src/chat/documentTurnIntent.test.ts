@@ -23,6 +23,16 @@ describe('looksLikeInformationalQuestion', () => {
   it('does not flag explicit creation requests', () => {
     expect(looksLikeInformationalQuestion('create a new html artifact')).toBe(false);
   });
+
+  it('reads additions to the document as edits, even worded as questions', () => {
+    expect(classifyDocumentTurnIntent('nice, can you make a nice chart in it?')).toBe('edit');
+    expect(classifyDocumentTurnIntent('please include detailed day by day rainfall')).toBe('edit');
+    expect(classifyDocumentTurnIntent('insert a table of the forecast')).toBe('edit');
+    expect(classifyDocumentTurnIntent('draw a graph of the temperatures in the dashboard')).toBe('edit');
+    // Questions about what something includes stay questions.
+    expect(classifyDocumentTurnIntent('what does a balanced diet include?')).toBe('info');
+    expect(classifyDocumentTurnIntent('does the price include tax?')).toBe('info');
+  });
 });
 
 describe('looksLikeArtifactEditFollowUp', () => {

@@ -12,6 +12,18 @@ export type DocumentTurnIntent = 'info' | 'create' | 'edit' | 'general';
 const EDIT_FOLLOW_UP_REGEX =
   /\b(edit|update|change|modify|revise|rewrite|adjust|improve|fix(es|ed)?|tweak|dark\s*mode|light\s*mode|add|remove|make\s+it|turn\s+it|convert|clear|put|shorten|tighten|enlarge|shrink|increase|decrease|reduce|hide|align|cent(er|re)|resize|recolou?r|give\s+(it|the))\b/i;
 
+/* Additions to an existing document that the verbs above miss: "include
+ * detailed rainfall", "insert a table", and making something *in* it — "can
+ * you make a nice chart in it?" read as a question and got no edit tools.
+ * `include` etc. need a following word, and a question about something
+ * ("does the price include tax?") is not read as one. A secondary signal
+ * only: with a document in scope every turn gets the edit tools anyway
+ * (`resolveTurnDocumentScope`). */
+const ASKS_ABOUT_PREFIX_REGEX =
+  /^(what|which|why|when|where|who|how|does|do|did|is|are|was|were|will|would|should|tell me)\b/i;
+const EDIT_ADDITION_REGEX =
+  /\b(include|insert|append|embed)\s+(?!(and|or|but|so|in|on|at|for)\b)\w|\b(make|create|draw|build|plot|show|add|put)\b.*\b(in|into|inside|to)\s+(it|this|that)\b|\b(make|create|draw|build|plot|add)\b.*\b(charts?|graphs?|tables?|sections?)\b.*\b(in|into|inside|to)\s+(it|this|that|the\s+\w+)\b/i;
+
 const INFORMATIONAL_PREFIX_REGEX =
   /^(what|which|how|why|when|where|who|can you|could you|do you|does|are|is|tell me about)\b/i;
 
@@ -24,7 +36,7 @@ function looksLikeDocumentCapabilityQuestion(prompt: string): boolean {
   // follow-ups. Capability questions talk about formats/abilities without an
   // action verb that mutates content — e.g. "can you edit markdown?".
   if (
-    /\b(add|remove|update|change|modify|revise|rewrite|adjust|improve|fix|tweak|make\s+it|turn\s+it|convert)\b/i.test(
+    /\b(add|remove|update|change|modify|revise|rewrite|adjust|improve|fix|tweak|make\s+it|turn\s+it|convert|include|insert|append)\b/i.test(
       trimmed,
     )
   ) {
@@ -42,7 +54,10 @@ export function looksLikeArtifactEditFollowUp(prompt: string): boolean {
   if (!trimmed) return false;
   if (looksLikeArtifactCreationRequest(trimmed)) return false;
   if (looksLikeDocumentCapabilityQuestion(trimmed)) return false;
-  return EDIT_FOLLOW_UP_REGEX.test(trimmed);
+  return (
+    EDIT_FOLLOW_UP_REGEX.test(trimmed) ||
+    (!ASKS_ABOUT_PREFIX_REGEX.test(trimmed) && EDIT_ADDITION_REGEX.test(trimmed))
+  );
 }
 
 /**

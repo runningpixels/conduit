@@ -378,8 +378,12 @@ pub async fn delete_conversation_folder(
         .map_err(|e| e.to_string())
 }
 
-/// Bind or clear the workspace folder for a conversation. `workspace_root`
-/// must be an absolute existing directory, or `null` to clear.
+/// Bind a workspace folder to a conversation, or turn folder access off for
+/// it. `workspace_root` must be an absolute existing directory; binding one
+/// also turns folder access back on. `null` clears the chat's folder and turns
+/// folder access off for this chat, so the Settings default no longer applies
+/// to it either (`conversations::WORKSPACE_DISABLED_KEY`). Never changes the
+/// Settings default.
 #[tauri::command]
 pub async fn set_conversation_workspace(
     state: State<'_, AppState>,
@@ -401,8 +405,14 @@ pub async fn set_conversation_workspace(
         conversations::set_workspace_root(&state.db, &conversation_id, Some(trimmed))
             .await
             .map_err(|e| e.to_string())?;
+        conversations::set_workspace_disabled(&state.db, &conversation_id, false)
+            .await
+            .map_err(|e| e.to_string())?;
     } else {
         conversations::set_workspace_root(&state.db, &conversation_id, None)
+            .await
+            .map_err(|e| e.to_string())?;
+        conversations::set_workspace_disabled(&state.db, &conversation_id, true)
             .await
             .map_err(|e| e.to_string())?;
     }

@@ -1037,15 +1037,29 @@ export function dedupeToolsByName<T extends { name: string }>(tools: T[]): T[] {
   });
 }
 
+/** The settings a turn's workspace folder is resolved from, plus the chat's
+ *  own "folder access off" switch (`conversations.metadata.workspaceDisabled`,
+ *  set by the folder chip's ×). Mirrors `resolve_workspace_root` in Rust's
+ *  `stream_manager.rs`, which enforces the same rule when tools run. */
+export interface WorkspaceRootSettings {
+  workspaceToolsEnabled?: boolean;
+  workspaceRoot?: string | null;
+  workspaceToolsConsentAcknowledged?: boolean;
+  /** Folder access is off for this chat: no folder, not even the Settings default. */
+  chatWorkspaceDisabled?: boolean;
+}
+
+/** True when a conversation's metadata turns folder access off for it. */
+export function conversationWorkspaceDisabled(metadata: Record<string, unknown> | null | undefined): boolean {
+  return metadata?.workspaceDisabled === true;
+}
+
 /** Resolve the active workspace root for a turn (conversation bind wins). */
 export function resolveActiveWorkspaceRoot(
   conversationRoot: string | null | undefined,
-  settings: {
-    workspaceToolsEnabled?: boolean;
-    workspaceRoot?: string | null;
-    workspaceToolsConsentAcknowledged?: boolean;
-  },
+  settings: WorkspaceRootSettings,
 ): string | null {
+  if (settings.chatWorkspaceDisabled) return null;
   const fromConversation = conversationRoot?.trim() || null;
   if (fromConversation) return fromConversation;
   if (
@@ -1060,11 +1074,7 @@ export function resolveActiveWorkspaceRoot(
 
 /** Workspace file tools — when a conversation or settings default root is active. */
 export function selectBuiltinWorkspaceTools(
-  settings: {
-    workspaceToolsEnabled?: boolean;
-    workspaceRoot?: string | null;
-    workspaceToolsConsentAcknowledged?: boolean;
-  },
+  settings: WorkspaceRootSettings,
   conversationRoot?: string | null,
 ): ToolDefinition[] {
   if (!resolveActiveWorkspaceRoot(conversationRoot, settings)) {
@@ -1298,10 +1308,7 @@ export function mentionsWorkspaceFileTarget(prompt: string): boolean {
  */
 export function selectBuiltinTurnTools(
   prompt: string,
-  settings: {
-    workspaceToolsEnabled?: boolean;
-    workspaceRoot?: string | null;
-    workspaceToolsConsentAcknowledged?: boolean;
+  settings: WorkspaceRootSettings & {
     memoryEnabled: boolean;
     /** t0-8 M4: the active chat provider. Used only to gate `generate_image`
      *  on provider capability (`defaultImageModel`) -- never the active chat
@@ -1396,57 +1403,151 @@ export function selectBuiltinTurnTools(
   };
 }
 
-/**
- * Model-facing note for a turn whose only output was document writes, e.g.
- * `[Wrote HTML document "Solar System Field Guide" with write_html_document.]`.
- *
- * Success is judged as "complete and not failed or cancelled" rather than
- * `status === 'completed'`: execution-finished events are not persisted, so a
- * reloaded turn has no status at all. Empty when there is nothing to report.
- */
-export function documentWritesHistoryNote(state: AssistantStreamState | undefined): string {
-  if (!state) return '';
-  return state.toolCalls
-    .filter(
-      (tc) =>
-        isDocumentContentTool(tc.name) &&
-        tc.complete &&
-        tc.status !== 'failed' &&
-        tc.status !== 'cancelled',
-    )
-    .map((tc) => {
-      if (isDocumentPatchTool(tc.name)) {
-        const edits = Array.isArray(tc.arguments?.edits) ? tc.arguments.edits.length : 0;
-        return `[Patched a document with patch_document (${edits} edit${edits === 1 ? '' : 's'}).]`;
-      }
-      const verb = tc.name.startsWith('edit_') ? 'Updated' : 'Wrote';
-      const kind = KIND_BY_TOOL[tc.name] === 'html' ? 'HTML' : KIND_BY_TOOL[tc.name] === 'markdown' ? 'Markdown' : 'text';
-      const title = typeof tc.arguments?.title === 'string' && tc.arguments.title.trim() ? ` "${tc.arguments.title.trim()}"` : '';
-      return `[${verb} ${kind} document${title} with ${tc.name}.]`;
-    })
-    .join('\n');
+/** Tool calls one history note lists before it summarizes the rest. */
+export const TOOL_HISTORY_NOTE_MAX_ENTRIES = 8;
+/** Longest URL, path or query a history note quotes. */
+const TOOL_HISTORY_NOTE_MAX_VALUE_CHARS = 100;
+
+/** The artifact fields a history note needs to name a document. */
+export type HistoryNoteArtifact = Pick<Artifact, 'id' | 'kind' | 'title' | 'sourceMessageId' | 'createdAt'>;
+
+/** Success is judged as "complete and not failed or cancelled" rather than
+ *  `status === 'completed'`: execution-finished events are not persisted, so a
+ *  reloaded turn has no status at all. */
+function toolCallSucceeded(tc: ToolCallState): boolean {
+  return tc.complete && tc.status !== 'failed' && tc.status !== 'cancelled';
+}
+
+function clipNoteValue(value: string): string {
+  const flat = value.replace(/\s+/g, ' ').trim();
+  return flat.length <= TOOL_HISTORY_NOTE_MAX_VALUE_CHARS
+    ? flat
+    : `${flat.slice(0, TOOL_HISTORY_NOTE_MAX_VALUE_CHARS - 1)}…`;
+}
+
+function stringArg(tc: ToolCallState, name: string): string | undefined {
+  const value = tc.arguments?.[name];
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+}
+
+function kindWord(kind: string | undefined): string {
+  return kind === 'html' ? 'HTML' : kind === 'markdown' ? 'Markdown' : 'text';
 }
 
 /**
- * A line saying a past turn used the web, for the history the next request
- * carries. Tool calls never reach history, so a later turn without search
- * read an earlier, cited answer as unsourced and told the user it had made the
- * findings up. Hosted searches count too: they arrive as `web_search` records.
+ * The artifact each successful `write_*_document` call of a turn created.
+ * Tool results are not kept on the turn, but every document a turn writes
+ * records the turn's message as its source: the turn's writes are matched to
+ * those artifacts by kind, then title, in order. A write that named an
+ * existing artifact keeps that id.
  */
-export function webToolsHistoryNote(state: AssistantStreamState | undefined): string {
+function artifactsWrittenByTurn(
+  calls: ToolCallState[],
+  turnId: string | undefined,
+  artifacts: readonly HistoryNoteArtifact[],
+): Map<string, HistoryNoteArtifact> {
+  const byCall = new Map<string, HistoryNoteArtifact>();
+  const fromTurn = turnId
+    ? artifacts
+        .filter((a) => a.sourceMessageId === turnId)
+        .slice()
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    : [];
+  const used = new Set<string>();
+  for (const tc of calls) {
+    if (!isDocumentCreateTool(tc.name)) continue;
+    const named = stringArg(tc, 'artifact_id');
+    const existing = named ? artifacts.find((a) => a.id === named) : undefined;
+    if (existing) {
+      byCall.set(tc.toolCallId, existing);
+      continue;
+    }
+    const kind = KIND_BY_TOOL[tc.name];
+    const title = stringArg(tc, 'title');
+    const candidates = fromTurn.filter((a) => a.kind === kind && !used.has(a.id));
+    const match = candidates.find((a) => title !== undefined && a.title?.trim() === title) ?? candidates[0];
+    if (match) {
+      used.add(match.id);
+      byCall.set(tc.toolCallId, match);
+    }
+  }
+  return byCall;
+}
+
+function documentLabel(kind: string | undefined, title: string | undefined, artifactId: string | undefined): string {
+  const named = title ? ` "${clipNoteValue(title)}"` : '';
+  const id = artifactId ? ` (artifact_id ${artifactId})` : '';
+  return `${kindWord(kind)} document${named}${id}`;
+}
+
+function describeToolCallForHistory(
+  tc: ToolCallState,
+  written: Map<string, HistoryNoteArtifact>,
+  artifacts: readonly HistoryNoteArtifact[],
+): string {
+  const artifactId = stringArg(tc, 'artifact_id');
+  const listed = artifactId ? artifacts.find((a) => a.id === artifactId) : undefined;
+  if (isDocumentCreateTool(tc.name)) {
+    const created = written.get(tc.toolCallId);
+    return `${tc.name}: created ${documentLabel(
+      KIND_BY_TOOL[tc.name],
+      stringArg(tc, 'title') ?? created?.title,
+      created?.id ?? artifactId,
+    )}`;
+  }
+  if (tc.name.startsWith('edit_') && KIND_BY_TOOL[tc.name]) {
+    return `${tc.name}: rewrote ${documentLabel(KIND_BY_TOOL[tc.name], stringArg(tc, 'title') ?? listed?.title, artifactId)}`;
+  }
+  if (isDocumentPatchTool(tc.name)) {
+    const edits = Array.isArray(tc.arguments?.edits) ? tc.arguments.edits.length : 0;
+    return `patch_document: changed ${edits} part${edits === 1 ? '' : 's'} of ${documentLabel(listed?.kind, listed?.title, artifactId)}`;
+  }
+  if (tc.name === 'read_document' || tc.name === 'export_document') {
+    const verb = tc.name === 'read_document' ? 'read' : 'exported';
+    return `${tc.name}: ${verb} ${documentLabel(listed?.kind, listed?.title, artifactId)}`;
+  }
+  const detail =
+    tc.name === 'web_fetch'
+      ? stringArg(tc, 'url')
+      : tc.name === 'web_search'
+        ? stringArg(tc, 'query')
+        : WORKSPACE_TOOL_NAMES.has(tc.name)
+          ? (stringArg(tc, 'path') ?? stringArg(tc, 'pattern'))
+          : undefined;
+  if (!detail) return tc.name;
+  return tc.name === 'web_search' ? `web_search: "${clipNoteValue(detail)}"` : `${tc.name}: ${clipNoteValue(detail)}`;
+}
+
+/**
+ * A factual record of the tools an earlier assistant turn called, for the
+ * history the next request carries. History carries display text only, so
+ * without it the model could not see that it had written a document — and
+ * once, finding no file for the dashboard it had built two turns earlier, it
+ * decided its own earlier replies were made up and started over. Writes and
+ * edits name the document and its artifact_id so a follow-up can edit it.
+ *
+ * Lists at most `TOOL_HISTORY_NOTE_MAX_ENTRIES` calls; never tool results.
+ * Empty when the turn called no tool successfully.
+ */
+export function toolActivityHistoryNote(
+  state: AssistantStreamState | undefined,
+  options: { turnId?: string; artifacts?: readonly HistoryNoteArtifact[] } = {},
+): string {
   if (!state) return '';
-  const done = (name: string) =>
-    state.toolCalls.filter(
-      (tc) => tc.name === name && tc.complete && tc.status !== 'failed' && tc.status !== 'cancelled',
-    ).length;
-  const searches = done('web_search');
-  const fetches = done('web_fetch');
-  if (searches === 0 && fetches === 0) return '';
-  const parts = [
-    searches > 0 ? `searched the web ${searches} time${searches === 1 ? '' : 's'}` : '',
-    fetches > 0 ? `read ${fetches} page${fetches === 1 ? '' : 's'} with web_fetch` : '',
-  ].filter(Boolean);
-  return `[This reply ${parts.join(' and ')}; its findings and links came from those real results.]`;
+  const calls = state.toolCalls.filter(toolCallSucceeded);
+  if (calls.length === 0) return '';
+  const artifacts = options.artifacts ?? [];
+  const written = artifactsWrittenByTurn(calls, options.turnId, artifacts);
+  const shown = calls.slice(0, TOOL_HISTORY_NOTE_MAX_ENTRIES).map((tc) => describeToolCallForHistory(tc, written, artifacts));
+  const more = calls.length - shown.length;
+  const usedWeb = calls.some((tc) => tc.name === 'web_search' || tc.name === 'web_fetch');
+  return [
+    `[App record of the tools you called in this reply: ${shown.join('; ')}`,
+    more > 0 ? `; and ${more} more tool call${more === 1 ? '' : 's'}.` : '.',
+    ' These calls really happened; their results are not repeated here.',
+    usedWeb ? ' Findings and links in this reply came from those real results.' : '',
+    ']',
+  ].join('');
 }
 
 /** Document calls that changed a document. Reads and exports used to count,

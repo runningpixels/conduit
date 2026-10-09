@@ -2469,7 +2469,7 @@
   "workspace.workflows.notify.saved": "«{title}» guardado",
   "workspace.workflows.notify.unnamed": "Un flujo de trabajo",
   "workspace.workflows.notify.waitingTitle": "{name} te necesita",
-  "workspace.workflows.page.about": "Un flujo de trabajo es una lista de pasos: obtener páginas, buscar en la web, pedirle al modelo que resuma y guardar el resultado como documento. Cada paso puede usar lo que generaron los pasos anteriores. Solo el paso de resumen llama al modelo y no puede usar herramientas, así que el texto de una página web puede dar forma a un resumen, pero no puede hacer que ocurra nada. Por ahora, las ejecuciones se inician manualmente, y cada ejecución registra lo que hizo cada paso.",
+  "workspace.workflows.page.about": "Un flujo de trabajo es una lista de pasos que se ejecutan en orden: obtener páginas, leer archivos, preguntar al modelo, comprobar una condición, guardar un documento, avisarte y más. Cada paso puede usar lo que generaron los pasos anteriores. Ejecútalo a mano, según una programación o cuando un feed o una carpeta reciban algo nuevo; antes de que se ejecute solo, apruebas lo que puede hacer. Un paso «Preguntar al modelo» no tiene herramientas, así que el texto de una página web puede dar forma a su respuesta, pero no puede hacer que ocurra nada. Cada ejecución registra lo que hizo cada paso.",
   "workspace.workflows.page.subtitle": "Rutinas que buscan, resumen y guardan para ti.",
   "workspace.workflows.page.title": "Flujos de trabajo",
   "workspace.workflows.permissions.agentTools": "Permitir al paso «{step}»: {tools}",

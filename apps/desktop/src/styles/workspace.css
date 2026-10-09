@@ -893,6 +893,27 @@ html[data-panel-overlay="open"] .body > .doc-panel {
 .idea-card-cost { border-style: dashed !important; }
 .idea-card-actions { margin-top: 4px; }
 .idea-card-off { font-size: var(--fs-xl); color: var(--ink-3); }
+/* Free APIs: one row per service, text left, docs and Try right. */
+.free-apis { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.free-api {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.free-api-text { display: grid; gap: 2px; min-width: 0; flex: 1 1 260px; }
+.free-api h4 { margin: 0; font-size: var(--fs-3xl); font-weight: 600; color: var(--ink); }
+.free-api p { margin: 0; font-size: var(--fs-xl); line-height: 1.45; color: var(--ink-2); }
+.free-api .free-api-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: var(--fs-md); color: var(--ink-3); }
+.free-api-hosts { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
+.free-api-actions { display: grid; gap: 6px; justify-items: end; }
+.free-api-buttons { display: flex; gap: 6px; align-items: center; }
+.free-api-idea { font-size: var(--fs-md); color: var(--ink-3); }
 .ideas-footer {
   display: grid;
   gap: 8px;

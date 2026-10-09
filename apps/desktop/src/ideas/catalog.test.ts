@@ -17,8 +17,13 @@ describe('ideas catalog', () => {
       for (const need of idea.needs) expect(CAPABILITIES).toContain(need);
       expect(idea.addedIn).toBeGreaterThan(0);
       expect(idea.addedIn).toBeLessThanOrEqual(IDEAS_REVISION);
-      expect(idea.verified.on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // Absent until the live battery has passed this prompt; never a placeholder.
+      if (idea.verified) expect(idea.verified.on, idea.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
+  });
+
+  it('marks ideas added in this revision as new', () => {
+    expect(IDEAS.some((i) => i.addedIn === IDEAS_REVISION)).toBe(true);
   });
 
   it('has a title, blurb and prompt for every idea, and a label for every category', () => {

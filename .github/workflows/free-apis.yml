@@ -1,0 +1,30 @@
+name: Free APIs
+
+# The ideas catalogue builds pages on free public APIs
+# (apps/desktop/src/ideas/freeApis.json). Services move (Frankfurter changed
+# host) or start asking for keys; this checks each example request weekly so
+# a broken idea is caught before a user picks it.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # No dependencies to install: the check is plain Node.
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Check free APIs
+        run: node scripts/check-free-apis.mjs

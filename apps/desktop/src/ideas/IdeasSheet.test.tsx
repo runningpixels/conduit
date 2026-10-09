@@ -6,10 +6,13 @@ vi.mock('../ipc/client', () => ({
   deletePrompt: vi.fn(),
   listPromptFolders: vi.fn(async () => []),
   listPrompts: vi.fn(async () => []),
+  openExternalUrl: vi.fn(async () => {}),
   updatePrompt: vi.fn(),
 }));
 
+import { openExternalUrl } from '../ipc/client';
 import { IdeasSheet } from './IdeasSheet';
+import { FREE_APIS } from './freeApis';
 import { resolveCapabilities } from './capabilities';
 import { IDEAS, IDEAS_REVISION } from './catalog';
 import { __resetIdeaStateForTests, getIdeaState, notePicked, noteFirstMessage, updateIdeaState } from './ideaState';
@@ -106,6 +109,41 @@ describe('IdeasSheet', () => {
     );
     expect(getIdeaState().spotlight).toEqual([]);
     expect(getIdeaState().seenRevision).toBe(IDEAS_REVISION);
+  });
+
+  it('lists the free APIs, opens their docs, and starts the idea built on one', () => {
+    const { onTry, onSetup } = sheet();
+    fireEvent.click(screen.getByRole('tab', { name: 'Free APIs' }));
+    const list = screen.getByRole('region', { name: 'Free APIs' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(FREE_APIS.length);
+    expect(within(list).getByText('Open-Meteo')).toBeTruthy();
+    expect(within(list).getByText('Recent earthquakes worldwide')).toBeTruthy();
+    expect(within(list).getAllByText('60 requests an hour').length).toBeGreaterThan(0);
+
+    fireEvent.click(within(list).getByRole('button', { name: 'Open the USGS Earthquakes docs' }));
+    expect(openExternalUrl).toHaveBeenCalledWith('https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php');
+
+    fireEvent.click(within(list).getByRole('button', { name: 'Try Earthquake tracker, built on USGS Earthquakes' }));
+    expect(onTry).toHaveBeenCalledWith(expect.objectContaining({ id: 'earthquakeTracker' }));
+    expect(onSetup).not.toHaveBeenCalled();
+  });
+
+  it('asks to let pages connect before a free API idea can run', () => {
+    const { onTry, onSetup } = sheet({ caps: caps({ artifactNetworkEnabled: false }) });
+    fireEvent.click(screen.getByRole('tab', { name: 'Free APIs' }));
+    const row = screen.getByText('Frankfurter').closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Let pages connect' }));
+    expect(onSetup).toHaveBeenCalledWith('privacy');
+    expect(onTry).not.toHaveBeenCalled();
+  });
+
+  it('shows Free APIs as a list entry on the Ideas page, and names the API on cards', () => {
+    sheet({ variant: 'page' });
+    expect(screen.getAllByText('Frankfurter · no key').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: /^Free APIs/ }));
+    expect(screen.getByRole('region', { name: 'Free APIs' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    expect(screen.queryByRole('region', { name: 'Free APIs' })).toBeNull();
   });
 
   it('shows saved prompts under My prompts', async () => {

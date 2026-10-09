@@ -1481,7 +1481,7 @@
   "settings.updates.channel.label": "Canal",
   "settings.updates.channel.stable": "Estable",
   "settings.updates.checkbox.allow": "Permitir búsqueda de actualizaciones",
-  "settings.updates.disclosure.body": "{appName} contacta con el servidor de actualizaciones solo cuando se lo pides, o una vez al día aproximadamente si elegiste una opción automática arriba — nunca con datos que te identifiquen. Se envía: tu versión de {appName}, las notas de la versión y la URL de descarga. Las actualizaciones se verifican por firma y solo se aplican después de que un simulacro de migración confirme que tus datos locales están a salvo. Una actualización automática espera a que cierres; {appName} nunca se reinicia solo.",
+  "settings.updates.disclosure.body": "{appName} contacta con el servidor de actualizaciones solo cuando se lo pides, o una vez al día aproximadamente si elegiste una opción automática arriba — nunca con datos que te identifiquen. Una comprobación descarga un archivo pequeño que indica la versión más reciente, sus notas de la versión y su enlace de descarga; la solicitud solo lleva el nombre y la versión del actualizador, nada sobre ti ni tus datos. Las actualizaciones se verifican por firma y solo se aplican después de que un simulacro de migración confirme que tus datos locales están a salvo. Una actualización automática espera a que cierres; {appName} nunca se reinicia solo.",
   "settings.updates.header.title": "Actualizaciones",
   "settings.updates.lastChecked": "Última comprobación: {when}.",
   "settings.updates.noCheckYet.hint": "Aún no se ha buscado ninguna actualización — usar «{action}».",

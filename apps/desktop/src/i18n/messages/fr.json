@@ -1481,7 +1481,7 @@
   "settings.updates.channel.label": "Canal",
   "settings.updates.channel.stable": "Stable",
   "settings.updates.checkbox.allow": "Autoriser la vérification des mises à jour",
-  "settings.updates.disclosure.body": "{appName} contacte le serveur de mises à jour uniquement à votre demande, ou environ une fois par jour si vous avez choisi une option automatique ci-dessus — jamais avec quoi que ce soit qui vous identifie. Envoyé : votre version de {appName}, les notes de version et l'URL de téléchargement. Les mises à jour sont vérifiées par signature et appliquées seulement après qu'un essai de migration a confirmé que vos données locales ne risquent rien. Une mise à jour automatique attend que vous quittiez l'application ; {appName} ne redémarre jamais de lui-même.",
+  "settings.updates.disclosure.body": "{appName} contacte le serveur de mises à jour uniquement à votre demande, ou environ une fois par jour si vous avez choisi une option automatique ci-dessus — jamais avec quoi que ce soit qui vous identifie. Une vérification télécharge un petit fichier qui indique la version la plus récente, ses notes de version et son lien de téléchargement ; la requête ne contient que le nom et la version du programme de mise à jour, rien sur vous ni sur vos données. Les mises à jour sont vérifiées par signature et appliquées seulement après qu'un essai de migration a confirmé que vos données locales ne risquent rien. Une mise à jour automatique attend que vous quittiez l'application ; {appName} ne redémarre jamais de lui-même.",
   "settings.updates.header.title": "Mises à jour",
   "settings.updates.lastChecked": "Dernière vérification : {when}.",
   "settings.updates.noCheckYet.hint": "Aucune mise à jour vérifiée pour l’instant — utilisez « {action} ».",

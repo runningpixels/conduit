@@ -11,7 +11,7 @@
 # in `_sqlx_migrations` in every existing database. Their bytes must never be
 # rewritten by a line-ending conversion, or every user's DB fails to open.
 # If you ever DO change a migration's bytes, regenerate the fixtures:
-#   cargo run -p conduit-desktop --bin generate-migration-fixture
+#   cargo run -p conduit-desktop --features migration-fixture --bin generate-migration-fixture
 apps/desktop/src-tauri/migrations/** -text
 
 # Windows-only scripts need CRLF.

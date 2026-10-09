@@ -176,6 +176,12 @@ tauri-build = { version = "2.0", features = [] }
 # the host target that runs build scripts.
 serde_json = "1.0"
 
+[features]
+# Dev-only tooling. Tauri's bundler packages every [[bin]] target, so the
+# fixture generator is opt-in to keep it out of the installer.
+migration-fixture = []
+
 [[bin]]
 name = "generate-migration-fixture"
 path = "src/bin/generate_migration_fixture.rs"
+required-features = ["migration-fixture"]

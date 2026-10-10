@@ -312,15 +312,43 @@ pub fn call_has_more_to_write(call: &CompletedToolCall) -> bool {
         == Some(true)
 }
 
+/// A section placeholder left for a later call: `<!-- section: name -->`, or
+/// inside `<style>`/`<script>`, where an HTML comment can't go,
+/// `/* section: name */`.
+static SECTION_PLACEHOLDER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"(?i)(<!--|/\*)\s*section\s*:").expect("static regex")
+});
+
+/// True when a call saved a whole document that still has section
+/// placeholders: a skeleton the model means to fill, whether or not it set
+/// `more_to_write`. Patches carry only the changed text, so they are judged by
+/// the flag alone.
+pub fn call_leaves_placeholders(call: &CompletedToolCall) -> bool {
+    [
+        "html",
+        "updated_html",
+        "markdown",
+        "updated_markdown",
+        "text",
+        "updated_text",
+    ]
+    .iter()
+    .filter_map(|key| call.arguments.get(*key).and_then(|v| v.as_str()))
+    .any(|content| SECTION_PLACEHOLDER.is_match(content))
+}
+
 /// True when a round did nothing but write documents, and every write
 /// succeeded — the case where another provider round would only have the model
 /// confirm what it wrote. Any failure, any other tool, or a write the model
-/// said it will keep building needs the model again.
+/// will keep building (flagged, or a skeleton with placeholders) needs the
+/// model again.
 pub fn round_only_wrote_documents(calls: &[CompletedToolCall], writes_succeeded: u32) -> bool {
     !calls.is_empty()
-        && calls
-            .iter()
-            .all(|call| is_document_content_tool(&call.name) && !call_has_more_to_write(call))
+        && calls.iter().all(|call| {
+            is_document_content_tool(&call.name)
+                && !call_has_more_to_write(call)
+                && !call_leaves_placeholders(call)
+        })
         && writes_succeeded as usize == calls.len()
 }
 
@@ -4031,6 +4059,56 @@ mod local_only_tests {
             ensure_provider_allowed(&settings(false), adapter(id).as_ref(), id)
                 .unwrap_or_else(|e| panic!("{id} should be allowed: {e}"));
         }
+    }
+}
+
+#[cfg(test)]
+mod document_round_tests {
+    use super::{round_only_wrote_documents, CompletedToolCall};
+    use serde_json::json;
+
+    fn call(name: &str, arguments: serde_json::Value) -> CompletedToolCall {
+        CompletedToolCall {
+            tool_call_id: "c1".into(),
+            tool_id: None,
+            name: name.into(),
+            arguments,
+        }
+    }
+
+    #[test]
+    fn a_finished_write_ends_the_round() {
+        let done = call("write_html_document", json!({ "html": "<p>Done.</p>" }));
+        assert!(round_only_wrote_documents(&[done], 1));
+    }
+
+    #[test]
+    fn a_skeleton_with_placeholders_keeps_the_turn_going() {
+        // Seen live: a skeleton with CSS/JS placeholders and no more_to_write.
+        let script = call(
+            "write_html_document",
+            json!({ "html": "<style>/* section: styles */</style><script>/* Section: core */</script>" }),
+        );
+        let html = call(
+            "edit_html_document",
+            json!({ "artifact_id": "a", "updated_html": "<main><!-- section: moons --></main>" }),
+        );
+        let markdown = call(
+            "write_markdown_document",
+            json!({ "markdown": "# Plan\n\n<!--section:budget-->" }),
+        );
+        for c in [script, html, markdown] {
+            assert!(!round_only_wrote_documents(&[c], 1));
+        }
+    }
+
+    #[test]
+    fn the_flag_still_keeps_the_turn_going() {
+        let flagged = call(
+            "write_html_document",
+            json!({ "html": "<p>Part one.</p>", "more_to_write": true }),
+        );
+        assert!(!round_only_wrote_documents(&[flagged], 1));
     }
 }
 

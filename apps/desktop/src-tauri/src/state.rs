@@ -473,6 +473,9 @@ impl AppState {
         if let Some(value) = patch.artifact_network_enabled {
             settings.artifact_network_enabled = value;
         }
+        if let Some(value) = patch.artifact_full_web_access {
+            settings.artifact_full_web_access = Some(value);
+        }
         if let Some(value) = patch.close_to_tray {
             settings.close_to_tray = value;
         }
@@ -828,6 +831,37 @@ mod tests {
         assert!(settings.artifact_remote_allowlist.is_empty());
         // The same older file has no spend alert either: off, not $0.
         assert_eq!(settings.daily_spend_alert_usd, None);
+        // Nor full web access for every page: off.
+        assert_eq!(settings.artifact_full_web_access, None);
+    }
+
+    #[test]
+    fn full_web_access_for_every_page_round_trips_and_a_patch_without_it_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(dir.path());
+        let on: SettingsPatch = serde_json::from_str(r#"{"artifactFullWebAccess":true}"#).unwrap();
+        assert_eq!(on.artifact_full_web_access, Some(true));
+        let absent: SettingsPatch = serde_json::from_str("{}").unwrap();
+        assert_eq!(absent.artifact_full_web_access, None);
+
+        let settings = AppSettings {
+            artifact_full_web_access: Some(true),
+            ..AppSettings::default()
+        };
+        write_settings(&paths, &settings).unwrap();
+        assert_eq!(
+            read_settings(&paths).unwrap().artifact_full_web_access,
+            Some(true)
+        );
+        let off = AppSettings {
+            artifact_full_web_access: Some(false),
+            ..settings
+        };
+        write_settings(&paths, &off).unwrap();
+        assert_eq!(
+            read_settings(&paths).unwrap().artifact_full_web_access,
+            Some(false)
+        );
     }
 
     #[test]

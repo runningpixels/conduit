@@ -1,7 +1,8 @@
 /// The reader's side of artifact network access (ADR-010): a banner when a
 /// page asks for a site, the consent dialog that shows where it will connect
 /// and what it sends, and the header chip listing every site with its
-/// requests.
+/// requests. Also the offer of full web access (ADR-007) when the page tried
+/// to load something its CSP stopped.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusTrap } from '../shell/useFocusTrap';
@@ -9,13 +10,19 @@ import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { GlobeIcon } from '../icons';
 import { hostLabel, type DeclaredHost } from '../artifacts/networkHosts';
+import { groupBlockedLoads, type BlockedLoad, type BlockedLoadKind } from '../artifacts/blockedLoads';
 import type { ArtifactNetworkState } from '../ipc/client';
-import { ANY_SITE, type NetworkDecision, type NetworkLogEntry, type PendingSite } from './useArtifactNetwork';
+import { ANY_SITE, FULL_WEB_ACCESS, type NetworkDecision, type NetworkLogEntry, type PendingSite } from './useArtifactNetwork';
 
 /** A site as the reader sees it; the any-site grant reads as words. */
 export function useSiteLabel(): (origin: string) => string {
   const t = useT();
-  return (origin) => (origin === ANY_SITE ? t('artifacts.network.anySite') : hostLabel(origin));
+  return (origin) =>
+    origin === ANY_SITE
+      ? t('artifacts.network.anySite')
+      : origin === FULL_WEB_ACCESS
+        ? t('artifacts.fullAccess.label')
+        : hostLabel(origin);
 }
 
 // ── Banner ───────────────────────────────────────────────────────────────────
@@ -255,9 +262,10 @@ export function ArtifactNetworkChip({
 
   const rows = useMemo<SiteRow[]>(() => {
     // A site covered by the any-site grant shows that grant's status.
-    const has = (list: string[] | undefined, origin: string) => !!list && (list.includes(origin) || list.includes(ANY_SITE));
+    const has = (list: string[] | undefined, origin: string) =>
+      !!list && (list.includes(origin) || list.includes(ANY_SITE) || list.includes(FULL_WEB_ACCESS));
     const status = (origin: string): SiteStatus =>
-      has(state?.always, origin)
+      has(state?.always, origin) || state?.fullAccess
         ? 'always'
         : has(state?.session, origin)
           ? 'session'
@@ -352,6 +360,137 @@ export function ArtifactNetworkChip({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Full web access (ADR-007) ───────────────────────────────────────────────
+
+const BLOCKED_KIND_KEYS: Record<BlockedLoadKind, string> = {
+  scripts: 'artifacts.fullAccess.kind.scripts',
+  styles: 'artifacts.fullAccess.kind.styles',
+  images: 'artifacts.fullAccess.kind.images',
+  fonts: 'artifacts.fullAccess.kind.fonts',
+  media: 'artifacts.fullAccess.kind.media',
+  connections: 'artifacts.fullAccess.kind.connections',
+  frames: 'artifacts.fullAccess.kind.frames',
+};
+
+/** "scripts from cdnjs.cloudflare.com, images from upload.wikimedia.org". */
+function useBlockedSummary(): (blocked: readonly BlockedLoad[]) => string[] {
+  const t = useT();
+  return (blocked) =>
+    groupBlockedLoads(blocked).map(({ kind, hosts }) => t(BLOCKED_KIND_KEYS[kind], { hosts: hosts.join(', ') }));
+}
+
+export function FullAccessBanner({
+  blocked,
+  onReview,
+  onNotNow,
+}: {
+  blocked: readonly BlockedLoad[];
+  onReview: () => void;
+  onNotNow: () => void;
+}) {
+  const t = useT();
+  const summary = useBlockedSummary();
+  if (blocked.length === 0) return null;
+  const what = summary(blocked).join('; ');
+  return (
+    <div className="doc-banner hold artifact-network-banner artifact-full-access-banner" role="status">
+      <span className="artifact-network-banner-text" title={what}>
+        <GlobeIcon />
+        {t('artifacts.fullAccess.banner', { blocked: what })}
+      </span>
+      <div className="row">
+        <button type="button" className="btn ghost" onClick={onNotNow}>
+          {t('artifacts.network.banner.notNow')}
+        </button>
+        <button type="button" className="btn primary" onClick={onReview}>
+          {t('artifacts.network.banner.review')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function FullAccessDialog({
+  open,
+  title,
+  blocked,
+  onAllow,
+  onNotNow,
+}: {
+  open: boolean;
+  title: string | null;
+  blocked: readonly BlockedLoad[];
+  onAllow: () => void;
+  onNotNow: () => void;
+}) {
+  const t = useT();
+  const summary = useBlockedSummary();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useFocusTrap(dialogRef, open);
+
+  useEffect(() => {
+    if (!open) return;
+    cancelRef.current?.focus();
+    // Capture phase: the panel's own Escape (close the document) must not see
+    // this one.
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onNotNow();
+      }
+    }
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [open, onNotNow]);
+
+  if (!open) return null;
+  const lines = summary(blocked);
+
+  return (
+    <div className="consent-overlay artifact-network-overlay" role="presentation">
+      <div
+        ref={dialogRef}
+        className="consent-dialog artifact-network-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="artifact-full-access-title"
+        aria-describedby="artifact-full-access-risk"
+      >
+        <h2 id="artifact-full-access-title">
+          {title
+            ? t('artifacts.fullAccess.dialog.title', { title })
+            : t('artifacts.fullAccess.dialog.titleUntitled')}
+        </h2>
+        {lines.length > 0 && (
+          <div className="artifact-full-access-blocked">
+            <span className="artifact-network-label">{t('artifacts.fullAccess.dialog.blocked')}</span>
+            <ul className="artifact-full-access-list">
+              {lines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="artifact-network-note">{t('artifacts.fullAccess.dialog.what')}</p>
+        <p id="artifact-full-access-risk" className="artifact-full-access-risk">
+          {t('artifacts.fullAccess.dialog.risk')}
+        </p>
+        <p className="artifact-network-note">{t('artifacts.fullAccess.dialog.keep')}</p>
+        <div className="artifact-network-actions">
+          <button ref={cancelRef} type="button" className="btn ghost" onClick={onNotNow}>
+            {t('artifacts.network.banner.notNow')}
+          </button>
+          <button type="button" className="btn primary" onClick={onAllow}>
+            {t('artifacts.fullAccess.dialog.allow')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

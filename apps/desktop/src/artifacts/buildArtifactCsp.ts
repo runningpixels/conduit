@@ -5,7 +5,8 @@
 /// browser (Playwright) for the residual gap (noted in
 /// `docs/decisions/artifact-rendering-security.md`).
 ///
-/// Security model:
+/// Security model (normal mode; a page the reader gave full web access gets
+/// the `full` policy instead, see `ArtifactCspMode`):
 /// - `connect-src 'none'` — always. No fetch/XHR/WebSocket. This is the
 ///   exfiltration guard the sandboxed-iframe alone does not provide.
 /// - `script-src 'unsafe-inline'` — inline scripts only. **Never** widened
@@ -44,11 +45,18 @@ export function validateAllowedOrigin(raw: string): string | null {
   return `${url.protocol}//${url.host}`;
 }
 
-const PASSIVE_DIRECTIVES = ['style-src', 'img-src', 'font-src'] as const;
+/// `normal` is the policy above. `full` is a page the reader gave full web
+/// access (ADR-007, "Full web access"): it may load scripts, styles, images,
+/// fonts, media and frames from any **https** site and open https/wss
+/// connections — what a website gets — while `default-src`, `base-uri`,
+/// `form-action`, `frame-ancestors` and `navigate-to` stay `'none'`. No
+/// `http:` anywhere (mixed content, and the plain-http devices on a home
+/// network). The allowlist's origins stay on the passive directives.
+export type ArtifactCspMode = 'normal' | 'full';
 
 /** Assemble the CSP. Invalid allowlist entries cause a `null` return so the
  *  caller can fall back to the offline policy. */
-export function buildArtifactCsp(allowlist: string[]): string | null {
+export function buildArtifactCsp(allowlist: string[], mode: ArtifactCspMode = 'normal'): string | null {
   const origins: string[] = [];
   for (const entry of allowlist) {
     const origin = validateAllowedOrigin(entry);
@@ -60,6 +68,24 @@ export function buildArtifactCsp(allowlist: string[]): string | null {
     if (origins.length === 0) return base;
     return `${base} ${origins.join(' ')}`;
   };
+
+  if (mode === 'full') {
+    return [
+      "default-src 'none'",
+      "script-src 'unsafe-inline' https:",
+      passive("style-src 'unsafe-inline' https: data: blob:"),
+      passive('img-src https: data: blob:'),
+      passive('font-src https: data: blob:'),
+      'media-src https: data: blob:',
+      'connect-src https: wss:',
+      'frame-src https:',
+      'worker-src blob:',
+      "frame-ancestors 'none'",
+      "base-uri 'none'",
+      "form-action 'none'",
+      "navigate-to 'none'",
+    ].join('; ');
+  }
 
   const parts = [
     "default-src 'none'",
@@ -81,3 +107,7 @@ export function buildArtifactCsp(allowlist: string[]): string | null {
 /// The offline (default, empty-allowlist) CSP. Convenience for callers that
 /// don't have an allowlist handy.
 export const OFFLINE_ARTIFACT_CSP = buildArtifactCsp([])!;
+
+/// Full web access with an empty allowlist: the fallback when the allowlist
+/// has an invalid entry.
+export const FULL_ACCESS_ARTIFACT_CSP = buildArtifactCsp([], 'full')!;

@@ -1,7 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
-import { ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT, HtmlArtifactRenderer, assembleArtifactDoc } from './HtmlArtifactRenderer';
-import { OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
+import {
+  ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT,
+  HtmlArtifactRenderer,
+  artifactSandbox,
+  assembleArtifactDoc,
+} from './HtmlArtifactRenderer';
+import { ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE } from './blockedLoads';
+import { FULL_ACCESS_ARTIFACT_CSP, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 import { ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE } from './externalUrl';
 import { ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE } from './runtimeError';
 import {
@@ -532,5 +538,65 @@ describe('the Tauri channel inside a page (ADR 007)', () => {
     expect(posted).toEqual([]);
     // A page with none of these (every other platform) is left alone.
     expect(() => new Function('window', ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT)({})).not.toThrow();
+  });
+});
+
+describe('HtmlArtifactRenderer full web access (ADR-007)', () => {
+  const fromFrame = (container: HTMLElement, data: unknown) => {
+    const iframe = container.querySelector('iframe')!;
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data, source: iframe.contentWindow }));
+    });
+  };
+
+  it('normal mode: offline CSP, allow-scripts only, and the reporter when asked for', () => {
+    const onBlockedLoad = vi.fn();
+    const { container } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} onBlockedLoad={onBlockedLoad} />);
+    const iframe = container.querySelector('iframe')!;
+    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+    const doc = iframe.getAttribute('srcdoc') ?? '';
+    expect(doc).toContain(`content="${OFFLINE_ARTIFACT_CSP}"`);
+    expect(doc).toContain(ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE);
+  });
+
+  it('no reporter without a listener (the streaming preview, chat-less use)', () => {
+    const doc = assembleArtifactDoc('<p>x</p>', []);
+    expect(doc).not.toContain(ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE);
+  });
+
+  it('full mode: full CSP, allow-modals, still no same-origin, popups or navigation, no reporter', () => {
+    const { container } = render(
+      <HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} fullWebAccess onBlockedLoad={vi.fn()} />,
+    );
+    const iframe = container.querySelector('iframe')!;
+    const sandbox = iframe.getAttribute('sandbox') ?? '';
+    expect(sandbox).toBe('allow-scripts allow-modals');
+    expect(artifactSandbox(true)).not.toMatch(/same-origin|popups|top-navigation|forms/);
+    const doc = iframe.getAttribute('srcdoc') ?? '';
+    expect(doc).toContain(`content="${FULL_ACCESS_ARTIFACT_CSP}"`);
+    expect(doc).not.toContain(ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE);
+    // The other in-frame guards stay.
+    expect(doc).toContain(ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT);
+    expect(doc).toContain(ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE);
+  });
+
+  it('passes a well-formed blocked-load report to the listener and drops the rest', () => {
+    const onBlockedLoad = vi.fn();
+    const { container } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} onBlockedLoad={onBlockedLoad} />);
+    fromFrame(container, {
+      type: ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE,
+      directive: 'script-src-elem',
+      origin: 'https://cdnjs.cloudflare.com',
+    });
+    fromFrame(container, { type: ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE, directive: 'img-src', origin: 'http://192.168.1.2' });
+    expect(onBlockedLoad).toHaveBeenCalledTimes(1);
+    expect(onBlockedLoad).toHaveBeenCalledWith({ kind: 'scripts', origin: 'https://cdnjs.cloudflare.com' });
+  });
+
+  it('reloads with the new policy when full access is granted', () => {
+    const { container, rerender } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} />);
+    expect(container.querySelector('iframe')!.getAttribute('srcdoc')).toContain(OFFLINE_ARTIFACT_CSP);
+    rerender(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} fullWebAccess />);
+    expect(container.querySelector('iframe')!.getAttribute('srcdoc')).toContain(FULL_ACCESS_ARTIFACT_CSP);
   });
 });

@@ -870,6 +870,12 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .artifact-network-any > span { display: grid; gap: 2px; }
 .artifact-network-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
+/* Full web access (ADR-007): the offer when a page's CSP stopped a load. */
+.artifact-full-access-banner .artifact-network-banner-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.artifact-full-access-blocked { display: grid; gap: 4px; color: var(--ink-3); }
+.artifact-full-access-list { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: var(--fs-xl); word-break: break-word; }
+.artifact-full-access-risk { margin: 0; color: var(--warn); font-size: var(--fs-xl); line-height: 1.5; }
+
 /* ── Page model access (ADR-014) ────────────────────────────────────────────── */
 .page-llm-banner-text { display: inline-flex; align-items: center; gap: 6px; }
 .page-llm-banner-text svg { flex: none; width: 14px; height: 14px; color: var(--hue); }

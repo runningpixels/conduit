@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AppView } from './AppView';
+import { ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE } from '../artifacts/blockedLoads';
 
 const ipc = vi.hoisted(() => ({
   openApp: vi.fn(),
@@ -197,5 +198,48 @@ describe('AppView model access (ADR-014)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(await screen.findByRole('heading', { name: 'Weather dashboard settings' })).toBeInTheDocument();
+  });
+});
+
+describe('AppView full web access (ADR-007)', () => {
+  it('offers full access for what the page could not load; allowing restarts it with the full policy', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    ipc.grantArtifactNetwork.mockResolvedValue(undefined);
+    const { container } = renderAppView();
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull());
+    expect(container.querySelector('iframe')!.getAttribute('sandbox')).toBe('allow-scripts');
+
+    // The frame may be re-created while the page settles (slow CI), and the
+    // host only trusts messages from the current frame: report from whichever
+    // frame is mounted until the banner shows.
+    const banner = await waitFor(() => {
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE, directive: 'script-src-elem', origin: 'https://cdn.jsdelivr.net' },
+            source: container.querySelector('iframe')!.contentWindow,
+          }),
+        );
+      });
+      return screen.getByText(/This page wants full web access/);
+    });
+    expect(banner.textContent).toContain('scripts from cdn.jsdelivr.net');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Review' })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow full web access' }));
+
+    await waitFor(() => expect(ipc.grantArtifactNetwork).toHaveBeenCalledWith('app:a1', 'full', 'page'));
+    await waitFor(() => expect(container.querySelector('iframe')!.getAttribute('sandbox')).toBe('allow-scripts allow-modals'));
+    expect(container.querySelector('iframe')!.getAttribute('srcdoc')).toContain("script-src 'unsafe-inline' https:");
+    expect(screen.queryByText(/This page wants full web access/)).toBeNull();
+  });
+
+  it('loads a page that already has full access once, straight into the full policy', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    ipc.getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: ['full'], session: [], fullAccess: true });
+    const { container } = renderAppView();
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull());
+    expect(container.querySelector('iframe')!.getAttribute('sandbox')).toBe('allow-scripts allow-modals');
   });
 });

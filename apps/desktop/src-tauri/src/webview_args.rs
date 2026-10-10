@@ -18,6 +18,13 @@
 //! to that host can already carry data out. The list is read once at startup,
 //! so allowlist edits apply after a restart (the Settings hint says so).
 //!
+//! On Windows the app starts the loopback guard proxy (`guard_proxy`) and
+//! points `--proxy-server` at it instead. It refuses everything, as the dead
+//! proxy did, except while a page with full web access (ADR-007) is open; then
+//! it tunnels https to public addresses only, so that page's scripts, images
+//! and fonts load. If it can't start, the dead proxy is used and full-access
+//! pages load nothing remote.
+//!
 //! Passing browser arguments replaces wry's defaults, so they are repeated in
 //! [`BASE_ARGS`].
 //!
@@ -37,6 +44,9 @@ pub const BASE_ARGS: &str =
 pub const WEBRTC_ARGS: &str =
     "--webrtc-ip-handling-policy=disable_non_proxied_udp --proxy-server=http://127.0.0.1:9";
 
+/// The WebRTC switch alone, for when the proxy is the guard proxy.
+const WEBRTC_POLICY_ARG: &str = "--webrtc-ip-handling-policy=disable_non_proxied_udp";
+
 /// The argument string the main webview was built with (managed state).
 /// WebView2 shares one browser environment per user data folder and refuses
 /// a second webview whose arguments differ, so any later window (the Slides
@@ -44,9 +54,20 @@ pub const WEBRTC_ARGS: &str =
 /// same WebRTC lockdown, as it shows artifact frames too.
 pub struct MainWebviewArgs(pub String);
 
-/// Full argument string for the main webview.
-pub fn main_webview_browser_args(remote_allowlist: &[String]) -> String {
-    let mut args = format!("{BASE_ARGS} {WEBRTC_ARGS}");
+/// Full argument string for the main webview. With `guard_proxy_port`, the
+/// proxy is the loopback guard proxy (`guard_proxy`) instead of the one that
+/// accepts nothing: it refuses everything too unless a page with full web
+/// access is open, and then tunnels https to public addresses only.
+pub fn main_webview_browser_args(
+    remote_allowlist: &[String],
+    guard_proxy_port: Option<u16>,
+) -> String {
+    let mut args = match guard_proxy_port {
+        Some(port) => {
+            format!("{BASE_ARGS} {WEBRTC_POLICY_ARG} --proxy-server=http://127.0.0.1:{port}")
+        }
+        None => format!("{BASE_ARGS} {WEBRTC_ARGS}"),
+    };
     let bypass: Vec<String> = remote_allowlist
         .iter()
         .filter_map(|entry| bypass_rule(entry))
@@ -92,39 +113,55 @@ mod tests {
 
     #[test]
     fn empty_allowlist_gives_base_and_webrtc_args_only() {
-        let args = main_webview_browser_args(&[]);
+        let args = main_webview_browser_args(&[], None);
         assert_eq!(args, format!("{BASE_ARGS} {WEBRTC_ARGS}"));
         assert!(!args.contains("--proxy-bypass-list"));
     }
 
     #[test]
     fn keeps_wry_defaults() {
-        let args = main_webview_browser_args(&[]);
+        let args = main_webview_browser_args(&[], None);
         assert!(args.contains("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"));
         assert!(args.contains("--autoplay-policy=no-user-gesture-required"));
     }
 
     #[test]
     fn allowlisted_origins_become_bypass_rules() {
-        let args = main_webview_browser_args(&[
-            "https://images.example.com".into(),
-            "http://cdn.example.org:8080".into(),
-        ]);
+        let args = main_webview_browser_args(
+            &[
+                "https://images.example.com".into(),
+                "http://cdn.example.org:8080".into(),
+            ],
+            None,
+        );
         assert!(args.ends_with(
             " --proxy-bypass-list=https://images.example.com;http://cdn.example.org:8080"
         ));
     }
 
     #[test]
+    fn the_guard_proxy_replaces_the_dead_one_and_keeps_the_webrtc_policy() {
+        let args = main_webview_browser_args(&["https://images.example.com".into()], Some(51234));
+        assert!(args.contains("--webrtc-ip-handling-policy=disable_non_proxied_udp"));
+        assert!(args.contains("--proxy-server=http://127.0.0.1:51234"));
+        assert!(!args.contains("127.0.0.1:9 "));
+        assert!(!args.ends_with("127.0.0.1:9"));
+        assert!(args.ends_with(" --proxy-bypass-list=https://images.example.com"));
+    }
+
+    #[test]
     fn rejects_entries_that_could_inject_arguments() {
-        let args = main_webview_browser_args(&[
-            "https://ok.example.com".into(),
-            "https://a.example.com --remote-debugging-port=9222".into(),
-            "https://b.example.com;*".into(),
-            "ftp://files.example.com".into(),
-            "https://user:pw@c.example.com".into(),
-            "not a url".into(),
-        ]);
+        let args = main_webview_browser_args(
+            &[
+                "https://ok.example.com".into(),
+                "https://a.example.com --remote-debugging-port=9222".into(),
+                "https://b.example.com;*".into(),
+                "ftp://files.example.com".into(),
+                "https://user:pw@c.example.com".into(),
+                "not a url".into(),
+            ],
+            None,
+        );
         assert_eq!(
             args,
             format!("{BASE_ARGS} {WEBRTC_ARGS} --proxy-bypass-list=https://ok.example.com")

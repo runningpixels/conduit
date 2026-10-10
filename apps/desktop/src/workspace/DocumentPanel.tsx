@@ -15,7 +15,13 @@ import { declaredHosts, declaredInputs, scriptedHosts } from '../artifacts/netwo
 import { useArtifactNetwork } from './useArtifactNetwork';
 import { usePageBridge } from './usePageBridge';
 import { usePageLlm } from './usePageLlm';
-import { ArtifactNetworkBanner, ArtifactNetworkChip, ArtifactNetworkDialog } from './ArtifactNetwork';
+import {
+  ArtifactNetworkBanner,
+  ArtifactNetworkChip,
+  ArtifactNetworkDialog,
+  FullAccessBanner,
+  FullAccessDialog,
+} from './ArtifactNetwork';
 import { PageLlmBanner, PageLlmDialog } from './PageLlmConsent';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
@@ -459,6 +465,18 @@ export function DocumentPanel({
   useEffect(() => {
     if (network.pending.length === 0) setNetworkReviewOpen(false);
   }, [network.pending.length]);
+  // Full web access (ADR-007): offered when the page tried to load something
+  // its CSP stopped.
+  const [fullAccessReviewOpen, setFullAccessReviewOpen] = useState(false);
+  const { allowFullAccess, dismissFullAccess } = network;
+  const handleAllowFullAccess = useCallback(() => {
+    setFullAccessReviewOpen(false);
+    void allowFullAccess();
+  }, [allowFullAccess]);
+  const handleNotNowFullAccess = useCallback(() => {
+    setFullAccessReviewOpen(false);
+    dismissFullAccess();
+  }, [dismissFullAccess]);
   const [llmReviewOpen, setLlmReviewOpen] = useState(false);
   const { decide: decideLlm } = llm;
   const handleLlmDecision = useCallback(
@@ -1172,6 +1190,13 @@ export function DocumentPanel({
           />
         )}
         {networkArtifactId && (
+          <FullAccessBanner
+            blocked={network.fullAccessRequest}
+            onReview={() => setFullAccessReviewOpen(true)}
+            onNotNow={handleNotNowFullAccess}
+          />
+        )}
+        {networkArtifactId && (
           <PageLlmBanner
             pending={llm.pending}
             onReview={() => setLlmReviewOpen(true)}
@@ -1231,6 +1256,11 @@ export function DocumentPanel({
               if (!Preview || !props) {
                 return <DocPlaceholder>{t('workspace.documentPanel.preview.noContent')}</DocPlaceholder>;
               }
+              // Wait for the page's access to be known, so it loads once with
+              // the right policy rather than reloading a moment later.
+              if (networkArtifactId && network.fullAccess === undefined) {
+                return <div className="artifact-skeleton" />;
+              }
               return (
                 <Preview
                   // A new key starts the page over: the reader allowed a site
@@ -1242,6 +1272,8 @@ export function DocumentPanel({
                   network={networkArtifactId ? network.handler : undefined}
                   bridge={networkArtifactId ? bridge : undefined}
                   inputValues={networkArtifactId ? pageInputValues : undefined}
+                  fullWebAccess={networkArtifactId ? network.fullAccess === true : undefined}
+                  onBlockedLoad={networkArtifactId ? network.reportBlocked : undefined}
                 />
               );
             })()}
@@ -1312,6 +1344,14 @@ export function DocumentPanel({
         sites={network.pending}
         declared={networkDeclared}
         onDecide={handleNetworkDecision}
+      />
+
+      <FullAccessDialog
+        open={fullAccessReviewOpen && network.fullAccessRequest.length > 0}
+        title={artifact.title ?? null}
+        blocked={network.fullAccessRequest}
+        onAllow={handleAllowFullAccess}
+        onNotNow={handleNotNowFullAccess}
       />
 
       <PageLlmDialog

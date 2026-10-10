@@ -28,7 +28,9 @@ function dropFrame(token: string) {
 }
 
 /// An empty document has nothing to serve and comes back as an empty `srcDoc`.
-export function useArtifactFrameSource(doc: string): ArtifactFrameSource {
+/// `fullAccess` marks a document rendered with full web access: Rust keeps the
+/// loopback guard proxy open only while such a document is served.
+export function useArtifactFrameSource(doc: string, fullAccess = false): ArtifactFrameSource {
   const served = isTauri() && doc !== '';
   const [state, setState] = useState<{ src?: string; failed: boolean }>({ failed: false });
 
@@ -36,7 +38,7 @@ export function useArtifactFrameSource(doc: string): ArtifactFrameSource {
     if (!served) return;
     let cancelled = false;
     let token: string | undefined;
-    invokeCommand<string>('put_artifact_frame', { html: doc }).then(
+    invokeCommand<string>('put_artifact_frame', fullAccess ? { html: doc, fullAccess: true } : { html: doc }).then(
       (next) => {
         if (cancelled) {
           dropFrame(next);
@@ -55,7 +57,7 @@ export function useArtifactFrameSource(doc: string): ArtifactFrameSource {
       cancelled = true;
       if (token) dropFrame(token);
     };
-  }, [doc, served]);
+  }, [doc, served, fullAccess]);
 
   if (!served || state.failed) return { srcDoc: doc };
   return { src: state.src };

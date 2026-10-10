@@ -16,7 +16,7 @@
 //! Documents are held in memory only, capped by count and bytes; the renderer
 //! drops a token when its frame goes away.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use tauri::http::{header, Request, Response, StatusCode};
@@ -40,11 +40,25 @@ struct Store {
     docs: HashMap<String, Arc<String>>,
     order: VecDeque<String>,
     total: usize,
+    /// Tokens of documents rendered with full web access (ADR-007). While
+    /// any is stored, the guard proxy lets loads through.
+    full: HashSet<String>,
 }
 
 impl ArtifactFrames {
     /// Store a document and return the token that serves it.
     pub fn put(&self, html: String) -> Result<String, String> {
+        self.put_with(html, false)
+    }
+
+    /// Whether a page with full web access is on screen: its document is
+    /// stored (the renderer drops a token when its frame goes away).
+    pub fn has_full_access_frames(&self) -> bool {
+        self.inner.lock().is_ok_and(|store| !store.full.is_empty())
+    }
+
+    /// [`Self::put`], marking the document as one with full web access.
+    pub fn put_with(&self, html: String, full_access: bool) -> Result<String, String> {
         if html.len() > MAX_DOC_BYTES {
             return Err("This page is too large to preview.".to_string());
         }
@@ -53,6 +67,9 @@ impl ArtifactFrames {
         store.total += html.len();
         store.docs.insert(token.clone(), Arc::new(html));
         store.order.push_back(token.clone());
+        if full_access {
+            store.full.insert(token.clone());
+        }
         while store.order.len() > MAX_DOCS || store.total > MAX_TOTAL_BYTES {
             let Some(oldest) = store.order.pop_front() else {
                 break;
@@ -64,6 +81,7 @@ impl ArtifactFrames {
             if let Some(doc) = store.docs.remove(&oldest) {
                 store.total -= doc.len();
             }
+            store.full.remove(&oldest);
         }
         Ok(token)
     }
@@ -77,6 +95,7 @@ impl ArtifactFrames {
             store.total -= doc.len();
             store.order.retain(|t| t != token);
         }
+        store.full.remove(token);
     }
 
     fn get(&self, token: &str) -> Option<Arc<String>> {
@@ -193,6 +212,28 @@ mod tests {
         assert_eq!(
             store.total,
             store.docs.values().map(|d| d.len()).sum::<usize>()
+        );
+    }
+
+    #[test]
+    fn full_access_frames_are_tracked_until_dropped_or_evicted() {
+        let frames = ArtifactFrames::default();
+        let plain = frames.put("plain".into()).unwrap();
+        assert!(!frames.has_full_access_frames());
+        let full = frames.put_with("full".into(), true).unwrap();
+        assert!(frames.has_full_access_frames());
+        frames.drop_token(&plain);
+        assert!(frames.has_full_access_frames());
+        frames.drop_token(&full);
+        assert!(!frames.has_full_access_frames());
+
+        frames.put_with("full again".into(), true).unwrap();
+        for i in 0..MAX_DOCS {
+            frames.put(format!("doc {i}")).unwrap();
+        }
+        assert!(
+            !frames.has_full_access_frames(),
+            "an evicted document no longer holds the proxy open"
         );
     }
 

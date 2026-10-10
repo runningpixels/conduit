@@ -7,7 +7,7 @@ import {
   type ArtifactNetworkGrant,
 } from '../../ipc/client';
 import { hostLabel } from '../../artifacts/networkHosts';
-import { ANY_SITE } from '../useArtifactNetwork';
+import { ANY_SITE, FULL_WEB_ACCESS } from '../useArtifactNetwork';
 import { useT } from '../../i18n';
 
 interface ArtifactSecuritySectionProps {
@@ -17,7 +17,9 @@ interface ArtifactSecuritySectionProps {
 
 /**
  * Artifact Security: whether pages may connect to the internet (ADR-010) with
- * the sites each page was always allowed, and the passive remote allowlist.
+ * the sites each page was always allowed (and the pages given full web
+ * access, ADR-007), whether every page gets full web access, and the passive
+ * remote allowlist.
  */
 export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecuritySectionProps) {
   const t = useT();
@@ -96,6 +98,20 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
           onClick={() => onUpdate({ ...settings, artifactNetworkEnabled: !settings.artifactNetworkEnabled })}
         />
       </div>
+      <div className="srow">
+        <span className="srow-text">
+          <b>{t('settings.artifactSecurity.fullAccess.label')}</b>
+          <small>{t('settings.artifactSecurity.fullAccess.hint')}</small>
+        </span>
+        <button
+          className="toggle"
+          type="button"
+          role="switch"
+          aria-pressed={settings.artifactFullWebAccess === true}
+          aria-label={t('settings.artifactSecurity.fullAccess.label')}
+          onClick={() => onUpdate({ ...settings, artifactFullWebAccess: settings.artifactFullWebAccess !== true })}
+        />
+      </div>
       <div className="status-item">
         <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
           {t('settings.artifactSecurity.grants.label')}
@@ -119,7 +135,11 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
                   style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-xl)' }}
                 >
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{grant.host === ANY_SITE ? t('artifacts.network.anySite') : hostLabel(grant.host)}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{grant.host === ANY_SITE
+                        ? t('artifacts.network.anySite')
+                        : grant.host === FULL_WEB_ACCESS
+                          ? t('artifacts.fullAccess.label')
+                          : hostLabel(grant.host)}</span>
                     <span style={{ color: 'var(--ink-3)' }}>
                       {' · '}
                       {grant.title ?? t('settings.artifactSecurity.grants.untitled')}

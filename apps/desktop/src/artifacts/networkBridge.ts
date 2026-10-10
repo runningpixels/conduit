@@ -7,7 +7,9 @@
 /// the script turns it into an ordinary `Response`. A refused or failed request
 /// rejects the way a network error would, so the page's own error handling
 /// runs. `XMLHttpRequest`, `WebSocket` and `EventSource` stay blocked by the
-/// unchanged CSP. WebRTC isn't governed by CSP at all; it is closed at the
+/// unchanged CSP — unless the reader gave the page full web access (ADR-007),
+/// whose CSP lets them reach https/wss directly; `fetch()` still comes here,
+/// so it keeps the proxy's checks and no CORS. WebRTC isn't governed by CSP at all; it is closed at the
 /// WebView level (`webview_args.rs`) and removed in the frame (`webrtcBlock.ts`).
 ///
 /// Only the finished preview gets this script; the live preview of a document

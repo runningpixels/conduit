@@ -3076,6 +3076,14 @@ pub struct AppSettings {
     /// them regardless.
     #[serde(default = "default_true")]
     pub artifact_network_enabled: bool,
+    /// ADR-007 "Full web access": give every page full web access, as if the
+    /// reader had allowed it for each one (its frame loads scripts, images,
+    /// fonts and media from any https site). Off by default; `None` — what
+    /// every settings file written before this field reads as — is off. Has
+    /// no effect while pages can't connect (local-only, or the switch above).
+    #[serde(default)]
+    #[ts(optional)]
+    pub artifact_full_web_access: Option<bool>,
     /// Keep running in the tray when the main window is closed, so scheduled
     /// workflows still run. Off by default: closing the window quits, as it
     /// always did. Offered once, the first time a schedule is switched on.
@@ -3263,6 +3271,7 @@ impl Default for AppSettings {
             artifact_remote_allowlist: Vec::new(),
             artifact_styled_preview: true,
             artifact_network_enabled: true,
+            artifact_full_web_access: None,
             close_to_tray: false,
             close_to_tray_offered: false,
             update_channel: RolloutChannel::Stable,
@@ -3337,6 +3346,8 @@ pub struct SettingsPatch {
     pub artifact_styled_preview: Option<bool>,
     #[ts(optional)]
     pub artifact_network_enabled: Option<bool>,
+    #[ts(optional)]
+    pub artifact_full_web_access: Option<bool>,
     #[ts(optional)]
     pub close_to_tray: Option<bool>,
     #[ts(optional)]

@@ -208,18 +208,22 @@ describe('AppView full web access (ADR-007)', () => {
     ipc.grantArtifactNetwork.mockResolvedValue(undefined);
     const { container } = renderAppView();
     await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull());
-    const iframe = container.querySelector('iframe')!;
-    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(container.querySelector('iframe')!.getAttribute('sandbox')).toBe('allow-scripts');
 
-    act(() => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: { type: ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE, directive: 'script-src-elem', origin: 'https://cdn.jsdelivr.net' },
-          source: iframe.contentWindow,
-        }),
-      );
+    // The frame may be re-created while the page settles (slow CI), and the
+    // host only trusts messages from the current frame: report from whichever
+    // frame is mounted until the banner shows.
+    const banner = await waitFor(() => {
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE, directive: 'script-src-elem', origin: 'https://cdn.jsdelivr.net' },
+            source: container.querySelector('iframe')!.contentWindow,
+          }),
+        );
+      });
+      return screen.getByText(/This page wants full web access/);
     });
-    const banner = await screen.findByText(/This page wants full web access/);
     expect(banner.textContent).toContain('scripts from cdn.jsdelivr.net');
     fireEvent.click(screen.getAllByRole('button', { name: 'Review' })[0]);
     fireEvent.click(await screen.findByRole('button', { name: 'Allow full web access' }));

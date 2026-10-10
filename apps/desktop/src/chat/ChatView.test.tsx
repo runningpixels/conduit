@@ -208,7 +208,7 @@ describe('describeInvokeError', () => {
   });
 });
 
-describe('ChatView suggested prompts', () => {
+describe('ChatView empty state and messages', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getConversationMessages).mockResolvedValue([]);
@@ -224,156 +224,12 @@ describe('ChatView suggested prompts', () => {
 
   // The empty thread is a greeting and the composer (§10). The starter cards,
   // the shortcut hint row and the duplicated model line were all removed, so
-  // the only suggestion surface left is the contextual follow-up row below.
+  // nothing else is shown.
   it('shows only the greeting in an empty chat', async () => {
     renderChatView();
     expect(
       await screen.findByRole('heading', { name: /What are we working on\?/i }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('group', { name: 'Suggested follow-ups' })).not.toBeInTheDocument();
-  });
-
-  it('shows contextual follow-ups for a non-empty conversation', async () => {
-    vi.mocked(getConversationMessages).mockResolvedValue([
-      {
-        id: 'u1',
-        conversationId: 'conv-1',
-        role: 'user',
-        parts: [
-          {
-            id: 'u1-p0',
-            messageId: 'u1',
-            index: 0,
-            kind: 'text',
-            content: 'hello',
-            createdAt: '2026-01-01T00:00:00Z',
-          },
-        ],
-        createdAt: '2026-01-01T00:00:00Z',
-      },
-      {
-        id: 'a1',
-        conversationId: 'conv-1',
-        role: 'assistant',
-        parts: [
-          {
-            id: 'a1-p0',
-            messageId: 'a1',
-            index: 0,
-            kind: 'text',
-            content: 'Hi there!',
-            createdAt: '2026-01-01T00:00:01Z',
-          },
-        ],
-        createdAt: '2026-01-01T00:00:01Z',
-      },
-    ]);
-
-    renderChatView();
-    expect(await screen.findByLabelText('Suggested follow-ups')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Suggested prompts')).toBeNull();
-  });
-
-  it('hides inline suggestions while the user is typing', async () => {
-    vi.mocked(getConversationMessages).mockResolvedValue([
-      {
-        id: 'u1',
-        conversationId: 'conv-1',
-        role: 'user',
-        parts: [
-          {
-            id: 'u1-p0',
-            messageId: 'u1',
-            index: 0,
-            kind: 'text',
-            content: 'hello',
-            createdAt: '2026-01-01T00:00:00Z',
-          },
-        ],
-        createdAt: '2026-01-01T00:00:00Z',
-      },
-      {
-        id: 'a1',
-        conversationId: 'conv-1',
-        role: 'assistant',
-        parts: [
-          {
-            id: 'a1-p0',
-            messageId: 'a1',
-            index: 0,
-            kind: 'text',
-            content: 'Hi there!',
-            createdAt: '2026-01-01T00:00:01Z',
-          },
-        ],
-        createdAt: '2026-01-01T00:00:01Z',
-      },
-    ]);
-
-    renderChatView();
-    expect(await screen.findByLabelText('Suggested follow-ups')).toBeInTheDocument();
-
-    const textarea = screen.getByLabelText('Message the active provider');
-    fireEvent.change(textarea, { target: { value: 'typing…' } });
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText('Suggested follow-ups')).toBeNull();
-    });
-  });
-
-  it('shows artifact-oriented follow-ups when a document artifact exists', async () => {
-    vi.mocked(getConversationMessages).mockResolvedValue([
-      {
-        id: 'u1',
-        conversationId: 'conv-1',
-        role: 'user',
-        parts: [
-          {
-            id: 'u1-p0',
-            messageId: 'u1',
-            index: 0,
-            kind: 'text',
-            content: 'create html',
-            createdAt: '2026-01-01T00:00:00Z',
-          },
-        ],
-        createdAt: '2026-01-01T00:00:00Z',
-      },
-      {
-        id: 'a1',
-        conversationId: 'conv-1',
-        role: 'assistant',
-        parts: [
-          {
-            id: 'a1-p0',
-            messageId: 'a1',
-            index: 0,
-            kind: 'text',
-            content: 'Done.',
-            createdAt: '2026-01-01T00:00:01Z',
-          },
-        ],
-        createdAt: '2026-01-01T00:00:01Z',
-      },
-    ]);
-
-    const artifact: Artifact = {
-      id: 'art-1',
-      conversationId: 'conv-1',
-      kind: 'html',
-      title: 'API Overview',
-      createdAt: '2026-01-01T00:00:00Z',
-    };
-
-    renderChatView({ artifacts: [artifact] });
-    expect(await screen.findByLabelText('Suggested follow-ups')).toBeInTheDocument();
-    // The chip is named by its short caption — the full instruction would not
-    // fit on one line — and carries the prompt it sends as its description.
-    const chip = screen.getByRole('button', { name: 'Tighten the wording' });
-    expect(chip).toHaveAttribute(
-      'title',
-      'Improve "API Overview" — tighten the wording and fix any gaps.',
-    );
   });
 
   it('preserves line breaks in multi-line user messages', async () => {

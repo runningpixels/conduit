@@ -600,7 +600,6 @@
   "chat.stream.stillWorking": "ainda trabalhando · {seconds}s",
   "chat.stream.stillWorkingHeldDocument": "ainda trabalhando · {seconds}s — este modelo envia documentos de uma vez",
   "chat.stream.stillWorkingLong": "ainda trabalhando · {seconds}s — alguns modelos enviam respostas longas de uma vez",
-  "chat.suggestedPrompts.ariaLabel": "Acompanhamentos sugeridos",
   "chat.thinking.default": "Pensando",
   "chat.thinking.modelThinking": "{modelId} está pensando",
   "chat.title.untitled": "Chat sem título",

@@ -600,7 +600,6 @@
   "chat.stream.stillWorking": "仍在处理 · {seconds}秒",
   "chat.stream.stillWorkingHeldDocument": "仍在处理 · {seconds}秒 — 此模型会一次性发送文档",
   "chat.stream.stillWorkingLong": "仍在处理 · {seconds}秒 — 部分模型会一次性发送较长的回复",
-  "chat.suggestedPrompts.ariaLabel": "推荐的后续问题",
   "chat.thinking.default": "思考中",
   "chat.thinking.modelThinking": "{modelId} 正在思考",
   "chat.title.untitled": "未命名聊天",

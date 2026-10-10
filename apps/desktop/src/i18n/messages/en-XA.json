@@ -600,7 +600,6 @@
   "chat.stream.stillWorking": "[šťîļļ ŵöŕķîñĝ · {seconds}š —————— —]",
   "chat.stream.stillWorkingHeldDocument": "[šťîļļ ŵöŕķîñĝ · {seconds}š — ťĥîš ḿöḍéļ šéñḍš ḍöçüḿéñťš àļļ àť öñçé —————— —————— —————— ——————]",
   "chat.stream.stillWorkingLong": "[šťîļļ ŵöŕķîñĝ · {seconds}š — šöḿé ḿöḍéļš šéñḍ ļöñĝ ŕéšṕöñšéš àļļ àť öñçé —————— —————— —————— —————— ——]",
-  "chat.suggestedPrompts.ariaLabel": "[Šüĝĝéšťéḍ ḟöļļöŵ-üṕš —————— ——]",
   "chat.thinking.default": "[Ťĥîñķîñĝ ————]",
   "chat.thinking.modelThinking": "[{modelId} îš ťĥîñķîñĝ —————]",
   "chat.title.untitled": "[Üñťîťļéḍ çĥàť ——————]",

@@ -600,7 +600,6 @@
   "chat.stream.stillWorking": "계속 작업 중 · {seconds}초",
   "chat.stream.stillWorkingHeldDocument": "계속 작업 중 · {seconds}초 — 이 모델은 문서를 한 번에 보냅니다",
   "chat.stream.stillWorkingLong": "계속 작업 중 · {seconds}초 — 일부 모델은 긴 응답을 한 번에 보냅니다",
-  "chat.suggestedPrompts.ariaLabel": "추천 후속 질문",
   "chat.thinking.default": "생각하는 중",
   "chat.thinking.modelThinking": "{modelId}이(가) 생각하는 중",
   "chat.title.untitled": "제목 없는 채팅",

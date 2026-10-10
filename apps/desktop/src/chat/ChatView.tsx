@@ -137,8 +137,6 @@ import { WorkspaceToolsConsentDialog } from '../workspace/settings/WorkspaceTool
 import { ImageGenerationConsentDialog } from '../workspace/settings/ImageGenerationConsentDialog';
 import { looksLikeImageGenerationRequest } from './imageGenerationPrompt';
 import { defaultImageModel } from './modelGeneratesImages';
-import { SuggestedPrompts } from './SuggestedPrompts';
-import { deriveSuggestedPrompts } from './suggestedPromptLogic';
 import { resolveSearchBackend, resolveWebSearchForTurn, type SearchBackend } from './webSearchIntent';
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
@@ -195,10 +193,9 @@ import {
 import { allowUserBranding } from '../brand/buildFlags';
 import { appName } from '../brand';
 import type { Idea } from '../ideas/catalog';
-import { getIdeaState, noteChipOffered, noteChipUsed, noteFirstMessage, useIdeaState } from '../ideas/ideaState';
+import { getIdeaState, noteFirstMessage } from '../ideas/ideaState';
 import { ideaById } from '../ideas/catalog';
-import { capabilityChip } from '../ideas/capabilityChips';
-import { resolveRecentDocumentArtifactId, resolveTurnDocumentScope } from './artifactFollowUpContext';
+import { resolveTurnDocumentScope } from './artifactFollowUpContext';
 import { summarizeStreamState } from '../inspector/turnActivity';
 import { IdeaGallery } from '../ideas/IdeaGallery';
 import { YourAppsRow } from '../apps/YourAppsRow';
@@ -367,7 +364,7 @@ interface ChatViewProps {
   convoProviders?: Record<string, string>;
   /// Slides studio dock: each assistant turn shows its reply, then one
   /// collapsed summary line for the thinking and tool calls. Hides the idea
-  /// gallery, inline suggestions and the new-chat greeting.
+  /// gallery and the new-chat greeting.
   compact?: boolean;
 }
 
@@ -1791,10 +1788,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // intent checks below read English only.
     const pickedIdea =
       !override && turns.length === 0 && getIdeaState().pending ? ideaById(getIdeaState().pending!) : undefined;
-    const chipIntent =
-      !override && chipIntentRef.current?.text.trim() === trimmed ? chipIntentRef.current.intent : undefined;
-    if (!override) chipIntentRef.current = null;
-    const turnIntent = override?.intent ?? chipIntent ?? (pickedIdea?.page ? 'create' : undefined);
+    const turnIntent = override?.intent ?? (pickedIdea?.page ? 'create' : undefined);
 
     // t1-2 M1: while a turn is in flight, enqueue instead of starting another stream.
     // Use the ref (synchronous) so a just-finished turn's stale React state does
@@ -2764,73 +2758,6 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     setComposerKnowledgeRefs((current) => current.filter((r) => r.documentId !== documentId));
   }
 
-  function handleSuggestionSelect(text: string) {
-    if (capChip && text === capChip.text) {
-      noteChipUsed(capChip.chip);
-      // Its intent holds in any language (see handleSend).
-      chipIntentRef.current = { text, intent: capChip.chip === 'liveData' ? 'edit' : 'create' };
-    }
-    setPrompt(text);
-    requestAnimationFrame(() => composerRef.current?.focusPrompt());
-  }
-
-  // One chip that points at a capability the reply did not use (Ideas plan).
-  const ideaState = useIdeaState();
-  const ideaChipTurn = useMemo(() => [...turns].reverse().find((x) => x.role === 'assistant'), [turns]);
-  // Artifact lists carry no content, so the document in scope is read in full.
-  const chipArtifactId = useMemo(() => resolveRecentDocumentArtifactId(turns, artifacts) ?? null, [turns, artifacts]);
-  const chipArtifactStamp = artifacts.find((a) => a.id === chipArtifactId)?.updatedAt ?? null;
-  const [chipArtifact, setChipArtifact] = useState<{ id: string; kind: string; text: string } | null>(null);
-  useEffect(() => {
-    if (!chipArtifactId) {
-      setChipArtifact(null);
-      return;
-    }
-    let cancelled = false;
-    Promise.resolve()
-      .then(() => getArtifact(chipArtifactId))
-      .then((a) => {
-        if (!cancelled) setChipArtifact(a ? { id: a.id, kind: a.kind, text: a.contentText ?? '' } : null);
-      })
-      .catch(() => !cancelled && setChipArtifact(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [chipArtifactId, chipArtifactStamp]);
-  const capChip = useMemo(() => {
-    if (!ideaChipTurn) return null;
-    // Until the document in scope has loaded, offer nothing rather than guess.
-    if (chipArtifactId && chipArtifact?.id !== chipArtifactId) return null;
-    const recent = chipArtifactId ? chipArtifact : null;
-    const lastUser = [...turns].reverse().find((x) => x.role === 'user')?.content ?? '';
-    const id = capabilityChip({
-      pageHtml: recent && recent.kind === 'html' ? recent.text : null,
-      otherArtifactText: recent && recent.kind !== 'html' ? recent.text : null,
-      lastUser,
-      lastAssistant: ideaChipTurn.content,
-      networkReady: artifactNetworkAvailable(settings),
-      state: ideaState,
-    });
-    return id
-      ? { id: `idea-chip-${id}`, chip: id, text: t(`ideas.chip.${id}.text`), short: t(`ideas.chip.${id}.short`) }
-      : null;
-    // Offers are counted below; re-deriving on each count would move the chip.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [turns, chipArtifactId, chipArtifact, ideaChipTurn, settings.localOnly, settings.artifactNetworkEnabled, t]);
-  const offeredForTurn = useRef<string | null>(null);
-  /// A capability chip's text and intent, until that text is sent.
-  const chipIntentRef = useRef<{ text: string; intent: DocumentTurnIntent } | null>(null);
-  // Counted only once it is on screen: not while the reply streams.
-  useEffect(() => {
-    if (!capChip || !ideaChipTurn || !showInlineSuggestions) return;
-    const key = `${ideaChipTurn.id}:${capChip.chip}`;
-    if (offeredForTurn.current === key) return;
-    offeredForTurn.current = key;
-    noteChipOffered(capChip.chip);
-    // showInlineSuggestions is declared further down; read at effect time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capChip, ideaChipTurn, turns.length, activeStream, activeRequestId, prompt]);
-
   // The inspector's view of this chat. Keyed on step shape so a streaming
   // reply reports each new tool call and status change, not every token.
   const liveStepKey = activeStream
@@ -2851,11 +2778,6 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // liveStepKey stands in for activeStream (see above).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turns, turnCitations, liveStepKey, onTranscriptChange]);
-
-  const suggestedPrompts = useMemo(() => {
-    const derived = deriveSuggestedPrompts({ turns, artifacts });
-    return capChip && derived.length > 0 ? [capChip, ...derived].slice(0, 4) : derived;
-  }, [turns, artifacts, capChip]);
 
   // Accumulated usage across the whole conversation: every committed assistant
   // turn's usage plus the live streaming turn. Spend (not context fill) uses this.
@@ -2918,16 +2840,6 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
 
   const compactThresholdPercent =
     settings.contextCompactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT;
-
-  // Not in a deck chat: the suggestions are about documents and artifacts.
-  const showInlineSuggestions =
-    !deck &&
-    !draft &&
-    !compact &&
-    turns.length > 0 &&
-    !activeStream &&
-    activeRequestId == null &&
-    !prompt.trim();
 
   // Drives both the greeting and the `data-empty` hook that centres the
   // greeting and composer as one group (§10). One condition, one source.
@@ -3587,10 +3499,6 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         >
           {t('chat.view.jumpToBottom')}
         </button>
-      )}
-
-      {showInlineSuggestions && (
-        <SuggestedPrompts prompts={suggestedPrompts} onSelect={handleSuggestionSelect} />
       )}
 
       {mcpPromptNeedingArgs && (

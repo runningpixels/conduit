@@ -508,6 +508,138 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   color: var(--ink-2);
 }
 
+/* ── "In this chat": the chat's artifacts when none is open ────────────── */
+.artifact-list-heading {
+  margin: 0;
+  font: 600 var(--fs-2xl)/1.2 var(--font-ui);
+  color: var(--ink);
+}
+.doc-panel-list .doc-body { padding: 12px; }
+.artifact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* Positioned so the Open button's ::after can cover the row: the whole row
+   opens the artifact, and the keyboard still meets one real button. */
+.artifact-list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 10px 8px 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  transition: background var(--tap), border-color var(--tap);
+}
+.artifact-list-row:hover { background: var(--card-hi); border-color: var(--line-hi); }
+.artifact-list-row:focus-within { border-color: var(--hue); }
+.artifact-list-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.artifact-list-name {
+  color: var(--ink);
+  font-size: var(--fs-3xl);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-list-meta {
+  color: var(--ink-3);
+  font-size: var(--fs-lg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-list-open { flex: none; min-height: 32px; }
+.artifact-list-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.artifact-list-open:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+
+/* ── Header switcher: the open artifact's title, when the chat has more ─── */
+.doc-switcher-root { position: relative; min-width: 0; display: flex; }
+.doc-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--tap);
+}
+.doc-switcher:hover,
+.doc-switcher[aria-expanded="true"] { background: var(--card-hi); }
+.doc-switcher:focus-visible,
+.doc-switcher-icon:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: calc(-1 * var(--ring-width)); }
+.doc-switcher > svg,
+.doc-switcher-icon svg { width: 14px; height: 14px; flex: none; color: var(--ink-3); }
+.doc-switcher-label { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.doc-switcher-label b {
+  display: block;
+  font: 600 var(--fs-2xl)/1.2 var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-switcher-label small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.doc-switcher-icon { flex: none; }
+.doc-switcher-list {
+  top: calc(100% + 2px);
+  left: 0;
+  max-height: min(360px, 60vh);
+  overflow-y: auto;
+  margin: 0;
+  list-style: none;
+  outline: none;
+}
+.doc-switcher-icon + .doc-switcher-list { left: auto; right: 0; }
+.doc-switcher-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+  cursor: pointer;
+}
+.doc-switcher-option.active { background: var(--card-hi); color: var(--ink); }
+.doc-switcher-list:focus-visible .doc-switcher-option.active {
+  box-shadow: inset 0 0 0 var(--ring-width) var(--ring-color);
+}
+.doc-switcher-option[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.doc-switcher-option-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-switcher-option-kind { flex: none; color: var(--ink-3); font-size: var(--fs-sm); font-weight: 400; }
+.doc-switcher-all {
+  margin-top: 4px;
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  color: var(--ink-2);
+}
+
 /* ── Artifact skeleton / shimmer ───────────────────────────────────────── */
 .artifact-skeleton {
   width: 100%;

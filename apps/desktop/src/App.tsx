@@ -104,7 +104,13 @@ import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
 import { notePicked, observeReady, setRowHidden, useIdeaState } from './ideas/ideaState';
 import { useKnowledgeDrop } from './workspace/useKnowledgeDrop';
-import { applyUiPrefs, migrateRetiredThemePrefs, THEME_CHANGED_EVENT } from './shell/uiPrefs';
+import {
+  applyUiPrefs,
+  migrateRetiredThemePrefs,
+  readLastArtifact,
+  THEME_CHANGED_EVENT,
+  writeLastArtifact,
+} from './shell/uiPrefs';
 import {
   useColumnOverlay,
   useColumnResize,
@@ -258,6 +264,16 @@ function writeConvoProviders(map: Record<string, string>): void {
   } catch {
     /* storage may be unavailable; fail silently */
   }
+}
+
+interface OpenArtifactOptions {
+  /** Bring the panel into view. Off for restoring the chat's last artifact,
+   *  which changes what a hidden panel holds, never whether it shows. */
+  reveal?: boolean;
+  /** Show the artifact in this one's place instead of adding a tab. */
+  replaceId?: string;
+  /** Drop the open if the reader has left this chat by the time it loads. */
+  forConversation?: string;
 }
 
 const defaultSettings: AppSettings = {
@@ -466,6 +482,8 @@ export default function App() {
   const [fileStateMap, setFileStateMap] = useState<Record<string, FileState>>({});
   const [docTab, setDocTab] = useState<'preview' | 'source'>('preview');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
+  activeConversationIdRef.current = activeConversationId;
   const [activeConversationSummary, setActiveConversationSummary] = useState<ConversationSummary | null>(null);
   useWindowTitle(activeConversationSummary?.displayTitle);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -2214,6 +2232,7 @@ export default function App() {
         await deleteConversation(id);
         // Its pages are gone; so is what they kept on their own origins.
         void sweepPageSiteData();
+        writeLastArtifact(id, null);
         setConvoProviders((current) => {
           const { [id]: _removed, ...rest } = current;
           writeConvoProviders(rest);
@@ -2301,15 +2320,30 @@ export default function App() {
   }, []);
 
   const handleOpenArtifact = useCallback(
-    async (artifactId: string) => {
+    async (artifactId: string, options: OpenArtifactOptions = {}) => {
+      const { reveal = true, replaceId, forConversation } = options;
       try {
         // `?route=artifacts` (dev only) has no backend to fetch from; its
         // fixtures are already in memory.
         const fixture = devRoute === 'artifacts' ? artifacts.find((a) => a.id === artifactId) : undefined;
         const got = fixture ?? (await getArtifact(artifactId));
         if (!got) return;
-        showDocPanel();
-        addOpenArtifactId(artifactId);
+        // A restore that resolves after the reader moved to another chat.
+        if (forConversation !== undefined && activeConversationIdRef.current !== forConversation) return;
+        if (reveal) showDocPanel();
+        if (replaceId && replaceId !== artifactId) {
+          // The header switcher shows another artifact in the same place
+          // rather than adding a tab for it.
+          setOpenArtifactIds((current) =>
+            current.includes(artifactId)
+              ? current
+              : current.includes(replaceId)
+                ? current.map((id) => (id === replaceId ? artifactId : id))
+                : [...current, artifactId],
+          );
+        } else {
+          addOpenArtifactId(artifactId);
+        }
         setActiveArtifact(got);
         if (fixture) {
           setDocTab('preview');
@@ -2329,6 +2363,40 @@ export default function App() {
   /// Switching conversations clears the document panel and reloads the
   /// artifact list, so the open waits until that list has arrived.
   const pendingWorkflowDocRef = useRef<{ conversationId: string; artifactId: string } | null>(null);
+
+  // Opening a chat brings back the artifact the reader last had open in it,
+  // once its artifact list has arrived. Without one, the panel lists the
+  // chat's artifacts (DocumentPanel). Declared before the workflow open below
+  // so that open, which names its own document, can claim the chat first.
+  const restoredConversationRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeConversationId || artifactsConversationId !== activeConversationId) return;
+    if (restoredConversationRef.current === activeConversationId) return;
+    restoredConversationRef.current = activeConversationId;
+    if (pendingWorkflowDocRef.current?.conversationId === activeConversationId) return;
+    if (activeArtifact || pendingArtifact || openArtifactIds.length > 0) return;
+    const remembered = readLastArtifact(activeConversationId);
+    if (!remembered) return;
+    if (!chatArtifacts.some((artifact) => artifact.id === remembered)) {
+      writeLastArtifact(activeConversationId, null);
+      return;
+    }
+    void handleOpenArtifact(remembered, { reveal: false, forConversation: activeConversationId });
+  }, [
+    activeConversationId,
+    artifactsConversationId,
+    chatArtifacts,
+    activeArtifact,
+    pendingArtifact,
+    openArtifactIds.length,
+    handleOpenArtifact,
+  ]);
+  // Remember what is open, per chat, for the restore above.
+  useEffect(() => {
+    if (!activeArtifact || activeArtifact.conversationId !== activeConversationIdRef.current) return;
+    writeLastArtifact(activeArtifact.conversationId, activeArtifact.id);
+  }, [activeArtifact]);
+
   // Scheduled workflow runs: a notification in the user's language, and a
   // refresh of the Workflows page if it is open.
   const [workflowRunsVersion, setWorkflowRunsVersion] = useState(0);
@@ -2510,8 +2578,28 @@ export default function App() {
   const handleCloseArtifactTab = useCallback(
     (artifactId: string) => {
       setOpenArtifactIds((current) => current.filter((id) => id !== artifactId));
+      // Closing the last one leaves the chat's list, and reopening the chat
+      // should show that list too. Closing one of several hands over to the
+      // next, which is remembered as it opens.
+      if (activeConversationId && openArtifactIds.every((id) => id === artifactId)) {
+        writeLastArtifact(activeConversationId, null);
+      }
     },
-    [],
+    [activeConversationId, openArtifactIds],
+  );
+
+  /** The header switcher's "All artifacts in this chat": back to the list. */
+  const handleShowArtifactList = useCallback(() => {
+    setOpenArtifactIds([]);
+    if (activeConversationId) writeLastArtifact(activeConversationId, null);
+  }, [activeConversationId]);
+
+  /** The header switcher: show another of the chat's artifacts in place. */
+  const handleSwitchArtifact = useCallback(
+    (artifactId: string) => {
+      void handleOpenArtifact(artifactId, { replaceId: activeArtifact?.id });
+    },
+    [activeArtifact?.id, handleOpenArtifact],
   );
 
   // When the active artifact is removed from openArtifactIds, switch to the
@@ -3969,6 +4057,9 @@ export default function App() {
           onSelectTab={setDocTab}
           onOpenArtifact={(id) => void handleOpenArtifact(id)}
           onCloseTab={handleCloseArtifactTab}
+          chatArtifacts={chatArtifacts}
+          onSwitchArtifact={handleSwitchArtifact}
+          onShowArtifactList={handleShowArtifactList}
           onCollapsePanel={handleCollapseDocPanel}
           expanded={panelExpanded}
           onToggleExpand={panelOverlay.narrow ? undefined : toggleArtifactExpand}

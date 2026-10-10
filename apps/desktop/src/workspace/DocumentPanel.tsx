@@ -1233,6 +1233,9 @@ export function DocumentPanel({
               }
               return (
                 <Preview
+                  // A new key starts the page over: the reader allowed a site
+                  // the page had already given up waiting for.
+                  key={network.reloadToken}
                   {...props}
                   onExternalLink={handleExternalLink}
                   onAskToFix={onAskToFix}

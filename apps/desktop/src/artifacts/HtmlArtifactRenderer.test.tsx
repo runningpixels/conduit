@@ -4,7 +4,12 @@ import { ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT, HtmlArtifactRenderer, assembleArtif
 import { OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
 import { ARTIFACT_EXTERNAL_LINK_MESSAGE_TYPE } from './externalUrl';
 import { ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE } from './runtimeError';
-import { ARTIFACT_FETCH_MESSAGE_TYPE, ARTIFACT_FETCH_RESULT_MESSAGE_TYPE } from './networkBridge';
+import {
+  ARTIFACT_FETCH_ABORT_MESSAGE_TYPE,
+  ARTIFACT_FETCH_MESSAGE_TYPE,
+  ARTIFACT_FETCH_RESULT_MESSAGE_TYPE,
+  ARTIFACT_FRAME_CLOSED,
+} from './networkBridge';
 import { PAGE_BRIDGE_MESSAGE_TYPE } from './pageBridge';
 import type { ResolvedTokens } from '../themes/resolvedTokens';
 
@@ -293,7 +298,10 @@ describe('HtmlArtifactRenderer network bridge (ADR-010)', () => {
     await act(async () => {
       window.dispatchEvent(new MessageEvent('message', { data: request, source: iframe.contentWindow }));
     });
-    expect(handler.request).toHaveBeenCalledWith(expect.objectContaining({ id: 7, url: request.url, method: 'GET' }));
+    expect(handler.request).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 7, url: request.url, method: 'GET' }),
+      expect.any(AbortSignal),
+    );
     expect(post).toHaveBeenCalledWith(
       expect.objectContaining({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: 7, status: 200, body }),
       '*',
@@ -320,6 +328,51 @@ describe('HtmlArtifactRenderer network bridge (ADR-010)', () => {
       expect.objectContaining({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: 7, error: expect.any(String) }),
       '*',
     );
+  });
+
+  it('tells the handler when the page gives up on a request, and answers nothing', async () => {
+    let signal: AbortSignal | undefined;
+    let finish: (r: { ok: false; error: string }) => void = () => {};
+    const handler = {
+      request: vi.fn((_m: unknown, s?: AbortSignal) => {
+        signal = s;
+        return new Promise<{ ok: false; error: string }>((resolve) => (finish = resolve));
+      }),
+    };
+    const { container } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} network={handler} />);
+    const iframe = container.querySelector('iframe')!;
+    const post = vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation(() => {});
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: request, source: iframe.contentWindow }));
+    });
+    expect(signal?.aborted).toBe(false);
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', { data: { type: ARTIFACT_FETCH_ABORT_MESSAGE_TYPE, id: 7 }, source: iframe.contentWindow }),
+      );
+    });
+    expect(signal?.aborted).toBe(true);
+    expect(signal?.reason).not.toBe(ARTIFACT_FRAME_CLOSED);
+    await act(async () => finish({ ok: false, error: 'gone' }));
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('abandons requests still out when the frame goes away', async () => {
+    let signal: AbortSignal | undefined;
+    const handler = {
+      request: vi.fn((_m: unknown, s?: AbortSignal) => {
+        signal = s;
+        return new Promise<never>(() => {});
+      }),
+    };
+    const { container, unmount } = render(<HtmlArtifactRenderer html="<p>x</p>" allowlist={[]} network={handler} />);
+    const iframe = container.querySelector('iframe')!;
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: request, source: iframe.contentWindow }));
+    });
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    expect(signal?.reason).toBe(ARTIFACT_FRAME_CLOSED);
   });
 });
 

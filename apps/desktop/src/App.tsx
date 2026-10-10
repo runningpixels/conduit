@@ -47,6 +47,7 @@ import {
   isDocumentPatchTool,
   looksLikeDeckRequest,
   resolveDocumentArtifactId,
+  resolveWrittenArtifactId,
   type DocumentToolActivity,
 } from './chat/agentTools';
 import type { AssistantStreamState } from './chat/streamState';
@@ -2429,7 +2430,10 @@ export default function App() {
         return;
       }
 
-      const artifactId = resolveDocumentArtifactId(streamState, listed);
+      // The turn's saved message: a write that named an id of its own made a
+      // new artifact, which carries this as its source.
+      const sourceMessageId = await resolveSourceMessageId(`${ASSISTANT_TURN_PREFIX}${streamState.requestId}`);
+      const artifactId = resolveDocumentArtifactId(streamState, listed, sourceMessageId);
       if (artifactId) {
         await handleOpenArtifact(artifactId);
       }
@@ -2458,9 +2462,19 @@ export default function App() {
         const listed = await refreshArtifacts(activeConversationId);
         // A newer write started meanwhile; its own lifecycle owns the panel.
         if (documentWriteSeqRef.current !== seq) return;
-        const artifactId =
-          activity.artifactId ??
-          (isDocumentCreateTool(activity.toolName) ? listed[0]?.id : undefined);
+        // A write's `artifact_id` may be a slug the model made up, which the
+        // tool answers by creating a new artifact: open the one it saved, not
+        // the argument, which `handleOpenArtifact` would quietly fail to find.
+        const named = activity.artifactId;
+        const needsTurn =
+          activity.requestId !== undefined &&
+          isDocumentCreateTool(activity.toolName) &&
+          !listed.some((artifact) => artifact.id === named);
+        const sourceMessageId = needsTurn
+          ? await resolveSourceMessageId(`${ASSISTANT_TURN_PREFIX}${activity.requestId}`)
+          : undefined;
+        if (documentWriteSeqRef.current !== seq) return;
+        const artifactId = resolveWrittenArtifactId(activity.toolName, named, listed, sourceMessageId);
         if (!artifactId) return;
         await handleOpenArtifact(artifactId);
         if (documentWriteSeqRef.current !== seq) return;

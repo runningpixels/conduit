@@ -39,9 +39,17 @@ export type ArtifactFetchResult =
     }
   | { ok: false; error: string };
 
+/// The abort reason the host gives when the frame itself went away (unmounted
+/// or replaced by another document) — as opposed to the page giving up on a
+/// request, e.g. its own timeout firing while the reader was still deciding.
+export const ARTIFACT_FRAME_CLOSED = 'conduit:artifact-frame-closed';
+
 /// Handles a page's requests; provided by the document panel for a saved page.
+/// `signal` aborts when the page gives up on the request (its fetch was
+/// aborted) or the frame goes away (reason `ARTIFACT_FRAME_CLOSED`); the host
+/// posts no answer for an aborted request.
 export interface ArtifactNetworkHandler {
-  request(message: ArtifactFetchMessage): Promise<ArtifactFetchResult>;
+  request(message: ArtifactFetchMessage, signal?: AbortSignal): Promise<ArtifactFetchResult>;
 }
 
 export const ARTIFACT_NETWORK_BRIDGE_SCRIPT =
@@ -85,6 +93,7 @@ export function parseArtifactFetchMessage(data: unknown): ArtifactFetchMessage |
   return { id: d.id, url: d.url, method: d.method.toUpperCase(), headers, body };
 }
 
+/// The id of a request the page gave up on; `null` unless it is such a message.
 export function parseArtifactFetchAbortMessage(data: unknown): number | null {
   if (data == null || typeof data !== 'object') return null;
   const d = data as Record<string, unknown>;

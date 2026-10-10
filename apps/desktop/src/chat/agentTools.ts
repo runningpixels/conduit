@@ -952,8 +952,11 @@ export interface DocumentToolActivity {
   phase: DocumentToolPhase;
   toolName: string;
   titleHint?: string;
-  /** Present for edit_* tools once arguments are known. */
+  /** The tool's `artifact_id` argument, once arguments are known. A write's
+   *  may be a model-made slug; see `resolveWrittenArtifactId`. */
   artifactId?: string;
+  /** `phase: 'written'` only: the turn's request, to find the artifacts it wrote. */
+  requestId?: string;
   /** Failure reason on `phase: 'error'`, shown in the document panel. */
   error?: string;
   /** `phase: 'progress'` only. */
@@ -1573,10 +1576,38 @@ export function hadFailedDocumentToolCalls(state: AssistantStreamState): boolean
   return failedDocumentToolCalls(state).length > 0;
 }
 
-/** Pick the artifact the document panel should open after an agent turn. */
+/**
+ * The artifact a successful document tool call saved to. A `write_*` call
+ * whose `artifact_id` names no artifact of this conversation creates a new one
+ * under a fresh id — models pass their own slugs ('otd', 'on-this-day.html') —
+ * so the argument counts only when it is listed. Otherwise: the newest
+ * document of the tool's kind the turn's message wrote, then the newest listed.
+ * Edits and patches on an unknown id fail in the tool, so a successful one
+ * named a real artifact.
+ */
+export function resolveWrittenArtifactId(
+  toolName: string,
+  argumentId: string | undefined,
+  listed: readonly Artifact[],
+  sourceMessageId?: string,
+): string | undefined {
+  const named = argumentId?.trim() ? argumentId : undefined;
+  // An empty list is a failed refresh, not proof the id is unknown.
+  if (named && (listed.length === 0 || listed.some((artifact) => artifact.id === named))) return named;
+  if (!isDocumentCreateTool(toolName)) return named;
+  const kind = documentToolArtifactKind(toolName);
+  const fromTurn = sourceMessageId
+    ? listed.find((artifact) => artifact.sourceMessageId === sourceMessageId && artifact.kind === kind)
+    : undefined;
+  return (fromTurn ?? listed[0])?.id;
+}
+
+/** Pick the artifact the document panel should open after an agent turn.
+ *  `sourceMessageId` is the turn's saved message, when known. */
 export function resolveDocumentArtifactId(
   state: AssistantStreamState,
   listed: Artifact[],
+  sourceMessageId?: string,
 ): string | undefined {
   const completed = completedDocumentToolCalls(state);
   if (completed.length === 0) return undefined;
@@ -1585,7 +1616,12 @@ export function resolveDocumentArtifactId(
   for (const toolCall of completed) {
     if (toolCall.name.startsWith('write_')) {
       const id = toolCall.arguments?.artifact_id;
-      artifactId = typeof id === 'string' && id.trim() !== '' ? id : undefined;
+      artifactId = resolveWrittenArtifactId(
+        toolCall.name,
+        typeof id === 'string' ? id : undefined,
+        listed,
+        sourceMessageId,
+      );
       continue;
     }
     const id = toolCall.arguments?.artifact_id;

@@ -5,6 +5,11 @@
 /// opens the consent dialog, and the decision releases or refuses every held
 /// request to that site. This hook decides only whether to ask — Rust checks
 /// the grant, the address and every cap again on each request.
+///
+/// A page may stop waiting before the reader decides (its own fetch timeout):
+/// that request is dropped, never sent later, and the site stays pending.
+/// Allowing the site then starts the page over (`reloadToken`), since the page
+/// has already shown its failure and nothing in it will ask again.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -16,6 +21,7 @@ import {
   type PagePrincipal,
 } from '../ipc/client';
 import {
+  ARTIFACT_FRAME_CLOSED,
   isLocalNetworkOrigin,
   requestOrigin,
   type ArtifactFetchMessage,
@@ -75,6 +81,8 @@ interface Held {
   /// Where the request itself goes (differs from the held site on a redirect).
   origin: string;
   resolve: (result: ArtifactFetchResult) => void;
+  /// Aborts when the page stops waiting or its frame goes away.
+  signal?: AbortSignal;
 }
 
 // Session memory, per artifact, surviving the panel re-rendering the page:
@@ -123,6 +131,9 @@ export interface ArtifactNetwork {
    *  held request, not just those to `origins`. */
   decide: (origins: string[], decision: NetworkDecision, anySite?: boolean) => Promise<void>;
   revoke: (origin: string) => Promise<void>;
+  /** Bumps when the page must start over: the reader allowed a site after the
+   *  page had stopped waiting for it. The view re-creates the frame on a change. */
+  reloadToken: number;
 }
 
 /**
@@ -142,6 +153,9 @@ export function useArtifactNetwork(
   const [log, setLog] = useState<NetworkLogEntry[]>([]);
   const [deniedVersion, setDeniedVersion] = useState(0);
   const held = useRef(new Map<string, Held[]>());
+  // Sites the page stopped waiting on while the reader was deciding.
+  const abandoned = useRef(new Set<string>());
+  const [reloadToken, setReloadToken] = useState(0);
   const stateRef = useRef<ArtifactNetworkState | null>(null);
   const contentRef = useRef(contentHash);
   contentRef.current = contentHash;
@@ -167,6 +181,7 @@ export function useArtifactNetwork(
       for (const h of queue) h.resolve({ ok: false, error: 'The page was closed.' });
     }
     held.current.clear();
+    abandoned.current.clear();
     setPending([]);
     stateRef.current = null;
     setState(null);
@@ -198,12 +213,19 @@ export function useArtifactNetwork(
     [principal],
   );
 
-  /** Hold a request until the reader decides on `site`. */
+  /** Hold a request until the reader decides on `site`, or until `signal`
+   *  aborts: then it is dropped (the site stays pending) and, unless the frame
+   *  itself went away, the site is marked so allowing it restarts the page. */
   const hold = useCallback(
-    (site: string, message: ArtifactFetchMessage, origin: string, redirectFrom?: string) =>
+    (site: string, message: ArtifactFetchMessage, origin: string, redirectFrom?: string, signal?: AbortSignal) =>
       new Promise<ArtifactFetchResult>((resolve) => {
+        if (signal?.aborted && signal.reason === ARTIFACT_FRAME_CLOSED) {
+          resolve({ ok: false, error: 'The page was closed.' });
+          return;
+        }
         const queue = held.current.get(site) ?? [];
-        queue.push({ message, origin, resolve });
+        const entry: Held = { message, origin, resolve, signal };
+        queue.push(entry);
         held.current.set(site, queue);
         if (queue.length === 1) {
           const contentType = message.headers.find(([k]) => k.toLowerCase() === 'content-type')?.[1];
@@ -220,12 +242,25 @@ export function useArtifactNetwork(
                 ],
           );
         }
+        if (!signal) return;
+        const drop = () => {
+          const current = held.current.get(site);
+          const at = current?.indexOf(entry) ?? -1;
+          // Already released or refused by a decision.
+          if (!current || at < 0) return;
+          current.splice(at, 1);
+          if (current.length === 0) held.current.delete(site);
+          if (signal.reason !== ARTIFACT_FRAME_CLOSED) abandoned.current.add(site);
+          resolve({ ok: false, error: 'The page stopped waiting for this request.' });
+        };
+        if (signal.aborted) drop();
+        else signal.addEventListener('abort', drop, { once: true });
       }),
     [],
   );
 
   const execute = useCallback(
-    async (message: ArtifactFetchMessage, origin: string): Promise<ArtifactFetchResult> => {
+    async (message: ArtifactFetchMessage, origin: string, signal?: AbortSignal): Promise<ArtifactFetchResult> => {
       if (!principal) return { ok: false, error: 'This page is not saved.' };
       const started = Date.now();
       const content = contentRef.current;
@@ -267,7 +302,7 @@ export function useArtifactNetwork(
         // original request, which Rust then follows through the redirect.
         const denied = deniedByArtifact.get(principal)?.has(redirect.origin);
         if (denied || isAllowed(stateRef.current, redirect.origin)) return { ok: false, error: redirect.message };
-        return hold(redirect.origin, message, origin, origin);
+        return hold(redirect.origin, message, origin, origin, signal);
       }
     },
     [principal, appendLog, hold],
@@ -282,7 +317,8 @@ export function useArtifactNetwork(
 
   const handler = useMemo<ArtifactNetworkHandler>(
     () => ({
-      request: async (message) => {
+      // An allowed request that the page aborts still runs; its answer is dropped.
+      request: async (message, signal) => {
         const origin = requestOrigin(message.url);
         if (!origin) {
           return { ok: false, error: 'Only https addresses can be contacted.' };
@@ -299,11 +335,26 @@ export function useArtifactNetwork(
         if (principal && deniedByArtifact.get(principal)?.has(origin)) {
           return { ok: false, error: `You didn't allow this page to contact ${new URL(origin).host}.` };
         }
-        if (isAllowed(current, origin)) return execute(message, origin);
-        return hold(origin, message, origin);
+        if (isAllowed(current, origin)) return execute(message, origin, signal);
+        return hold(origin, message, origin, undefined, signal);
       },
     }),
     [principal, execute, hold],
+  );
+
+  /** Send the requests an allow released — unless the page starts over, which
+   *  makes them again itself (sending them too would repeat each one). */
+  const release = useCallback(
+    (queue: Held[], restart: boolean) => {
+      if (restart) {
+        for (const h of queue) h.resolve({ ok: false, error: 'The page was reloaded.' });
+        abandoned.current.clear();
+        setReloadToken((v) => v + 1);
+        return;
+      }
+      for (const h of queue) void execute(h.message, h.origin, h.signal).then(h.resolve);
+    },
+    [execute],
   );
 
   const decide = useCallback(
@@ -329,14 +380,17 @@ export function useArtifactNetwork(
             : { ...base, session: [...new Set([...base.session, ANY_SITE])] };
         stateRef.current = next;
         setState(next);
-        for (const h of queues) void execute(h.message, h.origin).then(h.resolve);
+        release(queues, abandoned.current.size > 0);
         setDeniedVersion((v) => v + 1);
         setPending([]);
         return;
       }
+      const released: Held[] = [];
+      let restart = false;
       for (const origin of origins) {
         const queue = held.current.get(origin) ?? [];
         held.current.delete(origin);
+        const wasAbandoned = abandoned.current.delete(origin);
         if (decision === 'deny') {
           const set = deniedByArtifact.get(principal) ?? new Set<string>();
           set.add(origin);
@@ -360,12 +414,14 @@ export function useArtifactNetwork(
             : { ...base, session: [...new Set([...base.session, origin])] };
         stateRef.current = next;
         setState(next);
-        for (const h of queue) void execute(h.message, h.origin).then(h.resolve);
+        released.push(...queue);
+        restart ||= wasAbandoned;
       }
+      release(released, restart);
       setDeniedVersion((v) => v + 1);
       setPending((list) => list.filter((p) => !origins.includes(p.origin)));
     },
-    [principal, execute],
+    [principal, release],
   );
 
   const revoke = useCallback(
@@ -377,5 +433,5 @@ export function useArtifactNetwork(
     [principal, refresh],
   );
 
-  return { handler, state, denied, pending, log, decide, revoke };
+  return { handler, state, denied, pending, log, decide, revoke, reloadToken };
 }

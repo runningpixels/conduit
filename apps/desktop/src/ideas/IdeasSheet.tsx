@@ -11,6 +11,8 @@ import { useT } from '../i18n';
 import { PromptsSection } from '../workspace/settings/PromptsSection';
 import { IDEA_CATEGORIES, IDEAS, IDEAS_REVISION, type Capability, type Idea, type IdeaCategory } from './catalog';
 import { SETUP_TARGET, type Capabilities, type SetupTarget } from './capabilities';
+import { FreeApiList } from './FreeApiList';
+import { FREE_APIS, ideaApiLabel } from './freeApis';
 import {
   clearSpotlight,
   markRevisionSeen,
@@ -31,13 +33,14 @@ export interface IdeasSheetProps {
   onInsertPrompt: (body: string) => void;
   onStatus: (message: string) => void;
   /// Which tab to open on.
-  initialTab?: 'ideas' | 'prompts';
+  initialTab?: Tab;
   /// `page`: the Ideas rail destination — no scrim, no close button, no My
   /// prompts tab (prompts live under Library). `sheet` (default): the modal.
   variant?: 'sheet' | 'page';
 }
 
-type Tab = 'ideas' | 'prompts';
+/// `apis`: the free APIs ideas build on, each with its idea to try.
+type Tab = 'ideas' | 'apis' | 'prompts';
 
 export function IdeasSheet({
   open,
@@ -127,6 +130,10 @@ export function IdeasSheet({
     />
   );
 
+  const apiList = (
+    <FreeApiList caps={caps} onTry={onTry} onSetup={(need) => onSetup(SETUP_TARGET[need])} onStatus={onStatus} />
+  );
+
   const body = (
         <div className="sheet-main scroll">
           <div className="sheet-single-head">
@@ -139,7 +146,7 @@ export function IdeasSheet({
           </div>
           {!isPage && (
           <div className="ideas-tabs" role="tablist" aria-label={t('ideas.sheet.tabsAriaLabel')}>
-            {(['ideas', 'prompts'] as const).map((id) => (
+            {(['ideas', 'apis', 'prompts'] as const).map((id) => (
               <button
                 key={id}
                 type="button"
@@ -154,7 +161,12 @@ export function IdeasSheet({
           </div>
           )}
 
-          {tab === 'prompts' && !isPage ? (
+          {tab === 'apis' ? (
+            <section className="ideas-section" aria-label={t('ideas.apis.heading')}>
+              <p className="sheet-sub">{t('ideas.apis.intro')}</p>
+              {apiList}
+            </section>
+          ) : tab === 'prompts' && !isPage ? (
             <>
               <p className="sheet-sub">{t('ideas.sheet.promptsIntro')}</p>
               <PromptsSection
@@ -259,7 +271,10 @@ export function IdeasSheet({
             value={query}
             placeholder={t('ideas.sheet.searchPlaceholder')}
             aria-label={t('ideas.sheet.searchPlaceholder')}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setTab('ideas');
+              setQuery(e.target.value);
+            }}
           />
         }
         list={
@@ -267,12 +282,21 @@ export function IdeasSheet({
             {(['all', ...IDEA_CATEGORIES] as const).map((c) => (
               <PageListItem
                 key={c}
-                selected={category === c}
-                onSelect={() => setCategory(c)}
+                selected={tab !== 'apis' && category === c}
+                onSelect={() => {
+                  setTab('ideas');
+                  setCategory(c);
+                }}
                 title={t(`ideas.category.${c}`)}
                 status={countIn(c)}
               />
             ))}
+            <PageListItem
+              selected={tab === 'apis'}
+              onSelect={() => setTab('apis')}
+              title={t('ideas.sheet.tab.apis')}
+              status={FREE_APIS.length}
+            />
             <div className="ideas-page-prefs">
               <p>{t('ideas.sheet.privacy')}</p>
               <label className="ideas-check">
@@ -292,6 +316,14 @@ export function IdeasSheet({
           </>
         }
       >
+        {tab === 'apis' ? (
+          <section className="ideas-section" aria-label={t('ideas.apis.heading')}>
+            <h3>{t('ideas.apis.heading')}</h3>
+            <p className="sheet-sub">{t('ideas.apis.intro')}</p>
+            {apiList}
+          </section>
+        ) : (
+        <>
         {overview && spotlit.length > 0 && (
           <section className="ideas-section ideas-spotlight" aria-label={t('ideas.sheet.spotlight')}>
             <h3>{t('ideas.sheet.spotlight')}</h3>
@@ -320,6 +352,8 @@ export function IdeasSheet({
             </div>
           )}
         </section>
+        </>
+        )}
       </PageFrame>
     );
   }
@@ -359,6 +393,7 @@ function IdeaCard({
   const status = ideaStatus(idea, caps);
   const need = missingNeed(idea, caps);
   const cost = caps.localModel ? t('ideas.cost.local') : t(`ideas.cost.${idea.size}`);
+  const apiLabel = ideaApiLabel(idea, t);
   return (
     <article className="idea-card" data-status={status} data-category={idea.category}>
       <div className="idea-card-head">
@@ -374,6 +409,7 @@ function IdeaCard({
             {t(`ideas.badge.${n}`)}
           </li>
         ))}
+        {apiLabel && <li data-api="">{apiLabel}</li>}
         <li className="idea-card-cost">{cost}</li>
       </ul>
       <div className="idea-card-actions">

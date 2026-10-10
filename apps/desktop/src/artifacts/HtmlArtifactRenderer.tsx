@@ -61,7 +61,9 @@ import {
 import { ARTIFACT_FORM_SUBMIT_SCRIPT } from './formSubmit';
 import {
   ARTIFACT_FETCH_RESULT_MESSAGE_TYPE,
+  ARTIFACT_FRAME_CLOSED,
   ARTIFACT_NETWORK_BRIDGE_SCRIPT,
+  parseArtifactFetchAbortMessage,
   parseArtifactFetchMessage,
   type ArtifactNetworkHandler,
 } from './networkBridge';
@@ -362,6 +364,18 @@ export function HtmlArtifactRenderer({
     );
   }, [inputsRevision]);
 
+  // The frame's requests still out, by the page's id, so the page giving up on
+  // one (its fetch aborted) reaches the handler. A new document or an unmounted
+  // frame abandons them all, with a reason that says the frame went away.
+  const inFlightRef = useRef(new Map<number, AbortController>());
+  useEffect(() => {
+    const inFlight = inFlightRef.current;
+    return () => {
+      for (const controller of inFlight.values()) controller.abort(ARTIFACT_FRAME_CLOSED);
+      inFlight.clear();
+    };
+  }, [frameSource.src, frameSource.srcDoc]);
+
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       const frame = iframeRef.current;
@@ -376,11 +390,27 @@ export function HtmlArtifactRenderer({
         setRuntimeError((current) => current ?? runtime);
         return;
       }
+      const abortedId = parseArtifactFetchAbortMessage(event.data);
+      if (abortedId != null) {
+        const controller = inFlightRef.current.get(abortedId);
+        inFlightRef.current.delete(abortedId);
+        controller?.abort();
+        return;
+      }
       const request = parseArtifactFetchMessage(event.data);
       if (request) {
         const handler = networkRef.current;
         const target = frame.contentWindow;
+        const inFlight = inFlightRef.current;
+        // A page reusing an id it is still waiting on loses the first request.
+        inFlight.get(request.id)?.abort(ARTIFACT_FRAME_CLOSED);
+        const controller = new AbortController();
+        inFlight.set(request.id, controller);
         const reply = (result: Awaited<ReturnType<ArtifactNetworkHandler['request']>>) => {
+          // Aborted (the page stopped waiting, or its frame went away): the
+          // page has already rejected its fetch, so there is no one to answer.
+          if (inFlight.get(request.id) !== controller) return;
+          inFlight.delete(request.id);
           // The page may have been replaced while the request was out.
           if (!target || iframeRef.current?.contentWindow !== target) return;
           if (result.ok) {
@@ -393,7 +423,7 @@ export function HtmlArtifactRenderer({
           }
         };
         if (!handler) reply({ ok: false, error: 'This page has no network access.' });
-        else void handler.request(request).then(reply, (error: unknown) => reply({ ok: false, error: String(error) }));
+        else void handler.request(request, controller.signal).then(reply, (error: unknown) => reply({ ok: false, error: String(error) }));
         return;
       }
       const bridgeRequest = parsePageBridgeRequest(event.data);

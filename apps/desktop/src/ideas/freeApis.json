@@ -1,0 +1,296 @@
+[
+  {
+    "id": "openMeteo",
+    "name": "Open-Meteo",
+    "homepage": "https://open-meteo.com",
+    "docs": "https://open-meteo.com/en/docs",
+    "hosts": ["api.open-meteo.com"],
+    "example": "https://api.open-meteo.com/v1/forecast?latitude=48.85&longitude=2.35&current=temperature_2m&daily=temperature_2m_max&timezone=auto",
+    "limits": { "requests": 10000, "perSeconds": 86400 },
+    "attribution": "Open-Meteo.com, CC BY 4.0, non-commercial use",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "openMeteoGeo",
+    "name": "Open-Meteo Geocoding",
+    "homepage": "https://open-meteo.com",
+    "docs": "https://open-meteo.com/en/docs/geocoding-api",
+    "hosts": ["geocoding-api.open-meteo.com"],
+    "example": "https://geocoding-api.open-meteo.com/v1/search?name=Ridgewood&count=3",
+    "limits": { "requests": 10000, "perSeconds": 86400 },
+    "attribution": "Open-Meteo.com (GeoNames data), CC BY 4.0",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "openMeteoAir",
+    "name": "Open-Meteo Air Quality",
+    "homepage": "https://open-meteo.com",
+    "docs": "https://open-meteo.com/en/docs/air-quality-api",
+    "hosts": ["air-quality-api.open-meteo.com"],
+    "example": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=48.85&longitude=2.35&current=european_aqi,pm2_5",
+    "limits": { "requests": 10000, "perSeconds": 86400 },
+    "attribution": "Open-Meteo.com (CAMS data), CC BY 4.0",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "sunriseSunset",
+    "name": "Sunrise-Sunset",
+    "homepage": "https://sunrise-sunset.org",
+    "docs": "https://sunrise-sunset.org/api",
+    "hosts": ["api.sunrise-sunset.org"],
+    "example": "https://api.sunrise-sunset.org/json?lat=48.85&lng=2.35&formatted=0",
+    "attribution": "Link to sunrise-sunset.org",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "usgsQuakes",
+    "name": "USGS Earthquakes",
+    "homepage": "https://earthquake.usgs.gov",
+    "docs": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php",
+    "hosts": ["earthquake.usgs.gov"],
+    "example": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson",
+    "attribution": "U.S. Geological Survey, public domain",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "inaturalist",
+    "name": "iNaturalist",
+    "homepage": "https://www.inaturalist.org",
+    "docs": "https://api.inaturalist.org/v1/docs/",
+    "hosts": ["api.inaturalist.org", "inaturalist-open-data.s3.amazonaws.com", "static.inaturalist.org"],
+    "example": "https://api.inaturalist.org/v1/observations?taxon_name=Danaus%20plexippus&per_page=1",
+    "limits": { "requests": 60, "perSeconds": 60 },
+    "attribution": "iNaturalist; each photo carries its own license",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "frankfurter",
+    "name": "Frankfurter",
+    "homepage": "https://frankfurter.dev",
+    "docs": "https://frankfurter.dev",
+    "hosts": ["api.frankfurter.dev"],
+    "example": "https://api.frankfurter.dev/v1/latest?base=USD",
+    "attribution": "European Central Bank reference rates",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "coingecko",
+    "name": "CoinGecko",
+    "homepage": "https://www.coingecko.com",
+    "docs": "https://docs.coingecko.com",
+    "hosts": ["api.coingecko.com"],
+    "example": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd",
+    "limits": { "requests": 5, "perSeconds": 60 },
+    "attribution": "Data provided by CoinGecko",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "wikipedia",
+    "name": "Wikipedia",
+    "homepage": "https://www.wikipedia.org",
+    "docs": "https://en.wikipedia.org/api/rest_v1/",
+    "hosts": ["en.wikipedia.org", "thumb.wikimedia.org", "upload.wikimedia.org"],
+    "example": "https://en.wikipedia.org/api/rest_v1/page/summary/Ada_Lovelace",
+    "attribution": "Wikipedia, CC BY-SA 4.0",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "wikiOnThisDay",
+    "name": "Wikimedia On this day",
+    "homepage": "https://api.wikimedia.org",
+    "docs": "https://api.wikimedia.org/wiki/Feed_API/Reference/On_this_day",
+    "hosts": ["api.wikimedia.org", "thumb.wikimedia.org", "upload.wikimedia.org"],
+    "example": "https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/events/10/09",
+    "limits": { "requests": 500, "perSeconds": 3600 },
+    "attribution": "Wikipedia, CC BY-SA 4.0",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "openLibrary",
+    "name": "Open Library",
+    "homepage": "https://openlibrary.org",
+    "docs": "https://openlibrary.org/developers/api",
+    "hosts": ["openlibrary.org"],
+    "example": "https://openlibrary.org/search.json?q=dune&limit=1",
+    "attribution": "Open Library (Internet Archive)",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "nagerDate",
+    "name": "Nager.Date",
+    "homepage": "https://date.nager.at",
+    "docs": "https://date.nager.at/Api",
+    "hosts": ["date.nager.at"],
+    "example": "https://date.nager.at/api/v3/PublicHolidays/2026/US",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "artic",
+    "name": "Art Institute of Chicago",
+    "homepage": "https://www.artic.edu",
+    "docs": "https://api.artic.edu/docs/",
+    "hosts": ["api.artic.edu"],
+    "example": "https://api.artic.edu/api/v1/artworks/search?q=cats&limit=1&fields=id,title,image_id",
+    "limits": { "requests": 60, "perSeconds": 60 },
+    "attribution": "Art Institute of Chicago, data CC0",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "mealDb",
+    "name": "TheMealDB",
+    "homepage": "https://www.themealdb.com",
+    "docs": "https://www.themealdb.com/api.php",
+    "hosts": ["www.themealdb.com"],
+    "example": "https://www.themealdb.com/api/json/v1/1/search.php?s=Arrabiata",
+    "attribution": "TheMealDB; public test key 1, for development and education",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "openFoodFacts",
+    "name": "Open Food Facts",
+    "homepage": "https://world.openfoodfacts.org",
+    "docs": "https://openfoodfacts.github.io/openfoodfacts-server/api/",
+    "hosts": ["world.openfoodfacts.org", "images.openfoodfacts.org"],
+    "example": "https://world.openfoodfacts.org/api/v2/product/3017624010701.json?fields=product_name,nutriments",
+    "limits": { "requests": 100, "perSeconds": 60 },
+    "attribution": "Open Food Facts, ODbL",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "pokeApi",
+    "name": "PokéAPI",
+    "homepage": "https://pokeapi.co",
+    "docs": "https://pokeapi.co/docs/v2",
+    "hosts": ["pokeapi.co", "raw.githubusercontent.com"],
+    "example": "https://pokeapi.co/api/v2/pokemon/pikachu",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "hackerNews",
+    "name": "Hacker News",
+    "homepage": "https://news.ycombinator.com",
+    "docs": "https://github.com/HackerNews/API",
+    "hosts": ["hacker-news.firebaseio.com"],
+    "example": "https://hacker-news.firebaseio.com/v0/topstories.json",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "github",
+    "name": "GitHub",
+    "homepage": "https://github.com",
+    "docs": "https://docs.github.com/en/rest",
+    "hosts": ["api.github.com", "avatars.githubusercontent.com"],
+    "example": "https://api.github.com/users/octocat",
+    "limits": { "requests": 60, "perSeconds": 3600 },
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "dictionary",
+    "name": "Free Dictionary API",
+    "homepage": "https://dictionaryapi.dev",
+    "docs": "https://dictionaryapi.dev",
+    "hosts": ["api.dictionaryapi.dev"],
+    "example": "https://api.dictionaryapi.dev/api/v2/entries/en/serendipity",
+    "attribution": "Wiktionary, CC BY-SA",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "datamuse",
+    "name": "Datamuse",
+    "homepage": "https://www.datamuse.com",
+    "docs": "https://www.datamuse.com/api/",
+    "hosts": ["api.datamuse.com"],
+    "example": "https://api.datamuse.com/words?rel_rhy=forgetful&max=5",
+    "limits": { "requests": 100000, "perSeconds": 86400 },
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "poetryDb",
+    "name": "PoetryDB",
+    "homepage": "https://poetrydb.org",
+    "docs": "https://github.com/thundercomb/poetrydb",
+    "hosts": ["poetrydb.org"],
+    "example": "https://poetrydb.org/title/Ozymandias",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "issPosition",
+    "name": "Where the ISS at?",
+    "homepage": "https://wheretheiss.at",
+    "docs": "https://wheretheiss.at/w/developer",
+    "hosts": ["api.wheretheiss.at"],
+    "example": "https://api.wheretheiss.at/v1/satellites/25544",
+    "limits": { "requests": 1, "perSeconds": 1 },
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "spaceflightNews",
+    "name": "Spaceflight News API",
+    "homepage": "https://spaceflightnewsapi.net",
+    "docs": "https://api.spaceflightnewsapi.net/v4/docs/",
+    "hosts": ["api.spaceflightnewsapi.net"],
+    "example": "https://api.spaceflightnewsapi.net/v4/articles/?limit=1",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "launchLibrary",
+    "name": "Launch Library 2",
+    "homepage": "https://thespacedevs.com",
+    "docs": "https://ll.thespacedevs.com/docs/",
+    "hosts": ["ll.thespacedevs.com"],
+    "example": "https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=1",
+    "limits": { "requests": 15, "perSeconds": 3600 },
+    "attribution": "The Space Devs",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "openTrivia",
+    "name": "Open Trivia Database",
+    "homepage": "https://opentdb.com",
+    "docs": "https://opentdb.com/api_config.php",
+    "hosts": ["opentdb.com"],
+    "example": "https://opentdb.com/api.php?amount=3&type=multiple",
+    "limits": { "requests": 1, "perSeconds": 5 },
+    "attribution": "Open Trivia Database, CC BY-SA 4.0",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "deckOfCards",
+    "name": "Deck of Cards API",
+    "homepage": "https://deckofcardsapi.com",
+    "docs": "https://deckofcardsapi.com",
+    "hosts": ["deckofcardsapi.com"],
+    "example": "https://deckofcardsapi.com/api/deck/new/shuffle/?deck_count=1",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "tvMaze",
+    "name": "TVmaze",
+    "homepage": "https://www.tvmaze.com",
+    "docs": "https://www.tvmaze.com/api",
+    "hosts": ["api.tvmaze.com", "static.tvmaze.com"],
+    "example": "https://api.tvmaze.com/search/shows?q=office",
+    "limits": { "requests": 20, "perSeconds": 10 },
+    "attribution": "TVmaze, CC BY-SA 4.0",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "openverse",
+    "name": "Openverse",
+    "homepage": "https://openverse.org",
+    "docs": "https://api.openverse.org/v1/",
+    "hosts": ["api.openverse.org"],
+    "example": "https://api.openverse.org/v1/images/?q=mountain&page_size=1",
+    "attribution": "Credit each image's creator and license",
+    "verified": { "on": "2026-10-09" }
+  },
+  {
+    "id": "npmRegistry",
+    "name": "npm registry",
+    "homepage": "https://www.npmjs.com",
+    "docs": "https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md",
+    "hosts": ["registry.npmjs.org"],
+    "example": "https://registry.npmjs.org/react/latest",
+    "verified": { "on": "2026-10-09" }
+  }
+]

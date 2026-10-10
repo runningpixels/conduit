@@ -460,7 +460,7 @@ export function AppView({
       )}
       <div className="app-view-frame" hidden={settingsOpen}>
         <HtmlArtifactRenderer
-          key={`${summary.id}:${summary.version}:${revision}:${clearRevision}`}
+          key={`${summary.id}:${summary.version}:${revision}:${clearRevision}:${network.reloadToken}`}
           html={html}
           allowlist={allowlist}
           styledPreview={styledPreview}

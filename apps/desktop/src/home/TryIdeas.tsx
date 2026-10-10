@@ -7,7 +7,7 @@ import { useT } from '../i18n';
 import type { Idea } from '../ideas/catalog';
 import type { Capabilities } from '../ideas/capabilities';
 import type { IdeaState } from '../ideas/ideaState';
-import { GLYPHS } from '../ideas/IdeaGallery';
+import { GLYPHS, ideaMeta } from '../ideas/IdeaGallery';
 import { forYou, ideaStatus, newIdeas, spotlightIdeas } from '../ideas/selectIdeas';
 
 /// How many ideas Home offers.
@@ -64,7 +64,7 @@ export function TryIdeas({ caps, state, onTryIdea, onMoreIdeas }: TryIdeasProps)
         {picks.map(({ idea, isNew }) => {
           const title = t(`ideas.item.${idea.id}.title`);
           const cost = caps.localModel ? t('ideas.cost.local') : t(`ideas.cost.${idea.size}`);
-          const meta = [cost, ...idea.needs.map((n) => t(`ideas.badge.${n}`))].join(' · ');
+          const meta = ideaMeta(idea, cost, t);
           return (
             <li key={idea.id} className="home-ideas-item">
               <button

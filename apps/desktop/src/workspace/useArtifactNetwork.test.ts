@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ArtifactFetchMessage } from '../artifacts/networkBridge';
+import { ARTIFACT_FRAME_CLOSED, type ArtifactFetchMessage } from '../artifacts/networkBridge';
 
 const artifactFetch = vi.fn();
 const getArtifactNetworkState = vi.fn();
@@ -182,5 +182,85 @@ describe('useArtifactNetwork', () => {
       await result.current.handler.request(message('https://api.open-meteo.com/v1'));
     });
     expect(result.current.log.at(-1)).toMatchObject({ sinceChange: true, status: 200 });
+  });
+});
+
+describe('useArtifactNetwork when the page stops waiting', () => {
+  async function heldRequest(url: string) {
+    const id = `artifact:page-${nextArtifact}` as const;
+    const hook = renderHook(() => useArtifactNetwork(id, '<html>'));
+    await waitFor(() => expect(hook.result.current.state).not.toBeNull());
+    const controller = new AbortController();
+    let settled: unknown = null;
+    act(() => {
+      void hook.result.current.handler.request(message(url), controller.signal).then((r) => (settled = r));
+    });
+    await waitFor(() => expect(hook.result.current.pending).toHaveLength(1));
+    return { ...hook, controller, settled: () => settled };
+  }
+
+  it('drops a held request the page aborted and starts the page over once the site is allowed', async () => {
+    const { result, controller, settled } = await heldRequest('https://hacker-news.firebaseio.com/v0/top.json');
+    act(() => controller.abort());
+    await waitFor(() => expect(settled()).toMatchObject({ ok: false }));
+    // The reader still has to decide on the site.
+    expect(result.current.pending).toHaveLength(1);
+    expect(result.current.reloadToken).toBe(0);
+
+    await act(async () => {
+      await result.current.decide(['https://hacker-news.firebaseio.com'], 'page');
+    });
+    expect(grantArtifactNetwork).toHaveBeenCalledTimes(1);
+    expect(artifactFetch).not.toHaveBeenCalled();
+    expect(result.current.reloadToken).toBe(1);
+    expect(result.current.pending).toHaveLength(0);
+  });
+
+  it('releases requests still waiting without starting the page over', async () => {
+    const { result, settled } = await heldRequest('https://hacker-news.firebaseio.com/v0/top.json');
+    await act(async () => {
+      await result.current.decide(['https://hacker-news.firebaseio.com'], 'session');
+    });
+    await waitFor(() => expect(settled()).toMatchObject({ ok: true, status: 200 }));
+    expect(artifactFetch).toHaveBeenCalledTimes(1);
+    expect(result.current.reloadToken).toBe(0);
+  });
+
+  it('does not start the page over when the reader refuses the site', async () => {
+    const { result, controller } = await heldRequest('https://hacker-news.firebaseio.com/v0/top.json');
+    act(() => controller.abort());
+    await act(async () => {
+      await result.current.decide(['https://hacker-news.firebaseio.com'], 'deny');
+    });
+    expect(result.current.reloadToken).toBe(0);
+    expect(artifactFetch).not.toHaveBeenCalled();
+  });
+
+  it('starts the page over on allowing any site, without sending what was still held', async () => {
+    const { result, controller } = await heldRequest('https://a.example/1');
+    let other: unknown = null;
+    act(() => {
+      void result.current.handler.request(message('https://b.example/2')).then((r) => (other = r));
+    });
+    await waitFor(() => expect(result.current.pending).toHaveLength(2));
+    act(() => controller.abort());
+    await act(async () => {
+      await result.current.decide(['https://a.example'], 'session', true);
+    });
+    expect(result.current.reloadToken).toBe(1);
+    // The restarted page asks again itself; sending this too would repeat it.
+    await waitFor(() => expect(other).toMatchObject({ ok: false }));
+    expect(artifactFetch).not.toHaveBeenCalled();
+  });
+
+  it('forgets a request whose frame went away without starting the page over', async () => {
+    const { result, controller, settled } = await heldRequest('https://hacker-news.firebaseio.com/v0/top.json');
+    act(() => controller.abort(ARTIFACT_FRAME_CLOSED));
+    await waitFor(() => expect(settled()).toMatchObject({ ok: false }));
+    await act(async () => {
+      await result.current.decide(['https://hacker-news.firebaseio.com'], 'page');
+    });
+    expect(result.current.reloadToken).toBe(0);
+    expect(artifactFetch).not.toHaveBeenCalled();
   });
 });

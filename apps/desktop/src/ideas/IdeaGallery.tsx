@@ -9,8 +9,9 @@
 /// is sent until the user sends it.
 
 import { useId, useMemo, useState } from 'react';
-import { useT } from '../i18n';
+import { useT, type Translate } from '../i18n';
 import { IDEA_CATEGORIES, IDEAS, type Idea, type IdeaCategory } from './catalog';
+import { ideaApiLabel } from './freeApis';
 import type { Capabilities } from './capabilities';
 import type { IdeaState } from './ideaState';
 import { forYou, ideaStatus } from './selectIdeas';
@@ -42,6 +43,28 @@ export const GLYPHS: Record<string, string> = {
   improveReadme: '.md',
   bakeryLogo: '◐',
   storyIllustration: '✦',
+  bookFinder: '§',
+  recipeFinder: '⅔',
+  holidayCalendar: '31',
+  foodLabel: '|||',
+  tvShowFinder: '▶',
+  imageSearch: '▦',
+  npmPackageCard: 'npm',
+  airQuality: 'AQI',
+  goldenHour: '☀',
+  earthquakeTracker: 'M5',
+  cryptoTicker: '₿',
+  issTracker: 'ISS',
+  spaceLaunches: 'T−10',
+  hackerNewsReader: 'Y',
+  onThisDay: '1969',
+  wildlifeSightings: '✿',
+  wordExplorer: 'Aa',
+  artGallery: '◫',
+  poemOfTheDay: '❝',
+  triviaQuiz: '?!',
+  blackjack: '21',
+  pokedex: '◓',
 };
 
 type Filter = 'all' | IdeaCategory;
@@ -55,6 +78,15 @@ export interface IdeaGalleryProps {
   /** Ideas with a ready-made starter app: their card gets "Open app". */
   readyMade?: ReadonlySet<string>;
   onOpenReadyMade?: (idea: Idea) => void;
+}
+
+/// A card's meta line: cost, then what it needs. An idea built on a free API
+/// names it instead of the generic network badge — the gallery shows only
+/// ideas that are ready, so network access is already on.
+export function ideaMeta(idea: Idea, cost: string, t: Translate): string {
+  const api = ideaApiLabel(idea, t);
+  const needs = idea.needs.filter((n) => !(api && n === 'network')).map((n) => t(`ideas.badge.${n}`));
+  return [cost, ...needs, ...(api ? [api] : [])].join(' · ');
 }
 
 /// The ideas the gallery shows for `filter`: "All" is the Ideas page's "For
@@ -109,7 +141,7 @@ export function IdeaGallery({ caps, state, onPick, onMore, onHide, readyMade, on
           {ideas.map((idea) => {
             const title = t(`ideas.item.${idea.id}.title`);
             const cost = caps.localModel ? t('ideas.cost.local') : t(`ideas.cost.${idea.size}`);
-            const meta = [cost, ...idea.needs.map((n) => t(`ideas.badge.${n}`))].join(' · ');
+            const meta = ideaMeta(idea, cost, t);
             return (
               <li key={idea.id} className="idea-gallery-item">
                 <button

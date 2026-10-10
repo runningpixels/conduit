@@ -3796,7 +3796,7 @@ export default function App() {
                 allowlist={settings.artifactRemoteAllowlist}
                 styledPreview={settings.artifactStyledPreview}
                 colorScheme={effectiveTheme}
-                networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
+                networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}:${settings.artifactFullWebAccess === true}`}
                 onAppsChanged={() => void refreshSavedApps()}
                 starters={starterApps}
                 onAddStarter={(starter) => void addStarterApp(starter)}
@@ -3975,7 +3975,7 @@ export default function App() {
           activeBrandConfig={brandConfig}
           onBrandApplied={setBrandConfig}
           brandingEnabled={settings.brandingEnabled}
-          networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}`}
+          networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}:${settings.artifactFullWebAccess === true}`}
           onOpenIdeas={openIdeas}
         />
         )}

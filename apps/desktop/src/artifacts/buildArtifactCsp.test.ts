@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildArtifactCsp, validateAllowedOrigin, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
+import { buildArtifactCsp, validateAllowedOrigin, OFFLINE_ARTIFACT_CSP, FULL_ACCESS_ARTIFACT_CSP } from './buildArtifactCsp';
 import { escapeHtml } from './escape';
 
 describe('escapeHtml', () => {
@@ -88,5 +88,47 @@ describe('buildArtifactCsp', () => {
     const matches = csp.match(/fonts\.example\.com/g) ?? [];
     // Appears once per passive directive (img, font, style) = 3, not 6.
     expect(matches.length).toBe(3);
+  });
+});
+describe('buildArtifactCsp full web access', () => {
+  const directives = (csp: string) =>
+    new Map(csp.split('; ').map((part) => {
+      const [name, ...values] = part.split(' ');
+      return [name, values.join(' ')] as const;
+    }));
+
+  it('opens scripts, resources and connections to https only', () => {
+    const csp = directives(FULL_ACCESS_ARTIFACT_CSP);
+    expect(csp.get('script-src')).toBe("'unsafe-inline' https:");
+    expect(csp.get('style-src')).toBe("'unsafe-inline' https: data: blob:");
+    expect(csp.get('img-src')).toBe('https: data: blob:');
+    expect(csp.get('font-src')).toBe('https: data: blob:');
+    expect(csp.get('media-src')).toBe('https: data: blob:');
+    expect(csp.get('connect-src')).toBe('https: wss:');
+    expect(csp.get('frame-src')).toBe('https:');
+    expect(csp.get('worker-src')).toBe('blob:');
+    expect(FULL_ACCESS_ARTIFACT_CSP).not.toMatch(/\bhttp:|\bws:|'unsafe-eval'|\*/);
+  });
+
+  it('keeps the guards that are not about loading', () => {
+    const csp = directives(FULL_ACCESS_ARTIFACT_CSP);
+    expect(csp.get('default-src')).toBe("'none'");
+    expect(csp.get('base-uri')).toBe("'none'");
+    expect(csp.get('form-action')).toBe("'none'");
+    expect(csp.get('frame-ancestors')).toBe("'none'");
+    expect(csp.get('navigate-to')).toBe("'none'");
+  });
+
+  it('keeps allowlisted origins on the passive directives and still rejects a bad entry', () => {
+    const csp = buildArtifactCsp(['http://images.lan.example:8080'], 'full')!;
+    expect(csp).toContain('img-src https: data: blob: http://images.lan.example:8080');
+    expect(csp).not.toMatch(/script-src[^;]*http:\/\//);
+    expect(buildArtifactCsp(['javascript:x'], 'full')).toBeNull();
+  });
+
+  it('leaves the normal policy exactly as it was', () => {
+    expect(buildArtifactCsp([], 'normal')).toBe(OFFLINE_ARTIFACT_CSP);
+    expect(OFFLINE_ARTIFACT_CSP).toContain("connect-src 'none'");
+    expect(OFFLINE_ARTIFACT_CSP).not.toContain('https:');
   });
 });

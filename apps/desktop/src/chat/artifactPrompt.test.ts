@@ -106,6 +106,13 @@ describe('buildProviderRequest artifact prompts', () => {
     expect(online.systemPrompt).toContain('<meta name="conduit-network"');
     expect(online.systemPrompt).toContain('Never put API keys');
     expect(online.systemPrompt).not.toContain('no network access');
+    // ADR-007: pages may use CDN libraries and remote media once the reader
+    // gives full web access; no workaround recipes or blanket bans.
+    expect(online.systemPrompt).toContain('libraries from public CDNs');
+    expect(online.systemPrompt).toContain('full web access');
+    expect(online.systemPrompt).not.toContain('createObjectURL');
+    expect(online.systemPrompt).not.toContain('remote scripts stay blocked');
+    expect(offline.systemPrompt).not.toContain('full web access');
 
     const switchedOff = buildProviderRequest(
       { ...baseSettings, localOnly: false, artifactNetworkEnabled: false },

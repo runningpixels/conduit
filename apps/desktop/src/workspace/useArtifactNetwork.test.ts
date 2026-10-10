@@ -264,3 +264,110 @@ describe('useArtifactNetwork when the page stops waiting', () => {
     expect(artifactFetch).not.toHaveBeenCalled();
   });
 });
+
+describe('useArtifactNetwork full web access (ADR-007)', () => {
+  const page = () => `artifact:page-${nextArtifact}` as const;
+  const cdn = { kind: 'scripts' as const, origin: 'https://cdnjs.cloudflare.com' };
+
+  it('is unknown until the state is read, then follows it', async () => {
+    let resolve: (v: unknown) => void = () => {};
+    getArtifactNetworkState.mockReturnValue(new Promise((r) => (resolve = r)));
+    const { result } = renderHook(() => useArtifactNetwork(page(), '<html>'));
+    expect(result.current.fullAccess).toBeUndefined();
+    await act(async () => resolve({ blockedReason: null, always: ['full'], session: [], fullAccess: true }));
+    expect(result.current.fullAccess).toBe(true);
+  });
+
+  it('counts as not granted when the state cannot be read, and false with no page', async () => {
+    getArtifactNetworkState.mockRejectedValue(new Error('ipc down'));
+    const { result } = renderHook(() => useArtifactNetwork(page(), '<html>'));
+    await waitFor(() => expect(result.current.fullAccess).toBe(false));
+    const none = renderHook(() => useArtifactNetwork(null, ''));
+    expect(none.result.current.fullAccess).toBe(false);
+  });
+
+  it('offers full access for what was stopped, deduped', async () => {
+    const { result } = renderHook(() => useArtifactNetwork(page(), '<html>'));
+    await waitFor(() => expect(result.current.fullAccess).toBe(false));
+    expect(result.current.fullAccessRequest).toEqual([]);
+    act(() => {
+      result.current.reportBlocked(cdn);
+      result.current.reportBlocked(cdn);
+      result.current.reportBlocked({ kind: 'images', origin: 'https://upload.wikimedia.org' });
+    });
+    expect(result.current.fullAccessRequest).toEqual([cdn, { kind: 'images', origin: 'https://upload.wikimedia.org' }]);
+  });
+
+  it('allowing stores the grant on the page and starts it over with full access', async () => {
+    const id = page();
+    const { result } = renderHook(() => useArtifactNetwork(id, '<html>'));
+    await waitFor(() => expect(result.current.fullAccess).toBe(false));
+    act(() => result.current.reportBlocked(cdn));
+    const before = result.current.reloadToken;
+    await act(async () => {
+      await result.current.allowFullAccess();
+    });
+    expect(grantArtifactNetwork).toHaveBeenCalledWith(id, 'full', 'page');
+    expect(result.current.fullAccess).toBe(true);
+    expect(result.current.reloadToken).toBe(before + 1);
+    expect(result.current.fullAccessRequest).toEqual([]);
+    expect(result.current.state?.always).toContain('full');
+    // Full access implies any site: fetch() no longer asks.
+    const res = await result.current.handler.request(message('https://api.example.com/x'));
+    expect(res).toMatchObject({ ok: true });
+    expect(result.current.pending).toHaveLength(0);
+  });
+
+  it('a failed grant changes nothing and does not restart the page', async () => {
+    grantArtifactNetwork.mockRejectedValue(new Error('This page no longer exists.'));
+    const { result } = renderHook(() => useArtifactNetwork(page(), '<html>'));
+    await waitFor(() => expect(result.current.fullAccess).toBe(false));
+    act(() => result.current.reportBlocked(cdn));
+    await act(async () => {
+      await result.current.allowFullAccess();
+    });
+    expect(result.current.reloadToken).toBe(0);
+    expect(result.current.fullAccess).toBe(false);
+  });
+
+  it('"Not now" stops offering it for this page this session', async () => {
+    const id = page();
+    const { result, unmount } = renderHook(() => useArtifactNetwork(id, '<html>'));
+    await waitFor(() => expect(result.current.fullAccess).toBe(false));
+    act(() => result.current.reportBlocked(cdn));
+    act(() => result.current.dismissFullAccess());
+    expect(result.current.fullAccessRequest).toEqual([]);
+    unmount();
+    const again = renderHook(() => useArtifactNetwork(id, '<html>'));
+    await waitFor(() => expect(again.result.current.fullAccess).toBe(false));
+    act(() => again.result.current.reportBlocked(cdn));
+    expect(again.result.current.fullAccessRequest).toEqual([]);
+  });
+
+  it('does not offer it while pages cannot connect, or when already granted by the switch', async () => {
+    getArtifactNetworkState.mockResolvedValue({ blockedReason: 'Local-only mode is on.', always: [], session: [], fullAccess: false });
+    const blocked = renderHook(() => useArtifactNetwork(page(), '<html>'));
+    await waitFor(() => expect(blocked.result.current.fullAccess).toBe(false));
+    act(() => blocked.result.current.reportBlocked(cdn));
+    expect(blocked.result.current.fullAccessRequest).toEqual([]);
+
+    nextArtifact += 1;
+    getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: [], session: [], fullAccess: true });
+    const everyPage = renderHook(() => useArtifactNetwork(page(), '<html>'));
+    await waitFor(() => expect(everyPage.result.current.fullAccess).toBe(true));
+    act(() => everyPage.result.current.reportBlocked(cdn));
+    expect(everyPage.result.current.fullAccessRequest).toEqual([]);
+    const res = await everyPage.result.current.handler.request(message('https://api.example.com/x'));
+    expect(res).toMatchObject({ ok: true });
+  });
+
+  it('re-reads the state when the policy key changes (the Settings switch)', async () => {
+    const { result, rerender } = renderHook(({ key }) => useArtifactNetwork(page(), '<html>', key), {
+      initialProps: { key: 'false:true:false' },
+    });
+    await waitFor(() => expect(result.current.fullAccess).toBe(false));
+    getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: [], session: [], fullAccess: true });
+    rerender({ key: 'false:true:true' });
+    await waitFor(() => expect(result.current.fullAccess).toBe(true));
+  });
+});

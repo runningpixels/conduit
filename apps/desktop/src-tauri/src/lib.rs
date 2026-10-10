@@ -28,6 +28,7 @@ pub mod draft_export;
 pub mod drop_grant;
 pub mod encryption;
 pub mod event_sink;
+pub mod guard_proxy;
 pub mod knowledge;
 pub mod local_data;
 pub mod logo;

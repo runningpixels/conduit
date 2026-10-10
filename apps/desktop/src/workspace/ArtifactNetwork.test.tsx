@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { ArtifactNetworkBanner, ArtifactNetworkChip, ArtifactNetworkDialog } from './ArtifactNetwork';
+import {
+  ArtifactNetworkBanner,
+  ArtifactNetworkChip,
+  ArtifactNetworkDialog,
+  FullAccessBanner,
+  FullAccessDialog,
+} from './ArtifactNetwork';
 
 const site = (origin: string, body: ArrayBuffer | null = null, contentType?: string) => ({
   origin,
@@ -119,5 +125,75 @@ describe('ArtifactNetworkChip', () => {
     document.removeEventListener('keydown', panelEscape);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(panelEscape).not.toHaveBeenCalled();
+  });
+});
+
+describe('full web access banner and dialog (ADR-007)', () => {
+  const blocked = [
+    { kind: 'scripts' as const, origin: 'https://cdnjs.cloudflare.com' },
+    { kind: 'images' as const, origin: 'https://upload.wikimedia.org' },
+    { kind: 'images' as const, origin: 'https://tile.openstreetmap.org' },
+  ];
+
+  it('shows nothing until something was stopped', () => {
+    const { container } = render(<FullAccessBanner blocked={[]} onReview={() => {}} onNotNow={() => {}} />);
+    expect(container.textContent).toBe('');
+  });
+
+  it('lists what was stopped, by kind, and offers Review / Not now', () => {
+    const onReview = vi.fn();
+    const onNotNow = vi.fn();
+    render(<FullAccessBanner blocked={blocked} onReview={onReview} onNotNow={onNotNow} />);
+    const text = screen.getByRole('status').textContent ?? '';
+    expect(text).toContain('full web access');
+    expect(text).toContain('scripts from cdnjs.cloudflare.com');
+    expect(text).toContain('images from upload.wikimedia.org, tile.openstreetmap.org');
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(onReview).toHaveBeenCalled();
+    expect(onNotNow).toHaveBeenCalled();
+  });
+
+  it('states the risk plainly and allows only on the explicit button', () => {
+    const onAllow = vi.fn();
+    const onNotNow = vi.fn();
+    render(<FullAccessDialog open title="Chart" blocked={blocked} onAllow={onAllow} onNotNow={onNotNow} />);
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog.textContent).toContain('Give “Chart” full web access?');
+    expect(dialog.textContent).toContain('scripts from cdnjs.cloudflare.com');
+    expect(dialog.textContent).toContain('written by an AI model');
+    expect(dialog.textContent).toContain('send anything it shows');
+    expect(dialog.textContent).toContain('devices on your network');
+    expect(dialog.textContent).not.toMatch(/Conduit/);
+    // Focus starts on the safe choice; Escape is "Not now".
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Not now' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onNotNow).toHaveBeenCalledTimes(1);
+    expect(onAllow).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Allow full web access' }));
+    expect(onAllow).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders nothing while closed', () => {
+    const { container } = render(
+      <FullAccessDialog open={false} title={null} blocked={blocked} onAllow={() => {}} onNotNow={() => {}} />,
+    );
+    expect(container.textContent).toBe('');
+  });
+
+  it('labels the full-access grant in the site list', () => {
+    render(
+      <ArtifactNetworkChip
+        declared={[]}
+        scripted={[]}
+        state={{ blockedReason: null, always: ['full'], session: [], fullAccess: true }}
+        denied={new Set()}
+        log={[]}
+        onRevoke={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Sites this page connects to' }));
+    expect(screen.getByRole('dialog').textContent).toContain('Full web access');
+    expect(screen.getByRole('button', { name: 'Remove permission' })).toBeTruthy();
   });
 });

@@ -650,6 +650,9 @@ export interface ArtifactNetworkState {
   blockedReason: string | null;
   always: string[];
   session: string[];
+  /** Whether the page loads with full web access (ADR-007): its own grant or
+   *  the Settings switch, and only while pages can connect at all. */
+  fullAccess?: boolean;
 }
 
 export async function getArtifactNetworkState(principal: PagePrincipal): Promise<ArtifactNetworkState> {

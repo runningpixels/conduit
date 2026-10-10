@@ -4,7 +4,8 @@
 Accepted. Amended by [ADR 010](adr-010-artifact-network-access.md): a page may
 reach public https APIs through a Rust-mediated `fetch()` after the reader
 allows each site; the frame's sandbox and CSP (`connect-src 'none'`) are
-unchanged.
+unchanged. Amended 2026-10-09: the reader may give one page (or, in Settings,
+every page) **full web access**, a wider CSP and `allow-modals`; see the addendum.
 
 ## Decision
 Render model-generated artifacts through a layered containment model. Markdown,
@@ -188,6 +189,99 @@ policy that applies, as the ADR always intended.
 **Verified in a release build:** an existing interactive artifact loads from the scheme,
 its scripts run (it fetched live rates through the ADR-010 bridge), the WebRTC removal
 (ADR-010 addendum) applies, `origin` is `null`, and access to the parent is blocked.
+
+## Addendum (2026-10-09): full web access, per page, at the reader's risk
+
+**Why.** The offline frame made pages fail in ways readers could not fix: a chart page
+that loads Chart.js from a CDN, a map with OpenStreetMap tiles, an image grid with plain
+`<img>` tags from Wikimedia. Readers asked for the same freedom a website has, on their
+own say-so. A page is still not quite a website, so the grant is explicit and narrow:
+
+1. its code is model-written and may follow instructions hidden in text the model read;
+2. it can carry the reader's data (chat or document content put into it) and send it on;
+3. it can reach host bridges (page storage, model calls on the reader's key);
+4. it runs on the reader's machine, next to their local network.
+
+**What changes, for one page.** The reader can give a page *full web access*. It is stored
+as a network grant of the page's principal (`artifact:<id>` or `app:<id>`) with the
+special value `full`, next to the site grants and the any-site grant (`*`); no schema
+change. It survives later edits of the page (keyed on the principal, not the content), and
+the Activity log still marks requests made after a change. It is listed and removable in
+Settings → Artifact security and from the globe chip; removing it makes the page ask again.
+A Settings switch, "Give every page full web access", off by default, gives it to every
+page. Neither applies while pages can't connect at all (local-only mode, or the network
+switch off).
+
+With full web access the page loads with:
+
+- CSP: `default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline'
+  https: data: blob:; img-src https: data: blob:; font-src https: data: blob:; media-src
+  https: data: blob:; connect-src https: wss:; frame-src https:; worker-src blob:;
+  frame-ancestors 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'`
+  (allowlisted origins stay on the passive directives). No `http:` anywhere: no mixed
+  content, and not the plain-http devices on a home network.
+- Sandbox: `allow-scripts allow-modals`. Still **never** `allow-same-origin` (every page
+  shares the `conduit-artifact` origin, so that would mean shared storage between pages and
+  a path towards the app), `allow-popups`, `allow-top-navigation` or `allow-forms`.
+- No Referer, by construction: a sandboxed document without `allow-same-origin` has an
+  opaque origin, and Chromium sends no `Referer` from it whatever the referrer policy
+  (verified 2026-10-09, `unsafe-url` included). Services that require one refuse the page:
+  OpenStreetMap's tile servers answer with a "blocked" image. Giving pages a real origin
+  would need `allow-same-origin`, which stays off. The model is told so it picks services
+  that work without one.
+- Everything else unchanged: no Tauri bridge (and the `chrome.webview` cut), link clicks
+  confirmed, the WebRTC removal, the ADR-010 fetch bridge (so `fetch()` keeps the proxy's
+  checks and has no CORS trouble; full access implies the any-site grant, so it no longer
+  asks per site), the ADR-014 model-access consent.
+
+The CSP is fixed when the document loads, so granting or removing it reloads the page.
+The view waits for the page's access state before the first load, so a page that already
+has full access loads once, with the right policy.
+
+**How the reader is asked.** Without full access, a Conduit-owned script in the frame
+(`blockedLoads.ts`) listens for `securitypolicyviolation` and posts each blocked https/wss
+origin with its directive to the host (deduped per directive and origin, at most 20 per
+load; `inline`, `eval`, `data:` and `http:` are not reported, since full access would not
+open them). The host shows a banner, "This page wants full web access: scripts from
+cdnjs.cloudflare.com; images from upload.wikimedia.org", with Review and Not now (put off
+for that page for this session). The dialog says plainly that the code was written by an AI
+model that can be misled by what it read, that the page can then send anything it shows
+or the reader types into it to any site, and that it may reach devices on the network.
+The page can forge reports; a report only ever leads to that question.
+
+**Windows: the guard proxy.** The main WebView2 is built with a proxy so WebRTC can't
+leave over TCP (ADR-010 addendum). That proxy used to accept nothing, which also meant no
+direct load could leave the webview. The app now starts a loopback **guard proxy**
+(`guard_proxy.rs`) and points `--proxy-server` at it:
+
+- `CONNECT` only, port 443 only; the name is resolved there and the tunnel pinned to the
+  checked address, which must be public (the same check as the fetch bridge, DNS
+  rebinding included);
+- it refuses everything unless a document rendered with full web access is stored in the
+  frame store (`put_artifact_frame` marks it; the renderer drops the token when the frame
+  goes away), so with no such page on screen it behaves exactly like the dead proxy;
+- a cap on open tunnels. If it can't listen, the dead proxy stays and full-access pages
+  load nothing remote (fails safe).
+
+**Residual risks.**
+
+- A page with full web access can send anything in it to any https site, directly (an
+  image URL, a script URL, a WebSocket), without the bridge's log or caps. The grant is
+  explicit, per page, revocable, and the dialog says so.
+- Nested frames (`frame-src https:`) inherit the sandbox, so they too run without
+  same-origin, popups or navigation. On Windows, WebView2 runs Tauri's init scripts in
+  every frame; the IPC refuses remote origins (no capability grants them), but the
+  in-frame `chrome.webview` cut is not injected into a nested frame.
+- While a full-access page is open on Windows, WebRTC can use the guard proxy too (TURN
+  over TLS to a public host on 443). Other pages still have the constructors removed in
+  their own frame.
+- `https://localhost` and other loopback https services are reachable from a full-access
+  page: Chromium never sends loopback through a proxy.
+- macOS (WKWebView) and Linux (WebKitGTK) take no proxy argument, so there direct loads
+  from a full-access page go out unchecked: they can reach https services on the local
+  network. The macOS WebRTC gap (ADR-010 addendum) is still open.
+- Embeds that need their own origin's storage (some video players) may still fail inside
+  the sandbox.
 
 ## Related
 - Supersedes the interactive-rendering deferral in ADR 002 (which modeled

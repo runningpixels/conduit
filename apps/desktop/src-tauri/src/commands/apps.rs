@@ -41,7 +41,7 @@ impl AppMetaInput {
 fn declared_origins(hosts: Vec<String>) -> Vec<String> {
     hosts
         .iter()
-        .filter(|h| h.as_str() != artifact_network::ANY_SITE)
+        .filter(|h| !artifact_network::reaches_any_site(h))
         .filter_map(|h| artifact_network::grant_host(h).ok())
         .collect()
 }
@@ -173,4 +173,19 @@ pub async fn delete_app(state: State<'_, AppState>, id: String) -> Result<(), St
     apps::delete(&state.db, &id)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::declared_origins;
+
+    #[test]
+    fn a_page_cannot_declare_itself_a_blanket_grant() {
+        let declared = declared_origins(vec![
+            "*".to_string(),
+            "full".to_string(),
+            "https://API.example.com/v1".to_string(),
+        ]);
+        assert_eq!(declared, vec!["https://api.example.com".to_string()]);
+    }
 }

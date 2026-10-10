@@ -156,3 +156,23 @@ loads, and the same image is refused when its origin isn't exempted.
 arguments, so there only the head-script layer applies. They need their own
 live check and a platform-level fix.
 
+
+## Addendum (2026-10-09): full web access
+
+A page the reader gave full web access ([ADR 007](adr-007-artifact-rendering-security.md),
+addendum of the same date) no longer has a frame without a network: its CSP allows
+scripts, styles, images, fonts, media, frames and connections to any https/wss site. What
+this ADR built still applies to its `fetch()`, which keeps going through the bridge:
+
+- The grant is stored here, as a network grant of the page's principal with the value
+  `full` (Rust `FULL_WEB_ACCESS`), next to the site grants and `*`. It implies the any-site
+  grant, so `fetch()` no longer asks per site; every other check in `perform` (https,
+  public addresses, pinned connections, no credentials, caps) is unchanged. A page can't
+  declare `full` (or `*`) for itself: declared hosts are origins only.
+- `get_artifact_network_state` reports `fullAccess`: the page's own grant (remembered or
+  for this session) or the Settings switch, and never while `blockedReason` is set.
+- Direct loads (a `<script src>`, an `<img>`, a WebSocket) don't pass through the bridge:
+  they are not in the Activity log, have no rate cap, and are not checked by the fetch
+  proxy. On Windows they pass through the guard proxy, which refuses non-public addresses
+  and anything but port 443. Elsewhere they are not checked at all (see ADR 007's residual
+  risks).

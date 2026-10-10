@@ -1,7 +1,9 @@
 //! Network access for HTML artifacts, made on their behalf (ADR-010).
 //!
-//! An artifact's frame never gets a socket: its CSP keeps `connect-src 'none'`
-//! (ADR-007). A Conduit-owned shim in the frame turns `fetch()` into a message
+//! An artifact's frame normally gets no socket: its CSP keeps `connect-src
+//! 'none'` (ADR-007). (A page the reader gave full web access,
+//! [`FULL_WEB_ACCESS`], also loads resources directly, through the guard
+//! proxy on Windows; see `guard_proxy`.) A Conduit-owned shim in the frame turns `fetch()` into a message
 //! to the host window, which asks the user and then calls `artifact_fetch`
 //! here. Everything this module does is the enforcement behind that consent:
 //!
@@ -99,16 +101,30 @@ pub struct ArtifactFetchResponse {
 /// blanket approval). Every other rule still holds for each request.
 pub const ANY_SITE: &str = "*";
 
+/// The grant that gives a page full web access (ADR-007, "Full web access"):
+/// its frame loads scripts, images, fonts, media and frames from any https
+/// site directly, and its `fetch()` reaches any public https site without
+/// asking (it implies [`ANY_SITE`]). Stored as a network grant of the page's
+/// principal, so it survives edits of the page and is revoked like a site.
+/// Never a valid origin, so it can't collide with one.
+pub const FULL_WEB_ACCESS: &str = "full";
+
+/// Whether a stored or session grant lets a page reach every public site.
+pub fn reaches_any_site(grant: &str) -> bool {
+    grant == ANY_SITE || grant == FULL_WEB_ACCESS
+}
+
 /// Prefix of the error `perform` returns when a server redirects to a site
 /// the page may not reach yet: `redirect:<origin> <message>`. The renderer
 /// asks the reader about `<origin>` and retries, instead of dead-ending.
 pub const REDIRECT_ERROR_PREFIX: &str = "redirect:";
 
 /// The origin a grant is keyed on: `https://host[:port]`, lowercased, default
-/// port elided — or [`ANY_SITE`]. `Err` for anything a page may not reach.
+/// port elided — or [`ANY_SITE`] / [`FULL_WEB_ACCESS`]. `Err` for anything a
+/// page may not reach.
 pub fn grant_host(raw_url: &str) -> Result<String, String> {
-    if raw_url == ANY_SITE {
-        return Ok(ANY_SITE.to_string());
+    if raw_url == ANY_SITE || raw_url == FULL_WEB_ACCESS {
+        return Ok(raw_url.to_string());
     }
     origin_for(raw_url, AddressPolicy::APP)
 }
@@ -327,7 +343,7 @@ impl AddressPolicy {
 /// Resolve `host:port` and return one address the policy allows, refusing
 /// the name if **any** address it resolves to is not allowed — a name that
 /// answers both public and private addresses is not a public name.
-async fn resolve_checked(
+pub(crate) async fn resolve_checked(
     host: &str,
     port: u16,
     policy: AddressPolicy,
@@ -634,5 +650,26 @@ mod tests {
     #[test]
     fn any_site_is_a_valid_grant() {
         assert_eq!(grant_host(ANY_SITE).unwrap(), ANY_SITE);
+    }
+
+    #[test]
+    fn full_web_access_is_a_grant_that_reaches_every_site() {
+        assert_eq!(grant_host(FULL_WEB_ACCESS).unwrap(), FULL_WEB_ACCESS);
+        assert!(reaches_any_site(FULL_WEB_ACCESS));
+        assert!(reaches_any_site(ANY_SITE));
+        assert!(!reaches_any_site("https://example.com"));
+        // Only the exact word: nothing that merely looks like it.
+        assert!(grant_host("Full").is_err());
+        assert!(grant_host("full ").is_err());
+        assert!(grant_host("https://full").is_ok_and(|h| h != FULL_WEB_ACCESS));
+    }
+
+    #[test]
+    fn a_session_full_grant_is_per_page() {
+        grant_for_session("full-a", FULL_WEB_ACCESS);
+        assert!(has_session_grant("full-a", FULL_WEB_ACCESS));
+        assert!(!has_session_grant("full-b", FULL_WEB_ACCESS));
+        revoke_session_grant("full-a", FULL_WEB_ACCESS);
+        assert!(!has_session_grant("full-a", FULL_WEB_ACCESS));
     }
 }

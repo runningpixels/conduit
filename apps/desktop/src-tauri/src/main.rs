@@ -410,7 +410,15 @@ fn main() {
                 .ok_or("tauri.conf.json has no \"main\" window")?;
             // Started at sign-in with the tray on: stay hidden in the tray.
             let visible = config.visible && !tray::start_hidden(std::env::args(), close_to_tray);
-            let browser_args = webview_args::main_webview_browser_args(&allowlist);
+            // Windows: the guard proxy carries a full-web-access page's loads
+            // (ADR-007) and refuses everything while none is open. Without it
+            // the dead proxy stays, and such pages load nothing remote.
+            #[cfg(windows)]
+            let guard_proxy_port = start_guard_proxy(app.handle());
+            #[cfg(not(windows))]
+            let guard_proxy_port: Option<u16> = None;
+            let browser_args =
+                webview_args::main_webview_browser_args(&allowlist, guard_proxy_port);
             let _window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
                 .additional_browser_args(&browser_args)
                 .visible(visible)
@@ -503,4 +511,24 @@ fn main() {
             install_staged_update(handle);
         }
     });
+}
+
+/// Bind and start the loopback guard proxy; its port, or `None` if it can't
+/// listen (the dead proxy then stays, which fails safe).
+#[cfg(windows)]
+fn start_guard_proxy(app: &tauri::AppHandle) -> Option<u16> {
+    use conduit_desktop::{artifact_network::AddressPolicy, guard_proxy};
+    let listener = match guard_proxy::bind() {
+        Ok(listener) => listener,
+        Err(error) => {
+            tracing::warn!(%error, "guard proxy could not listen; full web access pages load nothing remote");
+            return None;
+        }
+    };
+    let port = listener.local_addr().ok()?.port();
+    let handle = app.clone();
+    let gate: guard_proxy::Gate =
+        std::sync::Arc::new(move || handle.state::<ArtifactFrames>().has_full_access_frames());
+    tauri::async_runtime::spawn(guard_proxy::serve(listener, gate, AddressPolicy::APP));
+    Some(port)
 }

@@ -10,6 +10,10 @@
 /// that request is dropped, never sent later, and the site stays pending.
 /// Allowing the site then starts the page over (`reloadToken`), since the page
 /// has already shown its failure and nothing in it will ask again.
+///
+/// Full web access (ADR-007): the page reports what its CSP stopped
+/// (`reportBlocked`); the view offers full access listing it, and allowing it
+/// stores the grant and starts the page over with the full CSP.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -20,6 +24,7 @@ import {
   type ArtifactNetworkState,
   type PagePrincipal,
 } from '../ipc/client';
+import { addBlockedLoad, type BlockedLoad } from '../artifacts/blockedLoads';
 import {
   ARTIFACT_FRAME_CLOSED,
   isLocalNetworkOrigin,
@@ -33,6 +38,9 @@ export type NetworkDecision = 'deny' | 'session' | 'page';
 
 /// The grant that lets a page reach any public site (Rust's `ANY_SITE`).
 export const ANY_SITE = '*';
+/// The grant that gives a page full web access (Rust's `FULL_WEB_ACCESS`); it
+/// implies the any-site grant.
+export const FULL_WEB_ACCESS = 'full';
 /// Rust's refusal of a redirect to a site the page may not reach:
 /// `redirect:<origin> <message>` (Rust's `REDIRECT_ERROR_PREFIX`).
 const REDIRECT_PREFIX = 'redirect:';
@@ -40,8 +48,9 @@ const REDIRECT_PREFIX = 'redirect:';
 /** Whether the state lets the page reach `origin` without asking. */
 export function isAllowed(state: ArtifactNetworkState | null, origin: string): boolean {
   if (!state) return false;
+  if (state.fullAccess) return true;
   const lists = [...state.always, ...state.session];
-  return lists.includes(origin) || lists.includes(ANY_SITE);
+  return lists.includes(origin) || lists.includes(ANY_SITE) || lists.includes(FULL_WEB_ACCESS);
 }
 
 /** The target and message of a refused redirect, or null. */
@@ -92,6 +101,8 @@ const logByArtifact = new Map<string, NetworkLogEntry[]>();
 // The page's content when the reader last allowed a site for it, or when it
 // first made a request: later requests from different content are marked.
 const baselineByArtifact = new Map<string, string>();
+// Pages whose full-web-access offer the reader put off ("Not now"), this session.
+const fullAccessDismissed = new Set<string>();
 let logSeq = 0;
 const LOG_LIMIT = 200;
 
@@ -134,6 +145,19 @@ export interface ArtifactNetwork {
   /** Bumps when the page must start over: the reader allowed a site after the
    *  page had stopped waiting for it. The view re-creates the frame on a change. */
   reloadToken: number;
+  /** Whether the page loads with full web access; `undefined` until its
+   *  state is first read (the view waits, so the page loads once, with the
+   *  right policy). */
+  fullAccess: boolean | undefined;
+  /** What the page tried to load and was stopped, while full web access is
+   *  worth offering (not granted, pages can connect, not put off); else empty. */
+  fullAccessRequest: readonly BlockedLoad[];
+  /** The frame reported a load its CSP stopped. */
+  reportBlocked: (load: BlockedLoad) => void;
+  /** Give the page full web access (remembered for it) and start it over. */
+  allowFullAccess: () => Promise<void>;
+  /** "Not now": stop offering full web access for this page this session. */
+  dismissFullAccess: () => void;
 }
 
 /**
@@ -156,6 +180,10 @@ export function useArtifactNetwork(
   // Sites the page stopped waiting on while the reader was deciding.
   const abandoned = useRef(new Set<string>());
   const [reloadToken, setReloadToken] = useState(0);
+  // The page whose state was last read (or failed to read).
+  const [readFor, setReadFor] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<readonly BlockedLoad[]>([]);
+  const [dismissVersion, setDismissVersion] = useState(0);
   const stateRef = useRef<ArtifactNetworkState | null>(null);
   const contentRef = useRef(contentHash);
   contentRef.current = contentHash;
@@ -172,6 +200,7 @@ export function useArtifactNetwork(
     } catch {
       /* the panel still works; requests will fail in Rust if not allowed */
     }
+    if (idRef.current === principal) setReadFor(principal);
   }, [principal]);
 
   // A different page: forget the held requests of the last one and load this
@@ -185,6 +214,7 @@ export function useArtifactNetwork(
     setPending([]);
     stateRef.current = null;
     setState(null);
+    setBlocked([]);
     setLog(principal ? [...(logByArtifact.get(principal) ?? [])] : []);
     void refresh();
   }, [principal, refresh]);
@@ -433,5 +463,72 @@ export function useArtifactNetwork(
     [principal, refresh],
   );
 
-  return { handler, state, denied, pending, log, decide, revoke, reloadToken };
+  const reportBlocked = useCallback((load: BlockedLoad) => {
+    setBlocked((list) => addBlockedLoad(list, load));
+  }, []);
+
+  const allowFullAccess = useCallback(async () => {
+    if (!principal) return;
+    try {
+      await grantArtifactNetwork(principal, FULL_WEB_ACCESS, 'page');
+    } catch {
+      await refresh();
+      return;
+    }
+    // The page starts over with the full policy and makes its requests again
+    // itself; anything it was still waiting on is answered now.
+    for (const queue of held.current.values()) {
+      for (const h of queue) h.resolve({ ok: false, error: 'The page was reloaded.' });
+    }
+    held.current.clear();
+    abandoned.current.clear();
+    setPending([]);
+    deniedByArtifact.delete(principal);
+    baselineByArtifact.set(principal, contentRef.current);
+    fullAccessDismissed.delete(principal);
+    const base = stateRef.current ?? { blockedReason: null, always: [], session: [] };
+    const next: ArtifactNetworkState = {
+      ...base,
+      always: [...new Set([...base.always, FULL_WEB_ACCESS])],
+      fullAccess: true,
+    };
+    stateRef.current = next;
+    setState(next);
+    setBlocked([]);
+    setDeniedVersion((v) => v + 1);
+    setReloadToken((v) => v + 1);
+  }, [principal, refresh]);
+
+  const dismissFullAccess = useCallback(() => {
+    if (!principal) return;
+    fullAccessDismissed.add(principal);
+    setDismissVersion((v) => v + 1);
+  }, [principal]);
+
+  const fullAccess = !principal ? false : readFor !== principal ? undefined : state?.fullAccess === true;
+  const fullAccessRequest = useMemo<readonly BlockedLoad[]>(
+    () =>
+      principal && fullAccess === false && state && !state.blockedReason && !fullAccessDismissed.has(principal)
+        ? blocked
+        : [],
+    // dismissVersion bumps when the dismissed set changes in place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [principal, fullAccess, state, blocked, dismissVersion],
+  );
+
+  return {
+    handler,
+    state,
+    denied,
+    pending,
+    log,
+    decide,
+    revoke,
+    reloadToken,
+    fullAccess,
+    fullAccessRequest,
+    reportBlocked,
+    allowFullAccess,
+    dismissFullAccess,
+  };
 }

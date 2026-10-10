@@ -21,6 +21,8 @@ import {
   ArtifactNetworkBanner,
   ArtifactNetworkChip,
   ArtifactNetworkDialog,
+  FullAccessBanner,
+  FullAccessDialog,
   useSiteLabel,
 } from '../workspace/ArtifactNetwork';
 import { OpenExternalLinkDialog } from '../workspace/OpenExternalLinkDialog';
@@ -213,6 +215,18 @@ export function AppView({
   useEffect(() => {
     if (network.pending.length === 0) setReviewOpen(false);
   }, [network.pending.length]);
+  // Full web access (ADR-007): offered when the page tried to load something
+  // its CSP stopped.
+  const [fullAccessReviewOpen, setFullAccessReviewOpen] = useState(false);
+  const { allowFullAccess, dismissFullAccess } = network;
+  const handleAllowFullAccess = useCallback(() => {
+    setFullAccessReviewOpen(false);
+    void allowFullAccess();
+  }, [allowFullAccess]);
+  const handleNotNowFullAccess = useCallback(() => {
+    setFullAccessReviewOpen(false);
+    dismissFullAccess();
+  }, [dismissFullAccess]);
 
   const handleExternalLink = useCallback((url: string) => {
     if (isHttpOrHttpsUrl(url)) setPendingUrl(url);
@@ -433,6 +447,11 @@ export function AppView({
         onReview={() => setReviewOpen(true)}
         onNotNow={() => handleDecision('deny')}
       />
+      <FullAccessBanner
+        blocked={network.fullAccessRequest}
+        onReview={() => setFullAccessReviewOpen(true)}
+        onNotNow={handleNotNowFullAccess}
+      />
       <PageLlmBanner
         pending={llm.pending}
         onReview={() => setLlmReviewOpen(true)}
@@ -459,18 +478,24 @@ export function AppView({
         />
       )}
       <div className="app-view-frame" hidden={settingsOpen}>
-        <HtmlArtifactRenderer
-          key={`${summary.id}:${summary.version}:${revision}:${clearRevision}:${network.reloadToken}`}
-          html={html}
-          allowlist={allowlist}
-          styledPreview={styledPreview}
-          colorScheme={colorScheme}
-          onExternalLink={handleExternalLink}
-          network={network.handler}
-          bridge={bridge}
-          inputValues={inputValues}
-          inputsRevision={inputsRevision}
-        />
+        {/* Waits for the page's access to be known, so it loads once with the
+            right policy. */}
+        {network.fullAccess !== undefined && (
+          <HtmlArtifactRenderer
+            key={`${summary.id}:${summary.version}:${revision}:${clearRevision}:${network.reloadToken}`}
+            html={html}
+            allowlist={allowlist}
+            styledPreview={styledPreview}
+            colorScheme={colorScheme}
+            onExternalLink={handleExternalLink}
+            network={network.handler}
+            bridge={bridge}
+            inputValues={inputValues}
+            inputsRevision={inputsRevision}
+            fullWebAccess={network.fullAccess}
+            onBlockedLoad={network.reportBlocked}
+          />
+        )}
       </div>
 
       <footer className="app-view-strip">
@@ -525,6 +550,13 @@ export function AppView({
         sites={network.pending}
         declared={declared}
         onDecide={handleDecision}
+      />
+      <FullAccessDialog
+        open={fullAccessReviewOpen && network.fullAccessRequest.length > 0}
+        title={summary.name}
+        blocked={network.fullAccessRequest}
+        onAllow={handleAllowFullAccess}
+        onNotNow={handleNotNowFullAccess}
       />
       <PageLlmDialog open={llmReviewOpen} title={summary.name} state={llm.state} onDecide={handleLlmDecision} />
       <ConfirmDialog

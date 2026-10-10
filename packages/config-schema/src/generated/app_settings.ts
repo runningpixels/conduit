@@ -47,6 +47,14 @@ artifactStyledPreview: boolean,
  */
 artifactNetworkEnabled: boolean, 
 /**
+ * ADR-007 "Full web access": give every page full web access, as if the
+ * reader had allowed it for each one (its frame loads scripts, images,
+ * fonts and media from any https site). Off by default; `None` — what
+ * every settings file written before this field reads as — is off. Has
+ * no effect while pages can't connect (local-only, or the switch above).
+ */
+artifactFullWebAccess?: boolean, 
+/**
  * Keep running in the tray when the main window is closed, so scheduled
  * workflows still run. Off by default: closing the window quits, as it
  * always did. Offered once, the first time a schedule is switched on.

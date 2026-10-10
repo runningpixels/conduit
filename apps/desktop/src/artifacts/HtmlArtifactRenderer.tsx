@@ -7,7 +7,8 @@
 /// Layers (see docs/adr/adr-007-artifact-rendering-security.md):
 /// 1. `sandbox="allow-scripts"` only — NO `allow-same-origin` (null origin →
 ///    no parent/ambient-DOM access, no same-origin requests to the app), NO
-///    `allow-top-navigation`, `allow-popups`, `allow-forms`, `allow-modals`.
+///    `allow-top-navigation`, `allow-popups`, `allow-forms`; `allow-modals`
+///    only with full web access (below).
 /// 2. Strict CSP injected as the FIRST `<meta>` in `<head>`: `connect-src
 ///    'none'` (the exfiltration guard the sandbox alone doesn't provide),
 ///    `script-src 'unsafe-inline'` (inline only — never remote scripts),
@@ -28,12 +29,24 @@
 /// only with validated http(s) origins; `script-src` and `connect-src` are
 /// never widened. Empty allowlist → fully offline.
 ///
+/// Full web access (`fullWebAccess`, ADR-007): a page the reader explicitly
+/// allowed gets the `full` CSP (scripts, resources, frames and connections
+/// from any https site) and `allow-modals`. Everything else above holds: no
+/// `allow-same-origin`, popups or top navigation, no Tauri bridge, the link
+/// interceptor, the fetch bridge. Without it, a trusted reporter tells the
+/// host what the CSP stopped (`blockedLoads.ts`) so the reader can be asked.
+///
 /// Residual risk (documented): a hostile artifact can hang its own frame / burn
 /// CPU (DoS). Render-only means no bridge for a liveness heartbeat; mitigated
 /// by the user closing the artifact. A watchdog is a future follow-up.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { buildArtifactCsp, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
+import { buildArtifactCsp, FULL_ACCESS_ARTIFACT_CSP, OFFLINE_ARTIFACT_CSP } from './buildArtifactCsp';
+import {
+  ARTIFACT_BLOCKED_LOAD_SCRIPT,
+  parseArtifactBlockedLoadMessage,
+  type BlockedLoad,
+} from './blockedLoads';
 import { ARTIFACT_WEBRTC_BLOCK_SCRIPT } from './webrtcBlock';
 import { useArtifactFrameSource } from './artifactFrameSource';
 import {
@@ -121,6 +134,24 @@ export interface HtmlArtifactRendererProps {
    * happen without immediately re-posting itself.
    */
   inputsRevision?: number;
+  /**
+   * The reader gave this page full web access (ADR-007): the frame gets the
+   * `full` CSP and `allow-modals`. A change reloads the page (the CSP is fixed
+   * when the document loads).
+   */
+  fullWebAccess?: boolean;
+  /**
+   * Called with each https load the CSP stopped (deduped and capped in the
+   * frame). Given, the page gets the reporter script; never in full mode.
+   */
+  onBlockedLoad?: (load: BlockedLoad) => void;
+}
+
+/// Sandbox flags. NEVER add allow-same-origin / allow-top-navigation /
+/// allow-popups / allow-forms — those would break containment. `allow-modals`
+/// (alert/confirm/prompt) only for a page with full web access.
+export function artifactSandbox(fullWebAccess: boolean): string {
+  return fullWebAccess ? 'allow-scripts allow-modals' : 'allow-scripts';
 }
 
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
@@ -258,8 +289,15 @@ export function assembleArtifactDoc(
   capabilities: string[] = [],
   inputs: Record<string, unknown> | null = null,
   lang?: string,
+  access: { fullWebAccess?: boolean; reportBlocked?: boolean } = {},
 ): string {
-  const csp = buildArtifactCsp(allowlist) ?? OFFLINE_ARTIFACT_CSP;
+  const full = access.fullWebAccess === true;
+  const csp = full
+    ? (buildArtifactCsp(allowlist, 'full') ?? FULL_ACCESS_ARTIFACT_CSP)
+    : (buildArtifactCsp(allowlist) ?? OFFLINE_ARTIFACT_CSP);
+  // In the head, before any of the page's markup, so a CDN <script> at the
+  // very top of the page is still heard.
+  const reporter = !full && access.reportBlocked ? ARTIFACT_BLOCKED_LOAD_SCRIPT : '';
   const tokensStyle = tokens && buildTokensArtifactStyle(tokens);
   const reset = tokensStyle?.reset ?? RESET_STYLE;
   const styled = tokensStyle?.styled ?? (colorScheme === 'dark' ? STYLED_STYLE_DARK : STYLED_STYLE_LIGHT);
@@ -270,7 +308,7 @@ export function assembleArtifactDoc(
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     `<style>${reset}</style>` +
     extra +
-    `<script>${ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT}${ARTIFACT_WEBRTC_BLOCK_SCRIPT}${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}${hasPageBridge ? buildPageBridgeScript(capabilities, inputs) : ''}</script>` +
+    `<script>${ARTIFACT_TAURI_BRIDGE_BLOCK_SCRIPT}${reporter}${ARTIFACT_WEBRTC_BLOCK_SCRIPT}${ARTIFACT_RUNTIME_ERROR_SCRIPT}${ARTIFACT_LINK_INTERCEPTOR_SCRIPT}${ARTIFACT_FORM_SUBMIT_SCRIPT}${buildShortcutForwarderScript()}${network ? ARTIFACT_NETWORK_BRIDGE_SCRIPT : ''}${hasPageBridge ? buildPageBridgeScript(capabilities, inputs) : ''}</script>` +
     `</head><body>${html}</body></html>`
   );
 }
@@ -286,6 +324,8 @@ export function HtmlArtifactRenderer({
   bridge,
   inputValues,
   inputsRevision,
+  fullWebAccess = false,
+  onBlockedLoad,
 }: HtmlArtifactRendererProps) {
   const t = useT();
   const { locale } = useLocale();
@@ -299,6 +339,9 @@ export function HtmlArtifactRenderer({
   networkRef.current = network;
   const bridgeRef = useRef(bridge);
   bridgeRef.current = bridge;
+  const reportsBlocked = onBlockedLoad != null && !fullWebAccess;
+  const onBlockedLoadRef = useRef(onBlockedLoad);
+  onBlockedLoadRef.current = onBlockedLoad;
   // The script is only worth injecting when both the page asked for a
   // capability and something can actually answer it — a handler with nothing
   // declared would just be dead code in every other artifact's srcdoc.
@@ -330,10 +373,11 @@ export function HtmlArtifactRenderer({
         capabilities,
         bakedInputs,
         locale,
+        { fullWebAccess, reportBlocked: reportsBlocked },
       ),
-    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork, capabilities, bakedInputs, locale],
+    [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork, capabilities, bakedInputs, locale, fullWebAccess, reportsBlocked],
   );
-  const frameSource = useArtifactFrameSource(srcdoc);
+  const frameSource = useArtifactFrameSource(srcdoc, fullWebAccess);
   const [loaded, setLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const onExternalLinkRef = useRef(onExternalLink);
@@ -383,6 +427,11 @@ export function HtmlArtifactRenderer({
       const shortcut = parseArtifactShortcutMessage(event.data);
       if (shortcut) {
         replayShortcut(shortcut);
+        return;
+      }
+      const blocked = parseArtifactBlockedLoadMessage(event.data);
+      if (blocked) {
+        onBlockedLoadRef.current?.(blocked);
         return;
       }
       const runtime = parseArtifactRuntimeErrorMessage(event.data);
@@ -469,9 +518,9 @@ export function HtmlArtifactRenderer({
           ref={iframeRef}
           className="artifact-html-frame"
           title={t('artifacts.html.previewTitle')}
-          // `allow-scripts` only. NEVER add allow-same-origin / allow-top-navigation /
-          // allow-popups / allow-forms / allow-modals — those would break containment.
-          sandbox="allow-scripts"
+          // `allow-scripts` (plus `allow-modals` with full web access) only; see
+          // artifactSandbox — never allow-same-origin, popups or top navigation.
+          sandbox={artifactSandbox(fullWebAccess)}
           referrerPolicy="no-referrer"
           src={frameSource.src}
           srcDoc={frameSource.srcDoc}

@@ -277,3 +277,39 @@ export function writeLastModel(providerId: string, modelId: string): void {
     /* storage may be unavailable; forgetting is harmless */
   }
 }
+
+const LAST_ARTIFACT_KEY = 'conduit:v10-last-artifact-by-conversation';
+
+function readLastArtifactMap(): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(LAST_ARTIFACT_KEY) ?? '{}');
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The artifact the user last had open in `conversationId`, if remembered.
+ *  Opening the chat again shows it instead of the chat's artifact list. */
+export function readLastArtifact(conversationId: string): string | undefined {
+  const id = readLastArtifactMap()[conversationId];
+  return typeof id === 'string' && id ? id : undefined;
+}
+
+/** Remember (or, with `null`, forget) the artifact open in `conversationId`. */
+export function writeLastArtifact(conversationId: string, artifactId: string | null): void {
+  if (!conversationId) return;
+  const map = readLastArtifactMap();
+  if (artifactId) {
+    if (map[conversationId] === artifactId) return;
+    map[conversationId] = artifactId;
+  } else {
+    if (!(conversationId in map)) return;
+    delete map[conversationId];
+  }
+  try {
+    localStorage.setItem(LAST_ARTIFACT_KEY, JSON.stringify(map));
+  } catch {
+    /* storage may be unavailable; forgetting is harmless */
+  }
+}

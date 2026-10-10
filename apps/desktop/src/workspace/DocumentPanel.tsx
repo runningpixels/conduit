@@ -27,6 +27,8 @@ import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
+import { ArtifactChatList, newestFirst } from '../artifacts/ArtifactChatList';
+import { ArtifactSwitcher } from './ArtifactSwitcher';
 import { inlineArtifactText } from '../artifacts/format';
 import { AppsIcon, FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon, TrashIcon } from '../icons';
 import { clearPageSiteData } from '../artifacts/pageSiteData';
@@ -91,6 +93,16 @@ interface DocumentPanelProps {
   /** Save an HTML page as a mini-app (⋯ → Save as app). */
   onSaveAsApp?: (artifact: { id: string; title: string | null }, html: string) => void;
   onCloseTab?: (id: string) => void;
+  /**
+   * The open chat's artifacts. Chat only: with any, the panel lists them when
+   * none is open (instead of the generic empty state), and the open
+   * artifact's title becomes a switcher between them.
+   */
+  chatArtifacts?: readonly Artifact[];
+  /** The header switcher picked another artifact: show it in this one's place. */
+  onSwitchArtifact?: (id: string) => void;
+  /** The header switcher's "All artifacts in this chat". */
+  onShowArtifactList?: () => void;
   onCollapsePanel?: () => void;
   /** The panel is expanded (usePanelExpand). */
   expanded?: boolean;
@@ -348,6 +360,9 @@ export function DocumentPanel({
   onExport,
   onSaveAsApp,
   onCloseTab,
+  chatArtifacts,
+  onSwitchArtifact,
+  onShowArtifactList,
   onCollapsePanel,
   expanded = false,
   onToggleExpand,
@@ -378,6 +393,7 @@ export function DocumentPanel({
   const raw = useMemo(() => (artifact ? inlineArtifactText(artifact) : ''), [artifact]);
   const isFilePayload = artifact?.contentPath != null;
   const multiOpen = openArtifacts.length > 1;
+  const switchable = useMemo(() => newestFirst(chatArtifacts ?? []), [chatArtifacts]);
   const collapseHint = modShortcutHint('J');
   const expandHint = modShiftShortcutHint('E');
 
@@ -740,7 +756,7 @@ export function DocumentPanel({
   }, [menuOpen]);
 
   // Esc closes the active artifact when focus is inside the panel (not in an
-  // editable field), returning to the empty welcome state.
+  // editable field), returning to the chat's list (or the empty state).
   useEffect(() => {
     if (!artifact || !onCloseTab) return;
     const artifactId = artifact.id;
@@ -789,6 +805,17 @@ export function DocumentPanel({
   }
 
   if (!artifact) {
+    if (switchable.length > 0) {
+      return (
+        <ArtifactChatList
+          artifacts={switchable}
+          onOpen={onOpenArtifact}
+          onCollapsePanel={onCollapsePanel}
+          collapseShortcutHint={collapseHint}
+          inspectorTabs={inspectorTabs}
+        />
+      );
+    }
     return <ArtifactEmptyState logoSrc={logoSrc} onOpenIdeas={onOpenIdeas} />;
   }
 
@@ -871,6 +898,37 @@ export function DocumentPanel({
     t('workspace.documentPanel.savedAt', { modified: metaModified }),
   ].join(' · ');
 
+  // The title is a switcher once the chat has more than one artifact (and
+  // the panel was given the ways to switch); -1 keeps the plain title.
+  const switchIndex = switchable.length > 1 ? switchable.findIndex((a) => a.id === artifact.id) : -1;
+  const switcher =
+    switchIndex >= 0 && onSwitchArtifact && onShowArtifactList
+      ? { index: switchIndex, select: onSwitchArtifact, showAll: onShowArtifactList }
+      : null;
+
+  const renameButton = onRenameArtifact && (
+    <button
+      className="icon-btn tab-rename"
+      type="button"
+      aria-label={t('workspace.documentPanel.renameAriaLabel', { name })}
+      title={t('common.actions.rename')}
+      onClick={() => beginRename(artifact.id, name)}
+    >
+      <PencilIcon />
+    </button>
+  );
+  const closeButton = onCloseTab && (
+    <button
+      className="icon-btn tab-close"
+      type="button"
+      aria-label={t('workspace.documentPanel.closeAriaLabel', { name })}
+      title={t('common.actions.close')}
+      onClick={() => onCloseTab(artifact.id)}
+    >
+      &times;
+    </button>
+  );
+
   function beginRename(id: string, currentTitle: string) {
     setEditingTabId(id);
     setEditingTabValue(currentTitle);
@@ -919,42 +977,50 @@ export function DocumentPanel({
                     }
                   }}
                 />
+              ) : switcher ? (
+                <div className="doc-title-row">
+                  <ArtifactSwitcher
+                    artifacts={switchable}
+                    currentId={artifact.id}
+                    onSelect={switcher.select}
+                    onShowAll={switcher.showAll}
+                  >
+                    <span className="doc-switcher-label">
+                      <b title={name}>{name}</b>
+                      <small>
+                        {kindLabel} ·{' '}
+                        {t('workspace.documentPanel.switcher.position', {
+                          index: switcher.index + 1,
+                          total: switchable.length,
+                        })}
+                        {showStateDot(activeFileState, isFilePayload) && (
+                          <span className={`tab-state inline${tabStateClass(activeFileState)}`} aria-hidden="true" />
+                        )}
+                      </small>
+                    </span>
+                  </ArtifactSwitcher>
+                  {renameButton}
+                  {closeButton}
+                </div>
               ) : (
                 <div className="doc-title-row">
                   <b title={name}>{name}</b>
-                  {onRenameArtifact && (
-                    <button
-                      className="icon-btn tab-rename"
-                      type="button"
-                      aria-label={t('workspace.documentPanel.renameAriaLabel', { name })}
-                      title={t('common.actions.rename')}
-                      onClick={() => beginRename(artifact.id, name)}
-                    >
-                      <PencilIcon />
-                    </button>
-                  )}
-                  {onCloseTab && (
-                    <button
-                      className="icon-btn tab-close"
-                      type="button"
-                      aria-label={t('workspace.documentPanel.closeAriaLabel', { name })}
-                      title={t('common.actions.close')}
-                      onClick={() => onCloseTab(artifact.id)}
-                    >
-                      &times;
-                    </button>
-                  )}
+                  {renameButton}
+                  {closeButton}
                 </div>
               )}
-              <small>
-                {kindLabel}
-                {showStateDot(activeFileState, isFilePayload) && (
-                  <span className={`tab-state inline${tabStateClass(activeFileState)}`} aria-hidden="true" />
-                )}
-              </small>
+              {!switcher || editingTabId === artifact.id ? (
+                <small>
+                  {kindLabel}
+                  {showStateDot(activeFileState, isFilePayload) && (
+                    <span className={`tab-state inline${tabStateClass(activeFileState)}`} aria-hidden="true" />
+                  )}
+                </small>
+              ) : null}
             </div>
           </div>
         ) : (
+          <>
           <div className="artifact-tabs" aria-label={t('workspace.documentPanel.openArtifactsAriaLabel')}>
             {openArtifacts.map((a) => {
               const state = fileStateMap[a.id] ?? 'noFileContent';
@@ -1024,6 +1090,17 @@ export function DocumentPanel({
               );
             })}
           </div>
+          {/* Outside the strip, which scrolls and would clip the list. */}
+          {switcher && (
+            <ArtifactSwitcher
+              artifacts={switchable}
+              currentId={artifact.id}
+              triggerLabel={t('workspace.documentPanel.chatList.ariaLabel')}
+              onSelect={onOpenArtifact}
+              onShowAll={switcher.showAll}
+            />
+          )}
+          </>
         )}
 
         <span className="doc-toolbar-spacer" />

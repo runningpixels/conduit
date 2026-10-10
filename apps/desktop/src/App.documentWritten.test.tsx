@@ -209,7 +209,7 @@ async function writePage(args: Record<string, unknown>, listed: Artifact[]) {
   );
   const { default: App } = await import('./App');
   render(<App />);
-  const composer = await screen.findByPlaceholderText('Message Conduit…');
+  const composer = await screen.findByPlaceholderText('Message… or type / for tools');
   fireEvent.change(composer, { target: { value: 'Make an on-this-day page' } });
   fireEvent.keyDown(composer, { key: 'Enter' });
   await waitFor(() => expect(request).toBeDefined());

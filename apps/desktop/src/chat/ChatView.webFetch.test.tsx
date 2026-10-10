@@ -210,8 +210,7 @@ describe('ChatView web_fetch without the search toggle', () => {
   it('the search toggle on a local backend adds web_search; each tool is declared once', async () => {
     const sent = captureRequest();
     renderChat({}, null);
-    fireEvent.click(await screen.findByRole('button', { name: 'Add to this message' }));
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Web search/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Web' }));
     const composer = screen.getByRole('textbox', { name: /message/i });
     fireEvent.change(composer, { target: { value: 'what is new in rust 2026' } });
     fireEvent.keyDown(composer, { key: 'Enter' });

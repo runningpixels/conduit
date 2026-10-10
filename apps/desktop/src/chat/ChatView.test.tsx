@@ -974,7 +974,7 @@ describe('ChatView: Retry re-sends the last question', () => {
 });
 
 /**
- * Research is an explicit mode: the "+" menu turns it on, and the next Send
+ * Research is an explicit mode: the composer's toggle turns it on, and the next Send
  * starts a run (`start_research`) instead of a streamed reply. The thread then
  * reloads through the ordinary hydration path, which finds the run on the
  * assistant message's metadata.
@@ -1049,7 +1049,7 @@ describe('ChatView Research', () => {
     return { onStatus, onConversationChanged };
   }
 
-  const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'Add to this message' }));
+  const researchToggle = () => screen.findByRole('button', { name: 'Research' });
 
   it('sends through startResearch, not the stream, then shows the run card and turns Research off', async () => {
     const { onConversationChanged } = renderWith(webOn);
@@ -1062,10 +1062,8 @@ describe('ChatView Research', () => {
       return planning;
     });
 
-    openMenu();
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Research/ }));
-    // The active chip.
-    expect(screen.getByRole('button', { name: 'Turn off Research' })).toBeInTheDocument();
+    fireEvent.click(await researchToggle());
+    expect(await researchToggle()).toHaveAttribute('aria-pressed', 'true');
 
     fireEvent.change(await screen.findByLabelText('Message the active provider'), { target: { value: question } });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
@@ -1079,7 +1077,7 @@ describe('ChatView Research', () => {
     expect(onConversationChanged).toHaveBeenCalled();
     // Input cleared, Research turned itself off.
     expect(screen.getByLabelText('Message the active provider')).toHaveValue('');
-    expect(screen.queryByRole('button', { name: 'Turn off Research' })).toBeNull();
+    expect(await researchToggle()).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('sends a normal turn when Research is off', async () => {
@@ -1094,15 +1092,14 @@ describe('ChatView Research', () => {
   it('keeps the text and says why when starting fails', async () => {
     vi.mocked(startResearch).mockRejectedValue(new Error('Web search is off'));
     const { onStatus } = renderWith(webOn);
-    openMenu();
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Research/ }));
+    fireEvent.click(await researchToggle());
     fireEvent.change(await screen.findByLabelText('Message the active provider'), { target: { value: question } });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     await waitFor(() =>
       expect(onStatus.mock.calls.some((call) => JSON.stringify(call[0]).includes('Web search is off'))).toBe(true),
     );
     expect(screen.getByLabelText('Message the active provider')).toHaveValue(question);
-    expect(screen.getByRole('button', { name: 'Turn off Research' })).toBeInTheDocument();
+    expect(await researchToggle()).toHaveAttribute('aria-pressed', 'true');
   });
 
   it.each([
@@ -1111,12 +1108,11 @@ describe('ChatView Research', () => {
     [
       'the web search notice is not accepted',
       { ...webOn, webSearchConsentAcknowledged: false },
-      'Turn on web search from this menu once to accept its notice, then use Research',
+      'Turn on Web once to accept its notice, then use Research',
     ],
-  ])('disables the Research item, with the reason, when %s', async (_name, settings, reason) => {
+  ])('disables the Research toggle, with the reason, when %s', async (_name, settings, reason) => {
     renderWith(settings);
-    openMenu();
-    const item = await screen.findByRole('menuitemcheckbox', { name: /Research/ });
+    const item = await researchToggle();
     expect(item).toBeDisabled();
     expect(item).toHaveAttribute('title', reason);
   });

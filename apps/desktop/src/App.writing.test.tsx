@@ -215,7 +215,7 @@ beforeAll(() => {
 async function boot() {
   const { default: App } = await import('./App');
   render(<App />);
-  await waitFor(() => expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByPlaceholderText('Message… or type / for tools')).toBeInTheDocument());
 }
 
 describe('Writing in the shell', { timeout: 30_000 }, () => {
@@ -333,7 +333,7 @@ describe('Writing in the shell', { timeout: 30_000 }, () => {
     fireEvent.click(screen.getByRole('button', { name: 'Writing' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Open One repo' }));
     await waitFor(() => expect(document.querySelector('.cm-content')).not.toBeNull());
-    const composer = screen.getByPlaceholderText('Message Conduit…');
+    const composer = screen.getByPlaceholderText('Message… or type / for tools');
     fireEvent.change(composer, { target: { value: 'Write the next section' } });
     fireEvent.keyDown(composer, { key: 'Enter' });
     await waitFor(() => expect(request).toBeDefined());

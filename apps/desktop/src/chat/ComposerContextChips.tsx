@@ -20,9 +20,9 @@ interface ComposerContextChipsProps {
 }
 
 /**
- * What this chat is using right now — folder, documents, skills, web search,
- * connector resources, a chat-settings override — as removable chips above
- * the input. Renders nothing when nothing is active, so an unconfigured chat
+ * What this chat is using right now — folder, documents, skills, connector
+ * resources, a chat-settings override — as removable chips above the input.
+ * Web search and Research show on their own toggles in the bar instead. Renders nothing when nothing is active, so an unconfigured chat
  * looks exactly like a plain text box.
  */
 export function ComposerContextChips({ chips, disabled = false }: ComposerContextChipsProps) {

@@ -349,11 +349,9 @@ describe('ChatView bound to a draft', () => {
     expect(within(chips).getByText('1 report')).toBeInTheDocument();
     fireEvent.click(within(chips).getByText('1 report'));
     expect(onOpenDraftSources).toHaveBeenCalled();
-    // The "+" menu leaves out web search and Research: the Sources tab owns them.
-    fireEvent.click(screen.getByRole('button', { name: 'Add to this message' }));
-    expect(screen.queryByRole('menuitemcheckbox', { name: /Web search/ })).toBeNull();
-    expect(screen.queryByRole('menuitemcheckbox', { name: /Research/ })).toBeNull();
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    // No Web or Research toggle in a draft's chat: the Sources tab owns them.
+    expect(screen.queryByRole('button', { name: 'Web' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Research' })).toBeNull();
 
     const composer = screen.getByRole('textbox', { name: /message/i });
     fireEvent.change(composer, { target: { value: 'Write the next section.' } });

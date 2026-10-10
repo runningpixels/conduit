@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
 import type { AppSettings, GenerationControls, ProviderUsage } from '@conduit/config-schema';
 import {
   attachmentDelivery,
@@ -9,8 +9,8 @@ import {
   saveAttachment,
   saveDroppedAttachment,
 } from '../ipc/client';
-import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, KnowledgeIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
-import { researchUnavailableReasonId } from './researchAvailability';
+import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { researchUnavailableReasonId, webSearchUnavailableReasonId } from './researchAvailability';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
 import { ComposerMcpResources } from './ComposerMcpResources';
 import type { AttachmentDelivery, ConnectorPromptInfo, ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
@@ -44,6 +44,18 @@ import { Menu } from '../workspace/Menu';
 import { ComposerPlusMenu, type PlusMenuItem } from './ComposerPlusMenu';
 import { ComposerContextChips, type ContextChip } from './ComposerContextChips';
 import { sameResource, toResourceRef } from './connectorCapabilities';
+import { ComposerSlashMenu, slashOptionId, type SlashMenuOption } from './ComposerSlashMenu';
+import {
+  SLASH_COMMAND_IDS,
+  findSlashTrigger,
+  removeSlashCommand,
+  slashCommandMatches,
+  type SlashCommandId,
+  type SlashTrigger,
+} from './slashTrigger';
+
+/** Below this composer width the Web and Research toggles drop their labels. */
+const COMPOSER_NARROW_PX = 520;
 
 type ComposerPopover =
   | 'workspace'
@@ -85,7 +97,7 @@ export interface ComposerProps {
   webSearchOn: boolean;
   onWebSearchToggle: () => void;
   /** Research mode: the next send starts a Research run instead of a reply.
-   *  Absent hides the "+" item. */
+   *  Absent hides the Research toggle. */
   researchOn?: boolean;
   onResearchToggle?: () => void;
   /** Absolute workspace folder this conversation's tools use, if any: its own
@@ -138,9 +150,11 @@ export interface ComposerProps {
   /// Auto-compact threshold percent for status warn styling.
   compactThresholdPercent?: number;
   /// A Writing draft's chat: its sources live in the studio's Sources tab.
-  /// The "+" menu leaves out web search, Research and documents, and the
-  /// draft's active sources show as chips that open that tab.
+  /// The Web and Research toggles and the "+" menu's documents are left out,
+  /// and the draft's active sources show as chips that open that tab.
   draftSources?: ComposerDraftSources;
+  /// The chat has no messages yet: offer starter chips under the composer.
+  showStarters?: boolean;
 }
 
 export interface ComposerDraftSources {
@@ -207,9 +221,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   contextTokens = 0,
   compactThresholdPercent,
   draftSources,
+  showStarters = false,
 }, ref) {
   const t = useT();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerBoxRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelPickerRef = useRef<ComposerModelPickerHandle>(null);
   const plusBtnRef = useRef<HTMLButtonElement>(null);
@@ -232,6 +248,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // only then does Enter pick for a bare `#` (D11).
   const docPickerNavigatedRef = useRef(false);
   const [allDocuments, setAllDocuments] = useState<DocumentPickerOption[]>([]);
+  // The `/` tools menu: open while the message starts with a command word.
+  const [slashTrigger, setSlashTrigger] = useState<SlashTrigger | null>(null);
+  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  // Escape closed the menu: it stays closed until the `/` word is gone, so
+  // the next keystroke does not bring it straight back.
+  const slashDismissedRef = useRef(false);
+  // The text a pick just consumed, until the next frame. React's select event
+  // for the picking keystroke still carries it, and must not reopen the menu.
+  const slashPickedTextRef = useRef<string | null>(null);
+  // The composer is narrow (a docked panel, a small window): the Web and
+  // Research toggles show their icons only.
+  const [narrow, setNarrow] = useState(false);
   // True while an IME composition is in progress (D12): the trigger and the
   // Enter-to-send guard both go quiet until it ends.
   const composingRef = useRef(false);
@@ -331,6 +359,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (next && !wasOpen) void loadAllDocuments();
   }
 
+  function updateSlashTrigger(text: string, caret: number) {
+    if (streaming || composingRef.current) {
+      if (slashTrigger) setSlashTrigger(null);
+      return;
+    }
+    if (slashPickedTextRef.current !== null) {
+      if (text === slashPickedTextRef.current) return;
+      slashPickedTextRef.current = null;
+    }
+    const next = findSlashTrigger(text, caret);
+    if (!next) slashDismissedRef.current = false;
+    const shown = next && !slashDismissedRef.current ? next : null;
+    if (shown?.query !== slashTrigger?.query) setSlashActiveIndex(0);
+    setSlashTrigger(shown);
+  }
+
+  function updateTriggers(text: string, caret: number) {
+    updateHashTrigger(text, caret);
+    updateSlashTrigger(text, caret);
+  }
+
   const filteredDocumentOptions = hashTrigger
     ? allDocuments.filter((doc) => doc.title.toLowerCase().includes(hashTrigger.query.toLowerCase()))
     : [];
@@ -406,7 +455,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setOpenPop(null);
     setSkillRemovalQueue([]);
     setHashTrigger(null);
+    setSlashTrigger(null);
   }, [conversationId]);
+
+  useEffect(() => {
+    const box = composerBoxRef.current;
+    if (!box || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? box.clientWidth;
+      setNarrow(width > 0 && width < COMPOSER_NARROW_PX);
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
 
   // What each uploaded attachment will do with the active model. The answer
   // depends on the model (native PDF, vision), so it is asked again when the
@@ -448,6 +509,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setPlusOpen(false);
     setOpenPop(null);
     setHashTrigger(null);
+    setSlashTrigger(null);
   }, [streaming]);
 
   const togglePop = (pop: ComposerPopover) => {
@@ -574,6 +636,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // documents for browsers that don't set `isComposing` reliably.
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
 
+    if (slashMenuOpen) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        setSlashActiveIndex((i) => (i + step + slashOptions.length) % slashOptions.length);
+        return;
+      }
+      // Unlike `#`, a `/` word at the very start of a message is a command
+      // far more often than text, so Enter picks rather than sends.
+      if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+        event.preventDefault();
+        pickSlashCommand(slashOptions[slashActiveIndex] ?? slashOptions[0]);
+        return;
+      }
+      // Escape is taken in the capture phase (see the effect below), before
+      // any shell or panel listener can read it as "close".
+    }
+
     if (hashTrigger) {
       if (event.key === 'ArrowDown') {
         event.preventDefault();
@@ -634,7 +714,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function handleCompositionEnd(event: React.CompositionEvent<HTMLTextAreaElement>) {
     composingRef.current = false;
-    updateHashTrigger(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+    updateTriggers(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length);
   }
 
   function handleDragOver(event: React.DragEvent) {
@@ -718,9 +798,32 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const queueCount = queuedMessages.length;
 
-  // Availability of each "+" item. These are the gates the separate bar
-  // buttons had; only what is available is listed.
-  const webSearchAvailable = !draftSources && settings.webSearchEnabled && !settings.localOnly;
+  // The Web and Research toggles sit in the bar whenever the host wires them,
+  // available or not: an unavailable one is disabled and its title says why.
+  // A draft's chat leaves both out, because its Sources tab owns them. Like
+  // the "+" menu they used to live in, neither changes mid-turn.
+  const webReasonId = webSearchUnavailableReasonId(settings);
+  const webSearchAvailable = !draftSources && webReasonId === null;
+  const showWebToggle = !draftSources;
+  const webPressed = webSearchAvailable && webSearchOn;
+  const webToggleDisabled = streaming || !webSearchAvailable;
+  const webToggleTitle = streaming
+    ? t('chat.composer.plus.titleStreaming')
+    : webReasonId !== null
+      ? t(webReasonId)
+      : webSearchOn
+        ? searchOnTitle
+        : searchOffTitle;
+  const researchReasonId = researchUnavailableReasonId(settings);
+  const researchAvailable = researchReasonId === null;
+  const showResearchToggle = Boolean(onResearchToggle) && !draftSources;
+  // Turning it off stays possible whatever changed since it was turned on.
+  const researchToggleDisabled = streaming || (!researchAvailable && !researchOn);
+  const researchToggleTitle = streaming
+    ? t('chat.composer.plus.titleStreaming')
+    : researchAvailable
+      ? t(researchOn ? 'chat.composer.research.onTitle' : 'chat.composer.research.offTitle')
+      : t(researchReasonId);
   const collectionsAvailable = !draftSources && Boolean(onToggleCollection) && collections.length > 0;
   const mcpPromptsAvailable = Boolean(onPickMcpPrompt) && mcpPrompts.length > 0;
   const mcpResourcesAvailable = Boolean(onToggleMcpResource) && mcpResources.length > 0;
@@ -748,32 +851,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       },
     },
   ];
-  if (webSearchAvailable) {
-    plusItems.push({
-      id: 'webSearch',
-      label: t('chat.composer.plus.webSearch'),
-      icon: <SearchIcon />,
-      title: webSearchOn ? searchOnTitle : searchOffTitle,
-      checked: webSearchOn,
-      onSelect: onWebSearchToggle,
-    });
-  }
-  const researchReasonId = researchUnavailableReasonId(settings);
-  const researchAvailable = researchReasonId === null;
-  if (onResearchToggle && !draftSources) {
-    plusItems.push({
-      id: 'research',
-      label: t('chat.composer.plus.research'),
-      icon: <ResearchIcon />,
-      title: researchAvailable
-        ? t(researchOn ? 'chat.composer.research.onTitle' : 'chat.composer.research.offTitle')
-        : t(researchReasonId),
-      checked: researchOn,
-      // Turning it off stays possible whatever changed since it was turned on.
-      disabled: !researchAvailable && !researchOn,
-      onSelect: onResearchToggle,
-    });
-  }
   if (onWorkspacePick) {
     plusItems.push({
       id: 'workspace',
@@ -890,26 +967,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       removeLabel: t('chat.composer.chips.removeSkills', { count }),
     });
   }
-  if (webSearchAvailable && webSearchOn) {
-    chips.push({
-      id: 'webSearch',
-      label: t('chat.composer.chips.webSearch'),
-      icon: <SearchIcon />,
-      title: searchOnTitle,
-      onRemove: onWebSearchToggle,
-      removeLabel: t('chat.composer.chips.removeWebSearch'),
-    });
-  }
-  if (onResearchToggle && researchOn && researchAvailable && !draftSources) {
-    chips.push({
-      id: 'research',
-      label: t('chat.composer.chips.research'),
-      icon: <ResearchIcon />,
-      title: t('chat.composer.research.onTitle'),
-      onRemove: onResearchToggle,
-      removeLabel: t('chat.composer.chips.removeResearch'),
-    });
-  }
+  // Web and Research have no chip: their toggles in the bar already show
+  // whether they are on, and turn them off.
   if (draftSources) {
     const openSources = draftSources.onOpen;
     if (draftSources.webSearch) {
@@ -969,6 +1028,107 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     });
   }
 
+  /** One tool, run the way its own control runs it: the toggle, the "+"
+   *  menu's folder and attach items, the skills popover. The `/` menu and the
+   *  starter chips both come through here. */
+  function runTool(id: SlashCommandId) {
+    switch (id) {
+      case 'web':
+        onWebSearchToggle();
+        return;
+      case 'research':
+        onResearchToggle?.();
+        return;
+      case 'folder':
+        selectWorkspace();
+        return;
+      case 'file':
+        setOpenPop(null);
+        fileInputRef.current?.click();
+        return;
+      case 'skill':
+        setPlusOpen(false);
+        setOpenPop('skills');
+        return;
+    }
+  }
+
+  const folderToolAvailable = Boolean(onWorkspacePick) && Boolean(conversationId) && !streaming;
+  const skillToolAvailable = Boolean(onToggleSkill) && Boolean(conversationId) && !streaming;
+  const toolLabels: Record<SlashCommandId, string> = {
+    web: t('chat.composer.tools.webHint'),
+    research: t('chat.composer.tools.researchHint'),
+    folder: t('chat.composer.tools.folder'),
+    file: t('chat.composer.tools.file'),
+    skill: t('chat.composer.tools.skill'),
+  };
+  const toolIcons: Record<SlashCommandId, ReactNode> = {
+    web: <GlobeIcon />,
+    research: <ResearchIcon />,
+    folder: <FolderIcon />,
+    file: <AttachIcon />,
+    skill: <SkillIcon />,
+  };
+  // Only what can run right now is offered.
+  const toolAvailable: Record<SlashCommandId, boolean> = {
+    web: showWebToggle && !webToggleDisabled,
+    research: showResearchToggle && !researchToggleDisabled,
+    folder: folderToolAvailable,
+    file: !attachDisabled,
+    skill: skillToolAvailable,
+  };
+  const slashOptions: SlashMenuOption[] = slashTrigger
+    ? SLASH_COMMAND_IDS.filter(
+        (id) => toolAvailable[id] && slashCommandMatches(id, toolLabels[id], slashTrigger.query),
+      ).map((id) => ({
+        id,
+        label: toolLabels[id],
+        icon: toolIcons[id],
+        on: id === 'web' ? webPressed : id === 'research' ? researchOn : undefined,
+      }))
+    : [];
+  // Nothing matching closes the menu, so "/usr/bin" or "/shrug" type on as text.
+  const slashMenuOpen = slashOptions.length > 0;
+
+  function pickSlashCommand(option: SlashMenuOption) {
+    const trigger = slashTrigger;
+    if (!trigger) return;
+    setSlashTrigger(null);
+    slashPickedTextRef.current = prompt;
+    onPromptChange(removeSlashCommand(prompt, trigger));
+    runTool(option.id);
+    requestAnimationFrame(() => {
+      slashPickedTextRef.current = null;
+      const ta = textareaRef.current;
+      if (ta && document.activeElement === ta) ta.setSelectionRange(0, 0);
+    });
+  }
+
+  // Escape closes the `/` menu and nothing else. The shell's Escape (stop the
+  // stream, close an overlay) and the document panel's listen on window and
+  // document, so the key is claimed in window's capture phase, before them.
+  useEffect(() => {
+    if (!slashMenuOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.isComposing) return;
+      if (event.target !== textareaRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      slashDismissedRef.current = true;
+      setSlashTrigger(null);
+    }
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [slashMenuOpen]);
+
+  // New chat only: a few ways in, under the composer. A folder already in
+  // use (the Settings default) shows as its chip, so it is not offered again.
+  const starterIds: SlashCommandId[] = showStarters
+    ? (['folder', 'file', 'skill'] as const).filter((id) =>
+        id === 'folder' ? folderToolAvailable && !workspaceBound : toolAvailable[id],
+      )
+    : [];
+
   return (
     <div className="composer-wrap">
       {queueCount > 0 && (
@@ -1006,6 +1166,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </div>
       )}
       <div
+        ref={composerBoxRef}
         className={`composer${dropActive || (attachDropActive && !attachDisabled) ? ' drop-active' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -1068,27 +1229,40 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           value={prompt}
           onChange={(event) => {
             onPromptChange(event.target.value);
-            updateHashTrigger(event.target.value, event.target.selectionStart ?? event.target.value.length);
+            updateTriggers(event.target.value, event.target.selectionStart ?? event.target.value.length);
           }}
           onSelect={(event) => {
             const target = event.currentTarget;
-            updateHashTrigger(target.value, target.selectionStart ?? 0);
+            updateTriggers(target.value, target.selectionStart ?? 0);
           }}
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           onPaste={(event) => void handlePaste(event)}
-          placeholder={brand().tagline ?? t('chat.composer.placeholder')}
+          placeholder={brand().tagline ?? t('chat.composer.placeholderTools')}
           rows={1}
           aria-label={t('chat.composer.prompt.ariaLabel')}
-          aria-expanded={hashTrigger ? true : undefined}
-          aria-controls={hashTrigger ? 'composer-doc-picker-list' : undefined}
+          aria-expanded={slashMenuOpen || hashTrigger ? true : undefined}
+          aria-controls={
+            slashMenuOpen ? 'composer-slash-menu-list' : hashTrigger ? 'composer-doc-picker-list' : undefined
+          }
           aria-activedescendant={
-            hashTrigger && filteredDocumentOptions[docPickerActiveIndex]
-              ? documentOptionId(filteredDocumentOptions[docPickerActiveIndex].documentId)
-              : undefined
+            slashMenuOpen
+              ? slashOptionId((slashOptions[slashActiveIndex] ?? slashOptions[0]).id)
+              : hashTrigger && filteredDocumentOptions[docPickerActiveIndex]
+                ? documentOptionId(filteredDocumentOptions[docPickerActiveIndex].documentId)
+                : undefined
           }
         />
+        {slashMenuOpen ? (
+          <ComposerSlashMenu
+            id="composer-slash-menu-list"
+            options={slashOptions}
+            activeIndex={Math.min(slashActiveIndex, slashOptions.length - 1)}
+            onHover={setSlashActiveIndex}
+            onPick={pickSlashCommand}
+          />
+        ) : null}
         {docPickerFeatureAvailable && hashTrigger ? (
           <ComposerDocumentPicker
             id="composer-doc-picker-list"
@@ -1247,6 +1421,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               />
             ) : null}
           </span>
+          {/* Web and Research are the two tools people reach for per message,
+              so they live in the bar rather than in the "+" menu. Narrow, they
+              keep their icon and move the label to aria-label. */}
+          {showWebToggle ? (
+            <button
+              className="composer-tool"
+              type="button"
+              aria-pressed={webPressed}
+              aria-label={narrow ? t('chat.composer.tools.web') : undefined}
+              title={webToggleTitle}
+              disabled={webToggleDisabled}
+              data-icon-only={narrow ? 'true' : undefined}
+              onClick={onWebSearchToggle}
+            >
+              <GlobeIcon />
+              {narrow ? null : <span>{t('chat.composer.tools.web')}</span>}
+            </button>
+          ) : null}
+          {showResearchToggle ? (
+            <button
+              className="composer-tool"
+              type="button"
+              aria-pressed={researchOn}
+              aria-label={narrow ? t('chat.composer.tools.research') : undefined}
+              title={researchToggleTitle}
+              disabled={researchToggleDisabled}
+              data-icon-only={narrow ? 'true' : undefined}
+              onClick={onResearchToggle}
+            >
+              <ResearchIcon />
+              {narrow ? null : <span>{t('chat.composer.tools.research')}</span>}
+            </button>
+          ) : null}
           {/* Everything before the spacer acts on the message; everything after
               it says who will answer and sends. */}
           <span className="spacer" />
@@ -1303,6 +1510,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         credentialRef={credentialRef ?? ''}
         modelMenuOpen={() => modelPickerRef.current?.open()}
       />
+      {starterIds.length > 0 ? (
+        <div
+          className="composer-starters"
+          role="group"
+          aria-label={t('chat.composer.tools.startersAriaLabel')}
+        >
+          {starterIds.map((id) => (
+            <button
+              key={id}
+              className="composer-starter"
+              type="button"
+              onClick={() => {
+                // Focus first: the folder and file pickers are native dialogs
+                // that hand focus back to the textbox when they close.
+                textareaRef.current?.focus();
+                runTool(id);
+              }}
+            >
+              {toolIcons[id]}
+              <span>{toolLabels[id]}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 });

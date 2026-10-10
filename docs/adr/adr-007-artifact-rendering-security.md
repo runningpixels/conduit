@@ -229,6 +229,9 @@ With full web access the page loads with:
   OpenStreetMap's tile servers answer with a "blocked" image. Giving pages a real origin
   would need `allow-same-origin`, which stays off. The model is told so it picks services
   that work without one.
+  *(Superseded 2026-10-10: a full-access page now gets a real origin of its own and
+  `allow-same-origin`, and the prompt no longer mentions the Referer; see the addendum
+  below.)*
 - Everything else unchanged: no Tauri bridge (and the `chrome.webview` cut), link clicks
   confirmed, the WebRTC removal, the ADR-010 fetch bridge (so `fetch()` keeps the proxy's
   checks and has no CORS trouble; full access implies the any-site grant, so it no longer
@@ -281,7 +284,105 @@ direct load could leave the webview. The app now starts a loopback **guard proxy
   from a full-access page go out unchecked: they can reach https services on the local
   network. The macOS WebRTC gap (ADR-010 addendum) is still open.
 - Embeds that need their own origin's storage (some video players) may still fail inside
-  the sandbox.
+  the sandbox. *(Addressed 2026-10-10, below.)*
+
+## Addendum (2026-10-10): full-access pages get a real origin of their own
+
+**Why.** The addendum above left a page with full web access on an opaque origin, which
+sends no `Referer` and has no storage or cookies of its own. Services that require a
+Referer refused such pages (OpenStreetMap tiles; checked with curl, OSM accepts any
+Referer, `http://<id>.page.localhost:<port>/` included), and embeds that keep state in
+their own storage (video players) failed. Pages **without** full web access are
+unchanged: `conduit-artifact` scheme, `allow-scripts`, opaque origin.
+
+**What changes, for a full-access page only.** Its document is served from a loopback
+HTTP server in the app (`page_server.rs`) at `http://<page id>.page.localhost:<port>/<token>`,
+and its frame's sandbox becomes `allow-scripts allow-modals allow-same-origin`. The page
+then behaves like a website on its own origin: it sends a Referer
+(`Referrer-Policy: strict-origin`, so a site sees only the origin, never the token), and
+it keeps its own localStorage, IndexedDB, caches and cookies across reloads.
+
+- **One origin per page.** `<page id>` is the first 32 hex characters of
+  SHA-256(install secret ‖ principal). The install secret is 32 random bytes, created
+  once and kept in `page-origins.json` in the app data directory (with the list of pages
+  that were given an origin, for clearing). Stable across reloads and edits; different for
+  every page, so pages never share storage; not derivable on another install. Page ids
+  are hex, so they can never equal a scheme name or `tauri`.
+- **A stable port.** The port is part of every page's origin, so storage only survives
+  a restart if the port does. The first launch binds a random port in 49152–65000 and
+  saves it in `page-origins.json`; later launches bind that port again (before the guard
+  proxy takes its own ephemeral port). Only if it is taken is a new random port bound
+  and saved; the old one goes into a bounded list (last 8) of previous ports, and a
+  warning is logged.
+- **Guards on the server.** Bound to `127.0.0.1` only. The `Host` header must
+  be exactly `<page id>.page.localhost:<port>`, and the path's token must have been
+  stored for that page id (`ArtifactFrames::put_page`); such a document is never served
+  by the scheme, and the renderer drops the token when its frame goes away, as before.
+  `GET`/`HEAD` only (else 405); a request whose `Sec-Fetch-Dest` says it is not for a
+  frame is refused; everything else is 404. Every response is `no-store`, `nosniff`,
+  `Origin-Agent-Cluster: ?1`, and carries a CSP header: the page's own `full` policy
+  (the same one its first `<meta>` carries, built from the same allowlist) with
+  `frame-ancestors` limited to the app's origin, so another local site or browser can't
+  frame a page. Both policies apply, so the effective one is never wider than the meta.
+- **App origin.** Known at startup: `http://tauri.localhost` on Windows (`https` with
+  `useHttpsScheme`), `tauri://localhost` on macOS and Linux, plus the dev server's origin
+  in a dev build (`build.devUrl`). The app CSP's `frame-src` adds
+  `http://*.page.localhost:*`.
+- **Host and frame messages.** The host still accepts a message only from the frame's
+  window (`event.source`); for a page on its own origin it also requires `event.origin`
+  to be that origin (a page could navigate its frame elsewhere), and posts to that exact
+  origin instead of `'*'`. A `srcdoc` or scheme frame never gets `allow-same-origin`: the
+  renderer adds it only when the source is a page-server URL, and re-creates the frame
+  when the origin changes so the flags and the `src` change together.
+- **No IPC from page origins.** Tauri answers IPC only for its own origin and for remote
+  URLs a capability lists; `capabilities/default.json` lists none, so a call from
+  `*.page.localhost` is refused. The page's CSP blocks http connections
+  (`connect-src https: wss:`), which also closes `http://ipc.localhost`; the in-frame
+  `chrome.webview` cut stays. Chromium never proxies `*.localhost` (it resolves it to
+  loopback itself), so the guard proxy is not involved.
+- **Clearing: "delete cookies and site data".** Nothing in the app can reach another
+  origin's storage, so it is cleared on the page's own origin: Rust mints a one-shot token
+  (60 s) and `GET /<token>/__clear` answers with
+  `Clear-Site-Data: "cache", "cookies", "storage"` and a nonce'd script that also empties
+  localStorage, sessionStorage, IndexedDB (`indexedDB.databases()`), Cache Storage and the
+  cookies it can see, then posts `conduit:page-data-cleared` to the app's origin. The host
+  loads it in a hidden frame (`allow-scripts allow-same-origin`) and waits up to 5 s. Used
+  by "Clear site data" in a saved app's ⋯ menu and a chat page's ⋯ menu (both only while
+  the page has full access); by Settings → Artifact security → "Clear data for all pages"
+  (every page that was given an origin, then every cookie in the webview's store except
+  the app's own, through Tauri's `Webview::cookies`/`delete_cookie`, which covers cookies
+  set by embedded sites); and by a sweep that clears pages that were deleted or lost full
+  web access (on revoke, on "Remove all", when the every-page switch is turned off, after
+  deleting an app or a chat, and at startup).
+
+**Residual risks.**
+
+- Any local process can connect to the server, but it needs a document's token, which is
+  random, lives only while the frame is open, and is bound to one page id; the Host check
+  stops a DNS-rebinding site from using it.
+- All page origins are under `page.localhost`, so the browser may treat them as one
+  *site* (cross-origin): a page could set a cookie for `Domain=page.localhost` that another
+  full-access page reads, and `SameSite` doesn't separate them. Storage, IndexedDB and
+  caches stay per origin, and `Origin-Agent-Cluster` keeps `document.domain` from joining
+  them. Clearing one page with `Clear-Site-Data: "cookies"` may also clear such shared
+  cookies of the others.
+- Page frames are third-party to the app, so their storage is partitioned under the
+  app's top-level site; it persists in the webview profile until cleared.
+- Embeds set third-party cookies under their own sites; only the all-pages clear removes
+  those (per-page clearing can't tell which page an embed's cookie came from).
+- WebKit (macOS, Linux) is not yet verified: that it resolves `*.localhost` to loopback,
+  treats it as a secure context, honours `frame-ancestors tauri://localhost`, and supports
+  `Clear-Site-Data` (in part; the script does the same by hand). Until then a failure
+  there means a page that doesn't load, not a wider one.
+- Not yet checked live (Windows release build included): Leaflet with OSM tiles, a video
+  embed, storage surviving a reload and separate between two pages, and a probe page that
+  tries `__TAURI_INTERNALS__`, `ipc.localhost` and the custom schemes.
+- If the saved port is taken at launch (another program got it first), the port changes
+  and so does every page's origin: what pages stored under the old origins stays in the
+  webview profile, unreachable from the app (neither shown nor cleared by "Clear data for
+  all pages"; the cookie clear still removes cookies there). The previous ports are kept
+  in the record for reference only; nothing tries to reach the old origins.
+- Resetting the local database doesn't rotate the install secret; a new profile does.
 
 ## Related
 - Supersedes the interactive-rendering deferral in ADR 002 (which modeled

@@ -36,6 +36,7 @@ pub mod mcp_oauth;
 pub mod mcp_registry;
 pub mod message_preview;
 pub mod page_llm;
+pub mod page_server;
 pub mod paths;
 pub mod research;
 pub mod search;

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ConfirmDialog } from '@conduit/ui';
 import type { AppSettings } from '../../ipc/contracts';
 import {
   clearArtifactNetworkGrants,
@@ -8,6 +9,7 @@ import {
 } from '../../ipc/client';
 import { hostLabel } from '../../artifacts/networkHosts';
 import { ANY_SITE, FULL_WEB_ACCESS } from '../useArtifactNetwork';
+import { clearAllPageSiteData, sweepPageSiteData } from '../../artifacts/pageSiteData';
 import { useT } from '../../i18n';
 
 interface ArtifactSecuritySectionProps {
@@ -18,8 +20,9 @@ interface ArtifactSecuritySectionProps {
 /**
  * Artifact Security: whether pages may connect to the internet (ADR-010) with
  * the sites each page was always allowed (and the pages given full web
- * access, ADR-007), whether every page gets full web access, and the passive
- * remote allowlist.
+ * access, ADR-007), whether every page gets full web access, clearing what
+ * pages keep on their own origins (cookies, storage), and the passive remote
+ * allowlist.
  */
 export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecuritySectionProps) {
   const t = useT();
@@ -39,6 +42,15 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
     void loadGrants();
   }, [loadGrants]);
 
+  // A page that loses full web access loses its own origin; what it kept
+  // there is cleared. Turning the every-page switch off can do that to many.
+  const fullForEveryPage = settings.artifactFullWebAccess === true;
+  const wasFullForEveryPage = useRef(fullForEveryPage);
+  useEffect(() => {
+    if (wasFullForEveryPage.current && !fullForEveryPage) void sweepPageSiteData({ everyPage: false });
+    wasFullForEveryPage.current = fullForEveryPage;
+  }, [fullForEveryPage]);
+
   async function handleRevokeGrant(grant: ArtifactNetworkGrant) {
     try {
       await revokeArtifactNetworkGrant(grant.principal, grant.host);
@@ -46,6 +58,7 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
       setGrantError(String(e));
     }
     await loadGrants();
+    if (grant.host === FULL_WEB_ACCESS) void sweepPageSiteData();
   }
 
   async function handleClearGrants() {
@@ -55,6 +68,26 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
       setGrantError(String(e));
     }
     await loadGrants();
+    void sweepPageSiteData();
+  }
+
+  // "Clear data for all pages": every page origin, and the cookies of what
+  // pages embed.
+  const [siteDataConfirmOpen, setSiteDataConfirmOpen] = useState(false);
+  const [siteDataBusy, setSiteDataBusy] = useState(false);
+  const [siteDataStatus, setSiteDataStatus] = useState<{ ok: boolean } | null>(null);
+  async function handleClearSiteData() {
+    setSiteDataConfirmOpen(false);
+    setSiteDataBusy(true);
+    setSiteDataStatus(null);
+    try {
+      const result = await clearAllPageSiteData();
+      setSiteDataStatus({ ok: result.failed === 0 });
+    } catch {
+      setSiteDataStatus({ ok: false });
+    } finally {
+      setSiteDataBusy(false);
+    }
   }
 
   function handleAdd() {
@@ -164,6 +197,43 @@ export function ArtifactSecuritySection({ settings, onUpdate }: ArtifactSecurity
           </>
         )}
       </div>
+      <div className="status-item">
+        <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+          {t('settings.artifactSecurity.siteData.label')}
+        </span>
+        <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+          {t('settings.artifactSecurity.siteData.hint')}
+        </span>
+        {siteDataStatus && (
+          <span
+            role={siteDataStatus.ok ? 'status' : 'alert'}
+            style={{ fontSize: 'var(--fs-xl)', color: siteDataStatus.ok ? 'var(--ink-3)' : 'var(--err)' }}
+          >
+            {siteDataStatus.ok
+              ? t('settings.artifactSecurity.siteData.cleared')
+              : t('settings.artifactSecurity.siteData.failed')}
+          </span>
+        )}
+        <div>
+          <button
+            className="btn ghost"
+            type="button"
+            disabled={siteDataBusy}
+            onClick={() => setSiteDataConfirmOpen(true)}
+          >
+            {t('settings.artifactSecurity.siteData.clearAll')}
+          </button>
+        </div>
+      </div>
+      <ConfirmDialog
+        open={siteDataConfirmOpen}
+        title={t('settings.artifactSecurity.siteData.confirmTitle')}
+        description={t('settings.artifactSecurity.siteData.confirmDescription')}
+        confirmLabel={t('settings.artifactSecurity.siteData.confirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onCancel={() => setSiteDataConfirmOpen(false)}
+        onConfirm={() => void handleClearSiteData()}
+      />
       <div className="status-item">
         <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
           {t('settings.artifactSecurity.allowlist.label')}

@@ -25,6 +25,7 @@ import {
   type PagePrincipal,
 } from '../ipc/client';
 import { addBlockedLoad, type BlockedLoad } from '../artifacts/blockedLoads';
+import { sweepPageSiteData } from '../artifacts/pageSiteData';
 import {
   ARTIFACT_FRAME_CLOSED,
   isLocalNetworkOrigin,
@@ -459,6 +460,9 @@ export function useArtifactNetwork(
       if (!principal) return;
       await revokeArtifactNetworkGrant(principal, origin);
       await refresh();
+      // Without full web access the page loses its own origin; what it kept
+      // there is cleared, as a browser would on "delete site data".
+      if (origin === FULL_WEB_ACCESS) void sweepPageSiteData();
     },
     [principal, refresh],
   );

@@ -16,6 +16,7 @@ import { AppDetailsDialog, type AppDetailsTarget } from '../apps/AppDetailsDialo
 import { AppTile } from '../apps/AppTile';
 import { AppView } from '../apps/AppView';
 import { useSiteLabel } from '../workspace/ArtifactNetwork';
+import { sweepPageSiteData } from '../artifacts/pageSiteData';
 
 export interface AppsPageProps {
   /** Open this app on mount (from the new-chat row or a "Saved" toast). */
@@ -109,6 +110,8 @@ export function AppsPage({
     if (!app) return;
     try {
       await deleteApp(app.id);
+      // What the app kept on its own origin (full web access) goes with it.
+      void sweepPageSiteData();
       if (openAppId === app.id) onOpenAppIdChange(null);
       onStatus?.(t('apps.status.deleted', { name: app.name }));
       await changed();

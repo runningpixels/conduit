@@ -17,7 +17,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   next = 0;
   ipc.invokeCommand.mockImplementation(async (command: string) =>
-    command === 'put_artifact_frame' ? `t${++next}` : undefined,
+    command === 'put_artifact_frame' ? { token: `t${++next}`, url: null } : undefined,
   );
 });
 

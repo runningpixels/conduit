@@ -28,7 +28,8 @@ import { artifactExternalLinkGrantKey, isHttpOrHttpsUrl } from '../artifacts/ext
 import { DocumentPanelErrorBoundary } from '../artifacts/DocumentPanelErrorBoundary';
 import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
 import { inlineArtifactText } from '../artifacts/format';
-import { AppsIcon, FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon } from '../icons';
+import { AppsIcon, FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon, TrashIcon } from '../icons';
+import { clearPageSiteData } from '../artifacts/pageSiteData';
 import { Menu } from './Menu';
 import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
 import { readDocumentPeek, readExportMetadata, writeDocumentPeek } from '../shell/uiPrefs';
@@ -477,6 +478,19 @@ export function DocumentPanel({
     setFullAccessReviewOpen(false);
     dismissFullAccess();
   }, [dismissFullAccess]);
+  // "Clear site data": what a page with full web access keeps on its own
+  // origin (cookies, storage), like a browser's. Bumped after, to reload.
+  const [siteDataConfirmOpen, setSiteDataConfirmOpen] = useState(false);
+  const [siteDataRevision, setSiteDataRevision] = useState(0);
+  const handleClearSiteData = useCallback(async () => {
+    setSiteDataConfirmOpen(false);
+    if (!networkArtifactId) return;
+    const ok = await clearPageSiteData(artifactPrincipal(networkArtifactId));
+    setSiteDataRevision((r) => r + 1);
+    onStatus?.(
+      ok ? t('workspace.documentPanel.toast.siteDataCleared') : t('workspace.documentPanel.toast.siteDataClearFailed'),
+    );
+  }, [networkArtifactId, onStatus, t]);
   const [llmReviewOpen, setLlmReviewOpen] = useState(false);
   const { decide: decideLlm } = llm;
   const handleLlmDecision = useCallback(
@@ -1094,6 +1108,20 @@ export function DocumentPanel({
                   {t('workspace.documentPanel.menu.saveAsApp')}
                 </button>
               )}
+              {networkArtifactId && network.fullAccess === true && (
+                <button
+                  className="menu-item"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setSiteDataConfirmOpen(true);
+                  }}
+                >
+                  <TrashIcon />
+                  {t('workspace.documentPanel.menu.clearSiteData')}
+                </button>
+              )}
               {onCloseTab && (
                 <button
                   className="menu-item"
@@ -1264,8 +1292,9 @@ export function DocumentPanel({
               return (
                 <Preview
                   // A new key starts the page over: the reader allowed a site
-                  // the page had already given up waiting for.
-                  key={network.reloadToken}
+                  // the page had already given up waiting for, or cleared its
+                  // site data.
+                  key={`${network.reloadToken}:${siteDataRevision}`}
                   {...props}
                   onExternalLink={handleExternalLink}
                   onAskToFix={onAskToFix}
@@ -1274,6 +1303,7 @@ export function DocumentPanel({
                   inputValues={networkArtifactId ? pageInputValues : undefined}
                   fullWebAccess={networkArtifactId ? network.fullAccess === true : undefined}
                   onBlockedLoad={networkArtifactId ? network.reportBlocked : undefined}
+                  principal={networkArtifactId ? artifactPrincipal(networkArtifactId) : undefined}
                 />
               );
             })()}
@@ -1369,6 +1399,15 @@ export function DocumentPanel({
         confirmLabel={t('workspace.documentPanel.confirmApply.confirmLabel')}
         onCancel={() => setConfirmApplyBrand(false)}
         onConfirm={() => void handleApplyBrandConfirmed()}
+      />
+      <ConfirmDialog
+        cancelLabel={t('common.actions.cancel')}
+        open={siteDataConfirmOpen}
+        title={t('workspace.documentPanel.clearSiteData.title')}
+        description={t('workspace.documentPanel.clearSiteData.description')}
+        confirmLabel={t('workspace.documentPanel.clearSiteData.confirm')}
+        onCancel={() => setSiteDataConfirmOpen(false)}
+        onConfirm={() => void handleClearSiteData()}
       />
     </section>
   );

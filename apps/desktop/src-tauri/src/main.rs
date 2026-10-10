@@ -86,6 +86,7 @@ fn main() {
         .manage(ConnectorRuntimeManager::new())
         // HTML artifacts load from their own origin so they don't inherit the
         // app CSP (which blocks every inline script); see `artifact_frames`.
+        // The page server (started in setup) shares the same store.
         .manage(ArtifactFrames::default())
         // Workflows: one run per workflow at a time (scheduler + "Run now"),
         // and a way to wake the scheduler when a schedule changes.
@@ -353,6 +354,11 @@ fn main() {
             restart_app,
             put_artifact_frame,
             drop_artifact_frame,
+            // Real origins for pages with full web access (`page_server`).
+            mint_page_clear,
+            list_page_origins,
+            forget_page_origin,
+            clear_page_cookies,
             // Workflows v1: saved routines, run by hand.
             validate_workflow,
             draft_workflow,
@@ -410,6 +416,11 @@ fn main() {
                 .ok_or("tauri.conf.json has no \"main\" window")?;
             // Started at sign-in with the tray on: stay hidden in the tray.
             let visible = config.visible && !tray::start_hidden(std::env::args(), close_to_tray);
+            // Pages with full web access get their own origin from the
+            // loopback page server; without it they keep the opaque one.
+            // Before the guard proxy, whose ephemeral port must not take the
+            // page server's stored one (part of every page's origin).
+            start_page_server(app.handle(), config.use_https_scheme);
             // Windows: the guard proxy carries a full-web-access page's loads
             // (ADR-007) and refuses everything while none is open. Without it
             // the dead proxy stays, and such pages load nothing remote.
@@ -531,4 +542,29 @@ fn start_guard_proxy(app: &tauri::AppHandle) -> Option<u16> {
         std::sync::Arc::new(move || handle.state::<ArtifactFrames>().has_full_access_frames());
     tauri::async_runtime::spawn(guard_proxy::serve(listener, gate, AddressPolicy::APP));
     Some(port)
+}
+
+/// Bind and start the loopback page server (`page_server`) and manage it. If
+/// it can't listen, it isn't managed: full-access pages then load from the
+/// scheme with an opaque origin, as every other page does.
+fn start_page_server(app: &tauri::AppHandle, https_scheme: bool) {
+    use conduit_desktop::page_server::{self, PageServer};
+    let dev_url = if tauri::is_dev() {
+        app.config().build.dev_url.clone()
+    } else {
+        None
+    };
+    let app_origins = page_server::app_origins(cfg!(windows), https_scheme, dev_url.as_ref());
+    let dir = app.state::<AppState>().paths.root.clone();
+    // Binds the port saved last time, so pages keep their origins.
+    let (server, listener) = match PageServer::open(app_origins, Some(&dir)) {
+        Ok(opened) => opened,
+        Err(error) => {
+            tracing::warn!(%error, "page server could not listen; full web access pages keep an opaque origin");
+            return;
+        }
+    };
+    let frames = app.state::<ArtifactFrames>().inner().clone();
+    tauri::async_runtime::spawn(page_server::serve(listener, frames, server.config.clone()));
+    app.manage(server);
 }

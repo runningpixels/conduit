@@ -66,12 +66,6 @@ describe('ideas catalog', () => {
     }
   });
 
-  it('routes the dashboard and flashcards chips to the document tools', () => {
-    for (const chip of ['dashboard', 'flashcards']) {
-      expect(classifyDocumentTurnIntent(messages[`ideas.chip.${chip}.text`]), chip).toBe('create');
-    }
-  });
-
   // The intent checks read English only, so a translated prompt would miss its
   // tools; a chat started from an idea passes the idea's needs instead
   // (ChatView.handleSend → selectBuiltinTurnTools).

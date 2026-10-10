@@ -3,10 +3,7 @@ import { resolveCapabilities, type CapabilityInput } from './capabilities';
 import { IDEAS } from './catalog';
 import {
   __resetIdeaStateForTests,
-  CHIP_GIVE_UP,
   getIdeaState,
-  noteChipOffered,
-  noteChipUsed,
   noteFirstMessage,
   notePicked,
   observeReady,
@@ -14,7 +11,6 @@ import {
   type IdeaState,
 } from './ideaState';
 import { forYou, ideaStatus, missingNeed, newIdeas, onboardingIdeas, spotlightIdeas, starterIdeas } from './selectIdeas';
-import { capabilityChip } from './capabilityChips';
 
 const base: CapabilityInput['settings'] = {
   localOnly: false,
@@ -35,8 +31,6 @@ const fresh = (): IdeaState => ({
   seenRevision: null,
   knownReady: null,
   spotlight: [],
-  chipOffers: {},
-  chipUsed: [],
 });
 
 describe('resolveCapabilities', () => {
@@ -142,49 +136,5 @@ describe('idea state on this device', () => {
     noteFirstMessage();
     resetIdeaState();
     expect(getIdeaState().tried).toEqual([]);
-  });
-});
-
-describe('capability chips', () => {
-  const ctx = {
-    pageHtml: null as string | null,
-    otherArtifactText: null as string | null,
-    lastUser: '',
-    lastAssistant: '',
-    networkReady: true,
-    state: { chipOffers: {}, chipUsed: [] as string[] },
-  };
-
-  it('offers live data for a page about something live that does not fetch', () => {
-    const page = '<h1>Bitcoin price</h1><script>const prices=[1,2,3]</script>';
-    expect(capabilityChip({ ...ctx, pageHtml: page })).toBe('liveData');
-    expect(capabilityChip({ ...ctx, pageHtml: page, networkReady: false })).toBeNull();
-    expect(capabilityChip({ ...ctx, pageHtml: page.replace('const', 'fetch(u); const') })).toBeNull();
-    expect(capabilityChip({ ...ctx, pageHtml: '<h1>Pomodoro</h1>' })).toBeNull();
-  });
-
-  it('offers a dashboard for a table and flashcards for a long explanation', () => {
-    expect(capabilityChip({ ...ctx, lastAssistant: '| a | b |\n|---|---|\n| 1 | 2 |' })).toBe('dashboard');
-    expect(capabilityChip({ ...ctx, lastUser: 'How do vaccines work?', lastAssistant: 'x'.repeat(1000) })).toBe('flashcards');
-    expect(capabilityChip({ ...ctx, lastUser: 'hi', lastAssistant: 'Hello!' })).toBeNull();
-    // A reply promoted to a Markdown table is still a dashboard; other documents are not.
-    expect(capabilityChip({ ...ctx, otherArtifactText: '| a | b |\n|---|---|\n| 1 | 2 |' })).toBe('dashboard');
-    expect(capabilityChip({ ...ctx, otherArtifactText: '# Notes', lastAssistant: '| a | b |\n|---|---|' })).toBeNull();
-  });
-
-  it('stops offering a chip that keeps being ignored, unless it was used', () => {
-    const table = '| a | b |\n|---|---|';
-    const ignored = { chipOffers: { dashboard: CHIP_GIVE_UP }, chipUsed: [] };
-    expect(capabilityChip({ ...ctx, lastAssistant: table, state: ignored })).toBeNull();
-    expect(capabilityChip({ ...ctx, lastAssistant: table, state: { ...ignored, chipUsed: ['dashboard'] } })).toBe('dashboard');
-  });
-
-  it('counts offers and uses in the device state', () => {
-    __resetIdeaStateForTests();
-    noteChipOffered('dashboard');
-    noteChipOffered('dashboard');
-    noteChipUsed('dashboard');
-    expect(getIdeaState().chipOffers.dashboard).toBe(2);
-    expect(getIdeaState().chipUsed).toEqual(['dashboard']);
   });
 });

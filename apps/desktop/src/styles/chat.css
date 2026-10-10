@@ -1168,6 +1168,64 @@
 .composer-plus-menu .menu-item:disabled { opacity: .5; cursor: default; }
 .composer-plus-menu .menu-item:disabled:hover { background: transparent; color: var(--ink-2); }
 
+/* Web and Research: labelled pill toggles beside "+". Off they are a quiet
+ * outline; on they take the accent's selected trio (fill, text, ring), the
+ * same one the idea gallery's pressed filter uses. */
+.composer-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: var(--fs-xl);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--tap), border-color var(--tap), color var(--tap);
+}
+.composer-tool svg { width: 14px; height: 14px; flex: none; }
+.composer-tool:not(:disabled):hover { background: var(--card-hi); color: var(--ink); }
+.composer-tool[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.composer-tool[aria-pressed="true"]:not(:disabled):hover { background: var(--accent-soft); color: var(--accent-text); }
+.composer-tool:disabled { opacity: .5; cursor: default; }
+/* The global ring squares its corners to --r-xs; a pill keeps its shape. */
+.composer-tool:focus-visible { border-radius: var(--r-pill); }
+.composer-tool[data-icon-only="true"] { width: 28px; padding: 0; justify-content: center; }
+
+/* New chat only: a few ways in, centred under the composer. */
+.composer-starters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: var(--measure);
+  margin: var(--sp-3) auto 0;
+}
+.composer-starter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-3xl);
+  cursor: pointer;
+  transition: background var(--tap), border-color var(--tap), color var(--tap);
+}
+.composer-starter svg { width: 15px; height: 15px; flex: none; color: var(--accent-text); }
+.composer-starter:hover { border-color: var(--line-hi); background: var(--card-hi); color: var(--ink); }
+.composer-starter:focus-visible { border-radius: var(--r-pill); }
+
 /* Active context above the input: folder, documents, skills, web search.
  * Same pill as an attachment chip, but the body is a button (opens the
  * popover that owns it) and the × turns it off. */
@@ -2307,6 +2365,12 @@
 .composer-doc-picker li[role="option"] b { color: var(--ink); font-weight: 600; }
 .composer-doc-picker li[role="option"] small { color: var(--ink-3); }
 .composer-doc-picker li[data-active="true"] { background: var(--card-hi); }
+/* The `/` tools menu shares the `#` picker's surface; its rows lead with the
+ * tool's icon and end with "On" for a toggle that is on. */
+.composer-slash-menu li[role="option"] { align-items: center; }
+.composer-slash-menu li[role="option"] svg { width: 14px; height: 14px; flex: none; color: var(--ink-3); }
+.composer-slash-menu li[role="option"] b { font-family: var(--font-mono); font-weight: 500; }
+.composer-slash-menu .tail { margin-left: auto; color: var(--accent-text); font-size: var(--fs-md); }
 .composer-doc-picker-empty {
   padding: 8px;
   color: var(--ink-3);

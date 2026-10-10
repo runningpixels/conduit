@@ -205,7 +205,7 @@ import { YourAppsRow } from '../apps/YourAppsRow';
 import type { AppSummary } from '../ipc/contracts';
 import type { Capabilities } from '../ideas/capabilities';
 import type { IdeaState } from '../ideas/ideaState';
-import { useRichT, useT, type Translate } from '../i18n';
+import { useT, type Translate } from '../i18n';
 
 export type { ChatTurn } from './conversationHydration';
 export type { DocumentToolActivity } from './agentTools';
@@ -861,7 +861,7 @@ interface HandleSendOverride {
    *  (a key set to `undefined` clears that control). */
   generationControls?: GenerationControls;
   /** Start a Research run with this text instead of a normal reply. Only an
-   *  explicit choice (the composer's Research item, Home's chip) sets this. */
+   *  explicit choice (the composer's Research toggle, Home's chip) sets this. */
   research?: boolean;
 }
 
@@ -929,7 +929,6 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   ref,
 ) {
   const t = useT();
-  const tr = useRichT();
   const fmt = useFormatters();
   const activeContextWindow = useContextWindow(settings.activeProvider, settings.activeModel);
   // A draft's web search: its Sources tab, when chat web search may run.
@@ -2482,7 +2481,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       composerRef.current?.addDroppedPaths(paths);
     },
     toggleWebSearch: () => {
-      // Only reachable when the composer's web toggle would be visible.
+      // Only acts when the composer's Web toggle would be enabled.
       if (settings.webSearchEnabled && !settings.localOnly) {
         handleWebSearchToggle();
       }
@@ -3221,24 +3220,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                 <BotGlyph className="brand-mark" aria-hidden="true" />
                 {t('chat.view.welcomeTitle')}
               </h1>
-              {!activeWorkspaceRoot && conversationId ? (
-                <p style={{ marginTop: 12, fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', maxWidth: 360 }}>
-                  {tr('chat.view.welcomeWorkspaceHint', {
-                    action: (chunks: ReactNode[]) => (
-                      <button
-                        key="workspace-hint-button"
-                        type="button"
-                        className="btn ghost"
-                        style={{ padding: '2px 6px', fontSize: 'var(--fs-3xl)' }}
-                        disabled={workspacePicking}
-                        onClick={() => void handleWorkspacePick()}
-                      >
-                        {chunks}
-                      </button>
-                    ),
-                  })}
-                </p>
-              ) : null}
+              {/* "Work in a folder" is the composer's first starter chip. */}
             </div>
           )}
           {!threadLoading && compactedTurns.length > 0 && (
@@ -3780,6 +3762,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               }
             : undefined
         }
+        showStarters={threadEmpty && !compact}
       />
       {threadEmpty && !compact && onOpenApp && onAllApps && (
         <YourAppsRow apps={yourApps} onOpen={onOpenApp} onAll={onAllApps} />

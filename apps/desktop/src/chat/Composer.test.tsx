@@ -415,7 +415,6 @@ describe('Composer "+" menu', () => {
     );
     expect(labels).toEqual([
       'Attach files…',
-      'Web search',
       'Workspace folder…',
       'Documents…',
       'Skills…',
@@ -445,36 +444,11 @@ describe('Composer "+" menu', () => {
     expect(plusButton()).toBeDisabled();
   });
 
-  it('hides web search when local-only is on', () => {
-    renderComposer({ settings: { ...baseSettings, webSearchEnabled: true, localOnly: true } });
+  it('no longer lists web search or Research: they are toggles in the bar', () => {
+    renderComposer({ settings: { ...webSettings, webSearchConsentAcknowledged: true }, onResearchToggle: vi.fn() });
     openPlusMenu();
-    expect(screen.queryByRole('menuitemcheckbox', { name: /web search/i })).toBeNull();
-  });
-
-  it('toggles web search from a checkbox item', () => {
-    const { onWebSearchToggle } = renderComposer({ settings: webSettings });
-    openPlusMenu();
-    const item = screen.getByRole('menuitemcheckbox', { name: /web search/i });
-    expect(item).toHaveAttribute('aria-checked', 'false');
-    fireEvent.click(item);
-    expect(onWebSearchToggle).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('menu')).toBeNull();
-  });
-
-  it('shows web search as checked and as a removable chip when on', () => {
-    const { onWebSearchToggle } = renderComposer({ settings: webSettings, webSearchOn: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off web search' }));
-    expect(onWebSearchToggle).toHaveBeenCalledTimes(1);
-    openPlusMenu();
-    expect(screen.getByRole('menuitemcheckbox', { name: /web search/i })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-  });
-
-  it('does not show a web search chip when web search is unavailable', () => {
-    renderComposer({ webSearchOn: true });
-    expect(screen.queryByRole('button', { name: 'Turn off web search' })).toBeNull();
+    expect(screen.queryByRole('menuitemcheckbox')).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /web search|research/i })).toBeNull();
   });
 
   describe('keyboard', () => {
@@ -490,29 +464,34 @@ describe('Composer "+" menu', () => {
       renderFull();
       const menu = openPlusMenu();
       const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
-      expect(items).toHaveLength(4);
+      expect(items).toHaveLength(3);
       expect(document.activeElement).toBe(items[0]);
 
       fireEvent.keyDown(menu, { key: 'ArrowDown' });
       expect(document.activeElement).toBe(items[1]);
       fireEvent.keyDown(menu, { key: 'End' });
-      expect(document.activeElement).toBe(items[3]);
+      expect(document.activeElement).toBe(items[2]);
       fireEvent.keyDown(menu, { key: 'ArrowDown' });
       expect(document.activeElement).toBe(items[0]);
       fireEvent.keyDown(menu, { key: 'ArrowUp' });
-      expect(document.activeElement).toBe(items[3]);
+      expect(document.activeElement).toBe(items[2]);
       fireEvent.keyDown(menu, { key: 'Home' });
       expect(document.activeElement).toBe(items[0]);
     });
 
     it('skips disabled items', () => {
-      renderComposer({ conversationId: null, settings: webSettings });
+      renderComposer({
+        conversationId: null,
+        onToggleSkill: vi.fn(),
+        onPickMcpPrompt: vi.fn(),
+        mcpPrompts: [mcpPrompt],
+      });
       const menu = openPlusMenu();
-      const search = screen.getByRole('menuitemcheckbox', { name: /web search/i });
-      // Attach is disabled without a chat, so web search is the only stop.
-      expect(document.activeElement).toBe(search);
+      const prompts = screen.getByRole('menuitem', { name: 'Connector prompts…' });
+      // Attach and Skills are disabled without a chat, so prompts is the only stop.
+      expect(document.activeElement).toBe(prompts);
       fireEvent.keyDown(menu, { key: 'ArrowDown' });
-      expect(document.activeElement).toBe(search);
+      expect(document.activeElement).toBe(prompts);
     });
 
     it('closes on Escape and returns focus to the + button', () => {
@@ -737,7 +716,7 @@ describe('Composer "+" menu', () => {
         enabledCollectionIds: ['c1'],
         streaming: true,
       });
-      expect(screen.getByRole('button', { name: 'Turn off web search' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Web' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Detach Greenhouse' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Greenhouse' })).toBeDisabled();
     });
@@ -961,7 +940,7 @@ describe('Composer native window drop (M1, D13)', () => {
   });
 });
 
-describe('Composer Research item', () => {
+describe('Composer Web and Research toggles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -972,58 +951,330 @@ describe('Composer Research item', () => {
     webSearchEnabled: true,
     webSearchConsentAcknowledged: true,
   };
+  const webToggle = () => screen.getByRole('button', { name: 'Web' });
+  const researchToggle = () => screen.getByRole('button', { name: 'Research' });
 
-  it('is absent when the host does not wire it', () => {
+  it('shows Web and Research beside "+", off, and drives the same handlers', () => {
+    const onResearchToggle = vi.fn();
+    const { onWebSearchToggle } = renderComposer({ settings: ready, onResearchToggle });
+    expect(webToggle()).toHaveAttribute('aria-pressed', 'false');
+    expect(webToggle()).toHaveAttribute('title', 'Web search off');
+    expect(researchToggle()).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(webToggle());
+    fireEvent.click(researchToggle());
+    expect(onWebSearchToggle).toHaveBeenCalledTimes(1);
+    expect(onResearchToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('reflects on as pressed, with no duplicate chip', () => {
+    renderComposer({ settings: ready, webSearchOn: true, onResearchToggle: vi.fn(), researchOn: true });
+    expect(webToggle()).toHaveAttribute('aria-pressed', 'true');
+    expect(webToggle()).toHaveAttribute('title', 'Web search on (provider)');
+    expect(researchToggle()).toHaveAttribute('aria-pressed', 'true');
+    expect(researchToggle()).toHaveAttribute('title', 'Research is on: your next message starts a Research run');
+    expect(screen.queryByRole('group', { name: 'Active in this chat' })).toBeNull();
+  });
+
+  it('leaves Research out when the host does not wire it', () => {
     renderComposer({ settings: ready });
-    openPlusMenu();
-    expect(screen.queryByRole('menuitemcheckbox', { name: /research/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Research' })).toBeNull();
+    expect(webToggle()).toBeEnabled();
   });
 
-  it('toggles from a checkbox item beside Web search', () => {
+  it.each([
+    ['local-only is on', { ...ready, localOnly: true }, 'Web search is not available in local-only mode'],
+    ['web search is off in Settings', { ...ready, webSearchEnabled: false }, 'Turn on web search in Settings to use it'],
+  ])('disables Web, with the reason, when %s', (_name, settings, reason) => {
+    renderComposer({ settings, webSearchOn: true });
+    expect(webToggle()).toBeDisabled();
+    // Unavailable means off, whatever the chat's flag says.
+    expect(webToggle()).toHaveAttribute('aria-pressed', 'false');
+    expect(webToggle()).toHaveAttribute('title', reason);
+  });
+
+  it.each([
+    ['local-only is on', { ...ready, localOnly: true }, 'Research is not available in local-only mode'],
+    ['web search is off', { ...ready, webSearchEnabled: false }, 'Turn on web search in Settings to use Research'],
+    [
+      'the web search notice is not accepted',
+      { ...ready, webSearchConsentAcknowledged: false },
+      'Turn on Web once to accept its notice, then use Research',
+    ],
+  ])('disables Research, with the reason, when %s', (_name, settings, reason) => {
+    renderComposer({ settings, onResearchToggle: vi.fn() });
+    expect(researchToggle()).toBeDisabled();
+    expect(researchToggle()).toHaveAttribute('title', reason);
+  });
+
+  it('lets Research be turned off after settings made it unavailable', () => {
     const onResearchToggle = vi.fn();
-    renderComposer({ settings: ready, onResearchToggle });
-    const menu = openPlusMenu();
-    const labels = Array.from(menu.querySelectorAll('[role^="menuitem"]')).map(
-      (item) => item.querySelector('span')?.textContent,
+    renderComposer({ settings: { ...ready, webSearchEnabled: false }, onResearchToggle, researchOn: true });
+    expect(researchToggle()).toBeEnabled();
+    fireEvent.click(researchToggle());
+    expect(onResearchToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks both while a reply streams', () => {
+    renderComposer({ settings: ready, onResearchToggle: vi.fn(), streaming: true });
+    expect(webToggle()).toBeDisabled();
+    expect(researchToggle()).toBeDisabled();
+    expect(webToggle()).toHaveAttribute('title', 'Available when the reply finishes');
+  });
+
+  it("leaves both out of a draft's chat, whose Sources tab owns them", () => {
+    renderComposer({
+      settings: ready,
+      onResearchToggle: vi.fn(),
+      draftSources: { webSearch: true, documents: 0, reports: 0 },
+    });
+    expect(screen.queryByRole('button', { name: 'Web' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Research' })).toBeNull();
+  });
+
+  it('drops the labels to icons, named by aria-label, when the composer is narrow', () => {
+    const original = globalThis.ResizeObserver;
+    class NarrowObserver {
+      private readonly callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        this.callback(
+          [{ target, contentRect: { width: 400 } } as unknown as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    globalThis.ResizeObserver = NarrowObserver as unknown as typeof ResizeObserver;
+    try {
+      renderComposer({ settings: ready, onResearchToggle: vi.fn() });
+      expect(webToggle()).toHaveAttribute('aria-label', 'Web');
+      expect(webToggle()).toHaveAttribute('data-icon-only', 'true');
+      expect(webToggle()).not.toHaveTextContent('Web');
+      expect(researchToggle()).toHaveAttribute('aria-label', 'Research');
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
+  });
+});
+
+describe('Composer starter chips', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const starters = () => screen.queryByRole('group', { name: 'Ways to start' });
+
+  it('are hidden unless the chat is empty', () => {
+    renderComposer({ onWorkspacePick: vi.fn(), onToggleSkill: vi.fn() });
+    expect(starters()).toBeNull();
+  });
+
+  it('offer a folder, a file and a skill on an empty chat', () => {
+    renderComposer({ showStarters: true, onWorkspacePick: vi.fn(), onToggleSkill: vi.fn() });
+    const row = starters()!;
+    const labels = Array.from(row.querySelectorAll('button')).map((b) => b.textContent);
+    expect(labels).toEqual(['Work in a folder', 'Ask about a file', 'Use a skill']);
+  });
+
+  it('"Work in a folder" opens the folder picker and focuses the textbox', () => {
+    const onWorkspacePick = vi.fn();
+    renderComposer({ showStarters: true, onWorkspacePick });
+    fireEvent.click(screen.getByRole('button', { name: 'Work in a folder' }));
+    expect(onWorkspacePick).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(screen.getByLabelText('Message the active provider'));
+  });
+
+  it('"Ask about a file" opens the file picker', () => {
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    renderComposer({ showStarters: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask about a file' }));
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(screen.getByLabelText('Message the active provider'));
+    click.mockRestore();
+  });
+
+  it('"Use a skill" opens the skills popover', () => {
+    renderComposer({ showStarters: true, onToggleSkill: vi.fn(), skills: [skill('s1', 'Review')] });
+    fireEvent.click(screen.getByRole('button', { name: 'Use a skill' }));
+    expect(screen.getByRole('dialog', { name: 'Skills for this chat' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText('Message the active provider'));
+  });
+
+  it('does not offer a folder that is already in use', () => {
+    renderComposer({ showStarters: true, onWorkspacePick: vi.fn(), workspaceRoot: 'C:/work/garden' });
+    expect(screen.queryByRole('button', { name: 'Work in a folder' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ask about a file' })).toBeInTheDocument();
+  });
+
+  it('offers nothing while a reply streams', () => {
+    renderComposer({ showStarters: true, streaming: true, onWorkspacePick: vi.fn(), onToggleSkill: vi.fn() });
+    expect(starters()).toBeNull();
+  });
+});
+
+/** The `/` tools menu needs the prompt fed back, like the `#` picker. */
+function renderSlashHarness(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+  const onSend = vi.fn();
+  const onWebSearchToggle = vi.fn();
+
+  function Harness() {
+    const [prompt, setPrompt] = useState('');
+    return (
+      <Composer
+        settings={{ ...baseSettings, localOnly: false, webSearchEnabled: true, webSearchConsentAcknowledged: true }}
+        onSelectModel={vi.fn()}
+        conversationId="conv-1"
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onSend={onSend}
+        onStop={vi.fn()}
+        streaming={false}
+        webSearchOn={false}
+        onWebSearchToggle={onWebSearchToggle}
+        {...overrides}
+      />
     );
-    expect(labels).toEqual(['Attach files…', 'Web search', 'Research']);
-    const item = screen.getByRole('menuitemcheckbox', { name: /Research/ });
-    expect(item).toHaveAttribute('aria-checked', 'false');
-    expect(item).toBeEnabled();
-    fireEvent.click(item);
-    expect(onResearchToggle).toHaveBeenCalledTimes(1);
+  }
+  render(<Harness />);
+  const textarea = screen.getByLabelText('Message the active provider') as HTMLTextAreaElement;
+  const type = (value: string) => {
+    textarea.focus();
+    fireEvent.change(textarea, { target: { value, selectionStart: value.length, selectionEnd: value.length } });
+  };
+  return { onSend, onWebSearchToggle, textarea, type };
+}
+
+describe('Composer slash menu', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('shows as checked and as a removable chip when on', () => {
-    const onResearchToggle = vi.fn();
-    renderComposer({ settings: ready, onResearchToggle, researchOn: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off Research' }));
-    expect(onResearchToggle).toHaveBeenCalledTimes(1);
-    openPlusMenu();
-    expect(screen.getByRole('menuitemcheckbox', { name: /Research/ })).toHaveAttribute('aria-checked', 'true');
+  const menu = () => screen.queryByRole('listbox', { name: 'Tools' });
+  const optionNames = () => screen.getAllByRole('option').map((o) => o.querySelector('b')?.textContent);
+
+  it('hints at it in the placeholder', () => {
+    renderSlashHarness();
+    expect(screen.getByPlaceholderText('Message… or type / for tools')).toBeInTheDocument();
   });
 
-  it('is disabled with the reason under local-only', () => {
-    renderComposer({
-      settings: { ...ready, localOnly: true },
+  it('opens on a leading / with every tool that can run', () => {
+    const { type, textarea } = renderSlashHarness({
       onResearchToggle: vi.fn(),
-      researchOn: false,
+      onWorkspacePick: vi.fn(),
+      onToggleSkill: vi.fn(),
     });
-    openPlusMenu();
-    const item = screen.getByRole('menuitemcheckbox', { name: /Research/ });
-    expect(item).toBeDisabled();
-    expect(item).toHaveAttribute('title', 'Research is not available in local-only mode');
+    type('/');
+    expect(menu()).toBeInTheDocument();
+    expect(optionNames()).toEqual(['/web', '/research', '/folder', '/file', '/skill']);
+    expect(textarea).toHaveAttribute('aria-controls', 'composer-slash-menu-list');
+    expect(textarea).toHaveAttribute('aria-activedescendant', 'composer-slash-option-web');
   });
 
-  it('can still be turned off after settings made it unavailable', () => {
-    renderComposer({
-      settings: { ...ready, webSearchEnabled: false },
-      onResearchToggle: vi.fn(),
-      researchOn: true,
-    });
-    openPlusMenu();
-    expect(screen.getByRole('menuitemcheckbox', { name: /Research/ })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Turn off Research' })).toBeNull();
+  it('leaves out tools that are unavailable', () => {
+    const { type } = renderSlashHarness({ settings: baseSettings, onResearchToggle: vi.fn() });
+    type('/');
+    // Local-only: no web, no Research; no folder or skills wired.
+    expect(optionNames()).toEqual(['/file']);
+  });
+
+  it('stays shut for a / that is not the first character', () => {
+    const { type } = renderSlashHarness();
+    type('and/or');
+    expect(menu()).toBeNull();
+  });
+
+  it('filters as you type and closes when nothing matches', () => {
+    const { type } = renderSlashHarness({ onResearchToggle: vi.fn(), onWorkspacePick: vi.fn() });
+    type('/f');
+    expect(optionNames()).toEqual(['/folder', '/file']);
+    type('/usr');
+    expect(menu()).toBeNull();
+    type('/web now');
+    expect(menu()).toBeNull();
+  });
+
+  it('runs the picked tool on Enter and removes the typed command', () => {
+    const { type, textarea, onWebSearchToggle, onSend } = renderSlashHarness();
+    type('/we');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onWebSearchToggle).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe('');
+    expect(menu()).toBeNull();
+  });
+
+  it('opens again for the next / after a pick', async () => {
+    const { type, textarea, onWebSearchToggle } = renderSlashHarness();
+    type('/');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onWebSearchToggle).toHaveBeenCalledTimes(1);
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    type('/');
+    expect(menu()).toBeInTheDocument();
+  });
+
+  it('moves with the arrows and picks with Tab', () => {
+    const onWorkspacePick = vi.fn();
+    const { type, textarea } = renderSlashHarness({ onResearchToggle: vi.fn(), onWorkspacePick });
+    type('/');
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    expect(textarea).toHaveAttribute('aria-activedescendant', 'composer-slash-option-folder');
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    // Wraps from the top to the last option.
+    expect(textarea).toHaveAttribute('aria-activedescendant', 'composer-slash-option-file');
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    fireEvent.keyDown(textarea, { key: 'Tab' });
+    expect(onWorkspacePick).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the skills popover from /skill', () => {
+    const { type, textarea } = renderSlashHarness({ onToggleSkill: vi.fn() });
+    type('/sk');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(screen.getByRole('dialog', { name: 'Skills for this chat' })).toBeInTheDocument();
+  });
+
+  it('picks with the mouse without leaving the textbox', () => {
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    const { type, textarea } = renderSlashHarness();
+    type('/');
+    fireEvent.mouseDown(screen.getByRole('option', { name: /\/file/ }));
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(textarea.value).toBe('');
+    expect(document.activeElement).toBe(textarea);
+    click.mockRestore();
+  });
+
+  it('closes on Escape with the text untouched, nothing run, and the key kept from the shell', () => {
+    const { type, textarea, onWebSearchToggle } = renderSlashHarness();
+    const shell = vi.fn();
+    window.addEventListener('keydown', shell);
+    document.addEventListener('keydown', shell, true);
+    try {
+      type('/we');
+      fireEvent.keyDown(textarea, { key: 'Escape' });
+      expect(menu()).toBeNull();
+      expect(textarea.value).toBe('/we');
+      expect(onWebSearchToggle).not.toHaveBeenCalled();
+      expect(shell).not.toHaveBeenCalled();
+      // Stays closed while the same word is edited...
+      type('/web');
+      expect(menu()).toBeNull();
+      // ...and Enter then sends it as text.
+    } finally {
+      window.removeEventListener('keydown', shell);
+      document.removeEventListener('keydown', shell, true);
+    }
+    // Once the / is gone it can open again.
+    type('');
+    type('/');
+    expect(menu()).toBeInTheDocument();
   });
 });
 

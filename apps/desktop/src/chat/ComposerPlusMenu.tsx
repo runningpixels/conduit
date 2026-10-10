@@ -24,10 +24,11 @@ interface ComposerPlusMenuProps {
 
 /**
  * The composer's single "+" button and its menu. Everything that used to be
- * its own icon in the bar (attach, web search, folder, documents, skills,
- * connector prompts and resources, chat settings) is one item here, shown
- * only when its feature is available. The menu is the shared `Menu`, so it
- * keeps the one keyboard model every menu has.
+ * its own icon in the bar (attach, folder, documents, skills, connector
+ * prompts and resources, chat settings) is one item here, shown only when its
+ * feature is available. Web search and Research are not: they are per-message
+ * switches, so they sit in the bar as toggles beside this button. The menu is
+ * the shared `Menu`, so it keeps the one keyboard model every menu has.
  */
 export const ComposerPlusMenu = forwardRef<HTMLButtonElement, ComposerPlusMenuProps>(
   function ComposerPlusMenu({ open, onOpenChange, items, disabled = false, title }, ref) {

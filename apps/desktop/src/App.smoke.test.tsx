@@ -201,7 +201,7 @@ describe('App shell', { timeout: 20_000 }, () => {
     // The composer is the deepest thing on the boot path, so its presence means
     // the whole chain — App → body → center → ChatView → Composer — survived.
     await waitFor(() =>
-      expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument(),
+      expect(screen.getByPlaceholderText('Message… or type / for tools')).toBeInTheDocument(),
     );
 
     expect(document.querySelector('.app'), 'the app frame').not.toBeNull();
@@ -219,7 +219,7 @@ describe('App shell', { timeout: 20_000 }, () => {
     expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByLabelText('Describe what you want to do')).toBeInTheDocument();
     // "Continue" is instant because boot still selected a conversation.
-    expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Message… or type / for tools')).toBeInTheDocument();
     expect(document.querySelector('.dest-page[data-destination="home"]')).not.toBeNull();
   });
 
@@ -227,7 +227,7 @@ describe('App shell', { timeout: 20_000 }, () => {
     const { default: App } = await import('./App');
     render(<App />);
     await waitFor(() =>
-      expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument(),
+      expect(screen.getByPlaceholderText('Message… or type / for tools')).toBeInTheDocument(),
     );
     expect(screen.queryByText(/something went wrong/i)).toBeNull();
   });
@@ -268,7 +268,7 @@ describe('App shell', { timeout: 20_000 }, () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByPlaceholderText('Nachricht an Conduit…')).toBeInTheDocument(),
+      expect(screen.getByPlaceholderText('Nachricht… oder / für Werkzeuge eingeben')).toBeInTheDocument(),
     );
     // Long enough for many round trips if the key were flapping.
     await new Promise((resolve) => setTimeout(resolve, 300));

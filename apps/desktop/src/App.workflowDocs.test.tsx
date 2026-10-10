@@ -231,7 +231,7 @@ beforeAll(() => {
 async function boot() {
   const { default: App } = await import('./App');
   render(<App />);
-  await waitFor(() => expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByPlaceholderText('Message… or type / for tools')).toBeInTheDocument());
 }
 
 const changedDraft: DraftDetail = {
@@ -251,7 +251,7 @@ async function openWrittenDraft() {
   vi.mocked(ipc.draftForConversation).mockImplementation(async (id: string) => (id === 'c-draft' ? writtenDraft : null));
   const { default: App } = await import('./App');
   render(<App />);
-  await waitFor(() => expect(screen.getByPlaceholderText('Message Conduit…')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByPlaceholderText('Message… or type / for tools')).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'Writing' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Open One repo' }));
   await waitFor(() => expect(document.querySelector('.cm-content')?.textContent).toContain('Forty repositories.'));

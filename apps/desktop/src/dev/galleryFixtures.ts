@@ -23,7 +23,6 @@ import type {
 import type { StatusState } from '../chat/statusTypes';
 import type { AssistantStreamState } from '../chat/streamState';
 import { createAssistantStreamState } from '../chat/streamState';
-import type { SuggestedPrompt } from '../chat/suggestedPromptData';
 import { appName } from '../brand';
 import { FIXTURE_ARTIFACTS } from './artifactFixtures';
 
@@ -143,12 +142,6 @@ export const GALLERY_TOASTS: StatusState[] = [
   { brief: 'Document updated', kind: 'success', timestamp: 1 },
   { brief: 'Web search unavailable', detail: 'The endpoint refused the request.', kind: 'warning', timestamp: 2 },
   { brief: 'Could not export conversation', detail: 'Disk is full.', kind: 'error', timestamp: 3 },
-];
-
-export const GALLERY_SUGGESTED_PROMPTS: readonly SuggestedPrompt[] = [
-  { id: 'sp-1', short: 'Summarize this thread', text: 'Summarize this thread in three bullet points.' },
-  { id: 'sp-2', short: 'List open risks', text: 'List every open risk mentioned above with its owner.' },
-  { id: 'sp-3', short: 'Draft a follow-up', text: 'Draft a follow-up message to the team recapping decisions made.' },
 ];
 
 export const GALLERY_SKILLS: SkillSummary[] = [

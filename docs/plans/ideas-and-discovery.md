@@ -67,9 +67,8 @@ Two things nobody does, both of which matter for bring-your-own-key:
   shortcut chips here; the V9 pass removed them on purpose
   (`styles/chat.css` — "the greeting is affordable precisely because nothing
   competes"). Anything we add back must respect that.
-- **Follow-up chips** (`chat/suggestedPromptLogic.ts`): up to four under a
-  reply — artifact edits, creation retries, informational or generic
-  follow-ups. Clicking **fills** the composer; it never sends.
+- **Follow-up chips**: removed. Replies no longer show suggested follow-up
+  chips above the composer.
 - **Prompts library** (Settings → Prompts, migration 0007): user prompts with
   `{{variables}}` and a fill dialog. Empty on install; reachable only from
   Settings.

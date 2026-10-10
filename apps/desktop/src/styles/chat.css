@@ -897,30 +897,8 @@
 /* Own offsets rather than .doc-more-menu's, which are tuned to the 44px panel head. */
 .artifact-card-menu { top: 36px; right: 0; }
 
-/* ── Suggested prompts ──────────────────────────────────────────────────── */
-/* Inline follow-ups share the composer's column: same --measure, same centring
-   and the same --bg, so the two read as one block. The previous version was a
-   full-bleed --card band sitting above a centred composer, which put a hard
-   edge across the pane at a width nothing else in the layout used. */
-.suggested-prompts-inline {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
-  /* `.composer-wrap` puts --sp-5 on a full-width box and caps the composer
-     *inside* it at --measure. This element is both boxes at once, and the
-     global `box-sizing: border-box` counts padding against max-width — so the
-     cap has to include the padding for the chips to share the composer's
-     left edge at every width. */
-  max-width: calc(var(--measure) + 2 * var(--sp-5));
-  margin: 0 auto;
-  padding: 0 var(--sp-5) var(--sp-2);
-  background: var(--bg);
-}
 /* Resources the gate refused, or that were truncated, for the turn just sent.
-   Shares `.suggested-prompts-inline`'s width maths so it lines up with the
-   composer's left edge at every width -- see the note above. */
+   Lines up with the composer's left edge at every width. */
 .mcp-resource-skipped {
   flex: none;
   width: 100%;
@@ -943,26 +921,6 @@
 }
 .mcp-resource-skipped code {
   word-break: break-all;
-}
-
-/* One line per chip, so --r-pill is the right radius and the caption reads in
-   full. `.suggested-prompt-chip-*` are gone with the two-line layout. */
-.suggested-prompt-chip {
-  color: var(--ink-2);
-  font-size: var(--fs-xl);
-  line-height: 1.35;
-  white-space: nowrap;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  padding: 5px 12px;
-  cursor: pointer;
-  transition: background var(--tap), border-color var(--tap), color var(--tap);
-}
-.suggested-prompt-chip:hover {
-  background: var(--card-hi);
-  border-color: var(--line-hi);
-  color: var(--ink);
 }
 
 /* ── Composer ───────────────────────────────────────────────────────────── */

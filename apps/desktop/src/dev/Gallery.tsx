@@ -56,7 +56,6 @@ import { ToastStack } from '../workspace/ToastStack';
 import { DocumentPanel } from '../workspace/DocumentPanel';
 import { AppearanceSection } from '../workspace/settings/AppearanceSection';
 import { AssistantMessage } from '../chat/AssistantMessage';
-import { SuggestedPrompts } from '../chat/SuggestedPrompts';
 import { Composer } from '../chat/Composer';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from '../chat/ComposerModelPicker';
 import { ComposerMcpPrompts } from '../chat/ComposerMcpPrompts';
@@ -85,7 +84,6 @@ import {
   GALLERY_MCP_RESOURCES,
   GALLERY_SETTINGS,
   GALLERY_SKILLS,
-  GALLERY_SUGGESTED_PROMPTS,
   GALLERY_TOASTS,
 } from './galleryFixtures';
 import './gallery.css';
@@ -304,8 +302,6 @@ function ChatSection() {
         <SubHeading>Ask-user block</SubHeading>
         <AssistantMessage state={GALLERY_ASSISTANT_ASK_USER} provider="anthropic" modelId="claude-sonnet-4" showModelLine={false} />
 
-        <SubHeading>Suggested prompts / empty state</SubHeading>
-        <SuggestedPrompts prompts={GALLERY_SUGGESTED_PROMPTS} onSelect={noop} />
       </div>
     </div>
   );

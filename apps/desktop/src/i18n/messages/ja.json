@@ -600,7 +600,6 @@
   "chat.stream.stillWorking": "処理を続けています · {seconds}秒",
   "chat.stream.stillWorkingHeldDocument": "処理を続けています · {seconds}秒 — このモデルはドキュメントをまとめて送信します",
   "chat.stream.stillWorkingLong": "処理を続けています · {seconds}秒 — 長い応答をまとめて送るモデルもあります",
-  "chat.suggestedPrompts.ariaLabel": "おすすめのフォローアップ",
   "chat.thinking.default": "思考中",
   "chat.thinking.modelThinking": "{modelId} が思考中です",
   "chat.title.untitled": "無題のチャット",

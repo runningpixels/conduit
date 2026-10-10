@@ -138,7 +138,7 @@ async fn refuse(client: &mut TcpStream, refusal: Refusal) -> std::io::Result<()>
 /// Read up to the blank line that ends the request head. `None` when the
 /// client closed early or the head is too large. Bytes past the head (a
 /// client that starts TLS before the 200) are not expected and are dropped.
-async fn read_head(client: &mut TcpStream) -> std::io::Result<Option<String>> {
+pub(crate) async fn read_head(client: &mut TcpStream) -> std::io::Result<Option<String>> {
     let mut buf = Vec::with_capacity(512);
     let mut chunk = [0u8; 1024];
     loop {

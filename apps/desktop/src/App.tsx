@@ -187,6 +187,7 @@ import { DraftHistory } from './writing/DraftHistory';
 import { OutlineEditor } from './writing/OutlineEditor';
 import { selectionMessage, type SelectionRequest } from './writing/selectionMessage';
 import { DraftSourcesPanel } from './writing/DraftSourcesPanel';
+import { sweepPageSiteData } from './artifacts/pageSiteData';
 import { buildDraftPreview, type SectionPreview } from './writing/sectionPreview';
 import { draftSourcesOf, draftWebSearchUnavailableReasonId } from './writing/draftSources';
 import type {
@@ -391,6 +392,11 @@ export default function App() {
   useEffect(() => {
     void refreshSavedApps();
   }, [refreshSavedApps, destination]);
+  // Pages with full web access keep data on their own origin; clear it for
+  // pages deleted, or no longer given full access, since the last sweep.
+  useEffect(() => {
+    void sweepPageSiteData();
+  }, []);
   const openSavedApp = useCallback((id: string | null) => {
     setOpenAppId(id);
     setDestination('apps');
@@ -2206,6 +2212,8 @@ export default function App() {
       const wasActive = activeConversationId === id;
       try {
         await deleteConversation(id);
+        // Its pages are gone; so is what they kept on their own origins.
+        void sweepPageSiteData();
         setConvoProviders((current) => {
           const { [id]: _removed, ...rest } = current;
           writeConvoProviders(rest);
@@ -2238,6 +2246,7 @@ export default function App() {
   const performDeleteAllHistory = useCallback(async () => {
     try {
       const created = await deleteAllConversations();
+      void sweepPageSiteData();
       setActiveConversationId(created.id);
       clearWorkspaceArtifactSelection();
       setConvoProviders({});

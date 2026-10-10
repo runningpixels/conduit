@@ -8,7 +8,8 @@
 /// 1. `sandbox="allow-scripts"` only — NO `allow-same-origin` (null origin →
 ///    no parent/ambient-DOM access, no same-origin requests to the app), NO
 ///    `allow-top-navigation`, `allow-popups`, `allow-forms`; `allow-modals`
-///    only with full web access (below).
+///    only with full web access, and `allow-same-origin` only for such a page
+///    on its own origin, never the app's (below).
 /// 2. Strict CSP injected as the FIRST `<meta>` in `<head>`: `connect-src
 ///    'none'` (the exfiltration guard the sandbox alone doesn't provide),
 ///    `script-src 'unsafe-inline'` (inline only — never remote scripts),
@@ -32,9 +33,17 @@
 /// Full web access (`fullWebAccess`, ADR-007): a page the reader explicitly
 /// allowed gets the `full` CSP (scripts, resources, frames and connections
 /// from any https site) and `allow-modals`. Everything else above holds: no
-/// `allow-same-origin`, popups or top navigation, no Tauri bridge, the link
-/// interceptor, the fetch bridge. Without it, a trusted reporter tells the
-/// host what the CSP stopped (`blockedLoads.ts`) so the reader can be asked.
+/// popups or top navigation, no Tauri bridge, the link interceptor, the fetch
+/// bridge. Without it, a trusted reporter tells the host what the CSP stopped
+/// (`blockedLoads.ts`) so the reader can be asked.
+///
+/// Such a page with a known `principal` is served from its own origin on the
+/// loopback page server (`http://<page id>.page.localhost:<port>`, Rust
+/// `page_server`), and only that frame adds `allow-same-origin`: the page then
+/// has a real origin of its own (a Referer, storage, cookies), never the
+/// app's. Messages to it go to that exact origin, and messages from it are
+/// taken only from that origin (and from the frame's window, as for every
+/// page).
 ///
 /// Residual risk (documented): a hostile artifact can hang its own frame / burn
 /// CPU (DoS). Render-only means no bridge for a liveness heartbeat; mitigated
@@ -145,13 +154,22 @@ export interface HtmlArtifactRendererProps {
    * frame). Given, the page gets the reporter script; never in full mode.
    */
   onBlockedLoad?: (load: BlockedLoad) => void;
+  /**
+   * The page (`artifact:<id>` or `app:<id>`). With `fullWebAccess`, the page
+   * is served from its own origin (see the module notes).
+   */
+  principal?: string;
 }
 
-/// Sandbox flags. NEVER add allow-same-origin / allow-top-navigation /
-/// allow-popups / allow-forms — those would break containment. `allow-modals`
-/// (alert/confirm/prompt) only for a page with full web access.
-export function artifactSandbox(fullWebAccess: boolean): string {
-  return fullWebAccess ? 'allow-scripts allow-modals' : 'allow-scripts';
+/// Sandbox flags. NEVER add allow-top-navigation / allow-popups /
+/// allow-forms — those would break containment. `allow-modals`
+/// (alert/confirm/prompt) only for a page with full web access, and
+/// `allow-same-origin` only for one served from its own origin on the page
+/// server (`ownOrigin`) — never for `srcdoc` or the `conduit-artifact` scheme,
+/// where it would share the app's origin or one origin across every page.
+export function artifactSandbox(fullWebAccess: boolean, ownOrigin = false): string {
+  if (!fullWebAccess) return 'allow-scripts';
+  return ownOrigin ? 'allow-scripts allow-modals allow-same-origin' : 'allow-scripts allow-modals';
 }
 
 /// Minimal reset so the artifact's own CSS starts from a clean baseline. Kept
@@ -326,6 +344,7 @@ export function HtmlArtifactRenderer({
   inputsRevision,
   fullWebAccess = false,
   onBlockedLoad,
+  principal,
 }: HtmlArtifactRendererProps) {
   const t = useT();
   const { locale } = useLocale();
@@ -377,7 +396,12 @@ export function HtmlArtifactRenderer({
       ),
     [html, allowlist, styledPreview, colorScheme, themingKind, themeRevision, t, hasNetwork, capabilities, bakedInputs, locale, fullWebAccess, reportsBlocked],
   );
-  const frameSource = useArtifactFrameSource(srcdoc, fullWebAccess);
+  const frameSource = useArtifactFrameSource(srcdoc, fullWebAccess, fullWebAccess ? principal : undefined);
+  // The page's own origin, when it has one: messages go to it exactly and are
+  // accepted only from it.
+  const pageOrigin = frameSource.pageOrigin;
+  const pageOriginRef = useRef(pageOrigin);
+  pageOriginRef.current = pageOrigin;
   const [loaded, setLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const onExternalLinkRef = useRef(onExternalLink);
@@ -404,7 +428,7 @@ export function HtmlArtifactRenderer({
     if (!target) return;
     target.postMessage(
       { type: PAGE_BRIDGE_MESSAGE_TYPE, event: 'inputs-changed', inputs: currentInputValuesRef.current ?? {} },
-      '*',
+      pageOriginRef.current ?? '*',
     );
   }, [inputsRevision]);
 
@@ -424,6 +448,11 @@ export function HtmlArtifactRenderer({
     function onMessage(event: MessageEvent) {
       const frame = iframeRef.current;
       if (!frame || event.source !== frame.contentWindow) return;
+      // A page with its own origin may navigate its frame elsewhere; only its
+      // own origin speaks for it. Replies go to that origin only.
+      const origin = pageOriginRef.current;
+      if (origin && event.origin !== origin) return;
+      const targetOrigin = origin ?? '*';
       const shortcut = parseArtifactShortcutMessage(event.data);
       if (shortcut) {
         replayShortcut(shortcut);
@@ -464,11 +493,14 @@ export function HtmlArtifactRenderer({
           if (!target || iframeRef.current?.contentWindow !== target) return;
           if (result.ok) {
             const { ok: _ok, ...response } = result;
-            target.postMessage({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: request.id, ...response }, '*', [
+            target.postMessage({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: request.id, ...response }, targetOrigin, [
               response.body,
             ]);
           } else {
-            target.postMessage({ type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: request.id, error: result.error }, '*');
+            target.postMessage(
+              { type: ARTIFACT_FETCH_RESULT_MESSAGE_TYPE, id: request.id, error: result.error },
+              targetOrigin,
+            );
           }
         };
         if (!handler) reply({ ok: false, error: 'This page has no network access.' });
@@ -482,7 +514,7 @@ export function HtmlArtifactRenderer({
         const reply = (outcome: PageBridgeOutcome) => {
           // The page may have been replaced while the call was out.
           if (!target || iframeRef.current?.contentWindow !== target) return;
-          target.postMessage({ type: PAGE_BRIDGE_MESSAGE_TYPE, id: bridgeRequest.id, ...outcome }, '*');
+          target.postMessage({ type: PAGE_BRIDGE_MESSAGE_TYPE, id: bridgeRequest.id, ...outcome }, targetOrigin);
         };
         const unavailable = (): PageBridgeOutcome => ({
           ok: false,
@@ -515,12 +547,16 @@ export function HtmlArtifactRenderer({
           about:blank and fire onLoad, hiding the skeleton too early. */}
       {(frameSource.src || frameSource.srcDoc != null) && (
         <iframe
+          // Sandbox flags apply from a frame's next navigation; a new frame
+          // whenever the origin changes keeps them in step with its `src`.
+          key={pageOrigin ?? 'opaque'}
           ref={iframeRef}
           className="artifact-html-frame"
           title={t('artifacts.html.previewTitle')}
-          // `allow-scripts` (plus `allow-modals` with full web access) only; see
-          // artifactSandbox — never allow-same-origin, popups or top navigation.
-          sandbox={artifactSandbox(fullWebAccess)}
+          // `allow-scripts` (plus `allow-modals` with full web access, and
+          // `allow-same-origin` only on the page's own origin); see
+          // artifactSandbox — never popups or top navigation.
+          sandbox={artifactSandbox(fullWebAccess, pageOrigin != null)}
           referrerPolicy="no-referrer"
           src={frameSource.src}
           srcDoc={frameSource.srcDoc}

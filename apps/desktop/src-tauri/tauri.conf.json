@@ -30,7 +30,7 @@
         "connect-src": "'self'",
         "font-src": "'self'",
         "object-src": "'none'",
-        "frame-src": "http://conduit-artifact.localhost conduit-artifact:",
+        "frame-src": "http://conduit-artifact.localhost conduit-artifact: http://*.page.localhost:*",
         "base-uri": "'self'",
         "form-action": "'none'"
       },

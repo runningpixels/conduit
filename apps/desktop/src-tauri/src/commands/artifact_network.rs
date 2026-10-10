@@ -35,7 +35,7 @@ fn network_blocked_reason(state: &AppState) -> Result<Option<String>, String> {
 }
 
 /// The Settings switch "Give every page full web access".
-fn full_web_access_for_every_page(state: &AppState) -> Result<bool, String> {
+pub(crate) fn full_web_access_for_every_page(state: &AppState) -> Result<bool, String> {
     Ok(state.settings()?.artifact_full_web_access == Some(true))
 }
 
@@ -58,7 +58,10 @@ pub fn has_full_web_access(
 
 /// Whether the artifact or app behind `principal` exists — so a remembered
 /// grant is never written for nothing.
-async fn principal_exists(state: &AppState, principal: &Principal) -> Result<bool, String> {
+pub(crate) async fn principal_exists(
+    state: &AppState,
+    principal: &Principal,
+) -> Result<bool, String> {
     let (sql, id) = match principal {
         Principal::Artifact(id) => ("SELECT 1 FROM artifacts WHERE id = ?", id),
         Principal::App(id) => ("SELECT 1 FROM apps WHERE id = ?", id),

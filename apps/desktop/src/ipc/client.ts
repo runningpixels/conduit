@@ -683,6 +683,48 @@ export async function clearArtifactNetworkGrants(principal?: PagePrincipal): Pro
 }
 
 // =============================================================================
+// Real origins for pages with full web access (Rust `page_server`, ADR-007)
+// =============================================================================
+
+/** The one-shot "clear site data" URL for a page's origin. */
+export interface PageClear {
+  token: string;
+  url: string;
+  /** The page's origin; the clear page's message comes from it. */
+  origin: string;
+}
+
+/** Null when the page server isn't running (then no page has an origin). */
+export async function mintPageClear(principal: PagePrincipal): Promise<PageClear | null> {
+  return invokeCommand<PageClear | null>('mint_page_clear', { principal });
+}
+
+/** A page that has, or had, its own origin. */
+export interface PageOrigin {
+  principal: PagePrincipal;
+  /** Whether its artifact or app still exists. */
+  exists: boolean;
+  /** Whether it holds a full-web-access grant (remembered or this session). */
+  granted: boolean;
+  /** Whether it has full web access now: `granted`, or the Settings switch. */
+  fullAccess: boolean;
+}
+
+export async function listPageOrigins(): Promise<PageOrigin[]> {
+  return invokeCommand<PageOrigin[]>('list_page_origins');
+}
+
+/** Stop listing a page whose data was cleared. */
+export async function forgetPageOrigin(principal: PagePrincipal): Promise<void> {
+  await invokeCommand('forget_page_origin', { principal });
+}
+
+/** Delete every cookie in the webview except the app's own; returns how many. */
+export async function clearPageCookies(): Promise<number> {
+  return invokeCommand<number>('clear_page_cookies');
+}
+
+// =============================================================================
 // Page bridge storage (ADR-012)
 // =============================================================================
 

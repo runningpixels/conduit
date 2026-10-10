@@ -41,6 +41,7 @@ import type { AppDetail, AppSummary } from '../ipc/contracts';
 import { AppTile } from './AppTile';
 import { AppInputsDialog } from './AppInputsDialog';
 import { AppSettingsView } from './AppSettingsView';
+import { clearPageSiteData } from '../artifacts/pageSiteData';
 
 export interface AppViewProps {
   appId: string;
@@ -95,6 +96,10 @@ export function AppView({
   // Bumped after "Clear data" so the frame's key changes and it reloads with
   // an empty store, the same way a source update bumps `revision`.
   const [clearRevision, setClearRevision] = useState(0);
+  // "Clear site data": what a page with full web access keeps on its own
+  // origin (cookies, storage), like a browser's. Bumped after, to reload.
+  const [siteDataConfirmOpen, setSiteDataConfirmOpen] = useState(false);
+  const [siteDataRevision, setSiteDataRevision] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -272,6 +277,18 @@ export function AppView({
     }
   }, [app, onStatus, t]);
 
+  const handleClearSiteData = useCallback(async () => {
+    setSiteDataConfirmOpen(false);
+    if (!app) return;
+    const ok = await clearPageSiteData(appPrincipal(app.id));
+    setSiteDataRevision((r) => r + 1);
+    onStatus?.(
+      ok
+        ? t('apps.status.siteDataCleared', { name: app.name })
+        : t('apps.status.siteDataClearFailed', { name: app.name }),
+    );
+  }, [app, onStatus, t]);
+
   if (error) {
     return (
       <section className="app-view">
@@ -420,6 +437,20 @@ export function AppView({
               {t('apps.menu.clearData')}
             </button>
           )}
+          {network.fullAccess === true && (
+            <button
+              type="button"
+              className="menu-item"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                setSiteDataConfirmOpen(true);
+              }}
+            >
+              <TrashIcon />
+              {t('apps.menu.clearSiteData')}
+            </button>
+          )}
           {llm.state?.granted && (
             <button type="button" className="menu-item" role="menuitem" onClick={handleStopModelAccess}>
               <ModelIcon />
@@ -482,7 +513,7 @@ export function AppView({
             right policy. */}
         {network.fullAccess !== undefined && (
           <HtmlArtifactRenderer
-            key={`${summary.id}:${summary.version}:${revision}:${clearRevision}:${network.reloadToken}`}
+            key={`${summary.id}:${summary.version}:${revision}:${clearRevision}:${siteDataRevision}:${network.reloadToken}`}
             html={html}
             allowlist={allowlist}
             styledPreview={styledPreview}
@@ -494,6 +525,7 @@ export function AppView({
             inputsRevision={inputsRevision}
             fullWebAccess={network.fullAccess}
             onBlockedLoad={network.reportBlocked}
+            principal={appPrincipal(summary.id)}
           />
         )}
       </div>
@@ -567,6 +599,15 @@ export function AppView({
         cancelLabel={t('common.actions.cancel')}
         onCancel={() => setClearConfirmOpen(false)}
         onConfirm={() => void handleClearData()}
+      />
+      <ConfirmDialog
+        open={siteDataConfirmOpen}
+        title={t('apps.clearSiteData.title', { name: summary.name })}
+        description={t('apps.clearSiteData.description')}
+        confirmLabel={t('apps.clearData.confirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onCancel={() => setSiteDataConfirmOpen(false)}
+        onConfirm={() => void handleClearSiteData()}
       />
       <AppInputsDialog
         appId={inputsDialogOpen ? summary.id : null}

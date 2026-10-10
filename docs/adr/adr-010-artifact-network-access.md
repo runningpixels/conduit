@@ -176,3 +176,21 @@ this ADR built still applies to its `fetch()`, which keeps going through the bri
   proxy. On Windows they pass through the guard proxy, which refuses non-public addresses
   and anything but port 443. Elsewhere they are not checked at all (see ADR 007's residual
   risks).
+
+## Addendum (2026-10-10): full-access pages on their own origin
+
+A page with full web access is now served from its own origin on the app's loopback page
+server ([ADR 007](adr-007-artifact-rendering-security.md), addendum of the same date), with
+`allow-same-origin`. For this ADR:
+
+- Its `fetch()` still goes through the bridge, unchanged: the bridge replaces the page's
+  `window.fetch` whatever its origin. Direct loads now carry a Referer (`strict-origin`,
+  the origin only), which is what lets services that require one (OpenStreetMap tiles)
+  serve the page.
+- Bridge messages are posted to the page's exact origin and accepted only from it, as
+  well as only from the frame's window as before.
+- The page server is loopback-only and outside the guard proxy (Chromium never proxies
+  `*.localhost`); it serves only stored documents for their own page, never a resource on
+  a page's behalf, so it adds no way out of the machine.
+- Revoking `full` (one page, "Remove all", or the every-page switch turned off) clears
+  what the page kept on its origin (cookies, storage, caches), as does deleting it.

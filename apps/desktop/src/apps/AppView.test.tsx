@@ -34,6 +34,11 @@ const ipc = vi.hoisted(() => ({
 }));
 
 vi.mock('../ipc/client', () => ipc);
+const site = vi.hoisted(() => ({
+  clearPageSiteData: vi.fn(async () => true),
+  sweepPageSiteData: vi.fn(async () => {}),
+}));
+vi.mock('../artifacts/pageSiteData', () => site);
 
 const weatherApp = {
   id: 'a1',
@@ -241,5 +246,37 @@ describe('AppView full web access (ADR-007)', () => {
     const { container } = renderAppView();
     await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull());
     expect(container.querySelector('iframe')!.getAttribute('sandbox')).toBe('allow-scripts allow-modals');
+  });
+});
+
+describe('AppView site data (ADR-007)', () => {
+  it('"Clear site data" is offered only with full web access, asks first, then clears and reloads', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    ipc.getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: ['full'], session: [], fullAccess: true });
+    const onStatus = vi.fn();
+    const { container } = renderAppView({ onStatus });
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull());
+    const before = container.querySelector('iframe');
+
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Clear site data' }));
+    expect(site.clearPageSiteData).not.toHaveBeenCalled();
+    expect(await screen.findByText('Clear “Weather dashboard”’s site data?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    await waitFor(() => expect(site.clearPageSiteData).toHaveBeenCalledWith('app:a1'));
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Cleared “Weather dashboard”’s site data.'));
+    // The frame starts over.
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBe(before));
+  });
+
+  it('has no "Clear site data" without full web access', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    const { container } = renderAppView();
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    expect(screen.queryByRole('menuitem', { name: 'Clear site data' })).toBeNull();
   });
 });

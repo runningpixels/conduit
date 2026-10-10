@@ -40,8 +40,6 @@ const emptyIdeaState: IdeaState = {
   seenRevision: null,
   knownReady: null,
   spotlight: [],
-  chipOffers: {},
-  chipUsed: [],
 };
 
 function chat(id: string, over: Partial<ConversationSummary> = {}): ConversationSummary {

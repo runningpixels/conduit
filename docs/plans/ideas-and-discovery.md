@@ -209,13 +209,6 @@ onboarding and opens the chat with the prompt filled.
 
 Tied to what the user just did, never to a timer, never a modal:
 
-- **Capability follow-up chip.** `deriveSuggestedPrompts` may add *one* chip
-  that points at a capability the reply did not use, when the reply fits:
-  a table or numbers in prose → "Make this an interactive dashboard"; an HTML
-  page with a hard-coded data sample and network ready → "Make it use live
-  data"; a long explanation → "Turn this into flashcards". At most one per
-  reply, only if ready, and a capability chip the user has ignored three
-  times is not offered again.
 - **New capability spotlight.** When a capability goes from off/needs-setup to
   ready — an image-capable key added, web search turned on, first document
   collection created, network access on after an update — the Ideas entry
@@ -227,7 +220,7 @@ Tied to what the user just did, never to a timer, never a modal:
 ### Personal, on this device
 
 Stored locally (settings/DB, never sent): ideas tried, ideas dismissed, which
-categories were started from, capability chips ignored, last Ideas-page
+categories were started from, last Ideas-page
 version seen. Ordering uses only these — unexplored ready categories first,
 tried ideas last. Chat content is not analysed. The Ideas page says so in one
 line: "Chosen on this device from what you've tried; nothing is sent." A
@@ -268,7 +261,7 @@ in two locales.
   step.
 
 ### Phase 3 — moments (2–3 days)
-- Capability follow-up chip; spotlight on capability change; "New in this
+- Spotlight on capability change; "New in this
   version"; artifact empty-state line.
 - My prompts tab (library moved from Settings); save first message as prompt.
 - Remaining ~12 ideas.
@@ -305,14 +298,13 @@ Taken 2026-09-26, as recommended:
   (the image tool's provider gate), documents (a collection exists),
   workspace (tools + consent). ready / setup / off.
 - `src/ideas/ideaState.ts` — tried, pending, starts-without-idea, row hidden,
-  seen revision, spotlight, chip offers; localStorage only.
+  seen revision, spotlight; localStorage only.
 - `src/ideas/selectIdeas.ts` — starters (three categories, rotated per chat,
   no long builds on a local model), For you, onboarding picks, spotlight,
   new.
 - `src/ideas/IdeasSheet.tsx` (sidebar **Ideas**, palette "Browse ideas"),
   `IdeaStarterRow.tsx` (empty chat), onboarding finish picks,
-  `capabilityChips.ts` (liveData / dashboard / flashcards; one per reply,
-  gives up after three ignored offers), and a "See ideas" link in the empty
+  and a "See ideas" link in the empty
   artifact panel.
 - Cost hint is Quick / Medium / Long build, or "Free on your local model".
 

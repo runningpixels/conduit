@@ -27,13 +27,7 @@ export interface IdeaState {
   knownReady: Capability[] | null;
   /// Capabilities that became ready and have not been shown yet.
   spotlight: Capability[];
-  /// Capability follow-up chips: times offered, and whether used.
-  chipOffers: Record<string, number>;
-  chipUsed: string[];
 }
-
-/// A capability chip offered this many times without use is not offered again.
-export const CHIP_GIVE_UP = 3;
 
 const EMPTY: IdeaState = {
   tried: [],
@@ -43,8 +37,6 @@ const EMPTY: IdeaState = {
   seenRevision: null,
   knownReady: null,
   spotlight: [],
-  chipOffers: {},
-  chipUsed: [],
 };
 
 function strings(v: unknown): string[] {
@@ -60,12 +52,6 @@ function load(): IdeaState {
     const raw = localStorage.getItem(KEY);
     if (!raw) return EMPTY;
     const d = JSON.parse(raw) as Record<string, unknown>;
-    const offers: Record<string, number> = {};
-    if (d.chipOffers && typeof d.chipOffers === 'object') {
-      for (const [k, v] of Object.entries(d.chipOffers as Record<string, unknown>)) {
-        if (typeof v === 'number' && Number.isFinite(v)) offers[k] = v;
-      }
-    }
     return {
       tried: strings(d.tried),
       pending: typeof d.pending === 'string' ? d.pending : null,
@@ -74,8 +60,6 @@ function load(): IdeaState {
       seenRevision: typeof d.seenRevision === 'number' ? d.seenRevision : null,
       knownReady: Array.isArray(d.knownReady) ? capabilities(d.knownReady) : null,
       spotlight: capabilities(d.spotlight),
-      chipOffers: offers,
-      chipUsed: strings(d.chipUsed),
     };
   } catch {
     return EMPTY;
@@ -154,14 +138,6 @@ export function observeReady(ready: Capability[]): void {
 
 export function clearSpotlight(): void {
   updateIdeaState((s) => (s.spotlight.length === 0 ? s : { ...s, spotlight: [] }));
-}
-
-export function noteChipOffered(chipId: string): void {
-  updateIdeaState((s) => ({ ...s, chipOffers: { ...s.chipOffers, [chipId]: (s.chipOffers[chipId] ?? 0) + 1 } }));
-}
-
-export function noteChipUsed(chipId: string): void {
-  updateIdeaState((s) => (s.chipUsed.includes(chipId) ? s : { ...s, chipUsed: [...s.chipUsed, chipId] }));
 }
 
 /// Forget everything above (Ideas page → Reset).

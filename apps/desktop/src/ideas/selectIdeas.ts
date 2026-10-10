@@ -95,8 +95,6 @@ export function onboardingIdeas(caps: Capabilities): Idea[] {
     seenRevision: null,
     knownReady: null,
     spotlight: [],
-    chipOffers: {},
-    chipUsed: [],
   };
   const ready = rankReady(caps, empty).filter((i) => !(caps.localModel && i.size === 'long'));
   const pick = (categories: IdeaCategory[]) => ready.find((i) => categories.includes(i.category));

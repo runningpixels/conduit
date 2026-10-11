@@ -47,9 +47,9 @@ export const TOAST_DISMISS_MS: Partial<Record<StatusKind, number>> = {
 export const WORKFLOW_RUN_TOAST_MS = 10_000;
 
 /** How long a toast stays before it dismisses itself, or null to stay. A toast
- *  that offers an action never leaves on its own. */
+ *  that offers an action never leaves on its own, unless it sets `dismissMs`. */
 export function toastDismissMs(toast: StatusState): number | null {
-  if (toast.action) return null;
+  if (toast.action && toast.dismissMs == null) return null;
   return toast.dismissMs ?? TOAST_DISMISS_MS[toast.kind] ?? null;
 }
 

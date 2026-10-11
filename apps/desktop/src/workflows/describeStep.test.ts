@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeStep } from './describeStep';
+import type { WorkflowStep } from '../ipc/contracts';
 
 const KEYS: Record<string, string> = {
   'workspace.workflows.editor.field.text': 'text',
@@ -28,5 +29,25 @@ describe('describeStep references', () => {
     expect(describeStep({ id: 'r', type: 'read_file', path: '{{inputs.gone}}' }, t)).toBe(
       'readFile {"path":"{{inputs.gone}}"}',
     );
+  });
+});
+
+describe('describeStep for_each', () => {
+  const fetch: WorkflowStep = { id: 'fetch', type: 'fetch_page', urls: ['https://a.example'] };
+  const loop = (items: string): WorkflowStep => ({ id: 'each', type: 'for_each', items, steps: [] });
+  const tt = (id: string, values?: Record<string, unknown>) => `${id.split('.').pop()} ${JSON.stringify(values)}`;
+
+  it('names the step the loop reads and what one entry is', () => {
+    expect(describeStep(loop('steps.fetch.pages'), tt, {}, {}, [fetch])).toBe('forEachFrom {"n":1,"kind":"page"}');
+    expect(describeStep(loop('{{steps.fetch.stories}}'), tt, {}, {}, [fetch])).toBe('forEachFrom {"n":1,"kind":"story"}');
+  });
+
+  it('falls back to "item" for a list it has no name for', () => {
+    expect(describeStep(loop('steps.fetch.things'), tt, {}, {}, [fetch])).toBe('forEachFrom {"n":1,"kind":"item"}');
+  });
+
+  it('keeps the plain wording when the list is not an earlier step', () => {
+    expect(describeStep(loop('steps.gone.pages'), tt, {}, {}, [fetch])).toBe('forEach {"items":"steps.gone.pages"}');
+    expect(describeStep(loop('inputs.urls'), tt)).toBe('forEach {"items":"inputs.urls"}');
   });
 });

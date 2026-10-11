@@ -6129,3 +6129,206 @@ async fn save_memory_only_suggests() {
         .await;
     assert_eq!(h.run(&long).await.run.status, "failed");
 }
+
+#[tokio::test]
+async fn a_run_that_saves_something_is_an_unread_result_until_it_is_seen() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "save", "type": "save_artifact", "title": "Doc",
+              "content": "# Doc\n\nToday **Deno** joined Cloudflare.", "onlyIfChanged": true },
+        ]}))
+        .await;
+    let first = h.run(&id).await;
+    let outputs = first
+        .run
+        .outputs
+        .clone()
+        .expect("a finished run lists its outputs");
+    assert_eq!(outputs.len(), 1);
+    assert_eq!(outputs[0].kind, "document");
+    assert_eq!(outputs[0].title, "Doc");
+    assert_eq!(
+        outputs[0].preview.as_deref(),
+        Some("Today Deno joined Cloudflare.")
+    );
+    assert!(outputs[0].conversation_id.is_some());
+
+    let results = repo::list_results(&h.state.db, &h.state.encryption, None, true, 50)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].workflow_name, "Morning briefing");
+    assert_eq!(results[0].run.id, first.run.id);
+    assert_eq!(repo::unread_result_count(&h.state.db).await.unwrap(), 1);
+
+    // The same content again is kept, not news: it isn't a result.
+    let second = h.run(&id).await;
+    assert!(second.run.outputs.as_ref().unwrap()[0].unchanged);
+    let all = repo::list_results(&h.state.db, &h.state.encryption, Some(&id), false, 50)
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(repo::unread_result_count(&h.state.db).await.unwrap(), 1);
+
+    // Seeing it clears it, once; listing the workflow's runs carries the outputs.
+    assert_eq!(
+        repo::mark_seen(&h.state.db, std::slice::from_ref(&first.run.id), None)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        repo::mark_seen(&h.state.db, std::slice::from_ref(&first.run.id), None)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(repo::unread_result_count(&h.state.db).await.unwrap(), 0);
+    let mut runs = repo::list_runs(&h.state.db, &id, 10).await.unwrap();
+    repo::add_outputs(&h.state.db, &h.state.encryption, &mut runs)
+        .await
+        .unwrap();
+    assert!(runs
+        .iter()
+        .all(|r| r.outputs.as_ref().is_some_and(|o| o.len() == 1)));
+    assert!(runs.iter().any(|r| r.seen_at.is_some()));
+
+    // A run from before results were kept is worked out when it is listed.
+    sqlx::query("UPDATE workflow_runs SET result_json = NULL, output_count = NULL, seen_at = NULL WHERE id = ?")
+        .bind(&first.run.id)
+        .execute(&h.state.db)
+        .await
+        .unwrap();
+    let backfilled = repo::list_results(&h.state.db, &h.state.encryption, None, true, 50)
+        .await
+        .unwrap();
+    assert_eq!(backfilled.len(), 1);
+    assert_eq!(backfilled[0].run.outputs.as_ref().unwrap()[0].title, "Doc");
+    assert_eq!(repo::unread_result_count(&h.state.db).await.unwrap(), 1);
+}
+
+const FRONT_PAGE: &str = "<html><head><title>Front page</title></head><body><main>\
+<p><a href=\"/story-one\">Deno is joining Cloudflare today</a> 628 points | <a href=\"/c1\">337 comments</a></p>\
+<p><a href=\"/story-gone\">A story whose page is gone</a></p>\
+<p><a href=\"/about\">About</a></p></main></body></html>";
+const STORY_ONE: &str = "<html><head><title>Deno</title></head><body><article>\
+<p>Deno Deploy folds into Cloudflare Workers.</p></article></body></html>";
+
+/// The Morning briefing starter's shape (`starters.ts`, id `briefing`): pick
+/// stories from the front page's links, read each, write, save a new dated
+/// document. Prompts are shortened; the steps and references are the same.
+fn reading_briefing(base: &str) -> Value {
+    json!({
+        "inputs": [
+            { "id": "site_one", "label": "First site", "default": format!("{base}/front") },
+            { "id": "interests", "label": "What I care about", "default": "dev tools" }
+        ],
+        "steps": [
+            { "id": "fetch", "type": "fetch_page", "urls": ["{{inputs.site_one}}"] },
+            { "id": "pick", "type": "summarize",
+              "prompt": "PICK stories for a reader who cares about {{inputs.interests}}.",
+              "input": "{{#each steps.fetch.pages}}# {{item.title}} ({{item.url}})\n{{item.error}}\n\n## Text\n{{item.text}}\n\n## Links\n{{item.linkText}}\n\n{{/each}}",
+              "schema": { "type": "object", "properties": { "stories": { "type": "array", "items": {
+                  "type": "object",
+                  "properties": { "headline": { "type": "string" }, "url": { "type": "string" },
+                                  "source": { "type": "string" }, "stats": { "type": "string" } },
+                  "required": ["headline", "url", "source", "stats"] } } },
+                "required": ["stories"] } },
+            { "id": "read", "type": "for_each", "items": "steps.pick.data.stories", "steps": [
+                { "id": "article", "type": "fetch_page", "urls": ["{{item.url}}"], "onError": "skip" },
+                { "id": "gist", "type": "summarize", "prompt": "Summarize for {{inputs.interests}}.",
+                  "input": "{{steps.article.text}}", "onError": "skip" },
+                { "id": "card", "type": "template", "onError": "skip",
+                  "template": "Headline: {{item.headline}}\nURL: {{item.url}}\nSite: {{item.source}} {{item.stats}}\nSummary: {{steps.gist.text}}" }
+            ]},
+            { "id": "write", "type": "summarize", "prompt": "Write the briefing for {{run.date}}.",
+              "input": "{{#each steps.read.items}}{{item.card.text}}\n\n{{/each}}" },
+            { "id": "save", "type": "save_artifact", "title": "Morning briefing {{run.date}}",
+              "content": "{{steps.write.text}}", "mode": "create" }
+        ]
+    })
+}
+
+#[tokio::test]
+async fn the_reading_briefing_follows_the_links_and_saves_a_new_document_each_run() {
+    let base = serve(vec![("/front", FRONT_PAGE), ("/story-one", STORY_ONE)]).await;
+    // The pick answers with every story line it was shown, as a model would.
+    let script: Script = Arc::new(|_system: &str, user: &str| {
+        if !user.contains("PICK stories") {
+            return None;
+        }
+        let stories: Vec<Value> = user
+            .lines()
+            .filter_map(|line| line.rsplit_once(" - "))
+            .filter(|(_, url)| url.starts_with("http"))
+            .map(|(headline, url)| {
+                json!({ "headline": headline, "url": url, "source": "Front page", "stats": "" })
+            })
+            .collect();
+        Some(json!({ "stories": stories }).to_string())
+    });
+    let h = Harness::new(EchoModel {
+        script: Some(script),
+        ..EchoModel::default()
+    })
+    .await;
+    let id = h.save(reading_briefing(&base)).await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+
+    // The front page's links reach the model with the text they were shown as;
+    // one- and two-word links (menus, "337 comments") are left out.
+    let links = step(&run, "fetch", None).output.as_ref().unwrap()["pages"][0]["linkText"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        links.contains(&format!(
+            "Deno is joining Cloudflare today - {base}/story-one"
+        )),
+        "{links}"
+    );
+    assert!(
+        !links.contains("comments") && !links.contains("/about"),
+        "{links}"
+    );
+    let pick_input = step(&run, "pick", None).input.as_ref().unwrap()["input"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(pick_input.contains(&links));
+
+    // Each story is read; the one whose page is gone is skipped, not the run.
+    assert_eq!(step(&run, "article", Some(0)).status, "completed");
+    assert_eq!(step(&run, "article", Some(1)).status, "skipped");
+    assert_eq!(
+        step(&run, "gist", Some(0)).output.as_ref().unwrap()["text"],
+        "SUMMARY: Deno Deploy folds into Cloudflare Workers."
+    );
+    let card = step(&run, "card", Some(1)).output.as_ref().unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        card.starts_with("Headline: A story whose page is gone"),
+        "{card}"
+    );
+    assert!(card.ends_with("Summary: "), "{card}");
+
+    // A new, dated document every run, each one a result of its own.
+    let again = h.run(&id).await;
+    assert_eq!(again.run.status, "completed", "{:?}", again.run.error);
+    let first = &run.run.outputs.as_ref().unwrap()[0];
+    let second = &again.run.outputs.as_ref().unwrap()[0];
+    assert_ne!(first.artifact_id, second.artifact_id);
+    assert!(
+        first.title.starts_with("Morning briefing 20"),
+        "{}",
+        first.title
+    );
+    let results = repo::list_results(&h.state.db, &h.state.encryption, Some(&id), true, 10)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 2);
+}

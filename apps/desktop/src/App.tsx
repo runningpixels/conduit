@@ -38,6 +38,7 @@ import {
   renameConversationFolder,
   deleteConversationFolder,
   updateSettings,
+  countUnreadWorkflowResults,
 } from './ipc/client';
 import { ChatView, type ChatTranscript, type ChatViewHandle, type RunStatus } from './chat/ChatView';
 import {
@@ -81,7 +82,7 @@ import { readArtifactNetworkLog } from './workspace/useArtifactNetwork';
 import { LibraryPage, type LibraryTab } from './pages/LibraryPage';
 import { ConnectorsPage } from './pages/ConnectorsPage';
 import { MemoryPage } from './pages/MemoryPage';
-import { WorkflowsPage, type WorkflowDraftRequest } from './pages/WorkflowsPage';
+import { WorkflowsPage, type WorkflowDraftRequest, type WorkflowsFocus } from './pages/WorkflowsPage';
 import {
   notificationFor,
   notificationForQuestion,
@@ -380,7 +381,7 @@ export default function App() {
   const [workflowsStartNew, setWorkflowsStartNew] = useState(false);
   // Home's "Answer"/"Review" opens the Workflows page on the waiting workflow.
   // `nonce` makes a second request for the same workflow count as a new one.
-  const [workflowsFocus, setWorkflowsFocus] = useState<{ workflowId: string; runId: string; nonce: number } | null>(null);
+  const [workflowsFocus, setWorkflowsFocus] = useState<WorkflowsFocus | null>(null);
   // Home's Automate chip and a chat's "Save as workflow" ask Workflows to draft one.
   const [workflowsDraftRequest, setWorkflowsDraftRequest] = useState<WorkflowDraftRequest | null>(null);
   useEffect(() => {
@@ -2406,13 +2407,38 @@ export default function App() {
   useEffect(() => {
     if (destination === 'workflows') setWorkflowsNeedYou(false);
   }, [destination]);
+  // Results nobody has opened yet put the same dot on the rail.
+  const [workflowsUnread, setWorkflowsUnread] = useState(false);
+  const refreshUnreadResults = useCallback(() => {
+    void Promise.resolve()
+      .then(() => countUnreadWorkflowResults())
+      .then((count) => setWorkflowsUnread(count > 0))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshUnreadResults();
+    window.addEventListener('focus', refreshUnreadResults);
+    return () => window.removeEventListener('focus', refreshUnreadResults);
+  }, [refreshUnreadResults]);
   useWorkflowRunEvents((event) => {
     setWorkflowRunsVersion((v) => v + 1);
+    refreshUnreadResults();
     const note = notificationFor(event, t);
     if (!note) return;
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
-    // Also a toast that leaves by itself: the run list keeps the detail.
+    // Also a toast that leaves by itself: the run list keeps the detail. One
+    // that saved a document offers to open it (it still leaves on its own).
+    const runId = event.runId;
     const toast = workflowRunStatus(note.title, event.status === 'failed' ? 'error' : 'success', note.body);
+    if (event.documents.length > 0 && runId) {
+      toast.action = {
+        label: t('workspace.workflows.notify.open'),
+        run: () => {
+          setWorkflowsFocus({ view: 'results', runId, nonce: Date.now() });
+          setDestination('workflows');
+        },
+      };
+    }
     setToasts((current) => [...current.slice(-4), toast]);
   });
   // A scheduled run paused to ask: say so, and show it on the Workflows page.
@@ -3294,6 +3320,10 @@ export default function App() {
           setWorkflowsFocus(target ? { ...target, nonce: Date.now() } : null);
           setDestination('workflows');
           break;
+        case 'open-results':
+          setWorkflowsFocus({ view: 'results', runId: target?.runId, nonce: Date.now() });
+          setDestination('workflows');
+          break;
       }
     },
     [openFreshChat, openSlidesList, openWritingList, openSavedApp],
@@ -3560,7 +3590,7 @@ export default function App() {
       <Rail
         destination={destination}
         onNavigate={navigateTo}
-        dots={{ workflows: workflowsNeedYou && destination !== 'workflows' }}
+        dots={{ workflows: (workflowsNeedYou || workflowsUnread) && destination !== 'workflows' }}
         effectiveTheme={effectiveTheme}
         onToggleTheme={handleToggleTheme}
         logoSrc={brandLogo ?? undefined}
@@ -3820,6 +3850,7 @@ export default function App() {
                 onOpenApp={openSavedApp}
                 onNavigate={handleHomeNavigate}
                 onAction={handleHomeAction}
+                refreshKey={workflowRunsVersion}
                 onTryIdea={(idea) => void tryIdea(idea)}
                 onMoreIdeas={openIdeas}
               />
@@ -3928,6 +3959,7 @@ export default function App() {
                 startNew={workflowsStartNew}
                 focus={workflowsFocus}
                 draftRequest={workflowsDraftRequest}
+                onResultsSeen={refreshUnreadResults}
               />
             )}
           </div>

@@ -94,6 +94,7 @@ import type {
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
+  WorkflowResult,
   WorkflowSchedule,
   ScheduleSpec,
   WorkflowSummary,
@@ -2007,6 +2008,27 @@ export async function listWorkflowRuns(id: string, limit?: number): Promise<Work
 
 export async function getWorkflowRun(runId: string): Promise<WorkflowRunDetail> {
   return invokeCommand<WorkflowRunDetail>('get_workflow_run', { runId });
+}
+
+/** Finished runs that saved something (or failed on their own), newest first; one workflow's with `workflowId`. */
+export async function listWorkflowResults(
+  options: { workflowId?: string; unreadOnly?: boolean; limit?: number } = {},
+): Promise<WorkflowResult[]> {
+  return invokeCommand<WorkflowResult[]>('list_workflow_results', {
+    workflowId: options.workflowId ?? null,
+    unreadOnly: options.unreadOnly ?? null,
+    limit: options.limit ?? null,
+  });
+}
+
+/** How many results haven't been opened yet. */
+export async function countUnreadWorkflowResults(): Promise<number> {
+  return invokeCommand<number>('count_unread_workflow_results');
+}
+
+/** Mark runs as seen: `runIds`, or with none, every run of `workflowId` (every run when that is missing too). */
+export async function markWorkflowRunsSeen(runIds: string[], workflowId?: string): Promise<number> {
+  return invokeCommand<number>('mark_workflow_runs_seen', { runIds, workflowId: workflowId ?? null });
 }
 
 export async function getWorkflowSchedule(id: string): Promise<WorkflowSchedule | null> {

@@ -9,6 +9,7 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::workflows::permissions::Permission;
+use crate::workflows::results::{self, RunOutput};
 use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,6 +62,23 @@ pub struct WorkflowRun {
     /// [`add_trigger_items`]; `None` otherwise.
     #[serde(default)]
     pub trigger_item: Option<Value>,
+    /// When the user opened (or saw in place) what the run produced; `None`
+    /// while it is unread.
+    #[serde(default)]
+    pub seen_at: Option<String>,
+    /// What the run saved (see `workflows::results`). Filled in by
+    /// [`get_run`], [`add_outputs`] and [`list_results`]; `None` otherwise,
+    /// and for a run still going.
+    #[serde(default)]
+    pub outputs: Option<Vec<RunOutput>>,
+}
+
+/// A finished run in the Results list: the run, what it saved, and whose it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowResult {
+    pub run: WorkflowRun,
+    pub workflow_name: String,
 }
 
 /// The key under which a run's stored inputs keep the item that started it.
@@ -298,6 +316,8 @@ pub async fn start_run(
         started_at: now_iso8601(),
         finished_at: None,
         trigger_item: None,
+        seen_at: None,
+        outputs: None,
     };
     sqlx::query(
         "INSERT INTO workflow_runs (id, workflow_id, version, trigger, status, started_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -457,10 +477,11 @@ type RunRow = (
     Option<String>,
     String,
     Option<String>,
+    Option<String>,
 );
 
 fn run_from(row: RunRow) -> WorkflowRun {
-    let (id, workflow_id, version, trigger, status, error, started_at, finished_at) = row;
+    let (id, workflow_id, version, trigger, status, error, started_at, finished_at, seen_at) = row;
     let marker = error
         .as_deref()
         .filter(|_| status == "completed")
@@ -483,6 +504,8 @@ fn run_from(row: RunRow) -> WorkflowRun {
         started_at,
         finished_at,
         trigger_item: None,
+        seen_at,
+        outputs: None,
     }
 }
 
@@ -502,7 +525,7 @@ pub async fn add_trigger_items(
 }
 
 const RUN_COLUMNS: &str =
-    "id, workflow_id, version, trigger, status, error, started_at, finished_at";
+    "id, workflow_id, version, trigger, status, error, started_at, finished_at, seen_at";
 
 /// A workflow's runs, newest first.
 pub async fn list_runs(
@@ -574,7 +597,222 @@ pub async fn get_run(
     }
     let mut run = run_from(row);
     add_trigger_items(pool, enc, std::slice::from_mut(&mut run)).await?;
+    if run.status != "running" {
+        let conversation = workflow_conversation(pool, &run.workflow_id).await?;
+        run.outputs = Some(results::collect(&steps, conversation.as_deref()));
+    }
     Ok(Some(WorkflowRunDetail { run, steps }))
+}
+
+async fn workflow_conversation(
+    pool: &SqlitePool,
+    workflow_id: &str,
+) -> Result<Option<String>, DbError> {
+    Ok(
+        sqlx::query_scalar("SELECT conversation_id FROM workflows WHERE id = ?")
+            .bind(workflow_id)
+            .fetch_optional(pool)
+            .await?
+            .flatten(),
+    )
+}
+
+/// Work out what a finished run saved and keep it on the run. Called when a
+/// run ends, and for runs from before results were kept, the first time they
+/// are listed. Returns the outputs.
+pub async fn record_outputs(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_id: &str,
+) -> Result<Vec<RunOutput>, DbError> {
+    let Some(detail) = get_run(pool, enc, run_id).await? else {
+        return Ok(Vec::new());
+    };
+    let outputs = detail.run.outputs.unwrap_or_default();
+    // A save that kept last run's content isn't news, so it doesn't count
+    // toward what's unread.
+    let fresh = outputs.iter().filter(|o| !o.unchanged).count() as i64;
+    sqlx::query("UPDATE workflow_runs SET result_json = ?, output_count = ? WHERE id = ?")
+        .bind(encrypt_json(
+            enc,
+            &serde_json::to_value(&outputs).unwrap_or_default(),
+        )?)
+        .bind(fresh)
+        .bind(run_id)
+        .execute(pool)
+        .await?;
+    Ok(outputs)
+}
+
+/// Fill `outputs` on finished runs from what [`record_outputs`] kept, working
+/// it out for runs from before it was kept.
+pub async fn add_outputs(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    runs: &mut [WorkflowRun],
+) -> Result<(), DbError> {
+    for run in runs.iter_mut() {
+        if matches!(run.status.as_str(), "running" | "paused") {
+            continue;
+        }
+        let stored: Option<Option<String>> =
+            sqlx::query_scalar("SELECT result_json FROM workflow_runs WHERE id = ?")
+                .bind(&run.id)
+                .fetch_optional(pool)
+                .await?;
+        run.outputs = Some(match stored.flatten() {
+            Some(json) => serde_json::from_value(decrypt_json(enc, &json)?).unwrap_or_default(),
+            None => record_outputs(pool, enc, &run.id).await?,
+        });
+    }
+    Ok(())
+}
+
+/// Triggers a person started by hand; a failed run of theirs isn't news.
+const BY_HAND: &str = "('manual', 'rerun')";
+
+/// The condition for a run that belongs in Results: it saved something new,
+/// or it failed on its own (a schedule or trigger started it). Runs from before
+/// results were kept (`output_count IS NULL`) are worked out when listed.
+fn result_condition() -> String {
+    format!(
+        "r.status IN ('completed', 'failed', 'stopped') AND \
+         (r.output_count IS NULL OR r.output_count > 0 \
+          OR (r.status = 'failed' AND r.trigger NOT IN {BY_HAND}))"
+    )
+}
+
+/// Finished runs that produced something, newest first, across every
+/// workflow or for `workflow_id`. With `unread_only`, those not yet seen.
+pub async fn list_results(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    workflow_id: Option<&str>,
+    unread_only: bool,
+    limit: i64,
+) -> Result<Vec<WorkflowResult>, DbError> {
+    let columns = RUN_COLUMNS
+        .split(", ")
+        .map(|c| format!("r.{c}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut sql = format!(
+        "SELECT {columns}, w.name FROM workflow_runs r JOIN workflows w ON w.id = r.workflow_id \
+         WHERE {}",
+        result_condition()
+    );
+    if workflow_id.is_some() {
+        sql.push_str(" AND r.workflow_id = ?");
+    }
+    if unread_only {
+        sql.push_str(" AND r.seen_at IS NULL");
+    }
+    sql.push_str(" ORDER BY r.started_at DESC LIMIT ?");
+    type Row = (
+        String,
+        String,
+        i64,
+        String,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+    );
+    let mut query = sqlx::query_as::<_, Row>(&sql);
+    if let Some(id) = workflow_id {
+        query = query.bind(id);
+    }
+    let rows = query.bind(limit).fetch_all(pool).await?;
+    let mut results = Vec::with_capacity(rows.len());
+    for (id, wid, version, trigger, status, error, started_at, finished_at, seen_at, name) in rows {
+        let mut run = run_from((
+            id,
+            wid,
+            version,
+            trigger,
+            status,
+            error,
+            started_at,
+            finished_at,
+            seen_at,
+        ));
+        add_outputs(pool, enc, std::slice::from_mut(&mut run)).await?;
+        // A run worked out just now may turn out to have saved nothing new, and
+        // a condition that stopped a run means there was nothing to report.
+        let fresh = run
+            .outputs
+            .as_ref()
+            .is_some_and(|o| o.iter().any(|o| !o.unchanged));
+        let failed_alone =
+            run.status == "failed" && !matches!(run.trigger.as_str(), "manual" | "rerun");
+        if run.outcome.is_some() || !(fresh || failed_alone) {
+            continue;
+        }
+        add_trigger_items(pool, enc, std::slice::from_mut(&mut run)).await?;
+        results.push(WorkflowResult {
+            run,
+            workflow_name: name,
+        });
+    }
+    Ok(results)
+}
+
+/// How many results haven't been seen yet.
+pub async fn unread_result_count(pool: &SqlitePool) -> Result<i64, DbError> {
+    Ok(sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM workflow_runs r WHERE r.seen_at IS NULL AND r.output_count IS NOT NULL \
+         AND {}",
+        result_condition()
+    ))
+    .fetch_one(pool)
+    .await?)
+}
+
+/// Mark runs as seen; runs already seen keep their first time. With no ids
+/// and a `workflow_id`, every run of that workflow; with neither, every run.
+pub async fn mark_seen(
+    pool: &SqlitePool,
+    run_ids: &[String],
+    workflow_id: Option<&str>,
+) -> Result<u64, DbError> {
+    let now = now_iso8601();
+    let mut affected = 0;
+    if run_ids.is_empty() {
+        let done = match workflow_id {
+            Some(id) => sqlx::query(
+                "UPDATE workflow_runs SET seen_at = ? WHERE seen_at IS NULL AND workflow_id = ? \
+                 AND status NOT IN ('running', 'paused')",
+            )
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await?,
+            None => {
+                sqlx::query(
+                    "UPDATE workflow_runs SET seen_at = ? WHERE seen_at IS NULL \
+                 AND status NOT IN ('running', 'paused')",
+                )
+                .bind(&now)
+                .execute(pool)
+                .await?
+            }
+        };
+        return Ok(done.rows_affected());
+    }
+    for id in run_ids {
+        affected += sqlx::query(
+            "UPDATE workflow_runs SET seen_at = ? WHERE id = ? AND seen_at IS NULL \
+             AND status NOT IN ('running', 'paused')",
+        )
+        .bind(&now)
+        .bind(id)
+        .execute(pool)
+        .await?
+        .rows_affected();
+    }
+    Ok(affected)
 }
 
 /// A workflow's schedule (migration 0021). `spec` is a

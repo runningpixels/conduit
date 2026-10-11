@@ -26,42 +26,78 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
       inputs: [
         { id: 'site_one', label: 'First site', default: 'https://news.ycombinator.com' },
         { id: 'site_two', label: 'Second site', default: 'https://www.theverge.com' },
+        { id: 'interests', label: 'What I care about', default: 'software development, AI, open source' },
       ],
       steps: [
         { id: 'fetch', type: 'fetch_page', urls: ['{{inputs.site_one}}', '{{inputs.site_two}}'] },
+        // A front page is only headlines, so the model picks the stories worth
+        // reading from each page's text and links, and the loop below reads them.
         {
-          id: 'each_site',
+          id: 'pick',
+          type: 'summarize',
+          prompt:
+            "You are choosing stories for a morning briefing. The reader cares about: {{inputs.interests}}.\n\nBelow are front pages, each with its text and its links (\"shown text - URL\"). Pick the 8 most important or interesting stories across all pages, at most 5 from one page. Prefer stories that matter to the reader; skip ads, sign-up prompts, navigation and duplicates of the same story.\n\nFor each story give: the headline as shown; the URL of the article itself, copied exactly from the links list; the name of the site whose front page listed it; and any numbers shown next to it, such as points or comments (empty if none).",
+          input:
+            '{{#each steps.fetch.pages}}# {{item.title}} ({{item.url}})\n{{item.error}}\n\n## Text\n{{item.text}}\n\n## Links\n{{item.linkText}}\n\n{{/each}}',
+          schema: {
+            type: 'object',
+            properties: {
+              stories: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    headline: { type: 'string' },
+                    url: { type: 'string' },
+                    source: { type: 'string' },
+                    stats: { type: 'string' },
+                  },
+                  required: ['headline', 'url', 'source', 'stats'],
+                },
+              },
+            },
+            required: ['stories'],
+          },
+        },
+        {
+          id: 'read',
           type: 'for_each',
-          items: 'steps.fetch.pages',
+          items: 'steps.pick.data.stories',
           steps: [
-            // Names the site first, so every section says where it came from.
-            // `error` is empty unless the page could not be fetched, so a dead
-            // site shows as a heading and a short line instead of vanishing.
-            // One newline, not a blank line, so the summary (or nothing, when
-            // the summary is skipped for a dead site) follows without a gap.
+            // A story whose page can't be read (a paywall, a dead link) is
+            // skipped here and listed under "Also worth a look" instead.
+            { id: 'article', type: 'fetch_page', urls: ['{{item.url}}'], onError: 'skip' },
             {
-              id: 'heading',
-              type: 'template',
-              template: '## {{item.url}}\n{{item.error}}',
+              id: 'gist',
+              type: 'summarize',
+              prompt:
+                "Summarize this article for a morning briefing in 2 or 3 sentences: what happened, and the key detail or number. Then one sentence that starts with \"Why it matters:\" for a reader who cares about {{inputs.interests}}. Plain text, no headings. If the text below is not the article (a paywall, a cookie notice, an error page), reply only: Couldn't read the article.",
+              input: '{{steps.article.text}}',
+              onError: 'skip',
             },
             {
-              id: 'summary',
-              type: 'summarize',
-              prompt: 'List the three most important stories on this page, one line each.',
-              // Blank for a page that could not be fetched: the step then refuses (and
-              // is skipped) without calling the model.
-              input: '{{item.title}}\n\n{{item.text}}',
+              id: 'card',
+              type: 'template',
+              template: 'Headline: {{item.headline}}\nURL: {{item.url}}\nSite: {{item.source}} {{item.stats}}\nSummary: {{steps.gist.text}}',
               onError: 'skip',
             },
           ],
         },
         {
-          id: 'briefing',
-          type: 'template',
-          template:
-            '# Briefing for {{run.date}}\n\n{{#each steps.each_site.items}}{{item.heading.text}}{{item.summary.text}}\n\n{{/each}}',
+          id: 'write',
+          type: 'summarize',
+          prompt:
+            "Write today's morning briefing in Markdown for a reader who cares about: {{inputs.interests}}.\n\nStart with the line \"# Morning briefing, {{run.date}}\". Then a short opening paragraph (2 or 3 sentences) on the main threads of the day. Then group the stories under 2 to 4 \"## \" headings by theme. For each story: the headline in bold as a link to its URL, a line in italics with the site (and its numbers, if any), then its summary and why it matters. Put stories with no summary, or whose summary says the article couldn't be read, in a last section \"## Also worth a look\" as a list of links.\n\nUse only the facts in the stories below. Don't add any.",
+          input: '{{#each steps.read.items}}{{item.card.text}}\n\n{{/each}}',
         },
-        { id: 'save', type: 'save_artifact', title: 'Morning briefing', content: '{{steps.briefing.text}}' },
+        // A new document every morning, so each briefing stays in Results.
+        {
+          id: 'save',
+          type: 'save_artifact',
+          title: 'Morning briefing {{run.date}}',
+          content: '{{steps.write.text}}',
+          mode: 'create',
+        },
       ],
     },
   },

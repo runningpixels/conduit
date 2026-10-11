@@ -154,8 +154,9 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 /// What a step does. Each field that holds text is a template.
 ///
 /// Outputs, as later steps see them:
-/// - `fetch_page`: `pages` (each `url, title, text, links, lookedEmpty, error,
-///   contentType`) and `text` (all readable pages joined under their titles);
+/// - `fetch_page`: `pages` (each `url, title, text, links, linkText,
+///   lookedEmpty, error, contentType`; `linkText` is the page's links as
+///   "shown text - URL" lines) and `text` (all readable pages joined under their titles);
 ///   a CSV, JSON or plain-text response is kept as it came, not read as an article
 /// - `read_file`: `path`, `name`, `text`, `modified` and `bytes`
 /// - `parse_data`: a table (`columns`, `rows`, `count`, `text`, `warnings`), or
@@ -821,6 +822,7 @@ const ITEM_FIELDS: &[&str] = &[
     "title",
     "text",
     "links",
+    "linkText",
     "snippet",
     "error",
     "lookedEmpty",

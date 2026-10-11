@@ -78,7 +78,8 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
             {
               id: 'card',
               type: 'template',
-              template: 'Headline: {{item.headline}}\nURL: {{item.url}}\nSite: {{item.source}} {{item.stats}}\nSummary: {{steps.gist.text}}',
+              // The link is written here, ready to copy, so the briefing keeps it.
+              template: 'Link: [{{item.headline}}]({{item.url}})\nSite: {{item.source}} {{item.stats}}\nSummary: {{steps.gist.text}}',
               onError: 'skip',
             },
           ],
@@ -87,7 +88,7 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
           id: 'write',
           type: 'summarize',
           prompt:
-            "Write today's morning briefing in Markdown for a reader who cares about: {{inputs.interests}}.\n\nStart with the line \"# Morning briefing, {{run.date}}\". Then a short opening paragraph (2 or 3 sentences) on the main threads of the day. Then group the stories under 2 to 4 \"## \" headings by theme. For each story: the headline in bold as a link to its URL, a line in italics with the site (and its numbers, if any), then its summary and why it matters. Put stories with no summary, or whose summary says the article couldn't be read, in a last section \"## Also worth a look\" as a list of links.\n\nUse only the facts in the stories below. Don't add any.",
+            "Write today's morning briefing in Markdown for a reader who cares about: {{inputs.interests}}.\n\nStart with the line \"# Morning briefing, {{run.date}}\". Then a short opening paragraph (2 or 3 sentences) on the main threads of the day. Then group the stories under 2 to 4 \"## \" headings by theme. For each story, three paragraphs separated by blank lines: its Link exactly as given, in bold, followed by the site (and its numbers, if any) in italics; its summary; and why it matters. Put stories with no summary, or whose summary says the article couldn't be read, in a last section \"## Also worth a look\" as a list of links.\n\nUse only the facts in the stories below. Don't add any.",
           input: '{{#each steps.read.items}}{{item.card.text}}\n\n{{/each}}',
         },
         // A new document every morning, so each briefing stays in Results.

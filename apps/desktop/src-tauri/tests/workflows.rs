@@ -6240,7 +6240,7 @@ fn reading_briefing(base: &str) -> Value {
                 { "id": "gist", "type": "summarize", "prompt": "Summarize for {{inputs.interests}}.",
                   "input": "{{steps.article.text}}", "onError": "skip" },
                 { "id": "card", "type": "template", "onError": "skip",
-                  "template": "Headline: {{item.headline}}\nURL: {{item.url}}\nSite: {{item.source}} {{item.stats}}\nSummary: {{steps.gist.text}}" }
+                  "template": "Link: [{{item.headline}}]({{item.url}})\nSite: {{item.source}} {{item.stats}}\nSummary: {{steps.gist.text}}" }
             ]},
             { "id": "write", "type": "summarize", "prompt": "Write the briefing for {{run.date}}.",
               "input": "{{#each steps.read.items}}{{item.card.text}}\n\n{{/each}}" },
@@ -6311,7 +6311,9 @@ async fn the_reading_briefing_follows_the_links_and_saves_a_new_document_each_ru
         .unwrap()
         .to_string();
     assert!(
-        card.starts_with("Headline: A story whose page is gone"),
+        card.starts_with(&format!(
+            "Link: [A story whose page is gone]({base}/story-gone)"
+        )),
         "{card}"
     );
     assert!(card.ends_with("Summary: "), "{card}");

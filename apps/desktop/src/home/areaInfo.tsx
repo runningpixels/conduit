@@ -32,7 +32,8 @@ export type HomeAction =
   | 'add-connector'
   | 'browse-apps'
   | 'review-memory'
-  | 'open-reviews';
+  | 'open-reviews'
+  | 'open-results';
 
 /// What a button on Home does: open an area, or run an action.
 export type HomeTarget = { navigate: Destination } | { action: HomeAction };

@@ -17,7 +17,12 @@ describe('toastDismissMs', () => {
   });
 
   it('never dismisses a toast that offers an action', () => {
-    const toast = { ...workflowRunStatus('x', 'error'), action: { label: 'Open', run: () => {} } };
+    const toast = { ...makeStatus('x', 'error'), action: { label: 'Open', run: () => {} } };
     expect(toastDismissMs(toast)).toBeNull();
+  });
+
+  it('lets an action toast leave when it says how long to stay', () => {
+    const toast = { ...workflowRunStatus('x', 'success'), action: { label: 'Open', run: () => {} } };
+    expect(toastDismissMs(toast)).toBe(WORKFLOW_RUN_TOAST_MS);
   });
 });

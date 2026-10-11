@@ -398,8 +398,9 @@ function renderInline(
       continue;
     }
 
-    // Link: [text](url). Only allowlisted URLs become anchors.
-    const linkMatch = /^\[([^\]]+)\]\(([^)\s]+)\)/.exec(rest);
+    // Link: [text](url). Only allowlisted URLs become anchors. The text may
+    // hold one level of brackets, as titles do ("Math 2.0 [pdf]").
+    const linkMatch = /^\[((?:[^[\]]|\[[^[\]]*\])+)\]\(([^)\s]+)\)/.exec(rest);
     if (linkMatch) {
       const label = linkMatch[1];
       const url = linkMatch[2];
@@ -432,11 +433,12 @@ function renderInline(
       continue;
     }
 
-    // Bold: **...**
+    // Bold: **...**. Its text is inline Markdown too (`**[title](url)**`).
     const boldMatch = /^\*\*([^*]+)\*\*/.exec(rest);
     if (boldMatch) {
       flush();
-      push(<strong key={`${keyPrefix}-b${k}`}>{boldMatch[1]}</strong>);
+      const key = `${keyPrefix}-b${k}`;
+      push(<strong key={key}>{renderInline(boldMatch[1], key, options)}</strong>);
       i += boldMatch[0].length;
       continue;
     }
@@ -445,7 +447,8 @@ function renderInline(
     const italicMatch = /^\*([^*]+)\*/.exec(rest);
     if (italicMatch) {
       flush();
-      push(<em key={`${keyPrefix}-i${k}`}>{italicMatch[1]}</em>);
+      const key = `${keyPrefix}-i${k}`;
+      push(<em key={key}>{renderInline(italicMatch[1], key, options)}</em>);
       i += italicMatch[0].length;
       continue;
     }

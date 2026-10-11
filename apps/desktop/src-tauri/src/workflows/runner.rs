@@ -331,6 +331,7 @@ impl Runner<'_> {
             repo::finish_run_with_outcome(pool, &run.id, repo::NOTHING_NEW, step_id)
                 .await
                 .map_err(|e| e.to_string())?;
+            keep_outputs(pool, enc, &run.id).await;
             return repo::get_run(pool, enc, &run.id)
                 .await
                 .map_err(|e| e.to_string())?
@@ -345,6 +346,7 @@ impl Runner<'_> {
         repo::finish_run(pool, &run.id, status, error)
             .await
             .map_err(|e| e.to_string())?;
+        keep_outputs(pool, enc, &run.id).await;
         repo::get_run(pool, enc, &run.id)
             .await
             .map_err(|e| e.to_string())?
@@ -376,6 +378,14 @@ impl Runner<'_> {
             .await
             .map_err(|e| e.to_string())?;
         Ok(conversation.id)
+    }
+}
+
+/// Record what a finished run saved, for Results. A failure here is logged,
+/// not the run's: the outputs are worked out again when the run is listed.
+async fn keep_outputs(pool: &sqlx::SqlitePool, enc: &crate::encryption::Encryption, run_id: &str) {
+    if let Err(e) = repo::record_outputs(pool, enc, run_id).await {
+        tracing::warn!(run = %run_id, error = %e, "could not record what the run saved");
     }
 }
 
@@ -1241,7 +1251,7 @@ impl Exec<'_> {
                 Err(error) => {
                     failures.push(format!("{url}: {error}"));
                     pages.push(json!({
-                        "url": url, "title": null, "text": "", "links": [],
+                        "url": url, "title": null, "text": "", "links": [], "linkText": "",
                         "lookedEmpty": true, "contentType": null, "error": error,
                     }));
                 }
@@ -1279,6 +1289,7 @@ impl Exec<'_> {
             "lookedEmpty": looked_empty(&page),
             "text": page.text,
             "links": page.links,
+            "linkText": link_text(&page.anchors),
             "contentType": page.content_type,
             "error": null,
         }))
@@ -2210,6 +2221,28 @@ impl Exec<'_> {
         // The conversation too, so a run can open the document where it lives.
         Ok(json!({ "artifactId": id, "title": title, "conversationId": self.conversation_id }))
     }
+}
+
+/// Most lines in a page's `linkText`.
+const MAX_LINK_LINES: usize = 150;
+
+/// A page's links as "shown text - URL" lines, once per URL, leaving out
+/// links shown as a word or two (menus, "comments", "login"): what a model
+/// needs to pick stories from a front page and follow them.
+fn link_text(anchors: &[super::extract::Link]) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut lines = Vec::new();
+    for link in anchors {
+        let text = link.text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if text.split(' ').count() < 3 || !seen.insert(link.url.as_str()) {
+            continue;
+        }
+        lines.push(format!("{text} - {}", link.url));
+        if lines.len() == MAX_LINK_LINES {
+            break;
+        }
+    }
+    lines.join("\n")
 }
 
 /// `output` with the model the step used, and why it wasn't the chosen one.

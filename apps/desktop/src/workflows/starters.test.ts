@@ -11,34 +11,47 @@ function forEachBody(): WorkflowStep[] {
   return loop.steps;
 }
 
+/** The field names a summarize step's schema requires of each story. */
+function requiredStoryFields(step: WorkflowStep | undefined): string[] {
+  if (step?.type !== 'summarize' || !step.schema) return [];
+  const stories = (step.schema.properties as Record<string, { items?: { required?: string[] } }>).stories;
+  return stories?.items?.required ?? [];
+}
+
 describe('starters', () => {
   it('have unique ids and no condition syntax the engine lacks', () => {
     expect(new Set(STARTER_WORKFLOWS.map((s) => s.id)).size).toBe(STARTER_WORKFLOWS.length);
     expect(JSON.stringify(STARTER_WORKFLOWS)).not.toContain('{{#if');
   });
 
-  it('briefing names every site before its summary, and a failed site keeps its section', () => {
+  it('briefing picks stories from the front pages, reads each one and writes a dated document', () => {
+    const steps = briefing.definition.steps;
+    expect(steps.map((s) => s.type)).toEqual(['fetch_page', 'summarize', 'for_each', 'summarize', 'save_artifact']);
+    // The pick sees each page's links, so it can name the article itself, not the front page.
+    const pick = steps[1];
+    expect(pick.type === 'summarize' && pick.input).toContain('{{item.linkText}}');
+    expect(pick.type === 'summarize' && pick.schema).toBeTruthy();
+    const loop = steps[2];
+    expect(loop.type === 'for_each' && loop.items).toBe('steps.pick.data.stories');
     const body = forEachBody();
-    expect(body.map((s) => s.id)).toEqual(['heading', 'summary']);
-    const heading = body[0];
-    // The heading comes from the page (url, error), not from the step that may be skipped.
-    expect(heading.type === 'template' && heading.template).toContain('{{item.url}}');
-    expect(heading.type === 'template' && heading.template).toContain('{{item.error}}');
-    expect(body[1].onError).toBe('skip');
-    // A dead site renders as a heading and its error with no extra blank lines: the
-    // heading ends in one newline and the merge adds no separator before the summary.
-    expect(heading.type === 'template' && heading.template).toBe('## {{item.url}}\n{{item.error}}');
-    const summary = body[1];
-    // Blank for a dead site (no title, no text), so the summary step refuses without a model call.
-    expect(summary.type === 'summarize' && summary.input).toBe('{{item.title}}\n\n{{item.text}}');
-    const merge = briefing.definition.steps.find((s) => s.id === 'briefing');
-    const text = merge?.type === 'template' ? merge.template : '';
-    expect(text.indexOf('{{item.heading.text}}')).toBeGreaterThan(-1);
-    expect(text.indexOf('{{item.heading.text}}')).toBeLessThan(text.indexOf('{{item.summary.text}}'));
-    // Only fields every output has: a skipped step writes `text`, a good one lacks `error`.
-    expect(text).not.toContain('item.summary.error');
-    expect(text).toContain('{{item.heading.text}}{{item.summary.text}}\n\n{{/each}}');
-    expect(text).not.toContain('\n\n\n');
+    expect(body.map((s) => s.id)).toEqual(['article', 'gist', 'card']);
+    // A paywalled or dead link skips its own reading, never the run.
+    expect(body.every((s) => s.onError === 'skip')).toBe(true);
+    expect(body[0].type === 'fetch_page' && body[0].urls).toEqual(['{{item.url}}']);
+    // The card reads only story fields the schema requires, so it always renders.
+    const card = body[2];
+    const fields = [...(card.type === 'template' ? card.template : '').matchAll(/\{\{item\.([a-z]+)\}\}/g)].map((m) => m[1]);
+    expect(fields.length).toBeGreaterThan(0);
+    for (const field of fields) expect(requiredStoryFields(pick)).toContain(field);
+    const write = steps[3];
+    expect(write.type === 'summarize' && write.input).toBe('{{#each steps.read.items}}{{item.card.text}}\n\n{{/each}}');
+    // A new document per run, so every briefing stays in Results.
+    expect(steps[4]).toMatchObject({ type: 'save_artifact', mode: 'create', content: '{{steps.write.text}}' });
+    expect(steps[4].type === 'save_artifact' && steps[4].title).toContain('{{run.date}}');
+    // Every input the prompts read is one the user can set.
+    for (const m of JSON.stringify(steps).matchAll(/inputs\.([a-z_]+)/g)) {
+      expect(briefing.definition.inputs?.some((i) => i.id === m[1])).toBe(true);
+    }
   });
 
   it('watch-a-page compares the fetched text and notifies only after the check', () => {
@@ -101,13 +114,20 @@ describe('starters', () => {
       expect(needsDocumentTarget(starter.definition)).toBe(edits.some((e) => documentTarget(e) === ''));
       // Documents are never chosen on the user's behalf.
       for (const e of edits) expect(documentTarget(e)).toBe('');
-      starter.definition.steps.forEach((step, index) => {
-        const known = new Set(valuesAt(starter.definition, [index]).map((r) => r.path));
+      // A loop's own steps are checked where they stand, so they may read
+      // the loop steps before them.
+      const check = (step: WorkflowStep, at: number[]) => {
+        if (step.type === 'for_each') {
+          step.steps.forEach((inner, i) => check(inner, [...at, i]));
+          return;
+        }
+        const known = new Set(valuesAt(starter.definition, at).map((r) => r.path));
         for (const m of JSON.stringify(step).matchAll(/\{\{\s*([a-z0-9_.]+)\s*\}\}/g)) {
           if (m[1].startsWith('item') || m[1] === 'index') continue;
           expect(known.has(m[1]), `${starter.id}: ${m[1]}`).toBe(true);
         }
-      });
+      };
+      starter.definition.steps.forEach((step, index) => check(step, [index]));
     }
   });
 

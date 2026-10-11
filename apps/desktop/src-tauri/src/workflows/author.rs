@@ -130,7 +130,7 @@ const SPECS: &[Spec] = &[
             "list of text (templates)",
             "1 to 10 addresses; use {{inputs.x}} for ones the user will change",
         )],
-        outputs: "pages (a list; each has url, title, text, links, lookedEmpty, error), text (all pages joined)",
+        outputs: "pages (a list; each has url, title, text, links, linkText (the links as \"shown text - URL\" lines, for picking stories to follow), lookedEmpty, error), text (all pages joined)",
     },
     Spec {
         kind: "web_search",

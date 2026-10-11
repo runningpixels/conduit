@@ -34,6 +34,8 @@ import {
   cancelWorkflowDraft,
   getWorkflow,
   getWorkflowRun,
+  listWorkflowResults,
+  markWorkflowRunsSeen,
   answerWorkflowQuestion,
   answerWorkflowReview,
   listWorkflowQuestions,
@@ -57,6 +59,7 @@ import type {
   WorkflowQuestion,
   WorkflowReview,
   WorkflowReviewDecision,
+  WorkflowResult,
   WorkflowRunStep,
   WorkflowStep,
   WorkflowSummary,
@@ -66,6 +69,8 @@ import { describeStep, type InputLabels } from '../workflows/describeStep';
 import { findStep, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { reviewText } from '../workflows/permissionText';
+import { ResultView } from '../workflows/ResultView';
+import { isUnread, primaryOutput } from '../workflows/results';
 import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
 import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
 import { revealExportedFile, runTriggerLabel } from '../workflows/triggers';
@@ -97,6 +102,12 @@ export type WorkflowDraftRequest =
   | { nonce: number; description: string; conversationId?: undefined }
   | { nonce: number; conversationId: string; description?: string };
 
+/// Where Home, a toast or the rail sends the page: a workflow (with its waiting
+/// panel in view), or the Results list on a run.
+export type WorkflowsFocus =
+  | { workflowId: string; runId?: string; nonce?: number; view?: undefined }
+  | { view: 'results'; runId?: string; nonce?: number; workflowId?: undefined };
+
 function errorText(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
   return String(e);
@@ -127,6 +138,7 @@ export function WorkflowsPage({
   startNew = false,
   focus = null,
   draftRequest = null,
+  onResultsSeen,
 }: {
   onStatus: (message: string | StatusState) => void;
   /** Open a document a run saved, in its conversation's document panel. */
@@ -141,10 +153,12 @@ export function WorkflowsPage({
   refreshKey?: number;
   /** Open on the "new workflow" picker (Home's "New workflow"). */
   startNew?: boolean;
-  /** Open on this workflow, with its waiting panel in view (Home's "Answer"/"Review"). */
-  focus?: { workflowId: string; runId?: string; nonce?: number } | null;
+  /** Open on this workflow, with its waiting panel in view (Home's "Answer"/"Review"), or on the Results list. */
+  focus?: WorkflowsFocus | null;
   /** Draft a workflow from a description or a chat as soon as the page opens. */
   draftRequest?: WorkflowDraftRequest | null;
+  /** Runs were marked seen here, so the shell can refresh its unread dot. */
+  onResultsSeen?: () => void;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -158,6 +172,20 @@ export function WorkflowsPage({
   openRunRef.current = openRun;
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<Mode>(startNew ? { kind: 'new' } : { kind: 'view' });
+  /// The left column shows the workflows or the Results inbox. Component state only.
+  const [view, setView] = useState<'workflows' | 'results'>(focus?.view === 'results' ? 'results' : 'workflows');
+  const [results, setResults] = useState<WorkflowResult[]>([]);
+  const [selectedResultId, setSelectedResultId] = useState<string | null>(
+    focus?.view === 'results' ? (focus.runId ?? null) : null,
+  );
+  /// A run picked with "Open" in the run list; the result section shows it instead of the latest.
+  const [shownResultId, setShownResultId] = useState<string | null>(null);
+  /// The "How it's built" section; `null` follows the default (open until the first run).
+  const [stepsOpen, setStepsOpen] = useState<boolean | null>(null);
+  /// A run to open on its workflow page once that workflow has loaded ("Run details" from Results).
+  const pendingRunRef = useRef<string | null>(null);
+  const runDetailRef = useRef<HTMLDivElement | null>(null);
+  const scrollToRun = useRef(false);
   /// This page started a run and is waiting for it to end.
   const [started, setStarted] = useState(false);
   /// Reviews the backend has not accepted an answer to yet.
@@ -304,21 +332,79 @@ export function WorkflowsPage({
     void refreshList();
   }, [refreshList]);
 
+  /// Everything the workflows produced, newest first (the Results list and its count).
+  const refreshResults = useCallback(async () => {
+    try {
+      const next = await listWorkflowResults({ limit: 100 });
+      if (mounted.current && Array.isArray(next)) setResults(next);
+    } catch {
+      // The list stays as it was; the next refresh tries again.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshResults();
+  }, [refreshResults]);
+
   // A scheduled run finished or paused: re-read the list, and the selected workflow's runs.
   useEffect(() => {
     if (!refreshKey) return;
     void refreshList();
+    void refreshResults();
     if (selectedId) void listWorkflowRuns(selectedId, 20).then(setRuns, () => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
 
-  // Home sent us to a particular workflow: show it, not the previous selection.
+  // Home sent us to a particular workflow (or to Results): show it, not the previous selection.
   useEffect(() => {
     if (!focus) return;
     setMode({ kind: 'view' });
-    setSelectedId(focus.workflowId);
+    if (focus.view === 'results') {
+      setView('results');
+      setSelectedResultId(focus.runId ?? null);
+      void refreshResults();
+    } else {
+      setView('workflows');
+      setSelectedId(focus.workflowId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus?.workflowId, focus?.runId, focus?.nonce]);
+  }, [focus?.view, focus?.workflowId, focus?.runId, focus?.nonce]);
+
+  /// Mark runs as seen: at once in what is on screen, then in the backend.
+  function markSeen(runIds: string[]) {
+    const ids = new Set(runIds);
+    const seenAt = new Date().toISOString();
+    const stamp = (run: WorkflowRun) => (ids.has(run.id) && !run.seenAt ? { ...run, seenAt } : run);
+    setRuns((current) => current.map(stamp));
+    setResults((current) => current.map((r) => ({ ...r, run: stamp(r.run) })));
+    void Promise.resolve()
+      .then(() => markWorkflowRunsSeen(runIds))
+      .then(() => onResultsSeen?.())
+      .catch(() => {});
+  }
+
+  function markAllSeen() {
+    const seenAt = new Date().toISOString();
+    setRuns((current) => current.map((r) => (r.seenAt ? r : { ...r, seenAt })));
+    setResults((current) => current.map((r) => (r.run.seenAt ? r : { ...r, run: { ...r.run, seenAt } })));
+    void Promise.resolve()
+      .then(() => markWorkflowRunsSeen([]))
+      .then(() => onResultsSeen?.())
+      .catch(() => {});
+  }
+
+  /// Open a run on its workflow page, with its steps showing.
+  function showRunDetails(workflowId: string, runId: string) {
+    setView('workflows');
+    setMode({ kind: 'view' });
+    scrollToRun.current = true;
+    if (workflowId === selectedId) {
+      void openRunDetail(runId);
+    } else {
+      pendingRunRef.current = runId;
+      setSelectedId(workflowId);
+    }
+  }
 
   // Once the focused workflow's waiting panel is on screen, bring it into view.
   useEffect(() => {
@@ -405,11 +491,23 @@ export function WorkflowsPage({
     }
     let cancelled = false;
     setOpenRun(null);
+    setShownResultId(null);
+    setStepsOpen(null);
     void Promise.all([getWorkflow(selectedId), listWorkflowRuns(selectedId, 20)]).then(
       ([nextRecord, nextRuns]) => {
         if (cancelled) return;
         setRecord(nextRecord);
         setRuns(nextRuns);
+        const pending = pendingRunRef.current;
+        pendingRunRef.current = null;
+        if (pending) {
+          void getWorkflowRun(pending).then(
+            (detail) => {
+              if (!cancelled) setOpenRun(detail);
+            },
+            () => {},
+          );
+        }
         // A run still going (left and come back): show it, live.
         const live = nextRuns.find((r) => isLive(r.status));
         if (live) {
@@ -520,6 +618,8 @@ export function WorkflowsPage({
       );
       setRuns(await listWorkflowRuns(record.id, 20));
       await refreshList();
+      void refreshResults();
+      onResultsSeen?.();
     } catch (e) {
       onStatus(t('workspace.workflows.status.actionFailed', { error: errorText(e) }));
     } finally {
@@ -643,6 +743,88 @@ export function WorkflowsPage({
                 ? t('workspace.workflows.run.skipped')
                 : t('workspace.workflows.run.running');
 
+  // "Run details" asked for the steps: bring them into view once they are on screen.
+  useEffect(() => {
+    if (!openRun || !scrollToRun.current) return;
+    scrollToRun.current = false;
+    runDetailRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [openRun]);
+
+  const effectiveView = !loaded || summaries.length > 0 ? view : 'workflows';
+  const unreadCount = results.filter((r) => isUnread(r.run)).length;
+  const shownResult = results.find((r) => r.run.id === selectedResultId) ?? results[0] ?? null;
+  // Seeing a result in the inbox marks it seen.
+  const shownResultRunId = effectiveView === 'results' && loaded ? (shownResult?.run.id ?? null) : null;
+  const shownResultUnread = shownResult != null && isUnread(shownResult.run);
+  useEffect(() => {
+    if (shownResultRunId && shownResultUnread) markSeen([shownResultRunId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownResultRunId, shownResultUnread]);
+
+  // The newest run of the open workflow is "seen" once its result is on the page.
+  const pageLatest = runs.find((r) => !isLive(r.status) && (primaryOutput(r) != null || r.status === 'failed')) ?? null;
+  const pageLatestId = effectiveView === 'workflows' && mode.kind === 'view' && record ? (pageLatest?.id ?? null) : null;
+  const pageLatestUnread = pageLatest != null && isUnread(pageLatest);
+  useEffect(() => {
+    if (pageLatestId && pageLatestUnread) markSeen([pageLatestId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageLatestId, pageLatestUnread]);
+
+  const toggle = (
+    <div className="wf-view-toggle" role="group" aria-label={t('workspace.workflows.results.viewLabel')}>
+      <button
+        type="button"
+        className={`wf-view-btn${effectiveView === 'workflows' ? ' active' : ''}`}
+        aria-pressed={effectiveView === 'workflows'}
+        onClick={() => setView('workflows')}
+      >
+        {t('workspace.workflows.results.tabWorkflows')}
+      </button>
+      <button
+        type="button"
+        className={`wf-view-btn${effectiveView === 'results' ? ' active' : ''}`}
+        aria-pressed={effectiveView === 'results'}
+        onClick={() => {
+          setView('results');
+          void refreshResults();
+        }}
+      >
+        {unreadCount > 0
+          ? t('workspace.workflows.results.tabResultsCount', { count: unreadCount })
+          : t('workspace.workflows.results.tabResults')}
+      </button>
+    </div>
+  );
+
+  const resultsHeader = (
+    <>
+      {toggle}
+      {effectiveView === 'results' && unreadCount > 0 ? (
+        <button type="button" className="btn ghost wf-mark-all" onClick={markAllSeen}>
+          {t('workspace.workflows.results.markAll')}
+        </button>
+      ) : null}
+    </>
+  );
+
+  const resultRows = results.map(({ run: r, workflowName }) => {
+    const primary = primaryOutput(r);
+    return (
+      <PageListItem
+        key={r.id}
+        selected={shownResult?.run.id === r.id}
+        onSelect={() => setSelectedResultId(r.id)}
+        title={primary ? primary.title : t('workspace.workflows.result.failedTitle', { name: workflowName })}
+        status={
+          isUnread(r) ? (
+            <span className="wf-unread-dot" role="img" aria-label={t('workspace.workflows.results.unread')} />
+          ) : undefined
+        }
+        meta={t('workspace.workflows.result.eyebrow', { name: workflowName, when: fmt.timeAgo(r.finishedAt ?? r.startedAt) })}
+      />
+    );
+  });
+
   const list = summaries.map((w) => (
     <PageListItem
       key={w.id}
@@ -676,6 +858,22 @@ export function WorkflowsPage({
   let detail;
   if (!loaded) {
     detail = <div className="artifact-skeleton" aria-hidden="true" />;
+  } else if (effectiveView === 'results') {
+    detail = shownResult ? (
+      <div className="wf-detail">
+        <ResultView
+          key={shownResult.run.id}
+          run={shownResult.run}
+          workflowName={shownResult.workflowName}
+          onOpenDocument={onOpenDocument}
+          onOpenDeck={onOpenDeck}
+          onOpenDraft={onOpenDraft}
+          onRunDetails={() => showRunDetails(shownResult.run.workflowId, shownResult.run.id)}
+        />
+      </div>
+    ) : (
+      <PageEmpty title={t('workspace.workflows.results.empty')} />
+    );
   } else if (mode.kind === 'new' || (summaries.length === 0 && mode.kind !== 'draft')) {
     detail = (
       <StarterPicker
@@ -691,6 +889,12 @@ export function WorkflowsPage({
         }
         empty={summaries.length === 0}
         busy={busy}
+        existing={summaries}
+        onOpenExisting={(id) => {
+          setMode({ kind: 'view' });
+          setView('workflows');
+          setSelectedId(id);
+        }}
         onPick={(starter) => void startFrom(starter)}
         onBlank={startBlank}
         onCancel={summaries.length > 0 ? () => setMode({ kind: 'view' }) : undefined}
@@ -772,14 +976,36 @@ export function WorkflowsPage({
     detail = <div className="artifact-skeleton" aria-hidden="true" />;
   } else {
     const workflowInputs = record.definition.inputs ?? [];
+    const inputLabels = Object.fromEntries(workflowInputs.map((i) => [i.id, i.label]));
+    const nextRunAt = summaries.find((w) => w.id === record.id)?.nextRunAt;
+    // The newest run that ended with something to show (or failed), and the run picked from the list.
+    const latest = runs.find((r) => !isLive(r.status) && (primaryOutput(r) != null || r.status === 'failed')) ?? null;
+    const shown = (shownResultId ? runs.find((r) => r.id === shownResultId) : null) ?? latest;
     detail = (
       <div className="wf-detail" ref={detailRef}>
         <header className="wf-detail-head">
           <div>
             <h3 className="wf-name">{record.name}</h3>
             {record.description ? <p className="wf-description">{record.description}</p> : null}
+            {nextRunAt ? (
+              <span className="wf-flag wf-detail-next">
+                {t('workspace.workflows.list.nextRun', { when: formatNextRun(nextRunAt, fmt.locale) })}
+              </span>
+            ) : null}
           </div>
           <div className="mem-actions">
+            <button type="button" className="btn primary" onClick={() => void run()} disabled={running || busy}>
+              {liveRun?.status === 'paused'
+                ? t('workspace.workflows.run.paused')
+                : running
+                  ? t('workspace.workflows.run.running')
+                  : t('workspace.workflows.run.now')}
+            </button>
+            {running ? (
+              <button type="button" className="btn" onClick={() => void stop()} disabled={stopping}>
+                {stopping ? t('workspace.workflows.run.stopping') : t('workspace.workflows.run.stop')}
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn ghost"
@@ -864,42 +1090,106 @@ export function WorkflowsPage({
             />
           ))}
 
-        <section className="grp" aria-label={t('workspace.workflows.steps.title')}>
-          <div className="grp-label">{t('workspace.workflows.steps.title')}</div>
-          <StepList
-            steps={record.definition.steps}
-            labels={Object.fromEntries(workflowInputs.map((i) => [i.id, i.label]))}
-          />
+        {shown ? (
+          <section className="grp" aria-label={t('workspace.workflows.result.latest')}>
+            <div className="grp-label">
+              {shown === latest
+                ? t('workspace.workflows.result.latest')
+                : t('workspace.workflows.result.from', { when: fmt.timeAgo(shown.startedAt) })}
+            </div>
+            <ResultView
+              key={shown.id}
+              run={shown}
+              workflowName={record.name}
+              compact={shown === latest}
+              onOpenDocument={onOpenDocument}
+              onOpenDeck={onOpenDeck}
+              onOpenDraft={onOpenDraft}
+              onRunDetails={() => {
+                scrollToRun.current = true;
+                void openRunDetail(shown.id);
+              }}
+            />
+          </section>
+        ) : null}
+
+        <section className="grp" aria-label={t('workspace.workflows.runs.title')}>
+          <div className="grp-label">{t('workspace.workflows.runs.title')}</div>
+          {runs.length === 0 ? (
+            <p className="wf-muted">{t('workspace.workflows.runs.none')}</p>
+          ) : (
+            <ul className="wf-runs">
+              {runs.map((r) => {
+                const ms = durationMs(r.startedAt, r.finishedAt);
+                const hasResult = primaryOutput(r) != null;
+                return (
+                  <li key={r.id} className="wf-run-item">
+                    <button
+                      type="button"
+                      className="wf-run-row"
+                      aria-current={openRun?.run.id === r.id ? 'true' : undefined}
+                      onClick={() => void openRunDetail(r.id)}
+                    >
+                      {hasResult && isUnread(r) ? (
+                        <span className="wf-unread-dot" role="img" aria-label={t('workspace.workflows.results.unread')} />
+                      ) : null}
+                      <span className={STATUS_CLASS[r.status] ?? 'wf-status'}>
+                        {isNothingNew(r) ? t('workspace.workflows.run.nothingNew') : statusLabel(r.status)}
+                      </span>
+                      <span>{fmt.timeAgo(r.startedAt)}</span>
+                      {runTriggerLabel(r, t) ? <span className="wf-muted wf-run-trigger">{runTriggerLabel(r, t)}</span> : null}
+                      {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
+                    </button>
+                    {hasResult ? (
+                      <button
+                        type="button"
+                        className="btn ghost wf-run-open"
+                        aria-label={t('workspace.workflows.runs.openLabel', { when: fmt.timeAgo(r.startedAt) })}
+                        onClick={() => setShownResultId(r.id)}
+                      >
+                        {t('workspace.workflows.runs.open')}
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
 
-        <section className="grp wf-run-box" aria-label={t('workspace.workflows.run.title')}>
-          <div className="grp-label">{t('workspace.workflows.run.title')}</div>
-          {workflowInputs.map((input) => (
-            <label key={input.id} className="wf-field">
-              <span>{input.label}</span>
-              <input
-                className="mem-input"
-                value={inputs[input.id] ?? ''}
-                onChange={(e) => setInputs({ ...inputs, [input.id]: e.target.value })}
-                disabled={running}
-              />
-            </label>
-          ))}
-          <div className="mem-actions">
-            <button type="button" className="btn primary" onClick={() => void run()} disabled={running || busy}>
-              {liveRun?.status === 'paused'
-                ? t('workspace.workflows.run.paused')
-                : running
-                  ? t('workspace.workflows.run.running')
-                  : t('workspace.workflows.run.now')}
-            </button>
-            {running ? (
-              <button type="button" className="btn" onClick={() => void stop()} disabled={stopping}>
-                {stopping ? t('workspace.workflows.run.stopping') : t('workspace.workflows.run.stop')}
-              </button>
-            ) : null}
+        {openRun ? (
+          <div ref={runDetailRef}>
+            <RunDetail
+              detail={openRun}
+              steps={record.definition.steps}
+              labels={inputLabels}
+              statusLabel={statusLabel}
+              onOpenDocument={onOpenDocument}
+              onOpenDeck={onOpenDeck}
+              onOpenDraft={onOpenDraft}
+              onRestoreDocument={onRestoreDocument}
+              canRerun={!running && !busy}
+              onRerunFrom={(stepId) => void run(() => rerunWorkflowFrom(openRun.run.id, stepId))}
+            />
           </div>
-        </section>
+        ) : null}
+
+        {workflowInputs.length > 0 ? (
+          <section className="grp wf-run-box" aria-label={t('workspace.workflows.inputs.title')}>
+            <div className="grp-label">{t('workspace.workflows.inputs.title')}</div>
+            {workflowInputs.map((input) => (
+              <label key={input.id} className="wf-field">
+                <span>{input.label}</span>
+                <input
+                  className="mem-input"
+                  value={inputs[input.id] ?? ''}
+                  onChange={(e) => setInputs({ ...inputs, [input.id]: e.target.value })}
+                  disabled={running}
+                />
+              </label>
+            ))}
+          </section>
+        ) : null}
 
         <ScheduleSection
           workflowId={record.id}
@@ -911,50 +1201,14 @@ export function WorkflowsPage({
           onChanged={() => void refreshList()}
         />
 
-        <section className="grp" aria-label={t('workspace.workflows.runs.title')}>
-          <div className="grp-label">{t('workspace.workflows.runs.title')}</div>
-          {runs.length === 0 ? (
-            <p className="wf-muted">{t('workspace.workflows.runs.none')}</p>
-          ) : (
-            <ul className="wf-runs">
-              {runs.map((r) => {
-                const ms = durationMs(r.startedAt, r.finishedAt);
-                return (
-                  <li key={r.id}>
-                    <button
-                      type="button"
-                      className="wf-run-row"
-                      aria-current={openRun?.run.id === r.id ? 'true' : undefined}
-                      onClick={() => void openRunDetail(r.id)}
-                    >
-                      <span className={STATUS_CLASS[r.status] ?? 'wf-status'}>
-                        {isNothingNew(r) ? t('workspace.workflows.run.nothingNew') : statusLabel(r.status)}
-                      </span>
-                      <span>{fmt.timeAgo(r.startedAt)}</span>
-                      {runTriggerLabel(r, t) ? <span className="wf-muted wf-run-trigger">{runTriggerLabel(r, t)}</span> : null}
-                      {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        {openRun ? (
-          <RunDetail
-            detail={openRun}
-            steps={record.definition.steps}
-            labels={Object.fromEntries(workflowInputs.map((i) => [i.id, i.label]))}
-            statusLabel={statusLabel}
-            onOpenDocument={onOpenDocument}
-            onOpenDeck={onOpenDeck}
-            onOpenDraft={onOpenDraft}
-            onRestoreDocument={onRestoreDocument}
-            canRerun={!running && !busy}
-            onRerunFrom={(stepId) => void run(() => rerunWorkflowFrom(openRun.run.id, stepId))}
-          />
-        ) : null}
+        <details
+          className="grp wf-built"
+          open={stepsOpen ?? runs.length === 0}
+          onToggle={(e) => setStepsOpen(e.currentTarget.open)}
+        >
+          <summary className="grp-label">{t('workspace.workflows.steps.built')}</summary>
+          <StepList steps={record.definition.steps} labels={inputLabels} />
+        </details>
       </div>
     );
   }
@@ -966,8 +1220,9 @@ export function WorkflowsPage({
       subtitle={t('workspace.workflows.page.subtitle')}
       about={t('workspace.workflows.page.about')}
       actions={summaries.length > 0 ? newButton : undefined}
-      list={summaries.length > 0 ? list : undefined}
-      listLabel={t('workspace.workflows.page.title')}
+      list={summaries.length > 0 ? (effectiveView === 'results' ? resultRows : list) : undefined}
+      listHeader={summaries.length > 0 ? resultsHeader : undefined}
+      listLabel={effectiveView === 'results' ? t('workspace.workflows.results.tabResults') : t('workspace.workflows.page.title')}
     >
       {detail}
     </PageFrame>
@@ -1033,6 +1288,8 @@ function StarterPicker({
   describe,
   empty,
   busy,
+  existing,
+  onOpenExisting,
   onPick,
   onBlank,
   onCancel,
@@ -1040,22 +1297,56 @@ function StarterPicker({
   describe: ReactNode;
   empty: boolean;
   busy: boolean;
+  /// The workflows already saved: a starter with the same name asks before making another.
+  existing: WorkflowSummary[];
+  onOpenExisting: (workflowId: string) => void;
   onPick: (starter: StarterWorkflow) => void;
   onBlank: () => void;
   onCancel?: () => void;
 }) {
   const t = useT();
+  /// The starter whose name matches a saved workflow, until the user chooses.
+  const [duplicate, setDuplicate] = useState<StarterWorkflow | null>(null);
+  const pick = (starter: StarterWorkflow) => {
+    if (existing.some((w) => w.name === t(starter.nameKey))) setDuplicate(starter);
+    else onPick(starter);
+  };
   const cards = (
     <ul className="wf-starters">
-      {STARTER_WORKFLOWS.map((starter) => (
-        <li key={starter.id} className="wf-starter">
-          <p className="wf-starter-name">{t(starter.nameKey)}</p>
-          <p className="wf-muted">{t(starter.blurbKey)}</p>
-          <button type="button" className="btn ghost" disabled={busy} onClick={() => onPick(starter)}>
-            {t('workspace.workflows.starter.use')}
-          </button>
-        </li>
-      ))}
+      {STARTER_WORKFLOWS.map((starter) => {
+        const match = duplicate?.id === starter.id ? existing.find((w) => w.name === t(starter.nameKey)) : undefined;
+        return (
+          <li key={starter.id} className="wf-starter">
+            <p className="wf-starter-name">{t(starter.nameKey)}</p>
+            <p className="wf-muted">{t(starter.blurbKey)}</p>
+            {match ? (
+              <div className="wf-starter-exists" role="status">
+                <p className="wf-muted">{t('workspace.workflows.starter.exists', { name: match.name })}</p>
+                <div className="mem-actions">
+                  <button type="button" className="btn" onClick={() => onOpenExisting(match.id)}>
+                    {t('workspace.workflows.starter.openExisting')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      setDuplicate(null);
+                      onPick(starter);
+                    }}
+                  >
+                    {t('workspace.workflows.starter.makeCopy')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="btn ghost" disabled={busy} onClick={() => pick(starter)}>
+                {t('workspace.workflows.starter.use')}
+              </button>
+            )}
+          </li>
+        );
+      })}
       <li className="wf-starter">
         <p className="wf-starter-name">{t('workspace.workflows.starter.blank.name')}</p>
         <p className="wf-muted">{t('workspace.workflows.starter.blank.blurb')}</p>
@@ -1098,9 +1389,12 @@ function StepList({
   steps,
   labels,
   connectorNames,
+  scope = steps,
 }: {
   steps: WorkflowStep[];
   labels: InputLabels;
+  /// The top-level steps, so a loop can name the step it reads (a nested list passes them on).
+  scope?: WorkflowStep[];
   /// Set by a nested list; the top-level list looks the names up.
   connectorNames?: Record<string, string>;
 }) {
@@ -1111,9 +1405,9 @@ function StepList({
     <ol className="wf-steps">
       {steps.map((step) => (
         <li key={step.id}>
-          <span>{describeStep(step, t, labels, names)}</span>
+          <span>{describeStep(step, t, labels, names, scope)}</span>
           {step.onError === 'skip' ? <span className="wf-flag">{t('workspace.workflows.step.continuesOnError')}</span> : null}
-          {step.type === 'for_each' ? <StepList steps={step.steps} labels={labels} connectorNames={names} /> : null}
+          {step.type === 'for_each' ? <StepList steps={step.steps} labels={labels} connectorNames={names} scope={scope} /> : null}
         </li>
       ))}
     </ol>
@@ -1312,7 +1606,7 @@ function RunDetail({
             step={step}
             description={(() => {
               const def = findStep(steps, step.stepId);
-              return def ? describeStep(def, t, labels, connectorNames) : null;
+              return def ? describeStep(def, t, labels, connectorNames, steps) : null;
             })()}
             statusLabel={statusLabel}
             onOpenDocument={onOpenDocument}

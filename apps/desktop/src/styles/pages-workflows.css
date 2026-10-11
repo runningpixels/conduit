@@ -255,3 +255,41 @@
 .wf-describe-progress { display: flex; align-items: center; gap: var(--sp-3); }
 .wf-notes { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line-soft); }
 .wf-notes ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); }
+
+/* ── Results: the latest result, the inbox toggle, unread dots (workflows/ResultView.tsx) ── */
+.wf-result { display: grid; gap: var(--sp-3); }
+.wf-result-eyebrow { margin: 0; color: var(--ink-3); font: 500 var(--fs-md)/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+.wf-result-title { margin: 0; font-size: var(--fs-4xl); color: var(--ink); overflow-wrap: anywhere; }
+.wf-result-body { min-width: 0; }
+.wf-result-preview { margin: 0; color: var(--ink-2); font-size: var(--fs-2xl); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wf-result-file { margin: 0; font-size: var(--fs-2xl); }
+.wf-result-path { font-family: var(--font-mono); user-select: text; overflow-wrap: anywhere; }
+.wf-result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.wf-result-others { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.wf-unread-dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: var(--r-round); background: var(--accent); }
+.wf-run-item { display: flex; align-items: center; gap: var(--sp-2); }
+.wf-run-item .wf-run-row { flex: 1; min-width: 0; }
+.wf-run-open { flex: none; }
+.wf-detail-next { display: inline-block; margin: var(--sp-2) 0 0; }
+.wf-built > summary { cursor: pointer; }
+.wf-built[open] > summary { margin-bottom: var(--sp-3); }
+.wf-starter-exists { display: grid; gap: var(--sp-2); }
+
+/* Workflows | Results, in the list column. Same look as the document panel's view toggle. */
+.wf-view-toggle { display: flex; gap: 1px; padding: 2px; border-radius: var(--r-sm); background: var(--card-hi); }
+.wf-view-btn {
+  flex: 1;
+  padding: 4px 10px;
+  font: 500 var(--fs-lg)/1 var(--font-ui);
+  color: var(--ink-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: var(--tap);
+}
+.wf-view-btn:hover { color: var(--ink); }
+.wf-view-btn.active { color: var(--ink); background: var(--card); box-shadow: var(--shadow-tab-active); }
+html[data-theme="dark"] .wf-view-btn.active { background: var(--card-hi); filter: brightness(1.25); }
+.wf-mark-all { justify-self: start; }

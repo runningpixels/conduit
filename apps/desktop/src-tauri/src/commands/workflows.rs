@@ -11,7 +11,8 @@ use tauri::State;
 use crate::artifact_network::AddressPolicy;
 use crate::db::repository::conversations;
 use crate::db::repository::workflows::{
-    self as repo, WorkflowRecord, WorkflowRun, WorkflowRunDetail, WorkflowSchedule, WorkflowSummary,
+    self as repo, WorkflowRecord, WorkflowResult, WorkflowRun, WorkflowRunDetail, WorkflowSchedule,
+    WorkflowSummary,
 };
 use crate::state::AppState;
 use crate::stream_manager::StreamManager;
@@ -286,7 +287,51 @@ pub async fn list_workflow_runs(
     repo::add_trigger_items(&state.db, &state.encryption, &mut runs)
         .await
         .map_err(|e| e.to_string())?;
+    repo::add_outputs(&state.db, &state.encryption, &mut runs)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(runs)
+}
+
+/// Finished runs that saved something (or failed on their own), newest first:
+/// across every workflow, or one workflow's with `workflow_id`.
+#[tauri::command]
+pub async fn list_workflow_results(
+    state: State<'_, AppState>,
+    workflow_id: Option<String>,
+    unread_only: Option<bool>,
+    limit: Option<i64>,
+) -> Result<Vec<WorkflowResult>, String> {
+    repo::list_results(
+        &state.db,
+        &state.encryption,
+        workflow_id.as_deref(),
+        unread_only.unwrap_or(false),
+        limit.unwrap_or(50).clamp(1, 500),
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// How many results haven't been opened yet.
+#[tauri::command]
+pub async fn count_unread_workflow_results(state: State<'_, AppState>) -> Result<i64, String> {
+    repo::unread_result_count(&state.db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Mark runs as seen: `run_ids`, or with none, every run of `workflow_id`
+/// (every run when that is missing too). Returns how many changed.
+#[tauri::command]
+pub async fn mark_workflow_runs_seen(
+    state: State<'_, AppState>,
+    run_ids: Vec<String>,
+    workflow_id: Option<String>,
+) -> Result<u64, String> {
+    repo::mark_seen(&state.db, &run_ids, workflow_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

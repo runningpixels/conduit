@@ -854,6 +854,35 @@ export interface WorkflowRun {
   outcome?: string | null;
   /** The step id the run stopped at, when `outcome` says so. */
   outcomeStep?: string | null;
+  /** When the user opened (or saw in place) what the run produced; null while unread. */
+  seenAt?: string | null;
+  /** What the run saved, for a finished run; absent while running. */
+  outputs?: WorkflowRunOutput[] | null;
+}
+
+/** One thing a run saved (a document, deck, draft or file), for "Open". */
+export interface WorkflowRunOutput {
+  kind: 'document' | 'deck' | 'draft' | 'file';
+  title: string;
+  /** The step that saved it. */
+  stepId: string;
+  artifactId?: string;
+  /** Where a document lives (the workflow's own conversation). */
+  conversationId?: string;
+  deckId?: string;
+  draftId?: string;
+  /** For a file: where it was written. */
+  path?: string;
+  /** The start of what was saved, as one line of plain text. */
+  preview?: string;
+  /** A save that found the same content as last time and kept it. */
+  unchanged?: boolean;
+}
+
+/** A finished run in the Results list. */
+export interface WorkflowResult {
+  run: WorkflowRun;
+  workflowName: string;
 }
 
 export interface WorkflowRunStep {

@@ -115,6 +115,27 @@ describe('safeMarkdown structure', () => {
     expect(pre?.querySelector('code')?.textContent).toBe('fn main() {}');
   });
 
+  it('parses links and code inside bold and italic text', () => {
+    const { container } = render(
+      <>{renderMarkdown('**[Deno joins Cloudflare](https://deno.com/blog)** and *see `deno` or [docs](javascript:x)*')}</>,
+    );
+    const link = container.querySelector('strong > a');
+    expect(link?.getAttribute('href')).toBe('https://deno.com/blog');
+    expect(link?.textContent).toBe('Deno joins Cloudflare');
+    expect(container.querySelector('em > code')?.textContent).toBe('deno');
+    // An unsafe link stays text, nested or not.
+    expect(container.querySelector('em a')).toBeNull();
+    expect(container.textContent).not.toContain('**');
+  });
+
+  it('keeps brackets that are part of a link text', () => {
+    const { container } = render(<>{renderMarkdown('**[Math 2.0 [pdf]](https://example.com/m.pdf)** [a] b')}</>);
+    const link = container.querySelector('strong > a');
+    expect(link?.textContent).toBe('Math 2.0 [pdf]');
+    expect(link?.getAttribute('href')).toBe('https://example.com/m.pdf');
+    expect(container.textContent).toContain('[a] b');
+  });
+
   it('renders an ordered list', () => {
     const { container } = render(<>{renderMarkdown('1. first\n2. second')}</>);
     expect(container.querySelectorAll('ol > li').length).toBe(2);

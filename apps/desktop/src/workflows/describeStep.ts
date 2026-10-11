@@ -57,14 +57,37 @@ const CONDITION_STEP_KEY: Record<ConditionTest, string> = {
   equals: 'workspace.workflows.step.condition.equals',
 };
 
+/// What one entry of a list is called, by the list's name ("pages" -> "page").
+const SINGULAR: Record<string, string> = {
+  pages: 'page',
+  items: 'item',
+  results: 'result',
+  rows: 'row',
+  stories: 'story',
+  files: 'file',
+};
+
+/// A loop over `steps.<id>.<list>` as "step N" and what one entry is, or `null`
+/// when the list is not an earlier step's output.
+export function forEachSource(items: string, scope: readonly WorkflowStep[]): { n: number; kind: string } | null {
+  const match = /^(?:\{\{\s*)?steps\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_.-]+?)(?:\s*\}\})?$/.exec(items.trim());
+  if (!match) return null;
+  const index = scope.findIndex((s) => s.id === match[1]);
+  if (index < 0) return null;
+  const last = match[2].split('.').pop() ?? '';
+  return { n: index + 1, kind: SINGULAR[last] ?? 'item' };
+}
+
 /// The step's line, with a brief mention of its own model when it has one.
+/// `scope` is the workflow's top-level steps, so a loop can say which step it reads.
 export function describeStep(
   step: WorkflowStep,
   t: Translate,
   labels: InputLabels = {},
   connectorNames: Record<string, string> = {},
+  scope: readonly WorkflowStep[] = [],
 ): string {
-  const line = describeKind(step, t, labels, connectorNames);
+  const line = describeKind(step, t, labels, connectorNames, scope);
   const only =
     (step.type === 'notify' || step.type === 'save_artifact') && step.onlyIfChanged
       ? `${line} (${t('workspace.workflows.step.onlyIfChanged')})`
@@ -74,7 +97,13 @@ export function describeStep(
     : only;
 }
 
-function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels, connectorNames: Record<string, string>): string {
+function describeKind(
+  step: WorkflowStep,
+  t: Translate,
+  labels: InputLabels,
+  connectorNames: Record<string, string>,
+  scope: readonly WorkflowStep[],
+): string {
   const q = (text: string) => quote(text, t, labels);
   switch (step.type) {
     case 'fetch_page':
@@ -112,7 +141,12 @@ function describeKind(step: WorkflowStep, t: Translate, labels: InputLabels, con
     case 'template':
       return t('workspace.workflows.step.template');
     case 'for_each':
-      return t('workspace.workflows.step.forEach', { items: step.items });
+    {
+      const source = forEachSource(step.items, scope);
+      return source
+        ? t('workspace.workflows.step.forEachFrom', source)
+        : t('workspace.workflows.step.forEach', { items: step.items });
+    }
     case 'save_artifact':
       return (step.format ?? 'markdown') === 'html'
         ? t('workspace.workflows.step.saveHtml', { title: q(step.title) })

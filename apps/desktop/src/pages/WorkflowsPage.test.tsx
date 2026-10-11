@@ -36,6 +36,9 @@ const ipc = vi.hoisted(() => ({
   listDrafts: vi.fn(),
   restoreDeckSnapshot: vi.fn(),
   restoreDraftSnapshot: vi.fn(),
+  listWorkflowResults: vi.fn(),
+  markWorkflowRunsSeen: vi.fn(),
+  getArtifact: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -130,6 +133,9 @@ describe('WorkflowsPage', () => {
     ipc.listProviderDescriptors.mockResolvedValue([{ id: 'openrouter', displayName: 'OpenRouter' }]);
     ipc.listDecks.mockResolvedValue([]);
     ipc.listDrafts.mockResolvedValue([]);
+    ipc.listWorkflowResults.mockResolvedValue([]);
+    ipc.markWorkflowRunsSeen.mockResolvedValue(0);
+    ipc.getArtifact.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -370,12 +376,12 @@ describe('WorkflowsPage', () => {
   it('shows the steps in words and runs with the inputs as edited', async () => {
     const onStatus = vi.fn();
     render(<WorkflowsPage onStatus={onStatus} />);
-    const steps = await screen.findByRole('region', { name: 'Steps' });
+    const steps = (await screen.findByText('How it’s built')).closest('details')!;
     expect(within(steps).getByText('Fetch 2 pages: [First site], [Second site]')).toBeInTheDocument();
-    expect(within(steps).getByText('For each item in steps.fetch.pages:')).toBeInTheDocument();
-    expect(within(steps).getByText(/^Ask the model: “List the three most important/)).toBeInTheDocument();
-    expect(within(steps).getByText('keeps going if this fails')).toBeInTheDocument();
-    expect(within(steps).getByText('Save as a document: “Morning briefing”')).toBeInTheDocument();
+    expect(within(steps).getByText('For each story from step 2:')).toBeInTheDocument();
+    expect(within(steps).getByText(/^Ask the model: “Summarize this article/)).toBeInTheDocument();
+    expect(within(steps).getAllByText('keeps going if this fails').length).toBeGreaterThan(0);
+    expect(within(steps).getByText(/^Save as a document: “Morning briefing/)).toBeInTheDocument();
 
     const first = screen.getByRole('textbox', { name: 'First site' });
     expect(first).toHaveValue('https://news.ycombinator.com');
@@ -385,6 +391,7 @@ describe('WorkflowsPage', () => {
       expect(ipc.runWorkflow).toHaveBeenCalledWith('w1', {
         site_one: 'https://example.com',
         site_two: 'https://www.theverge.com',
+        interests: 'software development, AI, open source',
       }),
     );
 
@@ -899,6 +906,115 @@ describe('WorkflowsPage', () => {
       ipc.listWorkflowRuns.mockResolvedValue([{ ...live, workflowId: 'other' }]);
       render(<WorkflowsPage onStatus={vi.fn()} />);
       expect(await screen.findByRole('button', { name: 'Run now' })).toBeEnabled();
+    });
+  });
+
+  describe('results', () => {
+    const doc = { kind: 'document' as const, title: 'Briefing Monday', stepId: 'save', artifactId: 'a1', conversationId: 'c1', preview: 'Three stories' };
+    const saved = (id: string, over: Record<string, unknown> = {}) => ({
+      ...finishedRun.run,
+      id,
+      status: 'completed' as const,
+      error: null,
+      seenAt: null,
+      outputs: [{ ...doc, title: `Briefing ${id}` }],
+      ...over,
+    });
+
+    it('leads with the latest result, marks it seen and opens it in chat', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([saved('r2'), saved('r1', { seenAt: '2026-09-28T09:00:00Z' })]);
+      const onOpenDocument = vi.fn();
+      const onResultsSeen = vi.fn();
+      render(<WorkflowsPage onStatus={vi.fn()} onOpenDocument={onOpenDocument} onResultsSeen={onResultsSeen} />);
+      const latest = await screen.findByRole('region', { name: 'Latest result' });
+      expect(within(latest).getByRole('heading', { name: 'Briefing r2' })).toBeInTheDocument();
+      await waitFor(() => expect(ipc.markWorkflowRunsSeen).toHaveBeenCalledWith(['r2']));
+      await waitFor(() => expect(onResultsSeen).toHaveBeenCalled());
+      fireEvent.click(within(latest).getByRole('button', { name: 'Open in chat' }));
+      expect(onOpenDocument).toHaveBeenCalledWith('c1', 'a1');
+    });
+
+    it('has no latest result before the first run, and shows the steps open', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      await screen.findByText('No runs yet.');
+      expect(screen.queryByRole('region', { name: 'Latest result' })).toBeNull();
+      expect(screen.getByText('How it’s built').closest('details')).toHaveAttribute('open');
+    });
+
+    it('opens the result of any run from its row', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([saved('r2'), saved('r1', { seenAt: '2026-09-28T09:00:00Z' })]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      await screen.findByRole('region', { name: 'Latest result' });
+      const rows = screen.getAllByRole('button', { name: /^Open the result from/ });
+      expect(rows).toHaveLength(2);
+      fireEvent.click(rows[1]);
+      expect(await screen.findByRole('heading', { name: 'Briefing r1' })).toBeInTheDocument();
+    });
+
+    it('lists every result in the inbox, newest first, and marks the one shown as seen', async () => {
+      const first = { workflowName: 'Morning briefing', run: saved('r2') };
+      const second = { workflowName: 'Topic watch', run: saved('r1', { workflowId: 'w2', outputs: [], status: 'failed', error: 'Timed out' }) };
+      ipc.listWorkflowResults.mockResolvedValue([first, second]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const toggle = await screen.findByRole('button', { name: 'Results 2' });
+      fireEvent.click(toggle);
+      expect(await screen.findByText('Failed: Topic watch')).toBeInTheDocument();
+      await waitFor(() => expect(ipc.markWorkflowRunsSeen).toHaveBeenCalledWith(['r2']));
+      fireEvent.click(screen.getByText('Failed: Topic watch'));
+      expect(await screen.findByText('Timed out')).toBeInTheDocument();
+      await waitFor(() => expect(ipc.markWorkflowRunsSeen).toHaveBeenCalledWith(['r1']));
+    });
+
+    it('marks everything read, and says so when there is nothing yet', async () => {
+      ipc.listWorkflowResults.mockResolvedValue([
+        { workflowName: 'Morning briefing', run: saved('r2') },
+        { workflowName: 'Morning briefing', run: saved('r1') },
+      ]);
+      render(<WorkflowsPage onStatus={vi.fn()} focus={{ view: 'results', nonce: 1 }} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Mark all as read' }));
+      await waitFor(() => expect(ipc.markWorkflowRunsSeen).toHaveBeenCalledWith([]));
+    });
+
+    it('shows the empty inbox', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} focus={{ view: 'results', nonce: 1 }} />);
+      expect(await screen.findByText('Nothing yet. When a workflow saves a document, it shows up here.')).toBeInTheDocument();
+    });
+
+    it('opens a given run in the inbox, and its run details on the workflow page', async () => {
+      ipc.listWorkflowResults.mockResolvedValue([
+        { workflowName: 'Morning briefing', run: saved('r2') },
+        { workflowName: 'Morning briefing', run: saved('r1') },
+      ]);
+      ipc.getWorkflowRun.mockResolvedValue({ ...finishedRun, run: saved('r1') });
+      render(<WorkflowsPage onStatus={vi.fn()} focus={{ view: 'results', runId: 'r1', nonce: 1 }} />);
+      expect(await screen.findByRole('heading', { name: 'Briefing r1', level: 4 })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Run details' }));
+      expect(await screen.findByRole('region', { name: 'What this run did' })).toBeInTheDocument();
+      expect(ipc.getWorkflowRun).toHaveBeenCalledWith('r1');
+    });
+  });
+
+  describe('a starter you already have', () => {
+    it('asks before making another copy, and can open the existing one', async () => {
+      ipc.listWorkflows.mockResolvedValue([summary]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'New workflow' }));
+      const card = (await screen.findByText('Morning briefing', { selector: '.wf-starter-name' })).closest('li')!;
+      fireEvent.click(within(card).getByRole('button', { name: 'Use this' }));
+      expect(ipc.createWorkflow).not.toHaveBeenCalled();
+      expect(within(card).getByText('You already have “Morning briefing”.')).toBeInTheDocument();
+      fireEvent.click(within(card).getByRole('button', { name: 'Make another copy' }));
+      await waitFor(() => expect(ipc.createWorkflow).toHaveBeenCalled());
+    });
+
+    it('opens the one you have', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'New workflow' }));
+      const card = (await screen.findByText('Morning briefing', { selector: '.wf-starter-name' })).closest('li')!;
+      fireEvent.click(within(card).getByRole('button', { name: 'Use this' }));
+      fireEvent.click(within(card).getByRole('button', { name: 'Open it' }));
+      expect(await screen.findByRole('heading', { name: 'Morning briefing', level: 3 })).toBeInTheDocument();
+      expect(ipc.createWorkflow).not.toHaveBeenCalled();
     });
   });
 });

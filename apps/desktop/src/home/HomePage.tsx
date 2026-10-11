@@ -14,10 +14,11 @@ import {
   listMemoryItems,
   listPrompts,
   listWorkflowQuestions,
+  listWorkflowResults,
   listWorkflowReviews,
   listWorkflows,
 } from '../ipc/client';
-import type { AppSummary, ConversationSummary, DeckSummary, DraftSummary } from '../ipc/contracts';
+import type { AppSummary, ConversationSummary, DeckSummary, DraftSummary, WorkflowResult } from '../ipc/contracts';
 import type { Capabilities } from '../ideas/capabilities';
 import type { Idea } from '../ideas/catalog';
 import type { IdeaState } from '../ideas/ideaState';
@@ -25,6 +26,7 @@ import type { Destination } from '../shell/Rail';
 import { Areas } from './Areas';
 import { AskBox } from './AskBox';
 import { EMPTY_COUNTS, type AreaCounts, type HomeAction } from './areaInfo';
+import { FreshResults } from './FreshResults';
 import { NO_NEEDS, NeedsYou, hasNeeds, type NeedsYouState, type WorkflowTarget } from './NeedsYou';
 import { PickUp } from './PickUp';
 import { TryIdeas } from './TryIdeas';
@@ -60,6 +62,8 @@ export interface HomePageProps {
   onMoreIdeas: () => void;
   /** The hour (0-23) for the greeting; the clock by default. For tests. */
   hour?: number;
+  /** Changes when a workflow run finishes; fresh results are re-read. */
+  refreshKey?: number;
 }
 
 /** How often "needs you" is re-read while Home is open. */
@@ -112,6 +116,7 @@ export function HomePage({
   onTryIdea,
   onMoreIdeas,
   hour,
+  refreshKey,
 }: HomePageProps) {
   const t = useT();
   const headingId = useId();
@@ -135,6 +140,7 @@ export function HomePage({
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [needs, setNeeds] = useState<NeedsYouState>(NO_NEEDS);
+  const [fresh, setFresh] = useState<WorkflowResult[]>([]);
   const [lists, setLists] = useState<{ workflows: number | null; prompts: number | null; connectors: number | null; memories: number | null }>({
     workflows: null,
     prompts: null,
@@ -180,10 +186,14 @@ export function HomePage({
   // you" also on a timer, so a review that arrives while Home is open shows.
   useEffect(() => {
     let cancelled = false;
-    const refreshNeeds = () =>
+    const refreshNeeds = () => {
       void loadNeeds().then((next) => {
         if (!cancelled) setNeeds(next);
       });
+      void listOr(() => listWorkflowResults({ unreadOnly: true, limit: 3 })).then((next) => {
+        if (!cancelled && next) setFresh(next);
+      });
+    };
     const refreshAll = () => {
       refreshNeeds();
       void loadLists().then((next) => {
@@ -201,7 +211,8 @@ export function HomePage({
       window.removeEventListener('focus', refreshAll);
       window.clearInterval(timer);
     };
-  }, [loadNeeds, loadLists]);
+    // `refreshKey`: a run finished while Home is open.
+  }, [loadNeeds, loadLists, refreshKey]);
 
   const pickUp = useMemo(
     () => buildPickUp(conversations, decks, savedApps, undefined, drafts),
@@ -246,6 +257,7 @@ export function HomePage({
             />
           </header>
           {hasNeeds(needs) && <NeedsYou needs={needs} onAction={onAction} />}
+          <FreshResults results={fresh} onAction={onAction} />
           <PickUp
             items={pickUp}
             onOpenChat={onOpenChat}

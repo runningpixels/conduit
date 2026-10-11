@@ -11,6 +11,7 @@ import {
   listMemoryItems,
   listPrompts,
   listWorkflowQuestions,
+  listWorkflowResults,
   listWorkflowReviews,
   listWorkflows,
 } from '../ipc/client';
@@ -23,6 +24,7 @@ vi.mock('../ipc/client', () => ({
   listMemoryItems: vi.fn(),
   listPrompts: vi.fn(),
   listWorkflowQuestions: vi.fn(),
+  listWorkflowResults: vi.fn(),
   listWorkflowReviews: vi.fn(),
   listWorkflows: vi.fn(),
 }));
@@ -119,6 +121,7 @@ beforeEach(() => {
   vi.mocked(listDrafts).mockResolvedValue([]);
   vi.mocked(listWorkflowReviews).mockResolvedValue([]);
   vi.mocked(listWorkflowQuestions).mockResolvedValue([]);
+  vi.mocked(listWorkflowResults).mockResolvedValue([]);
   vi.mocked(listMemoryItems).mockResolvedValue([]);
   vi.mocked(listWorkflows).mockResolvedValue([]);
   vi.mocked(listPrompts).mockResolvedValue([]);
@@ -455,5 +458,46 @@ describe('HomePage Research chip', () => {
     expect(chip).toHaveAttribute('title', 'Type a question first');
     fireEvent.click(chip);
     expect(p.onResearch).not.toHaveBeenCalled();
+  });
+});
+
+describe('HomePage fresh results', () => {
+  const result = (id: string, over: Record<string, unknown> = {}) =>
+    ({
+      workflowName: 'Morning briefing',
+      run: {
+        id,
+        workflowId: 'w1',
+        status: 'completed',
+        startedAt: '2026-10-11T07:00:00Z',
+        finishedAt: '2026-10-11T07:01:00Z',
+        seenAt: null,
+        outputs: [{ kind: 'document', title: `Briefing ${id}`, stepId: 'save', preview: 'Three stories today' }],
+        ...over,
+      },
+    }) as never;
+
+  it('is absent when nothing is unread', async () => {
+    await renderHome();
+    expect(screen.queryByText('Fresh from your workflows')).toBeNull();
+    expect(listWorkflowResults).toHaveBeenCalledWith({ unreadOnly: true, limit: 3 });
+  });
+
+  it('shows unread results and opens one on the Workflows page', async () => {
+    vi.mocked(listWorkflowResults).mockResolvedValue([result('r1'), result('r2')]);
+    const { p } = await renderHome();
+    expect(await screen.findByText('Fresh from your workflows')).toBeInTheDocument();
+    expect(screen.getAllByText('Three stories today')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /Briefing r2/ }));
+    expect(p.onAction).toHaveBeenCalledWith('open-results', { workflowId: 'w1', runId: 'r2' });
+    fireEvent.click(screen.getByRole('button', { name: 'See all results' }));
+    expect(p.onAction).toHaveBeenLastCalledWith('open-results');
+  });
+
+  it('titles a failed run by its workflow', async () => {
+    vi.mocked(listWorkflowResults).mockResolvedValue([result('r3', { status: 'failed', outputs: [], error: 'Timed out' })]);
+    await renderHome();
+    expect(await screen.findByText('Failed: Morning briefing')).toBeInTheDocument();
+    expect(screen.getByText('Timed out')).toBeInTheDocument();
   });
 });

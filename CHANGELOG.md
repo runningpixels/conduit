@@ -7,6 +7,87 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.11] - 2026-10-10
+
+Pages can now reach the web like real websites, chats can read pages you name,
+and the composer puts web search and Research one click away.
+
+### Added
+
+- **Full web access for a page, when you allow it.** A page that loads
+  scripts, styles, images or video from other sites asks once: "This page
+  wants full web access", and lists what it tried to load. Allow it and the
+  page loads like a website: libraries from CDNs, map tiles, embedded videos,
+  and data from any site without a question per site. It still can't reach the
+  app, your files or other pages, link clicks are still confirmed, and model
+  calls still ask first. You can take the access back in Settings → Artifact
+  security or from the page's site chip. A Settings switch, off by default,
+  gives every page full access.
+- **Pages with full access get their own address.** Each one runs on its own
+  private origin, so sites that check where a request comes from
+  (OpenStreetMap tiles, for one) now answer, video embeds play, and a page
+  keeps what it saves across reloads and restarts.
+- **Clear a page's data, like a browser's "delete cookies and site data".**
+  "Clear site data" in a page's ⋯ menu, and "Clear data for all pages" in
+  Settings → Privacy & data, which also removes cookies set by embedded sites.
+  A page's data is cleared automatically when it is deleted or loses full
+  access.
+- **Chat can open web pages you name.** With web access on in Settings, any
+  chat can read a site or link you mention, such as "open Hacker News and
+  summarize the top stories", without turning on web search first. It reads up
+  to 12 pages a turn and gets each page's links.
+- **Free APIs in Ideas.** A tested list of 29 free, keyless APIs (weather,
+  earthquakes, crypto prices, books and more), each with a Try button, plus 22
+  new live-data ideas built on them.
+- **Web and Research toggles in the composer.** Two labelled buttons next to
+  **+** show whether web search and Research are on, and say why when they're
+  unavailable.
+- **Type `/` for tools.** `/web`, `/research`, `/folder`, `/file` and `/skill`
+  from the start of the message box. A new chat also offers starter chips:
+  work in a folder, ask about a file, use a skill.
+- **Every artifact in a chat, one click away.** When no artifact is open, the
+  side panel lists the chat's artifacts, newest first. Opening a chat brings
+  back the artifact you last had open in it, and when a chat has several, the
+  panel title switches between them.
+
+### Changed
+
+- **Follow-ups reach the open document in any language.** Asking "can you add
+  a chart to it?" (or "tu peux ajouter un graphique ?") now edits the document
+  that's open, instead of being treated as a question.
+- **The model remembers what it did.** Earlier replies keep a short record of
+  the documents they made or edited, pages fetched and searches run, so the
+  model no longer doubts its own earlier work.
+- **The folder a chat can use is always shown.** The default folder from
+  Settings now shows as a chip marked "(default)". Removing it turns folder
+  access off for that chat only. Picking a folder in a chat no longer changes
+  the default.
+- **Suggested follow-up chips are gone.** The generic chips above the message
+  box ("Tighten the wording" and so on) didn't fit what you were doing, so
+  they were removed.
+- **"Check now" says when you're up to date.**
+- **Updates privacy text corrected.** It said release notes and links were
+  sent; they are received. An update check downloads a small file naming the
+  newest version, and the request carries only the updater's name and version.
+
+### Fixed
+
+- **macOS and .deb installs can update.** Their update links pointed to files
+  that didn't exist, so they never found an update. The release now fails if
+  any update link is wrong.
+- **Release candidates reach the default update channel**, and the website's
+  download buttons always serve the newest release.
+- **A page that gave up waiting on a site you hadn't approved yet** now
+  restarts when you allow the site, instead of showing "Couldn't reach …" for
+  good.
+- **The panel no longer stays empty** when a model refers to a page by a
+  made-up id.
+- **Pages built in stages finish building** instead of stopping after the
+  outline.
+- The installer no longer includes an internal developer tool.
+- Workflows: "How this works" describes current behaviour, and French, Korean,
+  German and Japanese wording was fixed.
+
 ## [1.0.0-rc.10] - 2026-10-08
 
 Workflows grow up in this release: they can start themselves, use models,
@@ -1109,7 +1190,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.10...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.11...HEAD
+[1.0.0-rc.11]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.10...v1.0.0-rc.11
 [1.0.0-rc.10]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.9...v1.0.0-rc.10
 [1.0.0-rc.9]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.8...v1.0.0-rc.9
 [1.0.0-rc.8]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.7...v1.0.0-rc.8

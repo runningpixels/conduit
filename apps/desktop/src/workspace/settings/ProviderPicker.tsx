@@ -51,7 +51,7 @@ const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
  * dropdown is already interactive on its fallback list then, and a provider
  * change must still know whether it is leaving local-only mode.
  */
-const FALLBACK_LOCAL_PROVIDER_IDS: ReadonlySet<string> = new Set(['ollama', 'lmstudio', 'openai_compat']);
+export const FALLBACK_LOCAL_PROVIDER_IDS: ReadonlySet<string> = new Set(['ollama', 'lmstudio', 'openai_compat']);
 
 /** Phase 6 M6.4: shared provider + BYOK surface. Used by Onboarding and
  *  SettingsScreen. Owns provider selection, model listing, the optional base

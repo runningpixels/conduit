@@ -1,0 +1,159 @@
+{
+  "weather": {
+    "name": "Clima del mundo",
+    "description": "Clima en vivo de ocho grandes ciudades, una por cada idioma que habla Conduit."
+  },
+  "weatherChat": {
+    "title": "Clima de ocho ciudades",
+    "user": "Hazme un panel del clima para ocho grandes ciudades, una por cada idioma que habla Conduit: Nueva York, Berlín, Ciudad de México, París, Tokio, Seúl, São Paulo y Shanghái. Muestra las condiciones actuales, el pronóstico a 7 días y una gráfica hora por hora. Empieza con Ciudad de México.",
+    "assistant": "Aquí está el panel del clima de las ocho ciudades. Usa Open-Meteo, un servicio de clima gratuito que no necesita clave de API.\n\n- **Ciudad de México** se abre primero. Cambia de ciudad con los botones debajo del título, o busca cualquier otra.\n- La tarjeta de arriba muestra el clima de este momento. Debajo hay un pronóstico a 7 días y una gráfica hora por hora de la temperatura y la probabilidad de lluvia para las próximas 24, 48 o 72 horas.\n- Se actualiza cada 10 minutos.\n\nLo guardé como app, así que puedes abrirla cuando quieras desde **Apps**.",
+    "documentTitle": "Clima del mundo"
+  },
+  "deck": {
+    "title": "Cómo funcionan los LLM",
+    "user": "Explícame de forma sencilla cómo funcionan los modelos de lenguaje grandes y luego conviértelo en una presentación corta que pueda exponer.",
+    "assistant": "En resumen: un modelo de lenguaje convierte tu texto en tokens y luego predice el siguiente token, una y otra vez, hasta completar la respuesta. Aprendió a predecir bien leyendo una cantidad enorme de texto, y después se le entrenó más para seguir instrucciones. Por eso puede sonar seguro aunque se equivoque: produce texto probable, no datos comprobados.\n\nHice una presentación de 8 diapositivas que lo explica: tokens, predicción del siguiente token, entrenamiento, atención, cómo un predictor se vuelve asistente, por qué los modelos se equivocan y cómo usarlos bien. Cada diapositiva tiene notas del orador.",
+    "slides": [
+      {
+        "layout": "title",
+        "fields": {
+          "kicker": "Explicado sin matemáticas",
+          "headline": "Cómo funcionan los grandes modelos de lenguaje",
+          "sub": "Lo que pasa entre tu pregunta y la respuesta"
+        },
+        "notes": "Un recorrido corto, sin matemáticas. Cada diapositiva es una idea que podrías explicarle a un amigo."
+      },
+      {
+        "layout": "bullets",
+        "fields": {
+          "kicker": "Paso 1",
+          "headline": "El texto se convierte en tokens",
+          "bullets": [
+            "Un modelo nunca ve letras ni palabras, solo tokens",
+            "Los tokens son fragmentos comunes de texto, cada uno convertido en número",
+            "\"Increíble\" podría ser tres tokens: in · creí · ble",
+            "Solo lee cierto número de tokens a la vez: su ventana de contexto"
+          ]
+        },
+        "notes": "Los tokens explican algunas rarezas, como contar mal las letras de una palabra: el modelo nunca vio las letras."
+      },
+      {
+        "layout": "statement",
+        "fields": {
+          "headline": "Un solo trabajo: adivinar el siguiente token, una y otra vez",
+          "sub": "El modelo puntúa cada token posible, elige uno y repite hasta terminar la respuesta."
+        },
+        "notes": "\"La capital de Francia es\" hace que \"París\" tenga una puntuación muy alta. Un poco de azar evita que las respuestas suenen robóticas. Todo lo que hace un modelo de chat, desde código hasta poemas, es este único paso repetido."
+      },
+      {
+        "layout": "stat-row",
+        "fields": {
+          "kicker": "Paso 2",
+          "headline": "Aprender de muchísimo texto",
+          "stats": [
+            {
+              "value": "1T+",
+              "label": "tokens de texto leídos: millones de millones"
+            },
+            {
+              "value": "1B+",
+              "label": "números ajustables, llamados pesos: miles de millones"
+            },
+            {
+              "value": "Sem.",
+              "label": "de entrenamiento en miles de chips"
+            }
+          ],
+          "footnote": "Cada error ajusta un poco los pesos. El modelo guarda patrones, no una base de datos de hechos."
+        },
+        "notes": "Esta etapa se llama preentrenamiento. Al terminar, los pesos quedan fijos: el modelo no aprende de tus chats a menos que alguien lo entrene otra vez."
+      },
+      {
+        "layout": "bullets",
+        "fields": {
+          "kicker": "Paso 3",
+          "headline": "Atención: qué palabras importan aquí",
+          "bullets": [
+            "Por cada token, el modelo mira hacia atrás los anteriores",
+            "Pondera cuáles importan para la siguiente predicción",
+            "\"El trofeo no cabía en la maleta: era enorme\". Sabe que era el trofeo",
+            "Esta es la idea del transformer, publicada en 2017"
+          ]
+        },
+        "notes": "La atención es la razón por la que importa tanto el contexto que le das al modelo. Una instrucción clara y completa le da las palabras correctas a las que mirar."
+      },
+      {
+        "layout": "two-col",
+        "fields": {
+          "kicker": "Paso 4",
+          "headline": "De predictor a asistente",
+          "columns": [
+            {
+              "kicker": "Tras el preentrenamiento",
+              "body": "El modelo solo continúa el texto. Si le haces una pregunta, quizá escriba más preguntas."
+            },
+            {
+              "kicker": "Tras más entrenamiento",
+              "bullets": [
+                "Ejemplos de respuestas útiles",
+                "Calificaciones de personas a las mejores respuestas",
+                "Entrenamiento para rechazar peticiones dañinas"
+              ]
+            }
+          ]
+        },
+        "notes": "Este entrenamiento extra es la razón por la que distintos asistentes se sienten diferentes aunque se construyan igual."
+      },
+      {
+        "layout": "bullets",
+        "fields": {
+          "kicker": "Conoce sus límites",
+          "headline": "Por qué se equivocan",
+          "bullets": [
+            "Producen texto que suena probable, no datos comprobados",
+            "Cuando no saben, igual pueden sonar seguros",
+            "Su conocimiento termina en la fecha en que acabó el entrenamiento",
+            "Sin herramientas, fallan al contar con exactitud y en sumas largas"
+          ]
+        },
+        "notes": "Trata una respuesta como el primer borrador de un colega muy listo: útil, y vale la pena revisarla."
+      },
+      {
+        "layout": "bullets",
+        "fields": {
+          "kicker": "En la práctica",
+          "headline": "Cómo usarlos bien",
+          "bullets": [
+            "Da contexto: adjunta el documento en vez de describirlo",
+            "Pide fuentes y luego ábrelas",
+            "Déjalo usar herramientas: búsqueda web, tus archivos, tus apps",
+            "Revisa lo importante antes de confiar en ello"
+          ],
+          "footnote": "En Conduit: adjunta archivos en un chat, usa Investigación para preguntas con fuentes y conecta tus herramientas en Conectores."
+        },
+        "notes": "Gran parte de la calidad de una respuesta depende de lo que le das al modelo para trabajar."
+      }
+    ]
+  },
+  "rainyChat": {
+    "title": "Un sábado lluvioso en Ciudad de México",
+    "user": "Dicen que va a llover todo el sábado en Ciudad de México. Organízame un día tranquilo bajo techo, con un buen lugar para comer.",
+    "assistant": "Aquí tienes un plan tranquilo para un día de lluvia en Ciudad de México. Dejé las paradas cerca unas de otras para que no te mojes mucho. Revisa los horarios antes de salir: los lugares cambian.",
+    "documentTitle": "Sábado lluvioso en Ciudad de México",
+    "document": "# Sábado lluvioso en Ciudad de México\n\nUn día sin prisas bajo techo, con trayectos cortos entre una parada y otra.\n\n## Mañana: Museo Nacional de Antropología\n\nEmpieza en el **Museo Nacional de Antropología**, en Chapultepec, cuando abra. Es enorme, así que elige dos o tres salas en lugar de querer verlo todo: la sala Mexica, con la Piedra del Sol, y la de Oaxaca son una buena mañana sin apuro.\n\n## Comida: Mercado de San Juan\n\nVe al **Mercado de San Juan**, en el Centro, un mercado techado con puestos de carnes, quesos, frutas y antojitos. Si prefieres algo más moderno, el **Mercado Roma** reúne muchos puestos de comida en un solo edificio.\n\n## Tarde: Bellas Artes y la Alameda\n\nPasa por el **Palacio de Bellas Artes** para ver su vestíbulo y los murales de Rivera, Orozco y Siqueiros. Está junto a la Alameda Central, así que el siguiente café queda a unos pasos.\n\n## Noche: una película\n\nCierra el día con una función en la **Cineteca Nacional**, que programa cine mexicano e internacional, con una cafetería para esperar la función.\n\n## Consejos\n\n- El Metro te mantiene casi seco: casi todas las paradas de arriba quedan a una caminata corta de una estación.\n- Lleva un paraguas compacto y calzado que no resbale; lo mojado son las caminatas entre estaciones.\n- Si vas a la Cineteca o a un museo en sábado, llega temprano para evitar filas.\n- Revisa los horarios: los lugares cambian."
+  },
+  "briefing": {
+    "name": "Resumen matutino",
+    "description": "Lee las noticias principales de dos sitios y escribe un resumen con enlaces y por qué te importa cada una.",
+    "inputs": {
+      "site_one": "https://www.xataka.com",
+      "site_two": "https://hipertextual.com",
+      "interests": "desarrollo de software, IA, código abierto",
+      "language": "Español"
+    },
+    "runStartedAt": "2026-10-11T21:18:16.109Z",
+    "runFinishedAt": "2026-10-11T21:21:10.254Z",
+    "documentTitle": "Resumen matutino 2026-10-11",
+    "document": "# Resumen matutino, 2026-10-11\n\nEl hilo conductor de hoy es la gobernanza de la IA: Satya Nadella propone vigilar y contener los modelos desde fuera, los agentes personales levantan dudas de privacidad y los deepfakes ponen a prueba a la ley. Google, mientras tanto, asegura décadas de energía nuclear para sus centros de datos y sigue integrando Gemini en todas sus herramientas. Y en el escritorio, Windows estrena una búsqueda renovada mientras el código abierto sigue abriendo funciones ocultas del sistema.\n\n## Gobernanza, agentes y riesgos de la IA\n\n**[Nadie sabe explicar por qué una IA avanzada hace lo que hace. Nadella propone vigilarla desde fuera](https://www.xataka.com/robotica-e-ia/satya-nadella-ceo-microsoft-debemos-asumir-que-todos-modelos-ia-estan-comprometidos-contenerlos-principio)** *Xataka*\n\nSatya Nadella, CEO de Microsoft, ha publicado en Twitter/X una propuesta para \"atar en corto\" a la IA: separar el suministro de inteligencia de la autoridad sobre ella, tratando a los modelos como a un empleado con muchos permisos al que se vigila, se registra todo lo que hace y se puede detener en cualquier momento, porque \"no podemos externalizar la responsabilidad de lo que la inteligencia hace en nuestro nombre\". Su plan se concreta en siete principios (diversidad de modelos, observación total, verificabilidad, controles y auditoría independientes, contención y divulgación de incidentes) que se resumen en tres ideas —independencia, transparencia y contención— bajo una regla clara: \"si no se puede observar, no se puede confiar en ello\". La postura encaja con el negocio de Microsoft, que vende Azure para ejecutar modelos de terceros y defiende un ecosistema mixto de modelos abiertos y cerrados, aunque choca con la contradicción de construir más centros de datos mientras pide un ritmo más reposado en el desarrollo de la IA.\n\nPara quien desarrolla software o trabaja con IA, Nadella desplaza la confianza del modelo (una caja negra imposible de depurar línea a línea) hacia el sistema que lo rodea, convirtiendo la contención, los registros a prueba de manipulación y la auditoría independiente en requisitos de diseño, y refuerza la apuesta por un ecosistema multi-modelo —abierto y cerrado— donde ningún equipo dependa de un único proveedor.\n\n**[Los agentes de IA personales prometen hacerlo todo por nosotros. A cambio, necesitan saberlo todo de nosotros](https://www.xataka.com/robotica-e-ia/big-tech-quieren-que-todos-tengamos-nuestro-agente-ia-personal-idea-fantastica-gran-problema-privacidad)** *Xataka*\n\nMeta ha lanzado Muse, un agente de IA personal que lee tu correo, gestiona tu calendario, rellena formularios y compra en tu nombre, marcando el giro de la industria de los chatbots hacia agentes que actúan por nosotros. Muse es gratuito con límites y tiene planes de 20 y 100 dólares al mes monetizados mediante comisiones por transacción en lugar de publicidad, pero el historial del sector, todavía joven, incluye 42.000 instancias de OpenClaw expuestas, un CVE que permite tomar el control de cualquier instalación con un solo clic y 341 habilidades maliciosas de las 2.857 de su tienda.\n\nPara quien desarrolla software, trabaja en IA o en código abierto, el mercado se divide entre agentes locales y abiertos como Hermes —donde tus datos se quedan en tu máquina pero tú eres tu propio equipo de seguridad— y agentes en la nube como Muse, donde delegas la seguridad en empresas con mal historial de privacidad, haciendo de la confianza, el aislamiento y los ecosistemas de extensiones seguros el desafío de ingeniería definitorio de la era de los agentes.\n\n**[Meloni quiere registrar su voz como marca para frenar los deepfakes. Hay un problema: la marca no los frena](https://www.xataka.com/robotica-e-ia/io-sono-giorgia-meloni-cuatro-segundos-audio-nueva-arma-primera-ministra-italiana-deepfakes)** *Xataka*\n\nLa primera ministra italiana, Giorgia Meloni, ha presentado ante la oficina de propiedad intelectual de la UE (EUIPO) una solicitud para registrar su voz como marca: una grabación de apenas cuatro segundos en la que repite dos veces \"Io sono Giorgia Meloni\", todavía pendiente de aprobación y que, de salir adelante, protegería su voz en los 27 estados miembros. Sería la primera política importante en dar este paso, justo antes de las elecciones generales italianas del año que viene, tras detectarse clones de su voz en anuncios políticos y circular fotos suyas manipuladas. Se suma así a celebrities como Matthew McConaughey y Taylor Swift, aunque la propia marca solo crearía obstáculos legales y no impediría los deepfakes por sí sola.\n\nPara quien trabaja en desarrollo de software e IA, el caso confirma que clonar una voz ya no exige grandes conocimientos técnicos ni software sofisticado (basta una pista de pocos segundos), que la ley va por detrás —Meloni recurre a una marca registrada, una herramienta pensada para otra cosa, cuando las soluciones reales son el artículo 50 del Reglamento de IA, que obliga a etiquetar los deepfakes, y reformas de derechos sobre la imagen y la voz como la que impulsa Dinamarca— y que ni siquiera el oído humano es defensa fiable, pues solo identifica voces sintéticas como máximo el 73% de las veces incluso con entrenamiento.\n\n## El ecosistema de Google: energía, herramientas y privacidad\n\n**[Google se asegura 20 años de energía nuclear para alimentar sus centros de datos](https://www.xataka.com/energia/google-se-asegura-20-anos-energia-nuclear-para-alimentar-sus-centros-datos)** *Xataka*\n\nGoogle ha firmado un contrato histórico de 20 años para comprar energía nuclear a Constellation Energy, que invertirá más de 4.300 millones de dólares en modernizar reactores de Illinois, Pensilvania y Nueva Jersey y añadir 890 MW de capacidad a la red eléctrica de PJM, la mayor de EE. UU., sin construir ninguna planta nueva. La mejora de las once unidades nucleares equivale a añadir la potencia de un reactor grande y servirá para alimentar los centros de datos de Google impulsados por la IA. Además, Google llevará su IA a las propias centrales mediante una alianza \"AI for Energy\" con Google Cloud y Gemini Enterprise para optimizar mantenimiento y operaciones.\n\nEste acuerdo confirma que la energía se ha convertido en el verdadero cuello de botella de la IA —los modelos exigen tanta infraestructura que las tecnológicas ya están comprando décadas de electricidad nuclear— y muestra cómo los proveedores de nube como Google expanden su ecosistema (incluido Gemini) hacia sectores críticos como la energía, algo a seguir también en el terreno abierto donde compiten alternativas.\n\n**[Cómo aprovechar los cuadernos de Gemini Notebook en Gemini para exprimir la IA de Google](https://hipertextual.com/guias/conectar-cuadernos-gemini-notebook-gemini/)** *Hipertextual*\n\nGoogle ha reforzado la integración entre la app Gemini y Gemini Notebook (NotebookLM): ahora puedes añadir uno o más cuadernos como fuente en Gemini —vía el botón +, escribiendo @GeminiNotebook o desde el menú desplegable, en web, iOS, Android, Mac y Windows— para que sus respuestas se basen en tus propios documentos con citas y enlaces, en lugar de búsquedas en Internet. Además, ya puedes guardar conversaciones de Gemini en un cuaderno y crear cuadernos nuevos directamente desde la app, con guardado automático de lo que buscas y la posibilidad de convertirlo después en audios, informes o presentaciones.\n\nEste puente entre un asistente generalista y un flujo tipo RAG sobre fuentes propias señala hacia dónde va el ecosistema —incluido el código abierto—: respuestas verificables y ancladas a tu corpus, no solo a lo que el modelo recuerda.\n\n**[Cómo evitar que Gemini te espíe y lea tus pestañas de Chrome](https://hipertextual.com/tecnologia/impedir-gemini-leer-pestanas-chrome/)** *Hipertextual*\n\nGoogle integró Gemini en Chrome para que el asistente resuma páginas, responda dudas usando tus pestañas abiertas e incluso tu historial, pero a cambio recopila el contenido de las pestañas, sus URLs y elementos que quizá ni siquiera ves, y revisores humanos pueden leer esas conversaciones \"por motivos de seguridad\". Aunque no se puede desactivar Gemini por completo en Chrome, sí puedes impedir que lea tus pestañas automáticamente desde Configuración > Innovaciones de IA > Gemini en Chrome > Permisos, desactivando la opción \"Compartir pestaña actual de forma predeterminada\". Dato adicional: la función de IA en el dispositivo para detectar estafas descarga modelos que ocupan 20 GB de disco.\n\nEste caso muestra cómo los asistentes de IA se integran por defecto en navegadores masivos enviando contenido de páginas a la nube con revisión humana, un recordatorio de auditar permisos predeterminados y de que las alternativas abiertas centradas en privacidad ganan valor cuando la opción de desactivar la IA simplemente no existe.\n\n## Windows y código abierto\n\n**[Así funciona ViVeTool, la herramienta gratuita que permite activar funciones ocultas de Windows](https://hipertextual.com/guias/vivetool-activar-funciones-ocultas-windows/)** *Hipertextual*\n\nWindows 11 sigue recibiendo actualizaciones que activan funciones llegadas en parches anteriores pero que estaban dormidas —menú de Inicio rediseñado, maximizado de apps, una función oculta de búsqueda y mejoras de rendimiento—, y la forma de probarlas antes que nadie es ViVeTool. Esta herramienta gratuita y de código abierto, descargable desde GitHub, permite activar o desactivar funciones ocultas desde la línea de comandos (por ejemplo, `vivetool /enable /id:61754985` habilita la nueva personalización del menú de Inicio) y es compatible con Windows 10 (build 18963 o posterior) y Windows 11, incluidos 24H2 y 25H2, en equipos x86/x64 y ARM64. No es una herramienta oficial de Microsoft, así que conviene usarla con precaución: activar funciones a medio madurar puede causar errores o inestabilidad.\n\nViVeTool es un buen ejemplo de cómo la comunidad usa el código abierto para sortear los despliegues escalonados de Microsoft y experimentar directamente con funciones ocultas del sistema, siempre por su cuenta y riesgo.\n\n**[La nueva búsqueda de Windows 11 cambia por completo la forma de usar tu PC](https://hipertextual.com/software/nuevo-buscador-windows-11-como-instalar/)** *Hipertextual*\n\nMicrosoft abrió el acceso a la nueva búsqueda de Windows 11 para usuarios del programa Insider, una función reconstruida sobre WinUI 3 que promete mayor velocidad y menor consumo de memoria tras años de lentitud. El nuevo buscador muestra resultados en tiempo real con vistas previas de documentos e imágenes, e incorpora \"acciones en línea\" que permiten ejecutar tareas como cambiar a modo oscuro o activar el Bluetooth escribiendo comandos de texto, incluyendo acciones en el móvil vía Enlace a Windows. De momento solo está disponible en inglés, en la compilación 26340.9616 del canal Experimental, con despliegue gradual.\n\nLa reconstrucción sobre WinUI 3 y el enfoque en procesamiento de lenguaje natural para acciones del sistema marcan una modernización de la base de Windows relevante para desarrolladores que construyen sobre sus APIs, y anticipan una mayor integración de IA en las experiencias principales del sistema operativo, un espacio donde el ecosistema de código abierto observa de cerca cómo compiten las plataformas propietarias.\n"
+  }
+}

@@ -975,3 +975,23 @@ export type {
   ResearchMaterial,
   ResearchMaterialClaim,
 } from '@conduit/config-schema';
+
+/** One thing Conduit added on first run to show the user around. */
+export interface ExampleItem {
+  kind: 'app' | 'chat' | 'deck' | 'workflow';
+  itemId: string;
+}
+
+export interface SeedExamplesRequest {
+  /** Resolved interface locale, e.g. `de` or `pt-BR`. */
+  locale: string;
+  themeName: string;
+  themeCss: string;
+  /** The Morning briefing workflow definition, as the Workflows page builds it. */
+  briefingDefinition: unknown;
+}
+
+export interface SeedExamplesOutcome {
+  seeded: boolean;
+  items: ExampleItem[];
+}

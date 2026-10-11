@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
-import { resetLocalDatabase } from '../../ipc/client';
+import { removeAllExamples, resetLocalDatabase } from '../../ipc/client';
+import { notifyExamplesChanged, useExampleItems } from '../../examples/useExampleItems';
 import { ConfirmDialog } from '@conduit/ui';
 import type { ConnectionState } from '../../lib/connectionState';
 import { useRichT, useT } from '../../i18n';
@@ -56,6 +57,9 @@ export function PrivacyDataSection({
   const [resetting, setResetting] = useState(false);
   const [lastBackupPath, setLastBackupPath] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const { items: exampleItems } = useExampleItems();
+  const [confirmExamples, setConfirmExamples] = useState(false);
+  const [removingExamples, setRemovingExamples] = useState(false);
 
   const trust = trustCopy()[connectionState];
 
@@ -70,6 +74,21 @@ export function PrivacyDataSection({
       onStatus(t('settings.privacy.status.resetFailed', { error: String(e) }));
     } finally {
       setResetting(false);
+    }
+  }
+
+  async function handleRemoveExamples() {
+    setRemovingExamples(true);
+    try {
+      const count = await removeAllExamples();
+      onStatus(t('settings.privacy.examples.status.removed', { count }));
+    } catch (e) {
+      onStatus(t('settings.privacy.examples.status.failed', { error: String(e) }));
+    } finally {
+      setConfirmExamples(false);
+      setRemovingExamples(false);
+      // Lists in the app reload, and the "Example" tags and this block go away.
+      notifyExamplesChanged();
     }
   }
 
@@ -167,6 +186,38 @@ export function PrivacyDataSection({
           </div>
         )}
       </div>
+
+      {exampleItems.length > 0 && (
+        <div className="status-item" style={{ marginTop: 16 }}>
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            {t('settings.privacy.examples.heading')}
+          </span>
+          <p style={{ margin: 0, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+            {t('settings.privacy.examples.hint')}
+          </p>
+          {confirmExamples ? (
+            <div role="group" aria-label={t('settings.privacy.examples.confirmPrompt')} style={{ display: 'grid', gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 'var(--fs-xl)', color: 'var(--ink)', lineHeight: 1.5 }}>
+                {t('settings.privacy.examples.confirmPrompt')}
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <button className="btn danger" type="button" disabled={removingExamples} onClick={() => void handleRemoveExamples()}>
+                  {removingExamples ? t('settings.privacy.examples.removing') : t('settings.privacy.examples.confirmButton')}
+                </button>
+                <button className="btn" type="button" disabled={removingExamples} onClick={() => setConfirmExamples(false)}>
+                  {t('common.actions.cancel')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button className="btn" type="button" onClick={() => setConfirmExamples(true)}>
+                {t('settings.privacy.examples.removeButton')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <ConfirmDialog
         open={confirmReset}

@@ -29,6 +29,7 @@ function settings(webSearch: Partial<AppSettings['webSearch']> = {}): AppSetting
     updateCheckEnabled: true,
     updatePolicy: 'manual',
     onboardingCompleted: true,
+    examplesSeeded: false,
     webSearchEnabled: true,
     webSearch: {
       mode: 'local',

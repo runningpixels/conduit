@@ -13,11 +13,12 @@ import {
   listProviderDescriptors,
   requestLocalDataWipe,
   restartApp,
+  seedExamples,
   updateSettings,
 } from '../ipc/client';
-import { ProviderPicker } from '../workspace/settings/ProviderPicker';
+import { FALLBACK_LOCAL_PROVIDER_IDS, ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
-import { localeEntry, useT } from '../i18n';
+import { localeEntry, useLocale, useT } from '../i18n';
 import { BrandMark } from '../icons';
 import { useFormatters } from '../i18n/formatters';
 import { useAutoSave } from '../workspace/settings/useAutoSave';
@@ -26,6 +27,9 @@ import { PrivacyStep } from './PrivacyStep';
 import type { Idea } from '../ideas/catalog';
 import { resolveCapabilities } from '../ideas/capabilities';
 import { onboardingIdeas } from '../ideas/selectIdeas';
+import { STARTER_THEMES } from '../slides/themes';
+import { STARTER_WORKFLOWS } from '../workflows/starters';
+import { notifyExamplesChanged } from '../examples/useExampleItems';
 
 type OnboardingStep = 'appearance' | 'provider' | 'privacy' | 'connectors' | 'finish';
 
@@ -75,6 +79,7 @@ export function Onboarding({
   logoSrc?: string;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const [finishing, setFinishing] = useState(false);
   const [step, setStep] = useState<OnboardingStep>('appearance');
   const stepIndex = STEPS.findIndex((s) => s.id === step);
@@ -83,6 +88,35 @@ export function Onboarding({
      step — the gate that matters is the keychain probe in `handleFinish`. */
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const saveProviderStep = useAutoSave(onSettingsChange, onStatus);
+
+  /* Local-only is off by the time the privacy step shows it, when the provider
+     is a cloud one. A new profile defaults to a cloud provider *and*
+     local-only, and the picker only clears the flag when the provider changes,
+     so keeping the default provider (or arriving with a key already saved) left
+     chat refused and every app offline. The box is right there, unticked, for
+     anyone who wants it back on. */
+  const [localOnlyChecked, setLocalOnlyChecked] = useState(false);
+  useEffect(() => {
+    if (step !== 'privacy' || localOnlyChecked) return;
+    setLocalOnlyChecked(true);
+    if (!settings.localOnly) return;
+    void (async () => {
+      let isLocal = FALLBACK_LOCAL_PROVIDER_IDS.has(settings.activeProvider);
+      try {
+        const descriptor = (await listProviderDescriptors()).find((p) => p.id === settings.activeProvider);
+        if (descriptor) isLocal = descriptor.isLocal;
+      } catch {
+        // The fallback list decides.
+      }
+      if (isLocal) return;
+      try {
+        const next = await updateSettings({ ...settings, localOnly: false });
+        if (next) onSettingsChange(next);
+      } catch {
+        // Left as it was; the privacy step and the review both show it.
+      }
+    })();
+  }, [step, localOnlyChecked, settings, onSettingsChange]);
 
   useEffect(() => {
     if (step !== 'finish') return;
@@ -108,6 +142,20 @@ export function Onboarding({
       }
       const next = await updateSettings({ ...settings, onboardingCompleted: true });
       onSettingsChange(next);
+      // The examples are a courtesy: if adding them fails, onboarding still ends.
+      try {
+        const theme = STARTER_THEMES[0];
+        const briefing = STARTER_WORKFLOWS.find((w) => w.id === 'briefing');
+        const outcome = await seedExamples({
+          locale,
+          themeName: theme.name,
+          themeCss: theme.css,
+          briefingDefinition: briefing?.definition ?? null,
+        });
+        if (outcome?.seeded) notifyExamplesChanged();
+      } catch (e) {
+        console.warn('Could not add the examples', e);
+      }
       onStatus(t('onboarding.finish.welcomeStatus'));
       onComplete(idea);
     } catch (e) {

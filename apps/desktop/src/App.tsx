@@ -69,6 +69,7 @@ import { TitleBar } from './shell/TitleBar';
 import { deriveConnectionState } from './lib/connectionState';
 import { DocumentPanel } from './workspace/DocumentPanel';
 import { Sidebar } from './shell/Sidebar';
+import { EXAMPLES_CHANGED_EVENT } from './examples/useExampleItems';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
 import { Rail, type Destination } from './shell/Rail';
@@ -295,6 +296,7 @@ const defaultSettings: AppSettings = {
   updateCheckEnabled: true,
   updatePolicy: 'manual',
   onboardingCompleted: false,
+  examplesSeeded: false,
   webSearchEnabled: false,
   webSearch: {
     mode: 'auto',
@@ -2420,6 +2422,19 @@ export default function App() {
     window.addEventListener('focus', refreshUnreadResults);
     return () => window.removeEventListener('focus', refreshUnreadResults);
   }, [refreshUnreadResults]);
+  // The first-run examples were added or removed (onboarding, Settings): reload
+  // what they touch. Apps reload on every page change; the other pages on open.
+  useEffect(() => {
+    const reload = () => {
+      void refreshConversations();
+      void refreshSavedApps();
+      refreshUnreadResults();
+      setWorkflowRunsVersion((v) => v + 1);
+      setWorkflowDocsVersion((v) => v + 1);
+    };
+    window.addEventListener(EXAMPLES_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(EXAMPLES_CHANGED_EVENT, reload);
+  }, [refreshConversations, refreshSavedApps, refreshUnreadResults]);
   useWorkflowRunEvents((event) => {
     setWorkflowRunsVersion((v) => v + 1);
     refreshUnreadResults();

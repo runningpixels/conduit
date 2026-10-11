@@ -59,6 +59,7 @@ const settings = {
   updateCheckEnabled: true,
   updatePolicy: 'manual' as const,
   onboardingCompleted: true,
+  examplesSeeded: false,
   webSearchEnabled: false,
   webSearch: {
     mode: 'auto' as const,

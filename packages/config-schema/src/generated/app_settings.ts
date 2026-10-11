@@ -90,6 +90,12 @@ updatePolicy: UpdatePolicy,
  */
 onboardingCompleted: boolean, 
 /**
+ * Whether first-run examples were considered for this profile: set
+ * once, when onboarding finishes, whether or not any were added, so
+ * examples are never added again (see `first_run_examples`).
+ */
+examplesSeeded: boolean, 
+/**
  * Phase 7: whether web search is enabled globally. Off by default.
  * Honored only when the active provider is non-local; ignored when
  * `local_only` is true (see `agent-web-search` spec).

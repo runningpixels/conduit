@@ -1,0 +1,967 @@
+<meta name="conduit-network" content="https://api.open-meteo.com — fetch current weather and forecasts for the city you pick">
+<meta name="conduit-network" content="https://geocoding-api.open-meteo.com — look up a city's coordinates for the search box">
+<title>World weather</title>
+<style>
+:root{
+  --bg:#0b1220; --panel:#131c2e; --panel2:#182238; --line:#25324b;
+  --txt:#e8eefb; --dim:#93a3c0; --accent:#5aa9ff; --rain:#4f8dff;
+}
+*{box-sizing:border-box}
+html{background:#0b1220}
+body{
+  margin:0; background:radial-gradient(1200px 600px at 20% -10%, #1b2a4a 0%, var(--bg) 55%) no-repeat fixed;
+  color:var(--txt); font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding:22px 20px 44px;
+}
+.wrap{max-width:1080px;margin:0 auto}
+header.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin-bottom:4px}
+.eyebrow{font-size:11.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);font-weight:700}
+h1{font-size:22px;margin:0;letter-spacing:.2px}
+.sub{color:var(--dim);font-size:13px}
+.toolbar{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{
+  background:var(--panel2); color:var(--txt); border:1px solid var(--line);
+  padding:6px 11px; border-radius:9px; font:600 12.5px system-ui,sans-serif; cursor:pointer;
+}
+button:hover{border-color:var(--accent);color:#fff}
+button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#06121f}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-top:16px}
+.card h2{margin:0 0 12px;font-size:14px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim)}
+
+.curr{display:flex;flex-wrap:wrap;gap:26px;align-items:center}
+.now-temp{font-size:64px;font-weight:700;line-height:1;letter-spacing:-2px}
+.now-temp span{font-size:30px;vertical-align:top;color:var(--dim)}
+.now-cond{display:flex;align-items:center;gap:12px}
+.now-cond .emoji{font-size:44px;line-height:1}
+.now-cond .label{font-size:16px;font-weight:600}
+.now-cond .feels{font-size:13px;color:var(--dim)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:12px;flex:1 1 320px}
+.fact{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+.fact .k{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.fact .v{font-size:17px;font-weight:650;margin-top:3px}
+
+.days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.days{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:560px){.days{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.day{background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:11px 10px;text-align:center}
+.day.today{border-color:var(--accent);box-shadow:0 0 0 1px rgba(90,169,255,.35) inset}
+.day .dn{font-size:12px;color:var(--dim);letter-spacing:.04em}
+.day .ic{font-size:27px;margin:6px 0 2px}
+.day .hi{font-size:19px;font-weight:700}
+.day .lo{font-size:13px;color:var(--dim)}
+.day .pc{font-size:11.5px;color:var(--rain);margin-top:6px;min-height:15px}
+.day .ds{font-size:11px;color:var(--dim);margin-top:5px;line-height:1.3;min-height:29px}
+
+.chart-head{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:6px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--dim);flex-wrap:wrap}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.chartbox{position:relative}
+svg#chart{width:100%;height:auto;display:block;touch-action:none}
+.tip{
+  position:absolute;pointer-events:none;background:#0a1526f2;border:1px solid var(--accent);
+  border-radius:10px;padding:8px 10px;font-size:12.5px;line-height:1.5;white-space:nowrap;
+  transform:translate(-50%,-108%);opacity:0;transition:opacity .08s;z-index:4;box-shadow:0 8px 22px #0009}
+.tip b{color:#fff}
+.strip{display:flex;gap:9px;overflow-x:auto;padding:4px 2px 10px;scrollbar-color:var(--line) transparent}
+.hr{flex:0 0 auto;width:78px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:9px 6px;text-align:center}
+.hr.now{border-color:var(--accent)}
+.hr .t{font-size:11.5px;color:var(--dim)}
+.hr .e{font-size:20px;margin:4px 0}
+.hr .tt{font-size:15px;font-weight:650}
+.hr .r{font-size:11px;color:var(--rain);margin-top:4px;min-height:14px}
+.hr .a{font-size:10.5px;color:var(--dim);min-height:13px}
+.wettest{font-size:12.5px;color:var(--dim);margin-top:8px}
+.wettest b{color:var(--txt)}
+.status{margin-top:14px;font-size:13px;color:var(--dim)}
+.status.err{color:#ffb3b3}
+.status .msg{background:#3a1520;border:1px solid #6d2333;border-radius:10px;padding:10px 12px;color:#ffd7d7;display:inline-block}
+.muted{color:var(--dim);font-size:12.5px}
+
+.search{position:relative}
+.search input{
+  background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+  padding:7px 11px;border-radius:9px;font:500 13px system-ui,sans-serif;width:216px;
+}
+.search input::placeholder{color:var(--dim)}
+.search input:focus{outline:none;border-color:var(--accent)}
+#results{
+  position:absolute;top:calc(100% + 6px);right:0;width:320px;z-index:20;display:none;
+  background:#0f1930;border:1px solid var(--line);border-radius:12px;padding:5px;
+  box-shadow:0 14px 34px #000a;max-height:290px;overflow-y:auto;
+}
+#results.open{display:block}
+.res{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px}
+.res:hover,.res.active{background:var(--panel2)}
+.res .nm{font-weight:600}
+.res .rg{color:var(--dim);font-size:12px;margin-left:7px}
+.res.none{color:var(--dim);cursor:default;font-size:12.5px;line-height:1.4}
+.cities{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+.chip{
+  background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;
+  font:600 12px system-ui,sans-serif;color:var(--dim);cursor:pointer;
+}
+.chip:hover{border-color:var(--accent);color:#fff}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#06121f}
+
+footer{margin-top:22px;color:var(--dim);font-size:12px}
+footer a{color:var(--accent)}
+</style>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="eyebrow" data-i18n="title">World weather</div>
+      <h1 id="place-name">New York</h1>
+      <div class="sub" id="subline"></div>
+    </div>
+    <div class="toolbar">
+      <div class="search">
+        <input id="q" type="search" data-i18n-placeholder="searchPh" autocomplete="off"
+               data-i18n-aria="searchAria" aria-expanded="false" role="combobox" />
+        <div id="results" role="listbox" data-i18n-aria="resultsAria"></div>
+      </div>
+      <div class="toolbar" role="group" data-i18n-aria="unitsAria" style="margin-left:0">
+        <button id="uF" type="button" aria-pressed="false" data-i18n-title="unitFTitle">°F</button>
+        <button id="uC" type="button" aria-pressed="false" data-i18n-title="unitCTitle">°C</button>
+      </div>
+      <button id="reload" type="button" data-i18n="refresh">Refresh</button>
+    </div>
+  </header>
+  <div class="cities" id="cities"></div>
+
+  <section class="card" id="current-card">
+    <h2 data-i18n="nowH">Right now</h2>
+    <div class="curr" id="current">
+      <div class="now-temp">--<span>°</span></div>
+      <div class="now-cond"><div class="emoji">⏳</div><div><div class="label">…</div><div class="feels">—</div></div></div>
+      <div class="facts"></div>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="fcH">7-day forecast</h2>
+    <div class="days" id="days"></div>
+    <div class="muted" id="daily-note" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card">
+    <div class="chart-head">
+      <h2 style="margin:0" data-i18n="chartH">Hour by hour, temperature and rain</h2>
+      <div class="toolbar" style="margin-left:auto">
+        <button type="button" data-span="24" aria-pressed="false"></button>
+        <button type="button" data-span="48" aria-pressed="true"></button>
+        <button type="button" data-span="72" aria-pressed="false"></button>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:linear-gradient(#ff9f57,#ffd0a6)"></i><span id="leg-temp"></span></span>
+      <span><i style="background:#4f8dff"></i><span data-i18n="legRain">Chance of rain (%)</span></span>
+      <span><i style="background:#0b1220;border:1px solid #25324b"></i><span data-i18n="legNight">Shaded = night</span></span>
+    </div>
+    <div class="chartbox">
+      <svg id="chart" viewBox="0 0 1000 400" preserveAspectRatio="xMidYMid meet" role="img" data-i18n-aria="chartAria"></svg>
+      <div class="tip" id="tip"></div>
+    </div>
+    <div class="strip" id="strip"></div>
+    <div class="wettest" id="wettest"></div>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+const API = "https://api.open-meteo.com/v1/forecast";
+const GEO = "https://geocoding-api.open-meteo.com/v1/search";
+
+/* ---------- language ---------- */
+const LANG_MAP = {
+  "en": "en", "de": "de", "es": "es", "fr": "fr", "ja": "ja", "ko": "ko",
+  "pt": "pt-BR", "pt-br": "pt-BR", "zh": "zh-CN", "zh-cn": "zh-CN"
+};
+function resolveLang(raw){
+  const l = String(raw || "").toLowerCase();
+  return LANG_MAP[l] || LANG_MAP[l.split("-")[0]] || "en";
+}
+const LANG = resolveLang(document.documentElement.getAttribute("lang") || navigator.language || "en");
+const GEO_LANG = LANG.split("-")[0];
+
+const STRINGS = {
+  en: {
+    title: "World weather", searchPh: "Search any city…", searchAria: "Search for a city", resultsAria: "City search results",
+    unitsAria: "Units", unitFTitle: "°F, mph, inches", unitCTitle: "°C, km/h, millimeters", refresh: "Refresh",
+    nowH: "Right now", loading: "Loading…", feels: "Feels like {t}",
+    fHum: "Humidity", fWind: "Wind", fRain: "Rain now", fCloud: "Cloud cover", fPress: "Pressure", fToday: "Today", none: "none",
+    todayFact: "{hi} / {lo} · {p}% rain",
+    fcH: "7-day forecast", chartH: "Hour by hour, temperature and rain", hoursBtn: "{n}h",
+    legTemp: "Temperature ({u})", legRain: "Chance of rain (%)", legNight: "Shaded = night",
+    chartAria: "Hourly temperature and rain chance chart", rainAx: "rain", nowLbl: "Now", today: "Today", dayRain: "{p}% rain",
+    dryWeek: "No day this week reaches a 30% chance of rain. Forecast total: {amt}.",
+    wet1: "1 of 7 days has at least a 30% chance of rain ({list}). Week total: {amt}.",
+    wetN: "{n} of 7 days have at least a 30% chance of rain ({list}). Week total: {amt}.",
+    peakSum: "Next {span} hours: rain chance peaks at <b>{p}%</b>, {hrs} with a meaningful chance, total rainfall <b>{amt}</b>.",
+    hr1: "1 hour", hrN: "{n} hours", peakWhen: " The best chance is around {time} on {day}.",
+    tipTemp: "Temp <b>{t}</b> (feels {f})", tipRain: "Rain chance <b>{p}%</b>", tipWind: "Wind {w}",
+    updated: "Updated {time} for {place}. Refreshes every 10 minutes.", loadingPlace: "Loading {place}…",
+    errHttp: "the weather service returned HTTP {code}", errBad: "unexpected response from the weather service", errNet: "network error",
+    errMain: "Couldn't reach the weather service ({why}). Check your connection and press <b>{refresh}</b>. You can also look up {place} on {link}.",
+    searching: "Searching…",
+    noCity: "No city found for “{q}”. Try adding the country, for example “Paris, France”.",
+    searchErr: "City search is unavailable right now ({why}). You can still use the city buttons or press <b>{refresh}</b>.",
+    footer: "Live data from {om} (free, no API key). City search uses their {geo}. Showing {place}. Times are in each city’s own time zone.",
+    footGeo: "geocoding API", sub: "{lat}, {lon} · elevation {elev} m · times in {tz}", subLoad: "{lat}, {lon} · loading…",
+    unk: "Unknown conditions",
+    w0: "Clear sky", w1: "Mainly clear", w2: "Partly cloudy", w3: "Overcast", w45: "Fog", w48: "Depositing rime fog",
+    w51: "Light drizzle", w53: "Moderate drizzle", w55: "Dense drizzle", w56: "Light freezing drizzle", w57: "Dense freezing drizzle",
+    w61: "Slight rain", w63: "Moderate rain", w65: "Heavy rain", w66: "Light freezing rain", w67: "Heavy freezing rain",
+    w71: "Slight snow fall", w73: "Moderate snow fall", w75: "Heavy snow fall", w77: "Snow grains",
+    w80: "Slight rain showers", w81: "Moderate rain showers", w82: "Violent rain showers", w85: "Slight snow showers", w86: "Heavy snow showers",
+    w95: "Thunderstorm", w96: "Thunderstorm with slight hail", w99: "Thunderstorm with heavy hail"
+  },
+  de: {
+    title: "Weltwetter", searchPh: "Beliebige Stadt suchen…", searchAria: "Nach einer Stadt suchen", resultsAria: "Suchergebnisse für Städte",
+    unitsAria: "Einheiten", unitFTitle: "°F, mph, Zoll", unitCTitle: "°C, km/h, Millimeter", refresh: "Aktualisieren",
+    nowH: "Gerade jetzt", loading: "Wird geladen…", feels: "Gefühlt {t}",
+    fHum: "Luftfeuchtigkeit", fWind: "Wind", fRain: "Regen jetzt", fCloud: "Bewölkung", fPress: "Luftdruck", fToday: "Heute", none: "keiner",
+    todayFact: "{hi} / {lo} · {p}% Regen",
+    fcH: "7-Tage-Vorhersage", chartH: "Stunde für Stunde: Temperatur und Regen", hoursBtn: "{n} Std.",
+    legTemp: "Temperatur ({u})", legRain: "Regenwahrscheinlichkeit (%)", legNight: "Schattiert = Nacht",
+    chartAria: "Diagramm mit stündlicher Temperatur und Regenwahrscheinlichkeit", rainAx: "Regen", nowLbl: "Jetzt", today: "Heute", dayRain: "{p}% Regen",
+    dryWeek: "An keinem Tag dieser Woche liegt die Regenwahrscheinlichkeit bei 30% oder mehr. Vorhergesagte Gesamtmenge: {amt}.",
+    wet1: "An 1 von 7 Tagen liegt die Regenwahrscheinlichkeit bei mindestens 30% ({list}). Wochensumme: {amt}.",
+    wetN: "An {n} von 7 Tagen liegt die Regenwahrscheinlichkeit bei mindestens 30% ({list}). Wochensumme: {amt}.",
+    peakSum: "Nächste {span} Stunden: Die Regenwahrscheinlichkeit erreicht höchstens <b>{p}%</b>, {hrs} mit spürbarer Wahrscheinlichkeit, Gesamtniederschlag <b>{amt}</b>.",
+    hr1: "1 Stunde", hrN: "{n} Stunden", peakWhen: " Am wahrscheinlichsten ist Regen gegen {time} am {day}.",
+    tipTemp: "Temp. <b>{t}</b> (gefühlt {f})", tipRain: "Regenwahrscheinlichkeit <b>{p}%</b>", tipWind: "Wind {w}",
+    updated: "Aktualisiert um {time} für {place}. Aktualisiert sich alle 10 Minuten.", loadingPlace: "{place} wird geladen…",
+    errHttp: "der Wetterdienst antwortete mit HTTP {code}", errBad: "unerwartete Antwort des Wetterdienstes", errNet: "Netzwerkfehler",
+    errMain: "Der Wetterdienst ist nicht erreichbar ({why}). Prüfe deine Verbindung und drücke <b>{refresh}</b>. Du kannst {place} auch auf {link} nachschlagen.",
+    searching: "Suche läuft…",
+    noCity: "Keine Stadt gefunden für „{q}“. Füge das Land hinzu, zum Beispiel „Paris, Frankreich“.",
+    searchErr: "Die Stadtsuche ist gerade nicht verfügbar ({why}). Du kannst weiter die Städte-Schaltflächen nutzen oder auf <b>{refresh}</b> drücken.",
+    footer: "Live-Daten von {om} (kostenlos, ohne API-Schlüssel). Die Stadtsuche nutzt deren {geo}. Angezeigt: {place}. Alle Zeiten gelten in der Zeitzone der jeweiligen Stadt.",
+    footGeo: "Geocoding-API", sub: "{lat}, {lon} · Höhe {elev} m · Zeiten in {tz}", subLoad: "{lat}, {lon} · wird geladen…",
+    unk: "Wetterlage unbekannt",
+    w0: "Klarer Himmel", w1: "Überwiegend klar", w2: "Teilweise bewölkt", w3: "Bedeckt", w45: "Nebel", w48: "Reifnebel",
+    w51: "Leichter Nieselregen", w53: "Mäßiger Nieselregen", w55: "Starker Nieselregen", w56: "Leichter gefrierender Nieselregen", w57: "Starker gefrierender Nieselregen",
+    w61: "Leichter Regen", w63: "Mäßiger Regen", w65: "Starker Regen", w66: "Leichter Eisregen", w67: "Starker Eisregen",
+    w71: "Leichter Schneefall", w73: "Mäßiger Schneefall", w75: "Starker Schneefall", w77: "Schneegriesel",
+    w80: "Leichte Regenschauer", w81: "Mäßige Regenschauer", w82: "Heftige Regenschauer", w85: "Leichte Schneeschauer", w86: "Starke Schneeschauer",
+    w95: "Gewitter", w96: "Gewitter mit leichtem Hagel", w99: "Gewitter mit starkem Hagel"
+  },
+  es: {
+    title: "Tiempo mundial", searchPh: "Busca cualquier ciudad…", searchAria: "Buscar una ciudad", resultsAria: "Resultados de la búsqueda de ciudades",
+    unitsAria: "Unidades", unitFTitle: "°F, mph, pulgadas", unitCTitle: "°C, km/h, milímetros", refresh: "Actualizar",
+    nowH: "Ahora mismo", loading: "Cargando…", feels: "Sensación de {t}",
+    fHum: "Humedad", fWind: "Viento", fRain: "Lluvia ahora", fCloud: "Nubosidad", fPress: "Presión", fToday: "Hoy", none: "ninguna",
+    todayFact: "{hi} / {lo} · {p}% de lluvia",
+    fcH: "Previsión a 7 días", chartH: "Hora a hora: temperatura y lluvia", hoursBtn: "{n} h",
+    legTemp: "Temperatura ({u})", legRain: "Probabilidad de lluvia (%)", legNight: "Sombreado = noche",
+    chartAria: "Gráfico de temperatura y probabilidad de lluvia por hora", rainAx: "lluvia", nowLbl: "Ahora", today: "Hoy", dayRain: "{p}% lluvia",
+    dryWeek: "Ningún día de esta semana llega al 30% de probabilidad de lluvia. Total previsto: {amt}.",
+    wet1: "1 de los 7 días tiene al menos un 30% de probabilidad de lluvia ({list}). Total de la semana: {amt}.",
+    wetN: "{n} de los 7 días tienen al menos un 30% de probabilidad de lluvia ({list}). Total de la semana: {amt}.",
+    peakSum: "Próximas {span} horas: la probabilidad de lluvia llega como máximo a <b>{p}%</b>, {hrs} con una probabilidad notable, lluvia total <b>{amt}</b>.",
+    hr1: "1 hora", hrN: "{n} horas", peakWhen: " La mayor probabilidad es sobre las {time} ({day}).",
+    tipTemp: "Temp. <b>{t}</b> (sensación {f})", tipRain: "Probabilidad de lluvia <b>{p}%</b>", tipWind: "Viento {w}",
+    updated: "Actualizado a las {time} para {place}. Se actualiza cada 10 minutos.", loadingPlace: "Cargando {place}…",
+    errHttp: "el servicio meteorológico devolvió HTTP {code}", errBad: "respuesta inesperada del servicio meteorológico", errNet: "error de red",
+    errMain: "No se pudo conectar con el servicio meteorológico ({why}). Revisa tu conexión y pulsa <b>{refresh}</b>. También puedes consultar {place} en {link}.",
+    searching: "Buscando…",
+    noCity: "No se encontró ninguna ciudad para «{q}». Prueba a añadir el país, por ejemplo «París, Francia».",
+    searchErr: "La búsqueda de ciudades no está disponible ahora ({why}). Aún puedes usar los botones de ciudades o pulsar <b>{refresh}</b>.",
+    footer: "Datos en directo de {om} (gratis, sin clave de API). La búsqueda de ciudades usa su {geo}. Mostrando {place}. Las horas son las de la zona horaria de cada ciudad.",
+    footGeo: "API de geocodificación", sub: "{lat}, {lon} · altitud {elev} m · horas en {tz}", subLoad: "{lat}, {lon} · cargando…",
+    unk: "Condiciones desconocidas",
+    w0: "Cielo despejado", w1: "Mayormente despejado", w2: "Parcialmente nublado", w3: "Nublado", w45: "Niebla", w48: "Niebla con escarcha",
+    w51: "Llovizna ligera", w53: "Llovizna moderada", w55: "Llovizna densa", w56: "Llovizna helada ligera", w57: "Llovizna helada densa",
+    w61: "Lluvia ligera", w63: "Lluvia moderada", w65: "Lluvia intensa", w66: "Lluvia helada ligera", w67: "Lluvia helada intensa",
+    w71: "Nevada ligera", w73: "Nevada moderada", w75: "Nevada intensa", w77: "Granos de nieve",
+    w80: "Chubascos ligeros", w81: "Chubascos moderados", w82: "Chubascos violentos", w85: "Chubascos de nieve ligeros", w86: "Chubascos de nieve intensos",
+    w95: "Tormenta", w96: "Tormenta con granizo ligero", w99: "Tormenta con granizo fuerte"
+  },
+  fr: {
+    title: "Météo du monde", searchPh: "Rechercher une ville…", searchAria: "Rechercher une ville", resultsAria: "Résultats de la recherche de villes",
+    unitsAria: "Unités", unitFTitle: "°F, mph, pouces", unitCTitle: "°C, km/h, millimètres", refresh: "Actualiser",
+    nowH: "En ce moment", loading: "Chargement…", feels: "Ressenti {t}",
+    fHum: "Humidité", fWind: "Vent", fRain: "Pluie actuelle", fCloud: "Couverture nuageuse", fPress: "Pression", fToday: "Aujourd’hui", none: "aucune",
+    todayFact: "{hi} / {lo} · {p}% de pluie",
+    fcH: "Prévisions à 7 jours", chartH: "Heure par heure : température et pluie", hoursBtn: "{n} h",
+    legTemp: "Température ({u})", legRain: "Probabilité de pluie (%)", legNight: "Zone grisée = nuit",
+    chartAria: "Graphique de la température et de la probabilité de pluie heure par heure", rainAx: "pluie", nowLbl: "Maintenant", today: "Aujourd’hui", dayRain: "{p}% de pluie",
+    dryWeek: "Aucun jour de la semaine n’atteint 30% de probabilité de pluie. Total prévu : {amt}.",
+    wet1: "1 jour sur 7 a au moins 30% de probabilité de pluie ({list}). Total de la semaine : {amt}.",
+    wetN: "{n} jours sur 7 ont au moins 30% de probabilité de pluie ({list}). Total de la semaine : {amt}.",
+    peakSum: "Prochaines {span} heures : la probabilité de pluie culmine à <b>{p}%</b>, {hrs} avec une probabilité notable, pluie totale <b>{amt}</b>.",
+    hr1: "1 heure", hrN: "{n} heures", peakWhen: " Le plus de chances vers {time}, {day}.",
+    tipTemp: "Temp. <b>{t}</b> (ressenti {f})", tipRain: "Probabilité de pluie <b>{p}%</b>", tipWind: "Vent {w}",
+    updated: "Mis à jour à {time} pour {place}. Actualisation toutes les 10 minutes.", loadingPlace: "Chargement de {place}…",
+    errHttp: "le service météo a répondu HTTP {code}", errBad: "réponse inattendue du service météo", errNet: "erreur réseau",
+    errMain: "Impossible de joindre le service météo ({why}). Vérifiez votre connexion et appuyez sur <b>{refresh}</b>. Vous pouvez aussi consulter {place} sur {link}.",
+    searching: "Recherche…",
+    noCity: "Aucune ville trouvée pour « {q} ». Essayez d’ajouter le pays, par exemple « Paris, France ».",
+    searchErr: "La recherche de villes est indisponible pour le moment ({why}). Vous pouvez toujours utiliser les boutons de villes ou appuyer sur <b>{refresh}</b>.",
+    footer: "Données en direct de {om} (gratuit, sans clé d’API). La recherche de villes utilise leur {geo}. Affichage : {place}. Les heures sont celles du fuseau horaire de chaque ville.",
+    footGeo: "API de géocodage", sub: "{lat}, {lon} · altitude {elev} m · heures en {tz}", subLoad: "{lat}, {lon} · chargement…",
+    unk: "Conditions inconnues",
+    w0: "Ciel dégagé", w1: "Plutôt dégagé", w2: "Partiellement nuageux", w3: "Couvert", w45: "Brouillard", w48: "Brouillard givrant",
+    w51: "Bruine légère", w53: "Bruine modérée", w55: "Bruine dense", w56: "Bruine verglaçante légère", w57: "Bruine verglaçante dense",
+    w61: "Pluie faible", w63: "Pluie modérée", w65: "Forte pluie", w66: "Pluie verglaçante faible", w67: "Forte pluie verglaçante",
+    w71: "Faible chute de neige", w73: "Chute de neige modérée", w75: "Forte chute de neige", w77: "Grains de neige",
+    w80: "Averses de pluie faibles", w81: "Averses de pluie modérées", w82: "Averses de pluie violentes", w85: "Averses de neige faibles", w86: "Fortes averses de neige",
+    w95: "Orage", w96: "Orage avec grêle faible", w99: "Orage avec forte grêle"
+  },
+  ja: {
+    title: "世界の天気", searchPh: "都市を検索…", searchAria: "都市を検索", resultsAria: "都市の検索結果",
+    unitsAria: "単位", unitFTitle: "°F、mph、インチ", unitCTitle: "°C、km/h、ミリメートル", refresh: "更新",
+    nowH: "現在", loading: "読み込み中…", feels: "体感 {t}",
+    fHum: "湿度", fWind: "風", fRain: "現在の雨", fCloud: "雲量", fPress: "気圧", fToday: "今日", none: "なし",
+    todayFact: "{hi} / {lo} · 降水確率 {p}%",
+    fcH: "7日間の予報", chartH: "1時間ごとの気温と雨", hoursBtn: "{n}時間",
+    legTemp: "気温（{u}）", legRain: "降水確率（%）", legNight: "影 = 夜",
+    chartAria: "1時間ごとの気温と降水確率のグラフ", rainAx: "雨", nowLbl: "今", today: "今日", dayRain: "降水確率 {p}%",
+    dryWeek: "今週は降水確率が30%に達する日はありません。予想降水量の合計：{amt}。",
+    wet1: "7日のうち1日は降水確率が30%以上です（{list}）。週の合計：{amt}。",
+    wetN: "7日のうち{n}日は降水確率が30%以上です（{list}）。週の合計：{amt}。",
+    peakSum: "今後{span}時間：降水確率は最大<b>{p}%</b>、可能性が高い時間は{hrs}、合計降水量は<b>{amt}</b>です。",
+    hr1: "1時間", hrN: "{n}時間", peakWhen: " 最も降りやすいのは{day}の{time}ごろです。",
+    tipTemp: "気温 <b>{t}</b>（体感 {f}）", tipRain: "降水確率 <b>{p}%</b>", tipWind: "風 {w}",
+    updated: "{place}の天気を{time}に更新しました。10分ごとに自動更新します。", loadingPlace: "{place}を読み込み中…",
+    errHttp: "天気サービスが HTTP {code} を返しました", errBad: "天気サービスから想定外の応答がありました", errNet: "ネットワークエラー",
+    errMain: "天気サービスに接続できませんでした（{why}）。接続を確認して、<b>{refresh}</b>を押してください。{place}は{link}でも確認できます。",
+    searching: "検索中…",
+    noCity: "「{q}」に一致する都市が見つかりません。国名も入力してみてください（例：「Paris, France」）。",
+    searchErr: "都市検索は現在利用できません（{why}）。都市ボタンを使うか、<b>{refresh}</b>を押してください。",
+    footer: "リアルタイムのデータ提供元：{om}（無料、API キー不要）。都市検索には同サービスの{geo}を使っています。表示中：{place}。時刻は各都市の現地時間です。",
+    footGeo: "ジオコーディング API", sub: "{lat}, {lon} · 標高 {elev} m · 時刻は {tz}", subLoad: "{lat}, {lon} · 読み込み中…",
+    unk: "天候不明",
+    w0: "快晴", w1: "おおむね晴れ", w2: "一部曇り", w3: "曇り", w45: "霧", w48: "霧氷を伴う霧",
+    w51: "弱い霧雨", w53: "並の霧雨", w55: "強い霧雨", w56: "弱い着氷性の霧雨", w57: "強い着氷性の霧雨",
+    w61: "弱い雨", w63: "並の雨", w65: "強い雨", w66: "弱い着氷性の雨", w67: "強い着氷性の雨",
+    w71: "弱い雪", w73: "並の雪", w75: "強い雪", w77: "霧雪",
+    w80: "弱いにわか雨", w81: "並のにわか雨", w82: "激しいにわか雨", w85: "弱いにわか雪", w86: "強いにわか雪",
+    w95: "雷雨", w96: "弱い雹を伴う雷雨", w99: "強い雹を伴う雷雨"
+  },
+  ko: {
+    title: "세계 날씨", searchPh: "도시 검색…", searchAria: "도시 검색", resultsAria: "도시 검색 결과",
+    unitsAria: "단위", unitFTitle: "°F, mph, 인치", unitCTitle: "°C, km/h, 밀리미터", refresh: "새로고침",
+    nowH: "지금", loading: "불러오는 중…", feels: "체감 {t}",
+    fHum: "습도", fWind: "바람", fRain: "현재 강수", fCloud: "구름량", fPress: "기압", fToday: "오늘", none: "없음",
+    todayFact: "{hi} / {lo} · 강수 확률 {p}%",
+    fcH: "7일 예보", chartH: "시간별 기온과 비", hoursBtn: "{n}시간",
+    legTemp: "기온 ({u})", legRain: "강수 확률 (%)", legNight: "음영 = 밤",
+    chartAria: "시간별 기온과 강수 확률 그래프", rainAx: "비", nowLbl: "지금", today: "오늘", dayRain: "강수 {p}%",
+    dryWeek: "이번 주에는 강수 확률이 30%에 이르는 날이 없습니다. 예상 강수량 합계: {amt}.",
+    wet1: "7일 중 1일은 강수 확률이 30% 이상입니다 ({list}). 주간 합계: {amt}.",
+    wetN: "7일 중 {n}일은 강수 확률이 30% 이상입니다 ({list}). 주간 합계: {amt}.",
+    peakSum: "앞으로 {span}시간: 강수 확률은 최대 <b>{p}%</b>이고, 가능성이 높은 시간은 {hrs}이며, 총 강수량은 <b>{amt}</b>입니다.",
+    hr1: "1시간", hrN: "{n}시간", peakWhen: " 비가 올 가능성이 가장 높은 때는 {day} {time} 무렵입니다.",
+    tipTemp: "기온 <b>{t}</b> (체감 {f})", tipRain: "강수 확률 <b>{p}%</b>", tipWind: "바람 {w}",
+    updated: "{place}의 날씨를 {time}에 업데이트했습니다. 10분마다 자동으로 새로고침됩니다.", loadingPlace: "{place}을(를) 불러오는 중…",
+    errHttp: "날씨 서비스가 HTTP {code}을(를) 반환했습니다", errBad: "날씨 서비스에서 예상치 못한 응답이 왔습니다", errNet: "네트워크 오류",
+    errMain: "날씨 서비스에 연결할 수 없습니다 ({why}). 연결을 확인한 뒤 <b>{refresh}</b>를 누르세요. {place}은(는) {link}에서도 확인할 수 있습니다.",
+    searching: "검색 중…",
+    noCity: "“{q}”에 해당하는 도시를 찾을 수 없습니다. 국가를 함께 입력해 보세요. 예: “Paris, France”",
+    searchErr: "지금은 도시 검색을 사용할 수 없습니다 ({why}). 도시 버튼을 사용하거나 <b>{refresh}</b>를 누르세요.",
+    footer: "실시간 데이터 제공: {om} (무료, API 키 불필요). 도시 검색은 같은 서비스의 {geo}를 사용합니다. 표시 중: {place}. 시간은 각 도시의 현지 시간대입니다.",
+    footGeo: "지오코딩 API", sub: "{lat}, {lon} · 고도 {elev} m · {tz} 기준 시간", subLoad: "{lat}, {lon} · 불러오는 중…",
+    unk: "알 수 없는 날씨",
+    w0: "맑음", w1: "대체로 맑음", w2: "구름 조금", w3: "흐림", w45: "안개", w48: "서리 안개",
+    w51: "약한 이슬비", w53: "보통 이슬비", w55: "강한 이슬비", w56: "약한 어는 이슬비", w57: "강한 어는 이슬비",
+    w61: "약한 비", w63: "보통 비", w65: "강한 비", w66: "약한 어는 비", w67: "강한 어는 비",
+    w71: "약한 눈", w73: "보통 눈", w75: "강한 눈", w77: "싸락눈",
+    w80: "약한 소나기", w81: "보통 소나기", w82: "매우 강한 소나기", w85: "약한 소낙눈", w86: "강한 소낙눈",
+    w95: "뇌우", w96: "약한 우박을 동반한 뇌우", w99: "강한 우박을 동반한 뇌우"
+  },
+  "pt-BR": {
+    title: "Tempo no mundo", searchPh: "Busque qualquer cidade…", searchAria: "Buscar uma cidade", resultsAria: "Resultados da busca de cidades",
+    unitsAria: "Unidades", unitFTitle: "°F, mph, polegadas", unitCTitle: "°C, km/h, milímetros", refresh: "Atualizar",
+    nowH: "Agora", loading: "Carregando…", feels: "Sensação de {t}",
+    fHum: "Umidade", fWind: "Vento", fRain: "Chuva agora", fCloud: "Nebulosidade", fPress: "Pressão", fToday: "Hoje", none: "nenhuma",
+    todayFact: "{hi} / {lo} · {p}% de chuva",
+    fcH: "Previsão de 7 dias", chartH: "Hora a hora: temperatura e chuva", hoursBtn: "{n} h",
+    legTemp: "Temperatura ({u})", legRain: "Chance de chuva (%)", legNight: "Sombreado = noite",
+    chartAria: "Gráfico de temperatura e chance de chuva por hora", rainAx: "chuva", nowLbl: "Agora", today: "Hoje", dayRain: "{p}% de chuva",
+    dryWeek: "Nenhum dia desta semana chega a 30% de chance de chuva. Total previsto: {amt}.",
+    wet1: "1 dos 7 dias tem pelo menos 30% de chance de chuva ({list}). Total da semana: {amt}.",
+    wetN: "{n} dos 7 dias têm pelo menos 30% de chance de chuva ({list}). Total da semana: {amt}.",
+    peakSum: "Próximas {span} horas: a chance de chuva chega a no máximo <b>{p}%</b>, {hrs} com chance relevante, chuva total de <b>{amt}</b>.",
+    hr1: "1 hora", hrN: "{n} horas", peakWhen: " A maior chance é por volta das {time} ({day}).",
+    tipTemp: "Temp. <b>{t}</b> (sensação {f})", tipRain: "Chance de chuva <b>{p}%</b>", tipWind: "Vento {w}",
+    updated: "Atualizado às {time} para {place}. Atualiza a cada 10 minutos.", loadingPlace: "Carregando {place}…",
+    errHttp: "o serviço de meteorologia retornou HTTP {code}", errBad: "resposta inesperada do serviço de meteorologia", errNet: "erro de rede",
+    errMain: "Não foi possível acessar o serviço de meteorologia ({why}). Verifique sua conexão e clique em <b>{refresh}</b>. Você também pode consultar {place} em {link}.",
+    searching: "Buscando…",
+    noCity: "Nenhuma cidade encontrada para “{q}”. Tente incluir o país, por exemplo “Paris, França”.",
+    searchErr: "A busca de cidades está indisponível agora ({why}). Você ainda pode usar os botões de cidades ou clicar em <b>{refresh}</b>.",
+    footer: "Dados ao vivo de {om} (grátis, sem chave de API). A busca de cidades usa a {geo} deles. Mostrando {place}. Os horários seguem o fuso de cada cidade.",
+    footGeo: "API de geocodificação", sub: "{lat}, {lon} · altitude {elev} m · horários em {tz}", subLoad: "{lat}, {lon} · carregando…",
+    unk: "Condições desconhecidas",
+    w0: "Céu limpo", w1: "Predominantemente limpo", w2: "Parcialmente nublado", w3: "Nublado", w45: "Nevoeiro", w48: "Nevoeiro com geada",
+    w51: "Garoa fraca", w53: "Garoa moderada", w55: "Garoa forte", w56: "Garoa congelante fraca", w57: "Garoa congelante forte",
+    w61: "Chuva fraca", w63: "Chuva moderada", w65: "Chuva forte", w66: "Chuva congelante fraca", w67: "Chuva congelante forte",
+    w71: "Neve fraca", w73: "Neve moderada", w75: "Neve forte", w77: "Grãos de neve",
+    w80: "Pancadas de chuva fracas", w81: "Pancadas de chuva moderadas", w82: "Pancadas de chuva violentas", w85: "Pancadas de neve fracas", w86: "Pancadas de neve fortes",
+    w95: "Tempestade", w96: "Tempestade com granizo fraco", w99: "Tempestade com granizo forte"
+  },
+  "zh-CN": {
+    title: "世界天气", searchPh: "搜索任意城市…", searchAria: "搜索城市", resultsAria: "城市搜索结果",
+    unitsAria: "单位", unitFTitle: "°F、mph、英寸", unitCTitle: "°C、km/h、毫米", refresh: "刷新",
+    nowH: "当前", loading: "加载中…", feels: "体感 {t}",
+    fHum: "湿度", fWind: "风", fRain: "当前降雨", fCloud: "云量", fPress: "气压", fToday: "今天", none: "无",
+    todayFact: "{hi} / {lo} · 降雨概率 {p}%",
+    fcH: "7 天预报", chartH: "逐小时气温与降雨", hoursBtn: "{n} 小时",
+    legTemp: "气温（{u}）", legRain: "降雨概率（%）", legNight: "阴影 = 夜间",
+    chartAria: "逐小时气温与降雨概率图表", rainAx: "雨", nowLbl: "现在", today: "今天", dayRain: "降雨 {p}%",
+    dryWeek: "本周没有哪一天的降雨概率达到 30%。预计降水总量：{amt}。",
+    wet1: "7 天中有 1 天降雨概率至少为 30%（{list}）。本周合计：{amt}。",
+    wetN: "7 天中有 {n} 天降雨概率至少为 30%（{list}）。本周合计：{amt}。",
+    peakSum: "未来 {span} 小时：降雨概率最高为 <b>{p}%</b>，有明显降雨可能的时间共 {hrs}，总降雨量 <b>{amt}</b>。",
+    hr1: "1 小时", hrN: "{n} 小时", peakWhen: " 降雨可能性最大的时间是{day} {time} 前后。",
+    tipTemp: "气温 <b>{t}</b>（体感 {f}）", tipRain: "降雨概率 <b>{p}%</b>", tipWind: "风 {w}",
+    updated: "已于 {time} 更新 {place} 的天气。每 10 分钟自动刷新。", loadingPlace: "正在加载{place}…",
+    errHttp: "天气服务返回了 HTTP {code}", errBad: "天气服务返回了意外的响应", errNet: "网络错误",
+    errMain: "无法连接天气服务（{why}）。请检查网络连接，然后点击<b>{refresh}</b>。你也可以在 {link} 查看{place}的天气。",
+    searching: "搜索中…",
+    noCity: "找不到“{q}”对应的城市。请尝试加上国家，例如“Paris, France”。",
+    searchErr: "暂时无法搜索城市（{why}）。你仍然可以使用城市按钮，或点击<b>{refresh}</b>。",
+    footer: "实时数据来自 {om}（免费，无需 API 密钥）。城市搜索使用其{geo}。当前显示：{place}。时间均为各城市所在时区的当地时间。",
+    footGeo: "地理编码 API", sub: "{lat}, {lon} · 海拔 {elev} m · 时间为 {tz}", subLoad: "{lat}, {lon} · 加载中…",
+    unk: "天气状况未知",
+    w0: "晴朗", w1: "大部晴朗", w2: "局部多云", w3: "阴", w45: "雾", w48: "雾凇",
+    w51: "小毛毛雨", w53: "中毛毛雨", w55: "大毛毛雨", w56: "小冻毛毛雨", w57: "大冻毛毛雨",
+    w61: "小雨", w63: "中雨", w65: "大雨", w66: "小冻雨", w67: "大冻雨",
+    w71: "小雪", w73: "中雪", w75: "大雪", w77: "米雪",
+    w80: "小阵雨", w81: "中阵雨", w82: "强阵雨", w85: "小阵雪", w86: "大阵雪",
+    w95: "雷暴", w96: "雷暴伴小冰雹", w99: "雷暴伴大冰雹"
+  }
+};
+const L = STRINGS[LANG];
+function t(key, vars){
+  let s = Object.prototype.hasOwnProperty.call(L, key) ? L[key] : STRINGS.en[key];
+  if (s == null) return key;
+  return s.replace(/\{(\w+)\}/g, function(m, k){ return vars && vars[k] !== undefined ? vars[k] : m; });
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ---------- cities, in the order of the interface languages ---------- */
+const LANGS = ["en", "de", "es", "fr", "ja", "ko", "pt-BR", "zh-CN"];
+// Each city: [name, country] per language, same order as LANGS.
+const CITIES = [
+  { id: "ny", lang: "en", lat: 40.7143, lon: -74.0060, names: [
+    ["New York", "United States"], ["New York", "Vereinigte Staaten"], ["Nueva York", "Estados Unidos"], ["New York", "États-Unis"],
+    ["ニューヨーク", "アメリカ合衆国"], ["뉴욕", "미국"], ["Nova York", "Estados Unidos"], ["纽约", "美国"] ] },
+  { id: "berlin", lang: "de", lat: 52.5244, lon: 13.4105, names: [
+    ["Berlin", "Germany"], ["Berlin", "Deutschland"], ["Berlín", "Alemania"], ["Berlin", "Allemagne"],
+    ["ベルリン", "ドイツ"], ["베를린", "독일"], ["Berlim", "Alemanha"], ["柏林", "德国"] ] },
+  { id: "mexico", lang: "es", lat: 19.4285, lon: -99.1277, names: [
+    ["Mexico City", "Mexico"], ["Mexiko-Stadt", "Mexiko"], ["Ciudad de México", "México"], ["Mexico", "Mexique"],
+    ["メキシコシティ", "メキシコ"], ["멕시코시티", "멕시코"], ["Cidade do México", "México"], ["墨西哥城", "墨西哥"] ] },
+  { id: "paris", lang: "fr", lat: 48.8534, lon: 2.3488, names: [
+    ["Paris", "France"], ["Paris", "Frankreich"], ["París", "Francia"], ["Paris", "France"],
+    ["パリ", "フランス"], ["파리", "프랑스"], ["Paris", "França"], ["巴黎", "法国"] ] },
+  { id: "tokyo", lang: "ja", lat: 35.6895, lon: 139.6917, names: [
+    ["Tokyo", "Japan"], ["Tokio", "Japan"], ["Tokio", "Japón"], ["Tokyo", "Japon"],
+    ["東京", "日本"], ["도쿄", "일본"], ["Tóquio", "Japão"], ["东京", "日本"] ] },
+  { id: "seoul", lang: "ko", lat: 37.5665, lon: 126.9780, names: [
+    ["Seoul", "South Korea"], ["Seoul", "Südkorea"], ["Seúl", "Corea del Sur"], ["Séoul", "Corée du Sud"],
+    ["ソウル", "韓国"], ["서울", "대한민국"], ["Seul", "Coreia do Sul"], ["首尔", "韩国"] ] },
+  { id: "saopaulo", lang: "pt-BR", lat: -23.5475, lon: -46.6361, names: [
+    ["São Paulo", "Brazil"], ["São Paulo", "Brasilien"], ["São Paulo", "Brasil"], ["São Paulo", "Brésil"],
+    ["サンパウロ", "ブラジル"], ["상파울루", "브라질"], ["São Paulo", "Brasil"], ["圣保罗", "巴西"] ] },
+  { id: "shanghai", lang: "zh-CN", lat: 31.2222, lon: 121.4581, names: [
+    ["Shanghai", "China"], ["Shanghai", "China"], ["Shanghái", "China"], ["Shanghai", "Chine"],
+    ["上海", "中国"], ["상하이", "중국"], ["Xangai", "China"], ["上海", "中国"] ] }
+];
+const PRESETS = CITIES.map(c => {
+  const n = c.names[LANGS.indexOf(LANG)];
+  return { name: n[0], admin: "", country: n[1], lat: c.lat, lon: c.lon };
+});
+// The city that matches the interface language opens first; anything else opens New York.
+const HOME = (CITIES.findIndex(c => c.lang === LANG) >= 0) ? PRESETS[CITIES.findIndex(c => c.lang === LANG)] : PRESETS[0];
+
+/* ---------- formatting ---------- */
+const nfs = {};
+function nf(n, d){
+  if (!nfs[d]) nfs[d] = new Intl.NumberFormat(LANG, { minimumFractionDigits: d, maximumFractionDigits: d });
+  return nfs[d].format(n);
+}
+const H12 = LANG === "en";
+const hourFmt = new Intl.DateTimeFormat(LANG, H12 ? { hour: "numeric", hour12: true } : { hour: "numeric", hourCycle: "h23" });
+const timeFmt = new Intl.DateTimeFormat(LANG, H12 ? { hour: "numeric", minute: "2-digit", hour12: true } : { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const wdFmt = new Intl.DateTimeFormat(LANG, { weekday: "short" });
+const mdFmt = new Intl.DateTimeFormat(LANG, { month: "numeric", day: "numeric" });
+const dayFmt = new Intl.DateTimeFormat(LANG, { weekday: "short", month: "numeric", day: "numeric" });
+// "2026-10-11" is a calendar day; "2026-10-11T15:00" is a wall-clock time in the city. Parse both as local so the numbers never shift.
+const parse = s => {
+  if (s.length === 10){ const p = s.split("-").map(Number); return new Date(p[0], p[1] - 1, p[2]); }
+  return new Date(s);
+};
+const hourOf = s => parse(s).getHours();
+const hh = s => hourFmt.format(parse(s));
+
+const state = { unit: LANG === "en" ? "F" : "C", span: 48, data: null, timer: null, place: HOME };
+
+// The API always answers in metric (°C, km/h, mm); imperial is converted here.
+const cvt = c => state.unit === "F" ? c * 9 / 5 + 32 : c;
+const wspd = k => state.unit === "F" ? k * 0.621371 : k;
+const wUnit = () => state.unit === "F" ? "mph" : "km/h";
+const precip = (mm, d) => state.unit === "F" ? nf(mm / 25.4, d || 2) + " in" : nf(mm, 1) + " mm";
+const WET_MM = 0.1;
+const tempStr = c => c == null || isNaN(c) ? "--" : nf(Math.round(cvt(c)) + 0, 0) + "°";
+
+const ICONS = {
+  0:"☀️", 1:"🌤️", 2:"⛅", 3:"☁️", 45:"🌫️", 48:"🌫️", 51:"🌦️", 53:"🌦️", 55:"🌧️", 56:"🌧️", 57:"🌧️",
+  61:"🌦️", 63:"🌧️", 65:"🌧️", 66:"🌧️", 67:"🌧️", 71:"🌨️", 73:"❄️", 75:"❄️", 77:"🌨️",
+  80:"🌦️", 81:"🌧️", 82:"⛈️", 85:"🌨️", 86:"❄️", 95:"⛈️", 96:"⛈️", 99:"⛈️"
+};
+const cond = c => Object.prototype.hasOwnProperty.call(ICONS, c) ? [t("w" + c), ICONS[c]] : [t("unk"), "•"];
+
+// Eight compass points, N first, clockwise.
+const DIRS = {
+  "en": ["N","NE","E","SE","S","SW","W","NW"], "de": ["N","NO","O","SO","S","SW","W","NW"],
+  "es": ["N","NE","E","SE","S","SO","O","NO"], "fr": ["N","NE","E","SE","S","SO","O","NO"],
+  "ja": ["北","北東","東","南東","南","南西","西","北西"], "ko": ["북","북동","동","남동","남","남서","서","북서"],
+  "pt-BR": ["N","NE","L","SE","S","SO","O","NO"], "zh-CN": ["北","东北","东","东南","南","西南","西","西北"]
+};
+
+/* ---------- static text ---------- */
+function applyStatic(){
+  const attrs = { "data-i18n": "", "data-i18n-aria": "aria-label", "data-i18n-placeholder": "placeholder", "data-i18n-title": "title" };
+  Object.keys(attrs).forEach(a => {
+    document.querySelectorAll("[" + a + "]").forEach(el => {
+      const v = t(el.getAttribute(a));
+      if (attrs[a]) el.setAttribute(attrs[a], v); else el.textContent = v;
+    });
+  });
+  document.querySelectorAll("[data-span]").forEach(b => { b.textContent = t("hoursBtn", { n: b.dataset.span }); });
+  document.title = t("title");
+  document.getElementById("leg-temp").textContent = t("legTemp", { u: "°" + state.unit });
+}
+
+function setStatus(msg, isErr){
+  const el = document.getElementById("status");
+  if (!msg){ el.textContent = ""; el.className = "status"; return; }
+  el.className = "status" + (isErr ? " err" : "");
+  if (isErr) el.innerHTML = '<div class="msg">' + msg + '</div>'; else el.textContent = msg;
+}
+
+async function load(){
+  setStatus("");
+  const P = state.place;
+  const url = API + "?latitude=" + P.lat + "&longitude=" + P.lon +
+    "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,cloud_cover" +
+    "&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,is_day" +
+    "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max" +
+    "&timezone=auto&forecast_days=7";
+  try{
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(t("errHttp", { code: r.status }));
+    const j = await r.json();
+    if (!j || !j.current || !j.hourly || !j.daily) throw new Error(t("errBad"));
+    if (P !== state.place) return; // the user picked another city while this was loading
+    state.data = j;
+    renderAll();
+    setStatus(t("updated", { time: timeFmt.format(new Date()), place: placeLabel(P) }));
+  }catch(e){
+    if (P !== state.place) return;
+    setStatus(t("errMain", {
+      why: esc(e && e.message ? e.message : t("errNet")),
+      refresh: esc(t("refresh")),
+      place: esc(placeLabel(P)),
+      link: '<a href="https://open-meteo.com/" target="_blank" rel="noopener">open-meteo.com</a>'
+    }), true);
+  }
+}
+
+function idxNow(){
+  const d = state.data, k = d.current.time.slice(0,13);
+  const i = d.hourly.time.findIndex(x => x.slice(0,13) >= k);
+  return i < 0 ? 0 : i;
+}
+
+function renderAll(){ renderCurrent(); renderDays(); renderChart(); renderStrip(); }
+
+function renderCurrent(){
+  const d = state.data, c = d.current, cd = cond(c.weather_code), label = cd[0], emoji = cd[1];
+  const dirs = DIRS[LANG];
+  const dir = dirs[Math.round((c.wind_direction_10m || 0) / 45) % 8];
+  document.getElementById("subline").textContent = t("sub", {
+    lat: nf(d.latitude, 3) + "°", lon: nf(d.longitude, 3) + "°", elev: nf(d.elevation, 0),
+    tz: d.timezone_abbreviation || d.timezone || "local"
+  });
+  document.querySelector(".now-temp").innerHTML = tempStr(c.temperature_2m) + "<span>" + state.unit + "</span>";
+  const q = document.querySelector(".now-cond");
+  q.querySelector(".emoji").textContent = emoji;
+  q.querySelector(".label").textContent = label;
+  q.querySelector(".feels").textContent = t("feels", { t: tempStr(c.apparent_temperature) });
+
+  const today = d.daily, dayIdx = Math.max(0, today.time.findIndex(x => x === c.time.slice(0,10)));
+  const facts = [
+    [t("fHum"), c.relative_humidity_2m + "%"],
+    [t("fWind"), nf(Math.round(wspd(c.wind_speed_10m)), 0) + " " + wUnit() + " " + dir],
+    [t("fRain"), c.precipitation > 0 ? precip(c.precipitation) : t("none")],
+    [t("fCloud"), c.cloud_cover + "%"],
+    [t("fPress"), nf(Math.round(c.surface_pressure), 0) + " hPa"],
+    [t("fToday"), t("todayFact", { hi: tempStr(today.temperature_2m_max[dayIdx]), lo: tempStr(today.temperature_2m_min[dayIdx]), p: today.precipitation_probability_max[dayIdx] })]
+  ];
+  document.querySelector(".facts").innerHTML =
+    facts.map(f => '<div class="fact"><div class="k">' + esc(f[0]) + '</div><div class="v">' + esc(f[1]) + '</div></div>').join("");
+}
+
+function renderDays(){
+  const d = state.data.daily, wrap = document.getElementById("days");
+  const todayStr = state.data.current.time.slice(0,10);
+  let wet = 0, rainTotal = 0;
+  const parts = [];
+  wrap.innerHTML = d.time.map((s, i) => {
+    const dt = parse(s), cd = cond(d.weather_code[i]), label = cd[0], emoji = cd[1];
+    const p = d.precipitation_probability_max[i] ?? 0, amt = d.precipitation_sum[i] || 0;
+    if (p >= 30){ wet++; parts.push(wdFmt.format(dt) + " " + p + "%"); }
+    rainTotal += amt;
+    return '<div class="day' + (s === todayStr ? " today" : "") + '">' +
+      '<div class="dn">' + esc(s === todayStr ? t("today") + " " + mdFmt.format(dt) : dayFmt.format(dt)) + '</div>' +
+      '<div class="ic" title="' + esc(label) + '">' + emoji + '</div>' +
+      '<div class="hi">' + tempStr(d.temperature_2m_max[i]) + '</div>' +
+      '<div class="lo">' + tempStr(d.temperature_2m_min[i]) + '</div>' +
+      '<div class="pc">' + (p >= 20 ? esc(t("dayRain", { p: p })) : "") + '</div>' +
+      '<div class="ds">' + esc(label) + (amt > WET_MM ? '<br>' + esc(precip(amt)) : "") + '</div>' +
+      '</div>';
+  }).join("");
+  document.getElementById("daily-note").textContent =
+    wet === 0 ? t("dryWeek", { amt: precip(rainTotal) })
+              : t(wet === 1 ? "wet1" : "wetN", { n: wet, list: parts.join(", "), amt: precip(rainTotal) });
+}
+
+function renderStrip(){
+  const d = state.data, s = idxNow(), n = 24;
+  const out = [];
+  for (let k = 0; k < n && s + k < d.hourly.time.length; k++){
+    const i = s + k, cd = cond(d.hourly.weather_code[i]);
+    const p = d.hourly.precipitation_probability[i] ?? 0, amt = d.hourly.precipitation[i] ?? 0;
+    out.push('<div class="hr' + (k === 0 ? " now" : "") + '">' +
+      '<div class="t">' + esc(k === 0 ? t("nowLbl") : hh(d.hourly.time[i])) + '</div>' +
+      '<div class="e" title="' + esc(cd[0]) + '">' + cd[1] + '</div>' +
+      '<div class="tt">' + tempStr(d.hourly.temperature_2m[i]) + '</div>' +
+      '<div class="r">' + (p >= 15 ? p + "%" : "") + '</div>' +
+      '<div class="a">' + (amt > WET_MM ? esc(precip(amt)) : "") + '</div>' +
+      '</div>');
+  }
+  document.getElementById("strip").innerHTML = out.join("");
+}
+
+/* ---------- chart ---------- */
+function renderChart(){
+  const svg = document.getElementById("chart");
+  const SVGNS = "http://www.w3.org/2000/svg";
+  svg.innerHTML = "";
+  const d = state.data, start = idxNow(), span = state.span;
+  const end = Math.min(start + span, d.hourly.time.length);
+  const rows = [];
+  for (let i = start; i < end; i++) rows.push({
+    i: i,
+    time: d.hourly.time[i],
+    h: hourOf(d.hourly.time[i]),
+    temp: cvt(d.hourly.temperature_2m[i]),
+    prob: d.hourly.precipitation_probability[i] ?? 0,
+    amt: d.hourly.precipitation[i] ?? 0,
+    night: d.hourly.is_day[i] === 0
+  });
+  if (!rows.length) return;
+
+  const W = 1000, HT = 400, pL = 56, pR = 60, pT = 30, pB = 52;
+  const x0 = pL, x1 = W - pR, y0 = pT, y1 = HT - pB;
+  const n = rows.length, step = (x1 - x0) / n;
+  const X = k => x0 + step * k + step / 2;
+
+  const temps = rows.map(r => r.temp);
+  let tMin = Math.min.apply(null, temps), tMax = Math.max.apply(null, temps);
+  const pad = Math.max(4, (tMax - tMin) * 0.18);
+  tMin = Math.floor((tMin - pad) / 5) * 5; tMax = Math.ceil((tMax + pad) / 5) * 5;
+  const YT = v => y1 - (v - tMin) / (tMax - tMin) * (y1 - y0);
+  const YP = p => y1 - Math.max(0, Math.min(100, p)) / 100 * (y1 - y0);
+
+  const el = (tag, attrs, text) => {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    svg.appendChild(e); return e;
+  };
+  const defs = document.createElementNS(SVGNS, "defs");
+  defs.innerHTML =
+    '<linearGradient id="tfill" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="#ff9f57" stop-opacity=".38"/>' +
+      '<stop offset="100%" stop-color="#ff9f57" stop-opacity="0"/></linearGradient>' +
+    '<linearGradient id="rbar" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="#4f8dff" stop-opacity=".85"/>' +
+      '<stop offset="100%" stop-color="#2a5fd0" stop-opacity=".45"/></linearGradient>';
+  svg.appendChild(defs);
+
+  el("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "#0d1626", stroke: "#25324b", rx: 8 });
+
+  // night shading
+  let s = null;
+  rows.forEach((r, k) => {
+    if (r.night && s === null) s = k;
+    const last = k === n - 1;
+    if (s !== null && (!r.night || last)){
+      const e = r.night && last ? k : k - 1;
+      el("rect", { x: X(s) - step/2, y: y0, width: Math.max(1, (e - s + 1) * step), height: y1 - y0, fill: "#050a14", opacity: "0.45" });
+      s = null;
+    }
+  });
+
+  // temperature gridlines (left axis); the range limits are in the chosen unit
+  const range = tMax - tMin, scale = state.unit === "F" ? 1 : 0.56;
+  const tStep = range > 40 * scale ? 10 : range > 18 * scale ? 5 : 2;
+  for (let v = Math.ceil(tMin / tStep) * tStep; v <= tMax; v += tStep){
+    const y = YT(v);
+    el("line", { x1: x0, y1: y, x2: x1, y2: y, stroke: "#25324b", "stroke-width": "1", "stroke-dasharray": "3 5" });
+    el("text", { x: x0 - 9, y: y + 4, fill: "#93a3c0", "font-size": "12", "text-anchor": "end" }, nf(Math.round(v) + 0, 0) + "°");
+  }
+  // rain axis (right side)
+  [0, 25, 50, 75, 100].forEach(p => {
+    el("text", { x: x1 + 9, y: YP(p) + 4, fill: "#6f9bff", "font-size": "12", "text-anchor": "start" }, p + "%");
+  });
+  el("text", { x: x1 + 9, y: y0 - 12, fill: "#6f9bff", "font-size": "11", "text-anchor": "start" }, t("rainAx"));
+
+  // rain bars
+  rows.forEach((r, k) => {
+    const y = YP(r.prob);
+    el("rect", { x: X(k) - Math.max(1.6, step * 0.32), y: y, width: Math.max(3.2, step * 0.64), height: Math.max(0, y1 - y), fill: "url(#rbar)", rx: Math.min(3, step * 0.3) });
+    if (r.amt > WET_MM){ // actual rain amount marker (r.amt is in mm)
+      const ah = Math.min(16, 4 + r.amt);
+      el("rect", { x: X(k) - Math.max(1, step * 0.14), y: y1 - ah, width: Math.max(2, step * 0.28), height: ah, fill: "#9ed0ff", opacity: ".9", rx: 2 });
+    }
+  });
+
+  // temperature line + fill
+  const line = rows.map((r, k) => (k ? "L" : "M") + X(k).toFixed(1) + " " + YT(r.temp).toFixed(1)).join(" ");
+  el("path", { d: line + " L " + X(n-1).toFixed(1) + " " + y1 + " L " + X(0).toFixed(1) + " " + y1 + " Z", fill: "url(#tfill)", stroke: "none" });
+  el("path", { d: line, fill: "none", stroke: "#ff9f57", "stroke-width": "2.6", "stroke-linejoin": "round", "stroke-linecap": "round" });
+
+  // day boundary + time labels
+  const labelEvery = span === 24 ? 3 : 6;
+  rows.forEach((r, k) => {
+    if (r.h === 0 && k > 0){
+      el("line", { x1: X(k) - step/2, y1: y0, x2: X(k) - step/2, y2: y1, stroke: "#4a5f85", "stroke-width": "1", "stroke-dasharray": "5 4" });
+      el("text", { x: X(k) - step/2 + 5, y: y0 + 15, fill: "#c8d6ef", "font-size": "12", "font-weight": "600" }, wdFmt.format(parse(r.time)));
+    }
+    if (k === 0 || r.h % labelEvery === 0){
+      el("text", { x: X(k), y: y1 + 20, fill: "#93a3c0", "font-size": "11.5", "text-anchor": "middle" },
+         k === 0 ? t("nowLbl") : hh(r.time));
+    }
+  });
+
+  // now marker + temp readout
+  el("line", { x1: X(0), y1: y0, x2: X(0), y2: y1, stroke: "#5aa9ff", "stroke-width": "1.6" });
+  const hi = rows.reduce((a, b) => b.temp > a.temp ? b : a, rows[0]);
+  const lo = rows.reduce((a, b) => b.temp < a.temp ? b : a, rows[0]);
+  el("circle", { cx: X(rows.indexOf(hi)), cy: YT(hi.temp), r: 4, fill: "#ffd0a6", stroke: "#ff9f57", "stroke-width": "2" });
+  el("circle", { cx: X(rows.indexOf(lo)), cy: YT(lo.temp), r: 4, fill: "#9ec9ff", stroke: "#4f8dff", "stroke-width": "2" });
+  el("text", { x: X(rows.indexOf(hi)), y: YT(hi.temp) - 11, fill: "#ffd0a6", "font-size": "12", "font-weight": "700", "text-anchor": "middle" }, nf(Math.round(hi.temp) + 0, 0) + "°");
+  el("text", { x: X(rows.indexOf(lo)), y: YT(lo.temp) + 18, fill: "#9ec9ff", "font-size": "12", "font-weight": "700", "text-anchor": "middle" }, nf(Math.round(lo.temp) + 0, 0) + "°");
+
+  // summary
+  const maxProb = Math.max.apply(null, rows.map(r => r.prob));
+  const totalAmt = rows.reduce((a, r) => a + r.amt, 0);
+  const wetHours = rows.filter(r => r.prob >= 40 || r.amt > WET_MM).length;
+  let when = "";
+  if (maxProb >= 20){
+    const peak = rows.reduce((a, b) => b.prob > a.prob ? b : a, rows[0]);
+    when = t("peakWhen", { time: hh(peak.time), day: wdFmt.format(parse(peak.time)) });
+  }
+  document.getElementById("wettest").innerHTML = t("peakSum", {
+    span: span, p: maxProb, amt: esc(precip(totalAmt)),
+    hrs: esc(wetHours === 1 ? t("hr1") : t("hrN", { n: wetHours }))
+  }) + esc(when);
+}
+
+/* ---------- hover tooltip ---------- */
+(function(){
+  const svg = document.getElementById("chart"), tip = document.getElementById("tip");
+  function move(ev){
+    if (!state.data) return;
+    const rows = state.data.hourly.time.length;
+    const start = idxNow(), end = Math.min(start + state.span, rows);
+    const n = end - start; if (n <= 0) return;
+    const rect = svg.getBoundingClientRect();
+    const px = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const rel = ((px - rect.left) / rect.width) * 1000;
+    const x0 = 56, x1 = 1000 - 60, step = (x1 - x0) / n;
+    let k = Math.round((rel - x0 - step/2) / step);
+    k = Math.max(0, Math.min(n - 1, k));
+    const i = start + k, H = state.data.hourly;
+    const cd = cond(H.weather_code[i]);
+    const amt = H.precipitation[i] || 0;
+    tip.innerHTML = "<b>" + esc(k === 0 ? t("nowLbl") : hh(H.time[i])) + "</b> · " + esc(wdFmt.format(parse(H.time[i]))) + "<br>" +
+      cd[1] + " " + esc(cd[0]) + "<br>" +
+      t("tipTemp", { t: esc(tempStr(H.temperature_2m[i]) + state.unit), f: esc(tempStr(H.apparent_temperature[i])) }) + "<br>" +
+      t("tipRain", { p: H.precipitation_probability[i] ?? 0 }) +
+      (amt > WET_MM ? " · " + esc(precip(amt, 3)) : "") + "<br>" +
+      t("tipWind", { w: esc(nf(Math.round(wspd(H.wind_speed_10m[i])), 0) + " " + wUnit()) });
+    tip.style.opacity = "1";
+    const boxEl = svg.parentElement || tip.parentElement;
+    const box = boxEl ? boxEl.getBoundingClientRect() : { left: 0, top: 0 };
+    tip.style.left = (rect.left - box.left + (x0 + step*k + step/2) / 1000 * rect.width) + "px";
+    tip.style.top = (rect.top - box.top + 46) + "px";
+  }
+  const hide = () => { tip.style.opacity = "0"; };
+  svg.addEventListener("mousemove", move);
+  svg.addEventListener("mouseleave", hide);
+  svg.addEventListener("touchstart", move, { passive: true });
+  svg.addEventListener("touchmove", move, { passive: true });
+  svg.addEventListener("touchend", hide);
+})();
+
+/* ---------- city search & selection ---------- */
+const placeLabel = p => p.name + (p.admin && p.admin !== p.name ? ", " + p.admin : "");
+const fullLabel = p => placeLabel(p) + (p.country ? ", " + p.country : "");
+const coord = v => nf(v, 3) + "°";
+const keyOf = p => p.lat.toFixed(3) + "," + p.lon.toFixed(3);
+
+const qEl = document.getElementById("q");
+const resBox = document.getElementById("results");
+
+function updatePlaceLabels(){
+  const p = state.place;
+  document.getElementById("place-name").textContent = placeLabel(p);
+  document.getElementById("footer").innerHTML = t("footer", {
+    om: '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>',
+    geo: '<a href="https://open-meteo.com/en/docs/geocoding-api" target="_blank" rel="noopener">' + esc(t("footGeo")) + '</a>',
+    place: esc(fullLabel(p))
+  });
+  document.querySelectorAll("#cities .chip").forEach(c =>
+    c.setAttribute("aria-pressed", c.dataset.key === keyOf(p)));
+}
+
+function renderChips(){
+  document.getElementById("cities").innerHTML = PRESETS.map(p =>
+    '<button class="chip" type="button" data-key="' + keyOf(p) + '" title="' + esc(fullLabel(p)) + '">' +
+    esc(p.name) + '</button>').join("");
+  document.querySelectorAll("#cities .chip").forEach(b => b.onclick = () => {
+    const p = PRESETS.find(x => keyOf(x) === b.dataset.key);
+    if (p) choose(p);
+  });
+}
+
+function choose(src){
+  state.place = {
+    name: src.name || "?",
+    admin: src.admin || "",
+    country: src.country || "",
+    lat: Number(src.lat), lon: Number(src.lon)
+  };
+  state.data = null;
+  closeResults();
+  qEl.value = "";
+  updatePlaceLabels();
+  document.getElementById("subline").textContent = t("subLoad", { lat: coord(state.place.lat), lon: coord(state.place.lon) });
+  document.querySelector(".now-temp").innerHTML = "--<span>" + state.unit + "</span>";
+  document.querySelector(".now-cond .emoji").textContent = "⏳";
+  document.querySelector(".now-cond .label").textContent = t("loading");
+  document.querySelector(".now-cond .feels").textContent = "—";
+  document.querySelector(".facts").innerHTML = "";
+  document.getElementById("days").innerHTML = "";
+  document.getElementById("daily-note").textContent = "";
+  document.getElementById("chart").innerHTML = "";
+  document.getElementById("strip").innerHTML = "";
+  document.getElementById("wettest").textContent = "";
+  setStatus(t("loadingPlace", { place: placeLabel(state.place) }));
+  load();
+}
+
+function openResults(html){
+  resBox.innerHTML = html;
+  resBox.classList.add("open");
+  qEl.setAttribute("aria-expanded", "true");
+}
+function closeResults(){
+  resBox.classList.remove("open");
+  resBox.innerHTML = "";
+  qEl.setAttribute("aria-expanded", "false");
+}
+
+let searchSeq = 0, searchTimer = null;
+async function runSearch(term){
+  const seq = ++searchSeq;
+  const q = (term || "").trim();
+  if (q.length < 2){ closeResults(); return; }
+  openResults('<div class="res none">' + esc(t("searching")) + '</div>');
+  try{
+    const r = await fetch(GEO + "?name=" + encodeURIComponent(q) + "&count=6&language=" + GEO_LANG + "&format=json");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    if (seq !== searchSeq) return;
+    const list = (j && j.results) || [];
+    if (!list.length){
+      openResults('<div class="res none">' + esc(t("noCity", { q: q })) + '</div>');
+      return;
+    }
+    openResults(list.map((p, i) =>
+      '<div class="res" role="option" data-i="' + i + '"><span class="nm">' + esc(p.name) + '</span>' +
+      '<span class="rg">' + esc([p.admin1, p.country].filter(Boolean).join(", ")) + '</span></div>').join(""));
+    resBox.querySelectorAll(".res[data-i]").forEach(el => el.onclick = () => {
+      const p = list[+el.dataset.i];
+      choose({ name: p.name, admin: p.admin1 || "", country: p.country || "", lat: p.latitude, lon: p.longitude });
+    });
+  }catch(e){
+    if (seq !== searchSeq) return;
+    openResults('<div class="res none">' + t("searchErr", {
+      why: esc(e && e.message ? e.message : t("errNet")),
+      refresh: esc(t("refresh"))
+    }) + '</div>');
+  }
+}
+
+qEl.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  const v = qEl.value;
+  searchTimer = setTimeout(() => runSearch(v), 260);
+});
+qEl.addEventListener("keydown", e => {
+  const items = Array.from(resBox.querySelectorAll(".res[data-i]"));
+  if (!items.length) return;
+  let i = items.findIndex(x => x.classList.contains("active"));
+  if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+    e.preventDefault();
+    i = e.key === "ArrowDown" ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+    items.forEach(x => x.classList.remove("active"));
+    items[i].classList.add("active");
+    items[i].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter" && i >= 0){
+    e.preventDefault();
+    items[i].click();
+  } else if (e.key === "Escape"){
+    closeResults();
+    qEl.blur();
+  }
+});
+document.addEventListener("click", e => { if (!e.target.closest || !e.target.closest(".search")) closeResults(); });
+
+/* ---------- controls ---------- */
+function unit(u){
+  state.unit = u;
+  document.getElementById("uF").setAttribute("aria-pressed", String(u === "F"));
+  document.getElementById("uC").setAttribute("aria-pressed", String(u === "C"));
+  document.getElementById("leg-temp").textContent = t("legTemp", { u: "°" + u });
+  if (state.data) renderAll();
+}
+document.getElementById("uF").onclick = () => unit("F");
+document.getElementById("uC").onclick = () => unit("C");
+document.getElementById("reload").onclick = load;
+document.querySelectorAll("[data-span]").forEach(b => b.onclick = () => {
+  state.span = +b.dataset.span;
+  document.querySelectorAll("[data-span]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  if (state.data) renderChart();
+});
+
+applyStatic();
+renderChips();
+unit(state.unit);
+choose(HOME);
+state.timer = setInterval(load, 600000);
+})();
+</script>

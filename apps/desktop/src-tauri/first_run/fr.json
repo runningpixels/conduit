@@ -1,0 +1,159 @@
+{
+  "weather": {
+    "name": "Météo du monde",
+    "description": "La météo en direct de huit grandes villes, une pour chaque langue que parle Conduit."
+  },
+  "weatherChat": {
+    "title": "Météo de huit villes",
+    "user": "Crée-moi un tableau de bord météo pour huit grandes villes, une pour chaque langue que parle Conduit : New York, Berlin, Mexico, Paris, Tokyo, Séoul, São Paulo et Shanghai. Affiche les conditions actuelles, les prévisions sur 7 jours et un graphique heure par heure. Commence par Paris.",
+    "assistant": "Voici un tableau de bord météo pour les huit villes. Il utilise Open-Meteo, un service météo gratuit qui n'a pas besoin de clé d'API.\n\n- **Paris** s'ouvre en premier. Changez de ville avec les boutons sous le titre, ou cherchez n'importe quelle autre ville.\n- La carte du haut montre le temps qu'il fait en ce moment. En dessous, vous trouverez les prévisions sur 7 jours et un graphique heure par heure de la température et du risque de pluie pour les 24, 48 ou 72 prochaines heures.\n- Les données sont actualisées toutes les 10 minutes.\n\nJe l'ai enregistré comme application : vous pouvez l'ouvrir à tout moment depuis **Apps**.",
+    "documentTitle": "Météo du monde"
+  },
+  "deck": {
+    "title": "Comment fonctionnent les LLM",
+    "user": "Explique-moi simplement comment fonctionnent les grands modèles de langage, puis transforme-le en un court diaporama que je peux présenter.",
+    "assistant": "En bref : un modèle de langage découpe votre texte en jetons, puis prédit le jeton suivant, encore et encore, jusqu'à la fin de la réponse. Il a appris à bien prédire en lisant une énorme quantité de texte, puis il a reçu un entraînement supplémentaire pour suivre des consignes. C'est aussi pour cela qu'il peut avoir l'air sûr de lui quand il se trompe : il produit du texte vraisemblable, pas des faits vérifiés.\n\nJ'ai fait un diaporama de 8 diapositives qui explique tout cela : les jetons, la prédiction du jeton suivant, l'entraînement, l'attention, le passage de prédicteur à assistant, les raisons des erreurs et les bons usages. Chaque diapositive a ses notes de l'intervenant.",
+    "slides": [
+      {
+        "layout": "title",
+        "fields": {
+          "kicker": "Expliqué sans mathématiques",
+          "headline": "Comment fonctionnent les grands modèles de langage",
+          "sub": "Ce qui se passe entre votre question et la réponse"
+        },
+        "notes": "Une courte visite sans maths. Chaque diapositive est une idée que vous pourriez expliquer à un ami."
+      },
+      {
+        "layout": "bullets",
+        "fields": {
+          "kicker": "Étape 1",
+          "headline": "Le texte devient des jetons",
+          "bullets": [
+            "Un modèle ne voit jamais de lettres ni de mots, seulement des jetons",
+            "Les jetons sont des morceaux de texte courants, chacun converti en nombre",
+            "« Incroyable » pourrait faire trois jetons : in · croy · able",
+            "Il ne lit qu'un nombre limité de jetons : sa fenêtre de contexte"
+          ]
+        },
+        "notes": "Les jetons expliquent certains comportements étranges, comme se tromper en comptant les lettres d'un mot : le modèle n'a jamais vu les lettres."
+      },
+      {
+        "layout": "statement",
+        "fields": {
+          "headline": "Un seul travail : deviner le jeton suivant, encore et encore",
+          "sub": "Le modèle note chaque jeton suivant possible, en choisit un et recommence jusqu'à la fin de la réponse."
+        },
+        "notes": "Après « La capitale de la France est », « Paris » obtient une note très haute. Un peu de hasard évite des réponses trop mécaniques. Tout ce que fait un modèle de chat, du code aux poèmes, c'est cette seule étape répétée."
+      },
+      {
+        "layout": "stat-row",
+        "fields": {
+          "kicker": "Étape 2",
+          "headline": "Apprendre à partir de beaucoup de texte",
+          "stats": [
+            {
+              "value": "1T+",
+              "label": "jetons de texte lus : des billions"
+            },
+            {
+              "value": "1Md+",
+              "label": "de nombres ajustables, appelés poids : des milliards"
+            },
+            {
+              "value": "Sem.",
+              "label": "d'entraînement sur des milliers de puces"
+            }
+          ],
+          "footnote": "Chaque mauvaise estimation ajuste un peu les poids. Le modèle retient des motifs, pas une base de données de faits."
+        },
+        "notes": "Cette étape s'appelle le préentraînement. Une fois terminée, les poids sont figés : le modèle n'apprend pas de vos conversations, sauf si quelqu'un le réentraîne."
+      },
+      {
+        "layout": "bullets",
+        "fields": {
+          "kicker": "Étape 3",
+          "headline": "L'attention : quels mots comptent ici",
+          "bullets": [
+            "Pour chaque jeton, le modèle regarde les jetons précédents",
+            "Il pèse lesquels comptent pour la prochaine estimation",
+            "Le trophée n'entre pas, il est trop gros : il = le trophée",
+            "C'est l'idée des transformers, publiée en 2017"
+          ]
+        },
+        "notes": "L'attention explique pourquoi le contexte que vous donnez compte autant. Une consigne claire et complète offre au modèle les bons mots sur lesquels revenir."
+      },
+      {
+        "layout": "two-col",
+        "fields": {
+          "kicker": "Étape 4",
+          "headline": "Du prédicteur à l'assistant",
+          "columns": [
+            {
+              "kicker": "Après le préentraînement",
+              "body": "Le modèle continue simplement le texte. Posez-lui une question et il peut écrire d'autres questions."
+            },
+            {
+              "kicker": "Après l'entraînement complémentaire",
+              "bullets": [
+                "Des exemples de réponses utiles",
+                "Les notes données par des personnes aux meilleures réponses",
+                "Un apprentissage du refus des demandes dangereuses"
+              ]
+            }
+          ]
+        },
+        "notes": "Cet entraînement supplémentaire explique pourquoi les assistants ont chacun leur style, même quand ils sont construits de la même façon."
+      },
+      {
+        "layout": "bullets",
+        "fields": {
+          "kicker": "Connaître les limites",
+          "headline": "Pourquoi ils se trompent",
+          "bullets": [
+            "Ils produisent du texte vraisemblable, pas des faits vérifiés",
+            "Quand ils ne savent pas, ils peuvent quand même sembler sûrs",
+            "Leurs connaissances s'arrêtent à la fin de l'entraînement",
+            "Sans outils, ils comptent mal et se trompent dans les longs calculs"
+          ]
+        },
+        "notes": "Traitez une réponse comme le premier jet d'un collègue brillant : utile, et à vérifier."
+      },
+      {
+        "layout": "bullets",
+        "fields": {
+          "kicker": "En pratique",
+          "headline": "Bien les utiliser",
+          "bullets": [
+            "Donnez du contexte : joignez le document plutôt que de le décrire",
+            "Demandez des sources, puis ouvrez-les",
+            "Laissez-le utiliser des outils : recherche web, vos fichiers, vos applications",
+            "Vérifiez ce qui compte avant de vous y fier"
+          ],
+          "footnote": "Dans Conduit : joignez des fichiers, utilisez Recherche pour les questions sourcées et connectez vos outils dans Connecteurs."
+        },
+        "notes": "L'essentiel de la qualité d'une réponse vient de ce que vous donnez au modèle pour travailler."
+      }
+    ]
+  },
+  "rainyChat": {
+    "title": "Un samedi pluvieux à Paris",
+    "user": "Il doit pleuvoir toute la journée samedi à Paris. Propose-moi une journée tranquille à l'abri, avec une bonne adresse pour déjeuner.",
+    "assistant": "Voici un programme tranquille pour un samedi de pluie à Paris. J'ai choisi des étapes proches les unes des autres, pour que vous restiez peu de temps sous la pluie. Vérifiez les horaires avant de partir : les lieux changent.",
+    "documentTitle": "Samedi pluvieux à Paris",
+    "document": "# Samedi pluvieux à Paris\n\nUne journée lente à l'abri, avec de courts trajets entre les étapes.\n\n## Matin : le musée d'Orsay\n\nCommencez par le **musée d'Orsay**, installé dans une ancienne gare au bord de la Seine. Prenez le temps de voir les impressionnistes, puis montez jusqu'à la grande horloge pour regarder la ville sous la pluie.\n\n## Déjeuner : le Marché des Enfants Rouges\n\nTraversez la Seine jusqu'au **Marché des Enfants Rouges**, dans le Marais. C'est un marché couvert où l'on mange à de petites tables, avec des plats de plusieurs cuisines. Chacun peut y trouver son bonheur.\n\n## Après-midi : les passages couverts\n\nPromenez-vous dans les **passages couverts** du centre de Paris. La **galerie Vivienne** est la plus belle : sol en mosaïque, verrière, librairies anciennes et salons de thé. Vous pouvez y flâner sans ouvrir le parapluie.\n\n## Soir : un film ou un concert\n\nAllez voir un film dans l'un des cinémas du Quartier latin, ou écoutez un concert à la **Philharmonie de Paris**, au parc de la Villette.\n\n## Conseils\n\n- Le métro vous garde presque au sec : chaque étape est à courte distance d'une station.\n- Prenez un petit parapluie : c'est entre les stations que l'on se mouille.\n- Réservez vos places de concert à l'avance et vérifiez les horaires d'ouverture : les lieux changent."
+  },
+  "briefing": {
+    "name": "Briefing matinal",
+    "description": "Lit les principales actualités de deux sites et rédige un briefing avec les liens et pourquoi chacune vous concerne.",
+    "inputs": {
+      "site_one": "https://www.01net.com",
+      "site_two": "https://next.ink",
+      "interests": "développement logiciel, IA, open source",
+      "language": "Français"
+    },
+    "runStartedAt": "2026-10-11T21:26:29.890Z",
+    "runFinishedAt": "2026-10-11T21:31:06.173Z",
+    "documentTitle": "Briefing matinal 2026-10-11",
+    "document": "# Briefing du matin, 2026-10-11\n\nCe matin, l'IA frontière domine l'actualité : Mistral revient dans la course avec un modèle aux poids ouverts, OpenAI resserre les limites de son offre Pro, et Anthropic fait débat, entre une clause sur le « bien-être des modèles » et un utilisateur de Claude signalé à la police. L'open source est lui aussi très présent, avec les conditions posées par la Document Foundation à l'IA, l'ébauche LiteBox de Microsoft et la mise en pause du bug bounty de Google face aux soumissions générées par IA. Dernier fil rouge : la sécurité, avec l'alerte « mode bunker » d'un chercheur d'Ethereum sur l'impact des progrès de l'IA en mathématiques.\n\n## Modèles frontière et abonnements\n\n**[Mistral lance une préversion de son LLM frontière Mistral Large 4, surnommé « Le Chonk »](https://next.ink/260208/mistral-lance-une-preversion-de-son-llm-frontiere-mistrale-large-surnomme-le-chonk/)** — *Next 10*\n\nMistral a lancé la préversion publique de Mistral Large 4, surnommé « Le Chonk », un LLM frontière de 1 050 milliards de paramètres (dont 49 milliards actifs, en architecture MoE) avec un million de tokens de contexte, entraîné de zéro sur 3 800 puces NVIDIA Grace Blackwell dans ses propres datacenters européens. Le modèle revendique l'état de l'art parmi les modèles à poids ouverts, avec 49,8 % sur l'indice combiné des benchmarks agentiques (devant DeepSeek V4 Pro et Qwen3.8 Max) et 82 % au Cyber Index en cybersécurité, le meilleur score à ce jour. Les poids du modèle seront publiés le 26 octobre, en même temps que la version finale.\n\nPourquoi c'est important : après des mois de quasi-silence, Mistral redevient un prétendant crédible sur les modèles frontière avec des poids qui seront ouverts, un enjeu direct pour les développeurs et la communauté open source, d'autant que le modèle cible explicitement les usages agentiques et la cybersécurité, là où les modèles fermés type GPT-6 ou Claude refusent d'exécuter ces tâches.\n\n**[ChatGPT vs Claude : quel abonnement IA est le plus généreux ? Une étude a tranché](https://www.01net.com/actualites/chatgpt-vs-claude-quel-abonnement-ia-est-le-plus-genereux-une-etude-a-tranche.html)** — *01net*\n\nOpenAI a profité de sa conférence développeurs pour diviser par deux les limites d'usage de son offre ChatGPT Pro à 200 dollars par mois à partir du 30 octobre (de 20x à 10x le niveau Plus, avec les messages hebdomadaires à GPT-6 Pro ramenés de 200 à 100), tout en lançant une nouvelle formule à 500 dollars par mois aux réponses plus rapides et en offrant un crédit de 2 500 dollars aux abonnés existants. Une étude de SemiAnalysis conclut que les abonnements Claude offrent bien plus d'usage brut — jusqu'à 2,9 milliards de tokens par mois contre environ 1 milliard pour ChatGPT, un écart de 5 à 1 une fois valorisé aux prix de l'API — même si des prix d'API OpenAI plus bas et des coûts par tâche (0,72 dollar pour GPT-6.1 Sol contre 5,98 dollars pour Claude Opus) compliquent ce constat. L'étude note aussi que les abonnements d'Anthropic consomment 42 % de sa puissance de calcul de service pour environ 10 % de ses revenus seulement.\n\nPourquoi c'est important : pour les développeurs et les équipes qui construisent sur l'IA, l'économie de ces abonnements évolue vite — OpenAI réduit de moitié la capacité Pro tout en orientant vers une formule plus chère, et les évolutions des prix d'API modifient les comparaisons de rapport qualité-prix, ce qui influence directement le choix du modèle et de la formule pour votre stack et votre budget.\n\n## Autour d'Anthropic : conditions d'utilisation et signalements\n\n**[Anthropic interdit la « torture » de Claude](https://next.ink/260763/anthropic-interdit-de-torturer-claude/)** — *Next 45*\n\nAnthropic interdit dans ses nouvelles conditions d'utilisation, effectives le 12 novembre, les comportements « abusifs ou cruels prolongés » envers ses modèles comme Claude, une clause absente des versions précédentes. Cette mesure, dévoilée le 8 octobre, ne vise que les cas extrêmes de cruauté répétée sans objectif discernable : la sanction maximale est la fin de la conversation, sans blocage du compte. Les conditions précisent aussi l'interdiction d'utiliser Claude pour armer des drones autonomes, développer des logiciels d'armement ou des outils de surveillance, avec des exceptions possibles pour certains clients gouvernementaux.\n\nPourquoi c'est important : pour les développeurs, chercheurs et acteurs open source qui testent et stressent les LLM (une expérimentation de « torture » de modèles sur GitHub a d'ailleurs déclenché la polémique), cette clause floue sur le « bien-être des modèles » soulève des questions de conformité aux CGU, tandis qu'OpenAI n'impose aucune règle équivalente pour protéger ses propres modèles.\n\n**[Elle utilisait Claude comme journal intime, Anthropic l'a signalée à la police](https://www.01net.com/actualites/elle-utilisait-claude-comme-journal-intime-anthropic-la-signalee-a-la-police.html)** — *01net*\n\nFin septembre, une habitante de Bonita Springs, en Floride, aurait confié à Claude son intention d'ouvrir le feu sur le bureau du shérif local, puis annoncé le lendemain qu'elle s'était procurée une arme : repérés par les systèmes de détection automatique d'Anthropic et relus par une équipe humaine, ces messages ont conduit à son arrestation et à sa poursuite pour menace écrite de violence. Le shérif Carmine Marceno a décrit une utilisatrice qui se servait de l'IA « comme un journal intime », et ce type de signalement spontané n'apparaît dans aucun chiffre public — le dernier rapport de transparence d'Anthropic ne recense que 29 demandes d'autorités au second semestre 2025, sans aucune procédure d'urgence. L'affaire s'ajoute à une série de précédents, d'OpenAI qui officialise le signalement des menaces à une conversation ChatGPT remontée jusqu'au FBI et au RAID en France en avril.\n\nPourquoi c'est important : pour les développeurs et les acteurs de l'IA et de l'open source, l'assistant conversationnel devient un canal actif de signalement aux autorités — les CGU d'Anthropic réservent cette transmission « à sa seule discrétion » (Anthropic Ireland étant responsable de traitement pour l'Europe) — ce qui pose des questions de confidentialité, de conception des garde-fous et renforce l'attrait d'alternatives open source auto-hébergées.\n\n## Open source : fondations et garde-fous\n\n**[LibreOffice : pas d'IA tant qu'elle ne remplira pas les critères de la Document Foundation](https://next.ink/260350/libreoffice-pas-dia-tant-quelle-ne-remplira-pas-les-criteres-de-la-document-foundation/)** — *Next 10*\n\nLa Document Foundation a confirmé que LibreOffice n'intégrera aucune fonctionnalité d'IA générative par défaut tant qu'une intégration ne respectera pas ses six principes : choix par l'utilisateur du lieu d'inférence, aucune donnée envoyée sans autorisation explicite, aucune télémétrie, pas de dépendance à un fournisseur unique, contenu généré en ODF avec structure préservée, et fonction entièrement facultative. La fondation précise qu'elle ne rejette pas l'IA par principe mais qu'aucune intégration actuelle ne remplit ces six conditions, et recommande aux intéressés de passer par des extensions connectées à des modèles locaux via Ollama ou LM Studio, tout en égratignant au passage Microsoft, dont l'IA Copilot imposée dans Microsoft 365 sert selon elle à justifier des hausses de prix.\n\nPourquoi c'est important : pour les développeurs, les acteurs de l'IA et l'open source, c'est un contre-modèle assumé à la course à l'IA embarquée — un projet majeur montre qu'on peut prioriser confidentialité, souveraineté des données et standards ouverts (ODF, interfaces multi-moteurs, modèles locaux) plutôt que le modèle économique des abonnements, tout en laissant la porte ouverte à des intégrations qui respecteraient ces critères.\n\n**[Microsoft livre une ébauche de LiteBox, un « système d'exploitation bibliothèque »](https://next.ink/brief-article/microsoft-livre-une-ebauche-de-litebox-un-systeme-dexploitation-bibliotheque/)** — *Next 10*\n\nMicrosoft a publié la version 0.1 de LiteBox, un projet open source (licence MIT) hébergé sur GitHub et présenté comme un « système d'exploitation bibliothèque » : une couche qui s'interpose entre les applications et le noyau hôte via deux interfaces (Nord côté application, Sud côté plateforme) afin de réduire la surface d'attaque en limitant les appels système exposés. Cette ébauche n'est pas exploitable en l'état : le code est fourni pour que les développeurs étudient son fonctionnement, les API étant encore en chantier et susceptibles de casser la compatibilité. Selon Microsoft, LiteBox devrait permettre d'exécuter des programmes Linux sous Windows, de cloisonner des applications Linux, et de tourner sur des VM confidentielles AMD SEV-SNP ou sur le LVBS.\n\nPourquoi c'est important : pour les développeurs logiciel et IA, c'est une brique MIT librement réutilisable qui pourrait simplifier le sandboxing, faire tourner des workloads Linux (y compris d'IA) sur Windows et accélérer l'adoption du confidential computing, signe qu'un Microsoft de plus en plus open source investit dans les fondations d'exécution sécurisée.\n\n**[AI Slop : Google met en pause son programme de bug bounty pour le logiciel libre](https://next.ink/260081/ai-slop-google-met-en-pause-son-programme-de-bug-bounty-pour-le-logiciel-libre/)** — *Next 6*\n\nGoogle a suspendu, depuis le 1er octobre, son programme de bug bounty dédié aux logiciels libres (OSS VRP), lancé en 2022 avec des récompenses de 100 à 31 337 dollars, en raison d'une « forte augmentation des soumissions automatisées » générées par IA dont la grande majorité est invalide. L'entreprise, qui n'a pas touché à ses autres programmes de bug bounty, promet de faire le point au premier trimestre 2027 — le même phénomène a déjà conduit Apple cet été puis le projet cURL à fermer ou revoir leurs propres programmes.\n\nPourquoi c'est important : pour les mondes du développement logiciel, de l'IA et de l'open source, c'est un signe que l'IA générative « slop » sature les canaux vitaux de sécurité du logiciel libre, épuisant les mainteneurs et privant des projets essentiels (type OpenSSL) d'un financement et d'un audit de vulnérabilités dont ils ont souvent cruellement besoin.\n\n## Quand l'IA déstabilise la sécurité\n\n**[« Mode bunker » : pourquoi l'IA sème la panique chez les investisseurs crypto](https://www.01net.com/actualites/mode-bunker-ia-bitcoin-ethereum-ecdsa.html)** — *01net*\n\nJustin Drake, chercheur réputé de l'Ethereum Foundation, a appelé le 7 octobre 2026 l'industrie blockchain à préparer un « mode bunker » : selon lui, les progrès fulgurants de l'IA en mathématiques — illustrés par les 722 manuscrits publiés par OpenAI qui renversent des conjectures établies — pourraient casser l'algorithme ECDSA qui protège Bitcoin et Ethereum « en quelques mois », bien avant les ordinateurs quantiques. Il recommande aux détenteurs, en particulier les plus gros, de transférer leurs fonds vers des adresses neuves n'ayant jamais signé de transaction, tout en insistant : pas de précipitation ni de panique. L'alerte divise, Vitalik Buterin appelant à la prudence (les migrations ratées lui ont coûté plus cher que les piratages) et le CTO de Ledger Charles Guillemet qualifiant le scénario de FUD, aucune attaque réelle ne cassant aujourd'hui ECDSA.\n\nPourquoi c'est important : pour qui développe des logiciels ou contribue à l'open source, c'est un signal que les hypothèses cryptographiques de long terme (ECDSA, mais aussi les réseaux de neurones post-quantiques à base de réseaux euclidiens comme ML-DSA) peuvent être réévaluées brutalement par l'IA — d'où l'accélération par Ethereum de sa feuille de route « hash-only » (SPHINCS, vérification formelle) et l'invitation à suivre de près l'hygiène cryptographique des bibliothèques et protocoles que vous utilisez.\n"
+  }
+}

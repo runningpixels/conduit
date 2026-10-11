@@ -3113,6 +3113,11 @@ pub struct AppSettings {
     /// workspace while false (and while no provider credential is configured).
     #[serde(default)]
     pub onboarding_completed: bool,
+    /// Whether first-run examples were considered for this profile: set
+    /// once, when onboarding finishes, whether or not any were added, so
+    /// examples are never added again (see `first_run_examples`).
+    #[serde(default)]
+    pub examples_seeded: bool,
     /// Phase 7: whether web search is enabled globally. Off by default.
     /// Honored only when the active provider is non-local; ignored when
     /// `local_only` is true (see `agent-web-search` spec).
@@ -3278,6 +3283,7 @@ impl Default for AppSettings {
             update_check_enabled: true,
             update_policy: UpdatePolicy::Manual,
             onboarding_completed: false,
+            examples_seeded: false,
             web_search_enabled: false,
             web_search: WebSearchDefaults::default(),
             web_search_consent_acknowledged: false,
@@ -3360,6 +3366,8 @@ pub struct SettingsPatch {
     pub update_policy: Option<UpdatePolicy>,
     #[ts(optional)]
     pub onboarding_completed: Option<bool>,
+    #[ts(optional)]
+    pub examples_seeded: Option<bool>,
     /// Phase 7: master web search toggle. The renderer also enforces UI
     /// gating on `local_only` and provider capability.
     #[ts(optional)]

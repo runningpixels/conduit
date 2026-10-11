@@ -16,6 +16,8 @@ import { useRef, useState, type ReactNode } from 'react';
 import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { providerHueId } from '../lib/providerIdentity';
 import { organizeConversations } from '../lib/conversationOrganization';
+import { useExampleItems } from '../examples/useExampleItems';
+import { ExampleChip } from '../examples/ExampleChip';
 import { modShortcutHint } from '../lib/shortcuts';
 import { useRichT, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
@@ -149,6 +151,7 @@ export function Sidebar({
 }: SidebarProps) {
   const t = useT();
   const tr = useRichT();
+  const { isExample } = useExampleItems();
   const fmt = useFormatters();
   const [menuOpen, setMenuOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
@@ -319,6 +322,7 @@ export function Sidebar({
             </span>
           ) : null}
           <span className="convo-name">{label}</span>
+          {isExample('chat', row.id) && <ExampleChip />}
           {runStatus?.conversationId === row.id ? (
             <span className="convo-status" data-status={runStatus.needsYou ? 'needs-you' : 'running'}>
               <i className="convo-status-mark" aria-hidden="true" />

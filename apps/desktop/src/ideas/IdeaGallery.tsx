@@ -26,6 +26,7 @@ export const GLYPHS: Record<string, string> = {
   budgetTracker: '+ −',
   unitConverter: '⇄',
   weatherDashboard: '18°',
+  worldWeather: '8°C',
   currencyConverter: '€ $',
   githubViewer: '</>',
   morningBriefing: '7:30',

@@ -507,6 +507,9 @@ impl AppState {
         if let Some(value) = patch.onboarding_completed {
             settings.onboarding_completed = value;
         }
+        if let Some(value) = patch.examples_seeded {
+            settings.examples_seeded = value;
+        }
 
         // Phase 7 / M-WebSearch: master toggle and persistent defaults. Domain
         // lists are validated for shape (bare host, no http(s) prefix, ≤253

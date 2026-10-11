@@ -27,6 +27,7 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
         { id: 'site_one', label: 'First site', default: 'https://news.ycombinator.com' },
         { id: 'site_two', label: 'Second site', default: 'https://www.theverge.com' },
         { id: 'interests', label: 'What I care about', default: 'software development, AI, open source' },
+        { id: 'language', label: 'Language', default: 'English' },
       ],
       steps: [
         { id: 'fetch', type: 'fetch_page', urls: ['{{inputs.site_one}}', '{{inputs.site_two}}'] },
@@ -88,7 +89,7 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
           id: 'write',
           type: 'summarize',
           prompt:
-            "Write today's morning briefing in Markdown for a reader who cares about: {{inputs.interests}}.\n\nStart with the line \"# Morning briefing, {{run.date}}\". Then a short opening paragraph (2 or 3 sentences) on the main threads of the day. Then group the stories under 2 to 4 \"## \" headings by theme. For each story, three paragraphs separated by blank lines: its Link exactly as given, in bold, followed by the site (and its numbers, if any) in italics; its summary; and why it matters. Put stories with no summary, or whose summary says the article couldn't be read, in a last section \"## Also worth a look\" as a list of links.\n\nUse only the facts in the stories below. Don't add any.",
+            "Write today's morning briefing in Markdown, in {{inputs.language}}, for a reader who cares about: {{inputs.interests}}.\n\nStart with a \"# \" heading that says \"Morning briefing\" in {{inputs.language}}, then a comma and {{run.date}}. Then a short opening paragraph (2 or 3 sentences) on the main threads of the day. Then group the stories under 2 to 4 \"## \" headings by theme. For each story, three paragraphs separated by blank lines: its Link exactly as given, in bold, followed by the site (and its numbers, if any) in italics; its summary; and why it matters. Put stories with no summary, or whose summary says the article couldn't be read, in a last section headed \"Also worth a look\" (in {{inputs.language}}) as a list of links.\n\nUse only the facts in the stories below. Don't add any. Keep each Link's headline as given, even if it is in another language.",
           input: '{{#each steps.read.items}}{{item.card.text}}\n\n{{/each}}',
         },
         // A new document every morning, so each briefing stays in Results.

@@ -26,6 +26,7 @@ const baseSettings: AppSettings = {
   updateCheckEnabled: true,
   updatePolicy: 'manual' as const,
   onboardingCompleted: true,
+  examplesSeeded: false,
   webSearchEnabled: true,
   webSearch: {
     mode: 'local' as const,

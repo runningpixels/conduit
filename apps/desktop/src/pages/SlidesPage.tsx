@@ -5,6 +5,8 @@
 /// starts new decks and lists the existing ones; opening one hands it to the
 /// shell, which opens the studio.
 
+import { useExampleItems } from '../examples/useExampleItems';
+import { ExampleChip } from '../examples/ExampleChip';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog } from '@conduit/ui';
 import { useT } from '../i18n';
@@ -39,6 +41,7 @@ function themeLabel(name: string): string {
 
 export function SlidesPage({ onOpenDeck, onStartDeck, onStatus, prefill, refreshKey = 0 }: SlidesPageProps) {
   const t = useT();
+  const { isExample } = useExampleItems();
   const fmt = useFormatters();
   const [decks, setDecks] = useState<DeckSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -237,6 +240,7 @@ ${scaffold}`));
               )}
               <span className="deck-card-meta">
                 {t('slides.card.slides', { count: deck.slideCount })} · {themeLabel(deck.themeName)}
+                {isExample('deck', deck.id) && <ExampleChip />}
               </span>
               <span className="deck-card-meta">{t('slides.card.updated', { when: fmt.timeAgo(deck.updatedAt) })}</span>
               <div className="deck-card-foot">

@@ -103,6 +103,7 @@ const baseSettings = {
     updateCheckEnabled: true,
     updatePolicy: 'manual' as const,
     onboardingCompleted: true,
+    examplesSeeded: false,
     webSearchEnabled: true,
     webSearch: {
       mode: 'auto' as const,

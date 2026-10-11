@@ -47,6 +47,7 @@ export const GALLERY_SETTINGS: AppSettings = {
   updateCheckEnabled: true,
   updatePolicy: 'manual',
   onboardingCompleted: true,
+  examplesSeeded: false,
   webSearchEnabled: true,
   webSearch: {
     mode: 'auto',

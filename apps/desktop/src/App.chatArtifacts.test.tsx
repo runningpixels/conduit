@@ -52,6 +52,7 @@ const settings: AppSettings = {
   updateCheckEnabled: true,
   updatePolicy: 'manual' as const,
   onboardingCompleted: true,
+  examplesSeeded: false,
   webSearchEnabled: false,
   webSearch: {
     mode: 'auto' as const,
@@ -90,6 +91,7 @@ const SHAPES: Record<string, unknown> = {
   updateSettings: settings,
   getOnboardingState: {
     onboardingCompleted: true,
+    examplesSeeded: false,
     hasProviderCredential: true,
     migrationRecovery: null,
   },

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import type { WorkflowRecord, WorkflowRunDetail, WorkflowSummary } from '../ipc/contracts';
 import { STARTER_WORKFLOWS } from '../workflows/starters';
 import { WorkflowsPage } from './WorkflowsPage';
+import { I18nProvider } from '../i18n';
 
 const ipc = vi.hoisted(() => ({
   listWorkflows: vi.fn(),
@@ -154,6 +155,24 @@ describe('WorkflowsPage', () => {
     );
     expect(onStatus).toHaveBeenCalledWith('Created Morning briefing');
     expect(await screen.findByRole('heading', { name: 'Morning briefing' })).toBeInTheDocument();
+  });
+
+  it('fills the briefing language with the interface language', async () => {
+    // The page remounts when the catalog loads, so the list stays empty throughout.
+    ipc.listWorkflows.mockResolvedValue([]);
+    const { container } = render(
+      <I18nProvider initialPreference="de">
+        <WorkflowsPage onStatus={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(container.querySelector('.wf-starter')?.textContent ?? '').toContain('Diese Vorlage'));
+    const card = container.querySelector('.wf-starter') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button'));
+    await waitFor(() => expect(ipc.createWorkflow).toHaveBeenCalled());
+    const definition = ipc.createWorkflow.mock.calls[0][2];
+    expect(definition.inputs.find((i: { id: string }) => i.id === 'language')).toMatchObject({ default: 'Deutsch' });
+    // The steps are the starter's own, untouched.
+    expect(definition.steps).toEqual(briefing.definition.steps);
   });
 
   it('opens a starter that changes a deck in the editor, flagged, instead of saving it empty', async () => {
@@ -392,6 +411,7 @@ describe('WorkflowsPage', () => {
         site_one: 'https://example.com',
         site_two: 'https://www.theverge.com',
         interests: 'software development, AI, open source',
+        language: 'English',
       }),
     );
 

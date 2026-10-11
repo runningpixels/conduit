@@ -13,11 +13,12 @@ import {
   listProviderDescriptors,
   requestLocalDataWipe,
   restartApp,
+  seedExamples,
   updateSettings,
 } from '../ipc/client';
 import { ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
-import { localeEntry, useT } from '../i18n';
+import { localeEntry, useLocale, useT } from '../i18n';
 import { BrandMark } from '../icons';
 import { useFormatters } from '../i18n/formatters';
 import { useAutoSave } from '../workspace/settings/useAutoSave';
@@ -26,6 +27,9 @@ import { PrivacyStep } from './PrivacyStep';
 import type { Idea } from '../ideas/catalog';
 import { resolveCapabilities } from '../ideas/capabilities';
 import { onboardingIdeas } from '../ideas/selectIdeas';
+import { STARTER_THEMES } from '../slides/themes';
+import { STARTER_WORKFLOWS } from '../workflows/starters';
+import { notifyExamplesChanged } from '../examples/useExampleItems';
 
 type OnboardingStep = 'appearance' | 'provider' | 'privacy' | 'connectors' | 'finish';
 
@@ -75,6 +79,7 @@ export function Onboarding({
   logoSrc?: string;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const [finishing, setFinishing] = useState(false);
   const [step, setStep] = useState<OnboardingStep>('appearance');
   const stepIndex = STEPS.findIndex((s) => s.id === step);
@@ -108,6 +113,20 @@ export function Onboarding({
       }
       const next = await updateSettings({ ...settings, onboardingCompleted: true });
       onSettingsChange(next);
+      // The examples are a courtesy: if adding them fails, onboarding still ends.
+      try {
+        const theme = STARTER_THEMES[0];
+        const briefing = STARTER_WORKFLOWS.find((w) => w.id === 'briefing');
+        const outcome = await seedExamples({
+          locale,
+          themeName: theme.name,
+          themeCss: theme.css,
+          briefingDefinition: briefing?.definition ?? null,
+        });
+        if (outcome?.seeded) notifyExamplesChanged();
+      } catch (e) {
+        console.warn('Could not add the examples', e);
+      }
       onStatus(t('onboarding.finish.welcomeStatus'));
       onComplete(idea);
     } catch (e) {

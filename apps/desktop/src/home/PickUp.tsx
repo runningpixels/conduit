@@ -6,6 +6,8 @@ import { useFormatters } from '../i18n/formatters';
 import { AppTile } from '../apps/AppTile';
 import { ChatIcon, SlidesIcon, WritingIcon } from '../icons';
 import type { PickUpItem } from './pickUpItems';
+import { useExampleItems } from '../examples/useExampleItems';
+import { ExampleChip } from '../examples/ExampleChip';
 
 export interface PickUpProps {
   items: PickUpItem[];
@@ -19,6 +21,7 @@ export function PickUp({ items, onOpenChat, onOpenDeck, onOpenDraft, onOpenApp }
   const t = useT();
   const fmt = useFormatters();
   const labelId = useId();
+  const { isExample } = useExampleItems();
   if (items.length === 0) return null;
   return (
     <section className="home-section" aria-labelledby={labelId}>
@@ -65,7 +68,10 @@ export function PickUp({ items, onOpenChat, onOpenDeck, onOpenDraft, onOpenApp }
                   {tile}
                 </span>
                 <span className="home-pickup-text">
-                  <span className="home-pickup-eyebrow">{eyebrow}</span>
+                  <span className="home-pickup-eyebrow">
+                    {eyebrow}
+                    {item.kind !== 'draft' && isExample(item.kind, item.id) && <ExampleChip />}
+                  </span>
                   <span className="home-pickup-name" title={title}>
                     {title}
                   </span>

@@ -4,6 +4,8 @@
 /// chat, and keeps the network access it was given (principal `app:<id>`).
 /// Saving happens from the document panel (⋯ → Save as app).
 
+import { useExampleItems } from '../examples/useExampleItems';
+import { ExampleChip } from '../examples/ExampleChip';
 import { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@conduit/ui';
 import { useT } from '../i18n';
@@ -55,6 +57,7 @@ export function AppsPage({
   onStatus,
 }: AppsPageProps) {
   const t = useT();
+  const { isExample } = useExampleItems();
   const siteLabel = useSiteLabel();
   const [apps, setApps] = useState<AppSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -186,7 +189,10 @@ export function AppsPage({
               <li key={app.id} className="app-card">
                 <div className="app-card-top">
                   <AppTile icon={app.icon} name={app.name} category={app.category} />
-                  <span className="app-card-category">{t(`apps.category.${app.category}`)}</span>
+                  <span className="app-card-category">
+                    {t(`apps.category.${app.category}`)}
+                    {isExample('app', app.id) && <ExampleChip />}
+                  </span>
                 </div>
                 <div className="app-card-text">
                   <span className="app-card-name" title={app.name}>

@@ -45,7 +45,7 @@ export interface Idea {
 
 /// Bump when ideas are added; ideas with `addedIn` above what a user last
 /// saw are shown as new.
-export const IDEAS_REVISION = 2;
+export const IDEAS_REVISION = 3;
 
 const GLM = 'z-ai/glm-5.3-flash';
 
@@ -65,6 +65,7 @@ export const IDEAS: readonly Idea[] = [
   // Live data (ADR-010). The four from revision 1 were reworded to name
   // their API, so their battery pass no longer applies.
   { id: 'weatherDashboard', category: 'live', needs: ['network'], size: 'medium', page: true, addedIn: 1, apis: ['openMeteo', 'openMeteoGeo'], verified: { model: GLM, on: '2026-10-09' } },
+  { id: 'worldWeather', category: 'live', needs: ['network'], size: 'medium', page: true, addedIn: 3, apis: ['openMeteo', 'openMeteoGeo'] },
   { id: 'currencyConverter', category: 'live', needs: ['network'], size: 'medium', page: true, addedIn: 1, apis: ['frankfurter'], verified: { model: GLM, on: '2026-10-09' } },
   { id: 'githubViewer', category: 'live', needs: ['network'], size: 'medium', page: true, addedIn: 1, apis: ['github'], verified: { model: GLM, on: '2026-10-09' } },
   { id: 'morningBriefing', category: 'live', needs: ['network'], size: 'long', page: true, addedIn: 1, apis: ['openMeteo', 'hackerNews', 'wikipedia'], verified: { model: GLM, on: '2026-10-09' } },

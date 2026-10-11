@@ -10,6 +10,7 @@ import { Onboarding } from './Onboarding';
 vi.mock('../ipc/client', () => ({
   getOnboardingState: vi.fn(),
   updateSettings: vi.fn(),
+  seedExamples: vi.fn(),
   // Theming Phase 5: the Appearance step's ThemePicker fetches this on mount.
   listProviderModels: vi.fn().mockResolvedValue([]),
   listProviderDescriptors: vi.fn().mockResolvedValue([
@@ -43,7 +44,8 @@ vi.mock('../ipc/client', () => ({
   revokeToolApprovalMemory: vi.fn().mockResolvedValue(true),
 }));
 
-import { getOnboardingState, listProviderDescriptors, updateSettings } from '../ipc/client';
+import { getOnboardingState, listProviderDescriptors, seedExamples, updateSettings } from '../ipc/client';
+import { STARTER_THEMES } from '../slides/themes';
 
 const baseSettings: AppSettings = {
   activeProvider: 'anthropic',
@@ -63,6 +65,7 @@ const baseSettings: AppSettings = {
   updateCheckEnabled: true,
   updatePolicy: 'manual' as const,
   onboardingCompleted: false,
+  examplesSeeded: false,
   webSearchEnabled: false,
   webSearch: {
     mode: 'auto' as const,
@@ -133,6 +136,8 @@ describe('Onboarding (Phase 6 M6.4)', () => {
     vi.mocked(updateSettings).mockImplementation(
       async (patch) => ({ ...baseSettings, ...patch }) as AppSettings,
     );
+    vi.mocked(seedExamples).mockReset();
+    vi.mocked(seedExamples).mockResolvedValue({ seeded: true, items: [] });
     vi.mocked(getOnboardingState).mockReset();
     vi.mocked(getOnboardingState).mockResolvedValue({
       onboardingCompleted: false,
@@ -181,6 +186,34 @@ describe('Onboarding (Phase 6 M6.4)', () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
     expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ onboardingCompleted: true }));
     expect(onSettingsChange).toHaveBeenCalled();
+  });
+
+  it('adds the examples once on finish, with the locale and the ink theme', async () => {
+    const { onComplete } = renderOnboarding();
+    goToFinishStep();
+    fireEvent.click(screen.getByRole('button', { name: 'Get started' }));
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    expect(seedExamples).toHaveBeenCalledTimes(1);
+    expect(seedExamples).toHaveBeenCalledWith(
+      expect.objectContaining({
+        locale: 'en',
+        themeName: 'ink',
+        themeCss: STARTER_THEMES[0].css,
+        briefingDefinition: expect.objectContaining({ steps: expect.any(Array) }),
+      }),
+    );
+  });
+
+  it('still completes when adding the examples fails', async () => {
+    vi.mocked(seedExamples).mockRejectedValue(new Error('disk full'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { onComplete } = renderOnboarding();
+    goToFinishStep();
+    fireEvent.click(screen.getByRole('button', { name: 'Get started' }));
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    expect(seedExamples).toHaveBeenCalledTimes(1);
   });
 
   it('refuses to complete (no updateSettings flag flip) when no provider credential is configured', async () => {

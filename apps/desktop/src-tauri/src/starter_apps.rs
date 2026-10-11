@@ -65,6 +65,19 @@ pub const STARTER_APPS: &[StarterApp] = &[
         html: include_str!("../starter_apps/weather-dashboard.html"),
     },
     StarterApp {
+        id: "world-weather",
+        idea_id: "worldWeather",
+        category: AppCategory::LiveData,
+        icon: "8°C",
+        hosts: &[
+            "https://api.open-meteo.com",
+            "https://geocoding-api.open-meteo.com",
+        ],
+        capabilities: &[],
+        inputs_json: "[]",
+        html: include_str!("../starter_apps/world-weather.html"),
+    },
+    StarterApp {
         id: "currency-converter",
         idea_id: "currencyConverter",
         category: AppCategory::LiveData,

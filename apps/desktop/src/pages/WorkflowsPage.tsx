@@ -11,7 +11,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { workflowRunStatus, type StatusState } from '../chat/statusTypes';
-import { useT } from '../i18n';
+import { useLocale, useT } from '../i18n';
+import { withInterfaceLanguage } from '../workflows/starterLanguage';
+import { useExampleItems } from '../examples/useExampleItems';
+import { ExampleChip } from '../examples/ExampleChip';
 import { useFormatters } from '../i18n/formatters';
 import { documentEditSummary } from '../workflows/documentEditSummary';
 import { UndoUpdate } from '../workflows/UndoUpdate';
@@ -161,6 +164,8 @@ export function WorkflowsPage({
   onResultsSeen?: () => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
+  const { isExample } = useExampleItems();
   const fmt = useFormatters();
   const [summaries, setSummaries] = useState<WorkflowSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -567,7 +572,8 @@ export function WorkflowsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, selectedId]);
 
-  async function startFrom(starter: StarterWorkflow) {
+  async function startFrom(starterWorkflow: StarterWorkflow) {
+    const starter = { ...starterWorkflow, definition: withInterfaceLanguage(starterWorkflow.definition, locale) };
     // A starter that changes a deck or draft cannot be saved until the user
     // picks which one, so it opens in the editor with that step flagged.
     if (needsDocumentTarget(starter.definition) || needsCollections(starter.definition) || triggerNeedsFolder(starter.definition)) {
@@ -833,7 +839,16 @@ export function WorkflowsPage({
         setMode({ kind: 'view' });
         setSelectedId(w.id);
       }}
-      title={w.name}
+      title={
+        isExample('workflow', w.id) ? (
+          <>
+            {w.name}
+            <ExampleChip />
+          </>
+        ) : (
+          w.name
+        )
+      }
       meta={
         w.lastRunAt && w.lastRunStatus
           ? t('workspace.workflows.list.lastRun', { status: statusLabel(w.lastRunStatus), when: fmt.timeAgo(w.lastRunAt) })

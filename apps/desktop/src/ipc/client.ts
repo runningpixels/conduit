@@ -118,6 +118,9 @@ import type {
   ResearchRun,
   ResearchMaterial,
   ResearchReportSummary,
+  ExampleItem,
+  SeedExamplesRequest,
+  SeedExamplesOutcome,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -2138,4 +2141,19 @@ export async function cancelResearch(runId: string): Promise<void> {
 
 export async function getResearchRun(runId: string): Promise<ResearchRun> {
   return invokeCommand<ResearchRun>('get_research_run', { runId });
+}
+
+/** Add the first-run examples. Only ever lands in an empty profile, and only once. */
+export async function seedExamples(request: SeedExamplesRequest): Promise<SeedExamplesOutcome> {
+  return invokeCommand<SeedExamplesOutcome>('seed_examples', { request });
+}
+
+/** The example items that still exist. */
+export async function listExampleItems(): Promise<ExampleItem[]> {
+  return invokeCommand<ExampleItem[]>('list_example_items');
+}
+
+/** Delete every example item. Returns how many were removed. */
+export async function removeAllExamples(): Promise<number> {
+  return invokeCommand<number>('remove_all_examples');
 }

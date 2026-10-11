@@ -255,6 +255,27 @@ describe('Onboarding (Phase 6 M6.4)', () => {
     );
   });
 
+  it('turns local-only off by the privacy step when the provider is a cloud one', async () => {
+    // A new profile defaults to Anthropic *and* local-only; keeping that
+    // provider used to leave chat refused and apps offline.
+    vi.mocked(updateSettings).mockClear();
+    vi.mocked(updateSettings).mockResolvedValue({ ...baseSettings, localOnly: false });
+    const { onSettingsChange } = renderOnboarding();
+    goToStep(/· Privacy/i);
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ localOnly: false })),
+    );
+    await waitFor(() => expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ localOnly: false })));
+  });
+
+  it('leaves local-only on for a local provider', async () => {
+    vi.mocked(updateSettings).mockClear();
+    renderOnboarding({ settings: { ...baseSettings, activeProvider: 'ollama' } });
+    goToStep(/· Privacy/i);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
   describe('the provider step', () => {
     it('clears local-only mode when a cloud provider is chosen', async () => {
       /* `local_only` defaults to true and `active_provider` to `anthropic`, and

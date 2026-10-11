@@ -1148,7 +1148,7 @@
   "onboarding.privacy.ariaLabel": "Datenschutz und Updates",
   "onboarding.privacy.diagnosticsCheckbox": "Diagnose-Export aktivieren",
   "onboarding.privacy.diagnosticsHint": "Wenn aktiviert, kannst du in den Einstellungen ein Support-Paket exportieren. Es enthält nur geschwärzte Pfade sowie deinen aktiven Anbieter/dein Modell/deine Umschalter/dein Theme — niemals Geheimnisse, Basis-URLs, Allowlists oder Chat-Inhalte. Vor dem ersten Export siehst du einen einmaligen Hinweis.",
-  "onboarding.privacy.localOnlyHint": "Solange der Nur-lokal-Modus aktiv ist, verweigert {appName} jede Verbindung zu einem Cloud-Anbieter — nur ein lokales Modell kann antworten. Die Wahl eines Cloud-Anbieters schaltet ihn ab.",
+  "onboarding.privacy.localOnlyHint": "Solange der Nur-lokal-Modus an ist, erreicht {appName} nichts im Internet: Nur ein lokales Modell kann antworten, und Apps können keine Live-Daten laden. Mit einem Cloud-Anbieter ist er zunächst aus. Schalte ihn ein, wenn du nur lokale Modelle nutzt.",
   "onboarding.privacy.stepTitle": "Was diesen Rechner verlässt",
   "onboarding.provider.ariaLabel": "Anbieter auswählen",
   "onboarding.provider.hint": "Wähle Anthropic/OpenAI und füge einen API-Schlüssel ein, wähle OpenAI-Compatible mit deinem Endpunkt, oder wähle Ollama, um mit einem lokalen Modell zu arbeiten (kein Schlüssel nötig).",

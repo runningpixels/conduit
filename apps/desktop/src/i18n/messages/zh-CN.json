@@ -1148,7 +1148,7 @@
   "onboarding.privacy.ariaLabel": "隐私与更新",
   "onboarding.privacy.diagnosticsCheckbox": "启用诊断导出",
   "onboarding.privacy.diagnosticsHint": "启用后，可以在设置中导出支持包。其中只包含脱敏后的路径以及当前使用的提供商、模型、开关和主题，绝不包含机密信息、基础 URL、允许列表或聊天内容。首次导出前会显示一次说明。",
-  "onboarding.privacy.localOnlyHint": "仅本地模式开启时，{appName} 不会连接任何云端提供商，只有本地模型可以回答。选择云端提供商会关闭该模式。",
+  "onboarding.privacy.localOnlyHint": "开启仅本地模式时，{appName} 不会连接互联网：只有本地模型能回答，应用也无法加载实时数据。使用云端服务商时它默认关闭。如果你只用本地模型，请将它打开。",
   "onboarding.privacy.stepTitle": "哪些数据会离开这台设备",
   "onboarding.provider.ariaLabel": "选择提供商",
   "onboarding.provider.hint": "选择 Anthropic/OpenAI 并粘贴 API 密钥，选择 OpenAI 兼容并填写端点，或选择 Ollama 使用本地模型运行（无需密钥）。",

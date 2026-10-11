@@ -1148,7 +1148,7 @@
   "onboarding.privacy.ariaLabel": "Vie privée et mises à jour",
   "onboarding.privacy.diagnosticsCheckbox": "Activer l'export des diagnostics",
   "onboarding.privacy.diagnosticsHint": "Une fois activé, vous pouvez exporter un pack de support depuis les paramètres. Il ne contient que des chemins d'accès expurgés ainsi que votre fournisseur, modèle, options et thème actifs — jamais de secrets, d'URL de base, de listes d'autorisation ni de contenu de conversation. Un avis unique s'affichera avant le premier export.",
-  "onboarding.privacy.localOnlyHint": "Tant que le mode local uniquement est actif, {appName} refuse de contacter un fournisseur cloud — seul un modèle local peut répondre. Choisir un fournisseur cloud le désactive.",
+  "onboarding.privacy.localOnlyHint": "Tant que le mode local uniquement est activé, {appName} n'accède à rien sur internet : seul un modèle local peut répondre, et les apps ne peuvent pas charger de données en direct. Il est désactivé si vous utilisez un fournisseur cloud. Activez-le si vous n'utilisez que des modèles locaux.",
   "onboarding.privacy.stepTitle": "Ce qui quitte cette machine",
   "onboarding.provider.ariaLabel": "Choisir un fournisseur",
   "onboarding.provider.hint": "Choisissez Anthropic/OpenAI et collez une clé API, choisissez OpenAI-Compatible avec votre point de terminaison, ou choisissez Ollama pour utiliser un modèle local (aucune clé requise).",

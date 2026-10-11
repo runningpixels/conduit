@@ -1148,7 +1148,7 @@
   "onboarding.privacy.ariaLabel": "Privacy and updates",
   "onboarding.privacy.diagnosticsCheckbox": "Enable diagnostics export",
   "onboarding.privacy.diagnosticsHint": "When enabled, you can export a support bundle from Settings. It contains only redacted paths and your active provider/model/toggles/theme — never secrets, base URLs, allowlists, or chat content. You will see a one-time disclosure before the first export.",
-  "onboarding.privacy.localOnlyHint": "While local-only mode is on, {appName} refuses to reach any cloud provider — only a local model can answer. Choosing a cloud provider turns it off.",
+  "onboarding.privacy.localOnlyHint": "While local-only mode is on, {appName} reaches nothing on the internet: only a local model can answer, and apps can't load live data. It starts off when you use a cloud provider. Turn it on if you only use local models.",
   "onboarding.privacy.stepTitle": "What leaves this machine",
   "onboarding.provider.ariaLabel": "Choose a provider",
   "onboarding.provider.hint": "Pick Anthropic/OpenAI and paste an API key, choose OpenAI-Compatible with your endpoint, or pick Ollama to run against a local model (no key needed).",

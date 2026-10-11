@@ -1148,7 +1148,7 @@
   "onboarding.privacy.ariaLabel": "プライバシーと更新",
   "onboarding.privacy.diagnosticsCheckbox": "診断エクスポートを有効にする",
   "onboarding.privacy.diagnosticsHint": "有効にすると、設定からサポートバンドルをエクスポートできます。含まれるのは伏せ字化したパスと、使用中のプロバイダー・モデル・トグル・テーマだけです。秘密情報、ベース URL、許可リスト、チャットの内容は含まれません。最初のエクスポートの前に一度だけ内容が示されます。",
-  "onboarding.privacy.localOnlyHint": "ローカル専用モードが有効な間、{appName} はクラウドプロバイダーに接続しません。応答できるのはローカルモデルだけです。クラウドプロバイダーを選ぶと、このモードは解除されます。",
+  "onboarding.privacy.localOnlyHint": "ローカル専用モードがオンの間、{appName} はインターネットに一切接続しません。応答できるのはローカルモデルだけで、アプリもライブデータを読み込めません。クラウドプロバイダーを使う場合は最初からオフになっています。ローカルモデルだけを使う場合はオンにしてください。",
   "onboarding.privacy.stepTitle": "このマシンから出ていくもの",
   "onboarding.provider.ariaLabel": "プロバイダーを選択",
   "onboarding.provider.hint": "Anthropic / OpenAI を選んで API キーを貼り付けるか、OpenAI 互換を選んでエンドポイントを指定するか、Ollama を選んでローカルのモデルで実行します（キーは不要です）。",

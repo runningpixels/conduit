@@ -16,7 +16,7 @@ import {
   seedExamples,
   updateSettings,
 } from '../ipc/client';
-import { ProviderPicker } from '../workspace/settings/ProviderPicker';
+import { FALLBACK_LOCAL_PROVIDER_IDS, ProviderPicker } from '../workspace/settings/ProviderPicker';
 import { ConnectorsSection } from '../workspace/settings/ConnectorsSection';
 import { localeEntry, useLocale, useT } from '../i18n';
 import { BrandMark } from '../icons';
@@ -88,6 +88,35 @@ export function Onboarding({
      step — the gate that matters is the keychain probe in `handleFinish`. */
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const saveProviderStep = useAutoSave(onSettingsChange, onStatus);
+
+  /* Local-only is off by the time the privacy step shows it, when the provider
+     is a cloud one. A new profile defaults to a cloud provider *and*
+     local-only, and the picker only clears the flag when the provider changes,
+     so keeping the default provider (or arriving with a key already saved) left
+     chat refused and every app offline. The box is right there, unticked, for
+     anyone who wants it back on. */
+  const [localOnlyChecked, setLocalOnlyChecked] = useState(false);
+  useEffect(() => {
+    if (step !== 'privacy' || localOnlyChecked) return;
+    setLocalOnlyChecked(true);
+    if (!settings.localOnly) return;
+    void (async () => {
+      let isLocal = FALLBACK_LOCAL_PROVIDER_IDS.has(settings.activeProvider);
+      try {
+        const descriptor = (await listProviderDescriptors()).find((p) => p.id === settings.activeProvider);
+        if (descriptor) isLocal = descriptor.isLocal;
+      } catch {
+        // The fallback list decides.
+      }
+      if (isLocal) return;
+      try {
+        const next = await updateSettings({ ...settings, localOnly: false });
+        if (next) onSettingsChange(next);
+      } catch {
+        // Left as it was; the privacy step and the review both show it.
+      }
+    })();
+  }, [step, localOnlyChecked, settings, onSettingsChange]);
 
   useEffect(() => {
     if (step !== 'finish') return;

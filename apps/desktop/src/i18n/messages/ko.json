@@ -1148,7 +1148,7 @@
   "onboarding.privacy.ariaLabel": "개인정보 및 업데이트",
   "onboarding.privacy.diagnosticsCheckbox": "진단 내보내기 사용",
   "onboarding.privacy.diagnosticsHint": "사용하면 설정에서 지원 번들을 내보낼 수 있습니다. 가려진 경로와 현재 사용 중인 공급자·모델·토글·테마만 포함되며, 비밀 정보나 기본 URL, 허용 목록, 채팅 내용은 포함되지 않습니다. 첫 내보내기 전에 한 번 안내가 표시됩니다.",
-  "onboarding.privacy.localOnlyHint": "로컬 전용 모드가 켜져 있는 동안 {appName}은 클라우드 제공자에 연결하지 않으며, 로컬 모델만 응답할 수 있습니다. 클라우드 제공자를 선택하면 이 모드는 꺼집니다.",
+  "onboarding.privacy.localOnlyHint": "로컬 전용 모드가 켜져 있는 동안 {appName}은(는) 인터넷에 전혀 연결하지 않습니다. 로컬 모델만 답할 수 있고, 앱도 실시간 데이터를 불러올 수 없습니다. 클라우드 제공업체를 쓰면 처음부터 꺼져 있습니다. 로컬 모델만 쓴다면 켜세요.",
   "onboarding.privacy.stepTitle": "이 컴퓨터에서 나가는 것",
   "onboarding.provider.ariaLabel": "공급자 선택",
   "onboarding.provider.hint": "Anthropic/OpenAI를 선택해 API 키를 붙여넣거나, OpenAI 호환을 선택해 엔드포인트를 지정하거나, Ollama를 선택해 로컬 모델로 실행하십시오(키 불필요).",

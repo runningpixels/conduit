@@ -1148,7 +1148,7 @@
   "onboarding.privacy.ariaLabel": "Privacidad y actualizaciones",
   "onboarding.privacy.diagnosticsCheckbox": "Habilitar exportación de diagnósticos",
   "onboarding.privacy.diagnosticsHint": "Al habilitarlo, puedes exportar un paquete de soporte desde Configuración. Contiene solo rutas redactadas y tu proveedor, modelo, opciones y tema activos —nunca secretos, URLs base, listas de permitidos ni contenido de los chats. Verás un aviso único antes de la primera exportación.",
-  "onboarding.privacy.localOnlyHint": "Mientras el modo solo local esté activado, {appName} no se conectará a ningún proveedor en la nube: solo un modelo local puede responder. Elegir un proveedor en la nube lo desactiva.",
+  "onboarding.privacy.localOnlyHint": "Mientras el modo solo local está activado, {appName} no se conecta a internet: solo un modelo local puede responder y las apps no pueden cargar datos en vivo. Empieza desactivado si usas un proveedor en la nube. Actívalo si solo usas modelos locales.",
   "onboarding.privacy.stepTitle": "Qué sale de este PC",
   "onboarding.provider.ariaLabel": "Elegir un proveedor",
   "onboarding.provider.hint": "Elige Anthropic/OpenAI y pega una clave de API, elige OpenAI-Compatible con tu endpoint, o elige Ollama para ejecutar un modelo local (no se necesita clave).",

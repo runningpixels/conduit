@@ -936,7 +936,7 @@ export function WorkflowsPage({
           </div>
         ) : null}
         {mode.json == null ? (
-          <WorkflowEditor draft={mode.draft} onChange={(draft) => setMode({ ...mode, draft })} />
+          <WorkflowEditor draft={mode.draft} onChange={(draft) => setMode({ ...mode, draft })} problems={problems} />
         ) : (
           <label className="wf-field">
             <span>{t('workspace.workflows.edit.definition')}</span>

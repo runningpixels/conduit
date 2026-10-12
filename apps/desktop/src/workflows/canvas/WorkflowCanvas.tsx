@@ -16,6 +16,7 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  useConnection,
   useNodesState,
   useReactFlow,
   type Connection,
@@ -65,8 +66,8 @@ interface NodeData extends Record<string, unknown> {
 
 /** What editing adds to the canvas (phase 11). */
 export interface CanvasEditor {
-  /** A node was dragged; `x` is its new centre in its own row. */
-  onNodeDragStop?: (node: CanvasNode, centerX: number) => void;
+  /** A step was dragged and let go; `center` is where, in canvas coordinates. */
+  onNodeDragStop?: (node: CanvasNode, center: { x: number; y: number }) => void;
   /** A wire was drawn from one step's output to another step. */
   onConnect?: (source: string, target: string) => void;
   /** Delete pressed on a selected step. */
@@ -107,7 +108,18 @@ const StartNode = memo(function StartNode({ data }: NodeProps<Node<NodeData>>) {
   );
 });
 
-const StepNode = memo(function StepNode({ data, selected }: NodeProps<Node<NodeData>>) {
+/**
+ * While a wire is being drawn from another step, a step's data input covers
+ * the whole node, so letting go anywhere on it connects (the input itself is a
+ * small hidden dot). Only then: the rest of the time it would swallow clicks.
+ */
+function useDropTarget(id: string): string {
+  const connection = useConnection();
+  return connection.inProgress && connection.fromNode?.id !== id ? ' wfc-drop-all' : '';
+}
+
+const StepNode = memo(function StepNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
+  const drop = useDropTarget(id);
   return (
     <div className={`wfc-node wfc-step${selected ? ' is-selected' : ''}${data.problem ? ' has-problem' : ''}`} data-status={data.status}>
       <Handle type="target" position={Position.Top} id="flow-top" isConnectable={false} />
@@ -129,13 +141,14 @@ const StepNode = memo(function StepNode({ data, selected }: NodeProps<Node<NodeD
       ) : null}
       <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={false} />
       <Handle type="source" position={Position.Right} id="flow-right" isConnectable={false} className="wfc-side-handle" />
-      <Handle type="target" position={Position.Right} id="data-in" className="wfc-data-handle wfc-data-in" />
+      <Handle type="target" position={Position.Right} id="data-in" className={`wfc-data-handle wfc-data-in${drop}`} />
       <Handle type="source" position={Position.Right} id="data-out" className="wfc-data-handle wfc-data-out" />
     </div>
   );
 });
 
-const LoopNode = memo(function LoopNode({ data, selected }: NodeProps<Node<NodeData>>) {
+const LoopNode = memo(function LoopNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
+  const drop = useDropTarget(id);
   return (
     <div className={`wfc-loop${selected ? ' is-selected' : ''}${data.problem ? ' has-problem' : ''}`} data-status={data.status}>
       <Handle type="target" position={Position.Top} id="flow-top" isConnectable={false} />
@@ -146,7 +159,7 @@ const LoopNode = memo(function LoopNode({ data, selected }: NodeProps<Node<NodeD
         {data.statusText ? <span className={STATUS_CLASS[data.status] ?? 'wfc-status'}>{data.statusText}</span> : null}
       </span>
       <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={false} />
-      <Handle type="target" position={Position.Right} id="data-in" className="wfc-data-handle wfc-data-in" />
+      <Handle type="target" position={Position.Right} id="data-in" className={`wfc-data-handle wfc-data-in${drop}`} />
       <Handle type="source" position={Position.Right} id="data-out" className="wfc-data-handle wfc-data-out" />
     </div>
   );
@@ -286,7 +299,8 @@ function Canvas({
           height: n.height,
           data,
           parentId: n.parent ?? undefined,
-          extent: n.parent ? ('parent' as const) : undefined,
+          // While editing, a loop's step may be dragged out of its frame.
+          extent: n.parent && !editor?.onNodeDragStop ? ('parent' as const) : undefined,
           selected: n.id === selectedId,
           draggable: Boolean(editor?.onNodeDragStop) && n.kind !== 'start',
           selectable: n.kind !== 'start',
@@ -350,15 +364,21 @@ function Canvas({
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const signature = graph.nodes.map((n) => n.id).join('|');
 
+  const flowApi = useReactFlow();
   const onNodeDragStop = editor?.onNodeDragStop
     ? (_event: unknown, node: Node) => {
         const model = byId.get(node.id);
-        if (model) editor.onNodeDragStop?.(model, node.position.x + model.width / 2);
+        const at = flowApi.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
+        if (model) editor.onNodeDragStop?.(model, { x: at.x + model.width / 2, y: at.y + model.height / 2 });
+        // Back to the layout: the new order lays itself out, and a drop that
+        // changed nothing must not leave the node where it was let go.
+        const home = new Map(derived.map((n) => [n.id, n.position] as const));
+        setNodes((current) => current.map((n) => ({ ...n, position: home.get(n.id) ?? n.position })));
       }
     : undefined;
 
   return (
-    <div className={`wfc${className ? ` ${className}` : ''}`}>
+    <div className={`wfc${editor ? ' is-editing' : ''}${className ? ` ${className}` : ''}`}>
       <div className="wfc-canvas" ref={box} style={{ height }} aria-label={t('workspace.workflows.canvas.ariaLabel')} role="group">
         <ReactFlow
           nodes={nodes}
@@ -395,9 +415,9 @@ function Canvas({
           ) : null}
         </ReactFlow>
       </div>
-      {selected || inspector ? (
+      {selected || editor ? (
         <aside className="wfc-inspector" aria-label={t('workspace.workflows.canvas.inspector')}>
-          {selected ? (
+          {selected && !editor ? (
             <button type="button" className="btn ghost wfc-close" onClick={() => select(null)}>
               {t('workspace.workflows.canvas.closeDetails')}
             </button>

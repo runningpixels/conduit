@@ -14,6 +14,8 @@
 /// visual editor keeps it as is.
 
 import { STEP_TYPE_KEY } from './stepTypes';
+import { CanvasStepsEditor } from './canvas/CanvasStepsEditor';
+import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../shell/uiPrefs';
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { ChipField, type ChipFieldHandle } from './ChipField';
 import { useT, type Translate } from '../i18n';
@@ -37,6 +39,7 @@ import {
   newInput,
   newStep,
   removeStep,
+  stepAt,
   stepTypesFor,
   updateStep,
   withDocumentTarget,
@@ -91,12 +94,23 @@ const CONDITION_TEST_KEY = {
 export function WorkflowEditor({
   draft,
   onChange,
+  problems,
 }: {
   draft: WorkflowDraft;
   onChange: (next: WorkflowDraft) => void;
+  /** The checker's problems; on the canvas, the steps they name are marked. */
+  problems?: readonly string[];
 }) {
   const t = useT();
   const def = draft.definition;
+  // Canvas or list, the same remembered choice as the workflow's page.
+  const [view, setView] = useState<WorkflowViewPref>(() => readWorkflowView());
+  const branchy = def.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'agent');
+  const stepsView = view === 'auto' ? (branchy ? 'canvas' : 'list') : view;
+  const chooseView = (next: 'canvas' | 'list') => {
+    setView(next);
+    writeWorkflowView(next);
+  };
   const setDefinition = (definition: WorkflowDefinition) => onChange({ ...draft, definition });
   const setSteps = (steps: WorkflowStep[]) => setDefinition({ ...def, steps });
   const inputs = def.inputs ?? [];
@@ -173,7 +187,39 @@ export function WorkflowEditor({
 
       <section className="grp" aria-label={t('workspace.workflows.steps.title')}>
         <div className="grp-label">{t('workspace.workflows.steps.title')}</div>
-        <StepListEditor def={def} steps={def.steps} parent={[]} setSteps={setSteps} />
+        <div className="wf-view-toggle wf-steps-toggle" role="group" aria-label={t('workspace.workflows.canvas.viewLabel')}>
+          <button type="button" className={`wf-view-btn${stepsView === 'canvas' ? ' active' : ''}`} aria-pressed={stepsView === 'canvas'} onClick={() => chooseView('canvas')}>
+            {t('workspace.workflows.canvas.viewCanvas')}
+          </button>
+          <button type="button" className={`wf-view-btn${stepsView === 'list' ? ' active' : ''}`} aria-pressed={stepsView === 'list'} onClick={() => chooseView('list')}>
+            {t('workspace.workflows.canvas.viewList')}
+          </button>
+        </div>
+        {stepsView === 'canvas' ? (
+          <CanvasStepsEditor
+            definition={def}
+            onChange={setDefinition}
+            problems={problems}
+            renderCard={(path) => {
+              const step = stepAt(def.steps, path);
+              const siblings = path.length === 1 ? def.steps : (stepAt(def.steps, [path[0]]) as Extract<WorkflowStep, { type: 'for_each' }>).steps;
+              return step ? (
+                <StepCard
+                  key={step.id}
+                  def={def}
+                  step={step}
+                  path={path}
+                  position={path[path.length - 1]}
+                  count={siblings.length}
+                  setSteps={setSteps}
+                  nestedList={false}
+                />
+              ) : null;
+            }}
+          />
+        ) : (
+          <StepListEditor def={def} steps={def.steps} parent={[]} setSteps={setSteps} />
+        )}
       </section>
     </div>
     </ProviderModelsProvider>
@@ -269,6 +315,7 @@ function StepCard({
   position,
   count,
   setSteps,
+  nestedList = true,
 }: {
   def: WorkflowDefinition;
   step: WorkflowStep;
@@ -276,6 +323,8 @@ function StepCard({
   position: number;
   count: number;
   setSteps: (steps: WorkflowStep[]) => void;
+  /** A loop's own steps under its fields; the canvas shows them as nodes instead. */
+  nestedList?: boolean;
 }) {
   const t = useT();
   const headingId = useId();
@@ -533,9 +582,11 @@ function StepCard({
               {step.items && !known ? <option value={step.items}>{step.items}</option> : null}
             </select>
           </label>
-          <div className="wf-nested">
-            <StepListEditor def={def} steps={step.steps} parent={path} setSteps={setSteps} />
-          </div>
+          {nestedList ? (
+            <div className="wf-nested">
+              <StepListEditor def={def} steps={step.steps} parent={path} setSteps={setSteps} />
+            </div>
+          ) : null}
         </>
       );
       break;

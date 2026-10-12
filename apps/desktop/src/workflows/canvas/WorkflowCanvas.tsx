@@ -4,7 +4,7 @@
 /// selecting one shows what it does and, for a run, what went in and came out.
 ///
 /// The layout, wires and statuses come from `canvasModel.ts`; this file only
-/// draws them. Editing (phase 11) plugs in through `editor`: a palette, drag
+/// draws them. Editing (phase 11) plugs in through `editor`, `toolbar` and `panel`: drag
 /// to reorder, wires that insert references, and the step form in the
 /// inspector.
 
@@ -72,8 +72,6 @@ export interface CanvasEditor {
   onConnect?: (source: string, target: string) => void;
   /** Delete pressed on a selected step. */
   onDelete?: (id: string) => void;
-  /** Drawn over the canvas, top left (the palette). */
-  palette?: ReactNode;
 }
 
 export interface WorkflowCanvasProps {
@@ -474,11 +472,6 @@ function Canvas({
           {toolbar ? (
             <Panel position="top-left" className="wfc-toolbar">
               {toolbar}
-            </Panel>
-          ) : null}
-          {editor?.palette ? (
-            <Panel position="top-left" className="wfc-palette-panel">
-              {editor.palette}
             </Panel>
           ) : null}
         </ReactFlow>

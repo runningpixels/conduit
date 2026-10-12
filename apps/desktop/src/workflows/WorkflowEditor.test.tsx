@@ -44,18 +44,40 @@ beforeEach(() => {
 });
 
 /// Renders the editor with real state, and exposes the latest draft.
-function renderEditor(definition: WorkflowDefinition) {
+function renderEditor(definition: WorkflowDefinition, notes?: string[]) {
   const latest: { draft: WorkflowDraft } = { draft: { name: 'Test', description: '', definition } };
   function Harness() {
     const [draft, setDraft] = useState<WorkflowDraft>(latest.draft);
     latest.draft = draft;
-    return <WorkflowEditor draft={draft} onChange={setDraft} />;
+    return <WorkflowEditor draft={draft} onChange={setDraft} notes={notes} />;
   }
   render(<Harness />);
   return latest;
 }
 
 const card = (name: RegExp) => screen.getByRole('listitem', { name }) as HTMLElement;
+
+const STEP_LABEL: Record<string, string> = {
+  fetch_page: 'Fetch pages',
+  summarize: 'Ask the model',
+  save_artifact: 'Save a document',
+  for_each: 'Repeat for each',
+  notify: 'Show a notification',
+  ask: 'Ask me',
+  template: 'Write text',
+  agent: 'Let the model use tools',
+  condition: 'Continue only if…',
+  read_file: 'Read a file',
+  parse_data: 'Turn text into a table',
+  edit_deck: 'Update a deck',
+  edit_draft: 'Update a draft',
+};
+
+/// Add a step at the end through the Add a step menu.
+function addStep(type: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Add a step' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: STEP_LABEL[type] }));
+}
 
 /// Type into a chip field (a contenteditable box): replace its text and fire
 /// the input event the browser would.
@@ -75,14 +97,14 @@ describe('WorkflowEditor', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Default for value 1' }), { target: { value: 'https://example.com' } });
 
     // Fetch the site.
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'fetch_page' } });
+    addStep('fetch_page');
     const fetchCard = card(/^1\. Fetch pages/);
     fireEvent.change(within(fetchCard).getByRole('combobox', { name: 'Insert a value into Page 1' }), {
       target: { value: 'inputs.value' },
     });
 
     // Ask the model about it; the value goes where the cursor is.
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'summarize' } });
+    addStep('summarize');
     const askCard = card(/^2\. Ask the model/);
     typeInto(within(askCard).getByRole('textbox', { name: 'Instruction' }), 'Summarize this');
     const input = within(askCard).getByRole('textbox', { name: 'Text to work on' });
@@ -100,7 +122,7 @@ describe('WorkflowEditor', () => {
     fireEvent.change(insert, { target: { value: 'steps.fetch.text' } });
 
     // Save the answer.
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'save_artifact' } });
+    addStep('save_artifact');
     const saveCard = card(/^3\. Save a document/);
     typeInto(within(saveCard).getByRole('textbox', { name: 'Title' }), 'Summary');
     fireEvent.change(within(saveCard).getByRole('combobox', { name: 'Insert a value into Content' }), {
@@ -124,7 +146,7 @@ describe('WorkflowEditor', () => {
     const out = renderEditor({
       steps: [{ id: 'fetch', type: 'fetch_page', urls: ['https://example.com'] }],
     });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'for_each' } });
+    addStep('for_each');
     const loop = card(/^2\. Repeat for each/);
     fireEvent.change(within(loop).getByRole('combobox', { name: 'Repeat for each of' }), {
       target: { value: 'steps.fetch.pages' },
@@ -165,7 +187,9 @@ describe('WorkflowEditor', () => {
       inputs: [],
       steps: [{ id: 'fetch', type: 'fetch_page', urls: ['https://example.com'] }],
     });
-    const retries = within(card(/^1\. Fetch pages/)).getByRole('combobox', { name: 'If it fails, try again' });
+    const fetchCard = card(/^1\. Fetch pages/);
+    expect(within(fetchCard).getByText('try again 2 times, then stop')).toBeInTheDocument();
+    const retries = within(fetchCard).getByRole('combobox', { name: 'If it fails, try again' });
     expect(retries).toHaveValue('2');
     expect(within(retries).getAllByRole('option').map((o) => o.textContent)).toEqual([
       'No',
@@ -179,11 +203,17 @@ describe('WorkflowEditor', () => {
     expect(out.draft.definition.steps[0].retries).toBe(0);
     fireEvent.change(retries, { target: { value: '2' } });
     expect(out.draft.definition.steps[0].retries).toBeUndefined();
+    fireEvent.change(retries, { target: { value: '1' } });
+    expect(within(fetchCard).getByText('try again once, then stop')).toBeInTheDocument();
+    fireEvent.change(retries, { target: { value: '0' } });
+    expect(within(fetchCard).getByText('stop the run')).toBeInTheDocument();
+    fireEvent.click(within(fetchCard).getByRole('checkbox', { name: 'Keep going if this step fails' }));
+    expect(within(fetchCard).getByText('keep going')).toBeInTheDocument();
   });
 
   it('adds a notification step with its title and message, and no retry choice', () => {
     const out = renderEditor({ inputs: [], steps: [] });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'notify' } });
+    addStep('notify');
     const notify = card(/^1\. Show a notification/);
     typeInto(within(notify).getByRole('textbox', { name: 'Title' }), 'Briefing ready');
     typeInto(within(notify).getByRole('textbox', { name: 'Message' }), 'Have a look');
@@ -198,7 +228,7 @@ describe('WorkflowEditor', () => {
 
   it('adds an ask step with choices and an answer for when nobody answers', () => {
     const out = renderEditor({ inputs: [], steps: [] });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'ask' } });
+    addStep('ask');
     const ask = card(/^1\. Ask me/);
     typeInto(within(ask).getByRole('textbox', { name: 'Question' }), 'Which topic?');
     const choices = within(ask).getByRole('textbox', { name: /^Answers to pick from/ });
@@ -213,14 +243,14 @@ describe('WorkflowEditor', () => {
       default: 'Rust',
     });
     // Later steps can insert the answer.
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'template' } });
+    addStep('template');
     const insert = within(card(/^2\. /)).getByRole('combobox', { name: /^Insert a value into/ });
     expect(within(insert).getAllByRole('option').map((o) => o.textContent)).toContain('ask · answer');
   });
 
   it('adds an agent step and picks its tools, kept in a stable order', () => {
     const out = renderEditor({ inputs: [], steps: [] });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'agent' } });
+    addStep('agent');
     const agent = card(/^1\. Let the model use tools/);
     typeInto(within(agent).getByRole('textbox', { name: 'Instruction' }), 'Find the release notes');
     const tools = within(agent).getByRole('group', { name: 'Tools it may use' });
@@ -299,7 +329,7 @@ describe('WorkflowEditor', () => {
 describe('WorkflowEditor: only if something changed', () => {
   it('adds a condition, shows its text field only when needed, and writes the JSON', () => {
     const out = renderEditor({ steps: [{ id: 'fetch', type: 'fetch_page', urls: ['https://example.com'] }] });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'condition' } });
+    addStep('condition');
     const check = card(/^2\. Continue only if…/);
     expect(out.draft.definition.steps[1]).toEqual({ id: 'check', type: 'condition', value: '', is: 'changed' });
     expect(within(check).queryByRole('textbox', { name: 'Text' })).toBeNull();
@@ -326,8 +356,8 @@ describe('WorkflowEditor: only if something changed', () => {
     renderEditor({ steps: [{ id: 'each', type: 'for_each', items: '', steps: [] }] });
     const inside = screen.getByRole('combobox', { name: 'Add a step to repeat…' });
     expect(within(inside).queryByRole('option', { name: 'Continue only if…' })).toBeNull();
-    const top = screen.getByRole('combobox', { name: 'Add a step…' });
-    expect(within(top).getByRole('option', { name: 'Continue only if…' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a step' }));
+    expect(screen.getByRole('menuitem', { name: 'Continue only if…' })).toBeInTheDocument();
   });
 
   it('toggles "only if it changed" on notify and save, at the top level only', () => {
@@ -370,9 +400,9 @@ describe('data steps and folder', () => {
 
   it('writes a read_file path and hints when there is no folder', () => {
     const out = renderEditor({ steps: [] });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'read_file' } });
+    addStep('read_file');
     const c = card(/^1\. Read a file/);
-    expect(within(c).getByText(/Choose the workflow's folder above/)).toBeTruthy();
+    expect(within(c).getByText(/Choose the workflow’s folder under Start/)).toBeTruthy();
     typeInto(within(c).getByRole('textbox', { name: 'File path (inside the folder)' }), 'reports/metrics.csv');
     expect(out.draft.definition.steps[0]).toEqual({ id: 'file', type: 'read_file', path: 'reports/metrics.csv' });
   });
@@ -382,14 +412,14 @@ describe('data steps and folder', () => {
       folder: 'C:\\Reports',
       steps: [{ id: 'file', type: 'read_file', path: 'a.csv' }],
     });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'parse_data' } });
+    addStep('parse_data');
     const c = card(/^2\. Turn text into a table/);
     fireEvent.change(within(c).getByRole('combobox', { name: 'Insert a value into Text to turn into a table' }), {
       target: { value: 'steps.file.text' },
     });
     fireEvent.change(within(c).getByRole('combobox', { name: 'Format' }), { target: { value: 'tsv' } });
     expect(out.draft.definition.steps[1]).toEqual({ id: 'data', type: 'parse_data', input: '{{steps.file.text}}', format: 'tsv' });
-    expect(screen.queryByText(/Choose the workflow's folder above/)).toBeNull();
+    expect(screen.queryByText(/Choose the workflow’s folder under Start/)).toBeNull();
   });
 });
 
@@ -428,7 +458,7 @@ describe('update a deck or draft', () => {
       inputs: [],
       steps: [{ id: 'data', type: 'parse_data', input: '', format: 'csv' }],
     });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'edit_deck' } });
+    addStep('edit_deck');
     const deck = card(/^2\. Update a deck/);
     const picker = (await within(deck).findByRole('combobox', { name: 'Deck' })) as HTMLSelectElement;
     await waitFor(() => expect(within(picker).getAllByRole('option').length).toBeGreaterThan(1));
@@ -457,7 +487,7 @@ describe('update a deck or draft', () => {
 
   it('offers drafts past their outline, with their size', async () => {
     const out = renderEditor({ inputs: [], steps: [] });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a step…' }), { target: { value: 'edit_draft' } });
+    addStep('edit_draft');
     const draft = card(/^1\. Update a draft/);
     const picker = (await within(draft).findByRole('combobox', { name: 'Draft' })) as HTMLSelectElement;
     await waitFor(() => expect(within(picker).getAllByRole('option').length).toBeGreaterThan(1));
@@ -497,18 +527,20 @@ describe('update a deck or draft', () => {
     const inner = screen.getByRole('combobox', { name: 'Add a step to repeat…' });
     expect(within(inner).queryByRole('option', { name: 'Update a deck' })).not.toBeInTheDocument();
     expect(within(inner).queryByRole('option', { name: 'Update a draft' })).not.toBeInTheDocument();
-    expect(within(screen.getByRole('combobox', { name: 'Add a step…' })).getByRole('option', { name: 'Update a deck' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a step' }));
+    expect(screen.getByRole('menuitem', { name: 'Update a deck' })).toBeInTheDocument();
   });
 });
 
 describe('start when', () => {
   it('chooses a feed, sets its address and interval, and shows the post fields as values', async () => {
     const latest = renderEditor({ steps: [{ id: 'note', type: 'notify', title: '', body: '' }] });
-    const when = screen.getByRole('combobox', { name: 'Starts when' });
-    expect(when).toHaveValue('none');
+    const when = screen.getByRole('group', { name: 'Starts when' });
+    const choose = (name: RegExp) => fireEvent.click(within(when).getByRole('radio', { name }));
+    expect(within(when).getByRole('radio', { name: /Only when I run it/ })).toBeChecked();
     expect(screen.queryByLabelText('Feed address')).not.toBeInTheDocument();
 
-    fireEvent.change(when, { target: { value: 'feed' } });
+    choose(/A new post appears in a feed/);
     expect(latest.draft.definition.trigger).toEqual({ kind: 'feed', url: '', everyMinutes: 30 });
     fireEvent.change(screen.getByLabelText('Feed address'), { target: { value: 'https://blog.rust-lang.org/feed.xml' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Check every' }), { target: { value: '60' } });
@@ -521,13 +553,13 @@ describe('start when', () => {
     expect(within(insert).getByRole('option', { name: 'Post title' })).toHaveValue('trigger.title');
     expect(within(insert).getByRole('option', { name: 'Post link' })).toHaveValue('trigger.link');
 
-    fireEvent.change(when, { target: { value: 'none' } });
+    choose(/Only when I run it/);
     expect('trigger' in latest.draft.definition).toBe(false);
   });
 
   it('asks for the folder first when a folder trigger has none, and offers the file fields', () => {
     const latest = renderEditor({ steps: [{ id: 'note', type: 'notify', title: '', body: '' }] });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Starts when' }), { target: { value: 'folder' } });
+    fireEvent.click(screen.getByRole('radio', { name: /A new file appears in the workflow's folder/ }));
     expect(latest.draft.definition.trigger).toEqual({ kind: 'folder' });
     expect(screen.getByText("A folder trigger watches the workflow's folder, so choose the folder first.")).toBeInTheDocument();
     const insert = within(card(/^1\. Show a notification/)).getByRole('combobox', { name: 'Insert a value into Title' });
@@ -549,5 +581,48 @@ describe('start when', () => {
     const [exportStep, memoryStep] = latest.draft.definition.steps;
     expect(exportStep).toMatchObject({ type: 'export_file', name: 'out.md' });
     expect(memoryStep).toMatchObject({ type: 'save_memory', text: 'Likes short answers' });
+  });
+});
+
+describe('the Start panel (list view)', () => {
+  it('has no name field; the description is edited under Workflow settings', () => {
+    const out = renderEditor({ steps: [] });
+    expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Start' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Workflow settings' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), { target: { value: 'Morning news' } });
+    expect(out.draft.description).toBe('Morning news');
+    expect(out.draft.name).toBe('Test');
+  });
+
+  it('adds and removes asked-each-run values', () => {
+    const out = renderEditor({ inputs: [{ id: 'site', label: 'Site' }], steps: [] });
+    fireEvent.click(screen.getByRole('button', { name: 'Add a value' }));
+    expect(out.draft.definition.inputs).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove value 1' }));
+    expect(out.draft.definition.inputs).toEqual([expect.objectContaining({ label: 'Value' })]);
+  });
+
+  it('shows the notes checklist at the top, as a local reminder', () => {
+    const out = renderEditor({ steps: [] }, ['Choose a folder', 'Name the site']);
+    const box = screen.getByRole('checkbox', { name: 'Choose a folder' });
+    expect(screen.getByRole('heading', { name: 'Still to fill in before you save' })).toBeInTheDocument();
+    fireEvent.click(box);
+    expect(box).toBeChecked();
+    expect(out.draft.definition).toEqual({ steps: [] });
+  });
+
+  it('notes where the schedule is set, and picks the trigger with whole radio cards', () => {
+    const out = renderEditor({ steps: [] });
+    expect(screen.getByText('Set the schedule on the workflow’s page, under Start.')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('A new post appears in a feed'));
+    expect(out.draft.definition.trigger).toMatchObject({ kind: 'feed' });
+    expect(screen.queryByText('Set the schedule on the workflow’s page, under Start.')).toBeNull();
+  });
+
+  it('adds a step to the end of the list through the menu', () => {
+    const out = renderEditor({ steps: [{ id: 'a', type: 'template', template: 'A' }] });
+    addStep('notify');
+    expect(out.draft.definition.steps.map((s) => s.type)).toEqual(['template', 'notify']);
   });
 });

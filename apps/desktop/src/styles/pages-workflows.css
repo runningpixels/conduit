@@ -11,9 +11,6 @@
 .wf-detail .grp,
 .wf-edit .grp { margin-bottom: 0; }
 
-.wf-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
-.wf-name { margin: 0; font-size: var(--fs-5xl); color: var(--ink); }
-.wf-description { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--fs-5xl); }
 .wf-muted { margin: 0; color: var(--ink-3); font-size: var(--fs-5xl); }
 
 .wf-steps { margin: 0; padding-left: 1.4em; display: grid; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-5xl); }
@@ -29,13 +26,10 @@
 }
 
 .wf-field { display: grid; gap: var(--sp-1); font-size: var(--fs-5xl); color: var(--ink-2); }
-.wf-run-box { display: grid; gap: var(--sp-3); }
 .wf-json { font-family: var(--font-mono); font-size: var(--fs-3xl); min-height: 16rem; }
 .wf-error { margin: 0; color: var(--err); font-size: var(--fs-5xl); white-space: pre-wrap; }
 
-.wf-runs,
 .wf-run-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
-.wf-run-row,
 .wf-run-step summary {
   display: flex;
   align-items: center;
@@ -51,9 +45,7 @@
   text-align: left;
   cursor: pointer;
 }
-.wf-run-row:hover,
 .wf-run-step summary:hover { background: var(--bg-side); }
-.wf-run-row[aria-current="true"] { background: var(--hue-weak); color: var(--hue-text); }
 .wf-run-step-nested { padding-left: var(--sp-5); }
 .wf-step-name { font-size: var(--fs-5xl); }
 .wf-step-id { font-family: var(--font-mono); }
@@ -135,9 +127,6 @@
 .wf-text-field { display: grid; gap: var(--sp-1); }
 .wf-insert { justify-self: start; }
 
-.wf-problems { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line-soft); }
-.wf-problems ul { margin: 0; padding-left: 1.2em; color: var(--warn); font-size: var(--fs-5xl); }
-.wf-json-toggle { margin-left: auto; }
 .wf-saved { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
 /* ── Chip fields (workflows/ChipField.tsx) ───────────────────────────────── */
@@ -203,7 +192,6 @@
    Numbered nodes on a line that runs from the accent into the signal colour,
    the same line an assistant reply is drawn on. Nested steps (a "for each")
    get their own count and their own line. */
-.wf-name { font-size: var(--fs-10xl); font-weight: 700; letter-spacing: -.02em; }
 .wf-steps {
   list-style: none;
   padding-left: 0;
@@ -244,7 +232,6 @@
 }
 .wf-steps > li:last-child::after { display: none; }
 .wf-steps .wf-steps { margin-top: var(--sp-3); }
-.wf-folder-path { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--ink-2); }
 .workflow-update-banner {
   display: flex;
   align-items: center;
@@ -259,8 +246,6 @@
 /* -- Describe a workflow (pages/WorkflowsPage.tsx) -- */
 .wf-describe { display: grid; gap: var(--sp-2); margin: var(--sp-3) 0; text-align: left; }
 .wf-describe-progress { display: flex; align-items: center; gap: var(--sp-3); }
-.wf-notes { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line-soft); }
-.wf-notes ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); }
 
 /* ── Results: the latest result, the inbox toggle, unread dots (workflows/ResultView.tsx) ── */
 .wf-result { display: grid; gap: var(--sp-3); }
@@ -274,12 +259,6 @@
 .wf-result-others { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
 .wf-unread-dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: var(--r-round); background: var(--accent); }
-.wf-run-item { display: flex; align-items: center; gap: var(--sp-2); }
-.wf-run-item .wf-run-row { flex: 1; min-width: 0; }
-.wf-run-open { flex: none; }
-.wf-detail-next { display: inline-block; margin: var(--sp-2) 0 0; }
-.wf-built > summary { cursor: pointer; }
-.wf-built[open] > summary { margin-bottom: var(--sp-3); }
 .wf-starter-exists { display: grid; gap: var(--sp-2); }
 
 /* Workflows | Results, in the list column. Same look as the document panel's view toggle. */

@@ -1,1 +1,187 @@
-/* Workflow page views (pages/WorkflowsPage.tsx): the open workflow, its tabs, runs and results, and the editing bar. */
+/* The open workflow: header, summary chips, tabs and the pane under them
+   (pages/WorkflowsPage.tsx, workflows/WorkflowViewParts.tsx), and the editing
+   bar (workflows/WorkflowEditBar.tsx). Nothing under 13px. */
+
+/* ── The pane fills the detail column; the Steps tab pans the canvas instead of scrolling ── */
+.wf-page.is-viewing .page-detail { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.wfv { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.wfv-head { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-5) var(--sp-6) var(--sp-3); }
+.wfv-title { min-width: 0; }
+.wfv-name { margin: 0; font-size: var(--fs-7xl); font-weight: 700; letter-spacing: -.02em; color: var(--ink); overflow-wrap: anywhere; }
+.wfv-description { margin: var(--sp-1) 0 0; max-width: 70ch; font-size: var(--fs-8xl); line-height: 1.45; color: var(--ink-2); }
+.wfv-actions { flex: none; display: flex; align-items: center; gap: var(--sp-2); }
+
+/* ── More menu ── */
+.wfv-more { position: relative; }
+.wfv-more-btn { font-size: var(--fs-10xl); line-height: 1; }
+.wfv-menu {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  right: 0;
+  z-index: 20;
+  min-width: 10rem;
+  padding: var(--sp-1);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.wfv-menu-item { display: block; width: 100%; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-xs); text-align: left; font-size: var(--fs-5xl); color: var(--err); }
+.wfv-menu-item:hover:not(:disabled) { background: var(--card-hi); }
+.wfv-menu-item:disabled { opacity: .5; cursor: default; }
+
+/* ── Summary chips ── */
+.wfv-chips { flex: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); padding: 0 var(--sp-6) var(--sp-4); }
+.wfv-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-size: var(--fs-3xl);
+  color: var(--ink);
+}
+.wfv-chip-label { flex: none; color: var(--ink-3); }
+.wfv-chip-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wfv-chip.is-action { cursor: pointer; }
+.wfv-chip.is-action:hover { background: var(--card-hi); border-color: var(--line-hi); }
+
+/* ── Tabs ── */
+.wfv-tabs { flex: none; display: flex; gap: var(--sp-5); padding: 0 var(--sp-6); border-bottom: 1px solid var(--line); }
+.wfv-tab {
+  margin-bottom: -1px;
+  padding: var(--sp-2) 0 10px;
+  border-bottom: 2px solid transparent;
+  font-size: var(--fs-6xl);
+  color: var(--ink-3);
+}
+.wfv-tab:hover { color: var(--ink); }
+.wfv-tab.is-active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+
+.wfv-pane { flex: 1; min-height: 0; position: relative; }
+.wfv-pane-steps > .wfc.is-fill { position: absolute; inset: 0; height: auto; min-height: 0; }
+
+/* The step list beside the same panel column the canvas has. */
+.wfv-listview { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr) 420px; }
+.wfv-listview-steps { min-width: 0; overflow: auto; padding: var(--sp-5) var(--sp-6); display: grid; gap: var(--sp-4); align-content: start; }
+.wfv-panel { min-width: 0; overflow: auto; background: var(--bg-side); border-left: 1px solid var(--line); padding: var(--sp-5); font-size: var(--fs-5xl); }
+
+/* ── Panel content ── */
+.wfv-panel-body { display: grid; gap: var(--sp-5); align-content: start; font-size: var(--fs-5xl); }
+.wfv-section { display: grid; gap: var(--sp-3); }
+.wfv-h { margin: 0; font-size: var(--fs-8xl); font-weight: 600; color: var(--ink); }
+.wfv-h-sub { font-size: var(--fs-5xl); color: var(--ink-2); }
+.wfv-back { justify-self: start; }
+.wfv-all-runs { justify-self: start; }
+.wfv-statusline { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); font-size: var(--fs-5xl); color: var(--ink-2); }
+
+.wfv-tone { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.wfv-tone-ok { color: var(--ok); }
+.wfv-tone-err { color: var(--err); }
+.wfv-tone-warn { color: var(--warn); }
+.wfv-tone-muted { color: var(--ink-3); }
+.wfv-dot { flex: none; width: 8px; height: 8px; border-radius: var(--r-round); background: currentColor; }
+
+.wfv-recent { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.wfv-recent-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) 10px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: var(--fs-5xl);
+  color: var(--ink-2);
+}
+.wfv-recent-row:hover { background: var(--card-hi); }
+
+/* ── Runs and Results: a list beside the selected one ── */
+.wfv-pane-split { display: grid; grid-template-columns: 340px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.wfv-side { min-height: 0; overflow: auto; padding: var(--sp-3); border-right: 1px solid var(--line); }
+.wfv-main { min-width: 0; min-height: 0; overflow: auto; padding: var(--sp-5) var(--sp-6); display: grid; gap: var(--sp-5); align-content: start; }
+.wfv-empty { grid-column: 1 / -1; margin: 0; padding: var(--sp-6); font-size: var(--fs-5xl); color: var(--ink-3); }
+.wfv-runlist { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.wfv-run-row {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: var(--fs-5xl);
+  color: var(--ink-2);
+}
+.wfv-run-row:hover { background: var(--card-hi); }
+.wfv-run-row[aria-current="true"] { background: var(--accent-soft); outline: 1px solid var(--accent-line); outline-offset: -1px; color: var(--ink); }
+.wfv-run-top { display: flex; align-items: center; gap: var(--sp-3); }
+.wfv-run-sub { font-size: var(--fs-3xl); color: var(--ink-3); }
+.wfv-result-title { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+
+/* ── Editing: the editor takes the whole page, under the editing bar ── */
+.wf-page.is-editing .page-body-single { overflow: hidden; display: flex; flex-direction: column; }
+.wf-page.is-editing .page-content { flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wfv-edit { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.wfv-edit-body { flex: 1; min-height: 0; position: relative; }
+.wfv-edit-json { overflow: auto; padding: var(--sp-5) var(--sp-6); }
+.wfv-json { min-height: 60vh; }
+.wfv-edit-error { flex: none; padding: var(--sp-2) var(--sp-5); border-bottom: 1px solid var(--line); }
+
+.wfv-editbar {
+  flex: none;
+  box-sizing: border-box;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-5);
+  background: var(--bg-side);
+  border-bottom: 1px solid var(--line);
+}
+.wfv-back-btn { flex: none; font-size: var(--fs-10xl); line-height: 1; }
+.wfv-name-field { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.wfv-editing { font-size: var(--fs-3xl); color: var(--ink-3); }
+.wfv-name-input {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font: 700 var(--fs-10xl) / 1.2 var(--font-ui);
+  color: var(--ink);
+  outline: none;
+}
+.wfv-name-input:focus-visible { border-bottom-color: var(--accent); }
+.wfv-editbar-actions { flex: none; display: flex; align-items: center; gap: var(--sp-2); }
+.wfv-problems-wrap { position: relative; }
+.wfv-problems-pill {
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--warn);
+  background: transparent;
+  font-size: var(--fs-3xl);
+  font-weight: 600;
+  color: var(--warn);
+  cursor: pointer;
+}
+.wfv-problems-pill[aria-expanded="true"] { background: var(--card-hi); }
+.wfv-problems-pop {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  z-index: 30;
+  width: min(24rem, 80vw);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.wfv-problems-title { margin: 0 0 var(--sp-2); font-size: var(--fs-5xl); font-weight: 600; color: var(--ink); }
+.wfv-problems-pop ul { margin: 0; padding-left: 1.2em; display: grid; gap: var(--sp-1); font-size: var(--fs-5xl); color: var(--warn); }

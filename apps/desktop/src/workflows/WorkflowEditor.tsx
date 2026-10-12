@@ -17,10 +17,11 @@ import { STEP_TYPE_KEY } from './stepTypes';
 import { CanvasStepsEditor } from './canvas/CanvasStepsEditor';
 import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../shell/uiPrefs';
 import { useId, useRef, useState, type ReactNode } from 'react';
+import { AddStepMenu, ViewToggle } from './AddStepMenu';
+import { StartPanel } from './StartPanel';
 import { ChipField, type ChipFieldHandle } from './ChipField';
-import { useT, type Translate } from '../i18n';
-import { pickWorkspaceFolder } from '../ipc/client';
-import type { DataFormat, WorkflowDefinition, WorkflowInput, WorkflowStep } from '../ipc/contracts';
+import { useT } from '../i18n';
+import type { DataFormat, WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import {
   AGENT_TOOLS,
   allStepIds,
@@ -36,7 +37,6 @@ import {
   MAX_RETRIES,
   MAX_URLS,
   moveStep,
-  newInput,
   newStep,
   removeStep,
   stepAt,
@@ -47,10 +47,8 @@ import {
   withCollection,
   withConditionTest,
   withTopK,
-  withFolder,
   withOnlyIfChanged,
   withStepModel,
-  withWorkflowModel,
   valuesAt,
   type StepPath,
   type StepType,
@@ -61,7 +59,6 @@ import { CollectionPicker } from './CollectionPicker';
 import { ConnectorStepBody } from './ConnectorStepBody';
 import { DocumentPicker } from './DocumentPicker';
 import { agentToolText } from './permissionText';
-import { TriggerSection } from './TriggerSection';
 import { ProviderModelsProvider, WorkflowModelRow } from './WorkflowModelRow';
 
 export interface WorkflowDraft {
@@ -95,11 +92,14 @@ export function WorkflowEditor({
   draft,
   onChange,
   problems,
+  notes,
 }: {
   draft: WorkflowDraft;
   onChange: (next: WorkflowDraft) => void;
   /** The checker's problems; on the canvas, the steps they name are marked. */
   problems?: readonly string[];
+  /** "Still to fill in before you save": shown at the top of the Start panel. */
+  notes?: readonly string[];
 }) {
   const t = useT();
   const def = draft.definition;
@@ -113,93 +113,18 @@ export function WorkflowEditor({
   };
   const setDefinition = (definition: WorkflowDefinition) => onChange({ ...draft, definition });
   const setSteps = (steps: WorkflowStep[]) => setDefinition({ ...def, steps });
-  const inputs = def.inputs ?? [];
-  const setInputs = (next: WorkflowInput[]) => setDefinition({ ...def, inputs: next });
+  const start = <StartPanel draft={draft} onChange={onChange} notes={notes} />;
 
   return (
     <ProviderModelsProvider>
-    <div className="wf-editor">
-      <label className="wf-field">
-        <span>{t('workspace.workflows.edit.name')}</span>
-        <input className="mem-input" value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} />
-      </label>
-      <label className="wf-field">
-        <span>{t('workspace.workflows.edit.description')}</span>
-        <input
-          className="mem-input"
-          value={draft.description}
-          onChange={(e) => onChange({ ...draft, description: e.target.value })}
-        />
-      </label>
-
-      <section className="grp" aria-label={t('workspace.workflows.model.label')}>
-        <div className="grp-label">{t('workspace.workflows.model.label')}</div>
-        <p className="wf-muted">{t('workspace.workflows.model.hint')}</p>
-        <WorkflowModelRow
-          kind="workflow"
-          idPrefix="wf-model"
-          model={def.model}
-          onChange={(model) => setDefinition(withWorkflowModel(def, model))}
-        />
-      </section>
-
-      <FolderRow folder={def.folder} onChange={(folder) => setDefinition(withFolder(def, folder))} />
-
-      <TriggerSection def={def} onChange={setDefinition} />
-
-      <section className="grp" aria-label={t('workspace.workflows.editor.inputs.title')}>
-        <div className="grp-label">{t('workspace.workflows.editor.inputs.title')}</div>
-        <p className="wf-muted">{t('workspace.workflows.editor.inputs.hint')}</p>
-        {inputs.map((input, index) => (
-          <div key={input.id} className="wf-input-row">
-            <input
-              className="mem-input"
-              aria-label={t('workspace.workflows.editor.inputs.label', { n: index + 1 })}
-              placeholder={t('workspace.workflows.editor.inputs.labelPlaceholder')}
-              value={input.label}
-              onChange={(e) => setInputs(inputs.map((i) => (i.id === input.id ? { ...i, label: e.target.value } : i)))}
-            />
-            <input
-              className="mem-input"
-              aria-label={t('workspace.workflows.editor.inputs.default', { n: index + 1 })}
-              placeholder={t('workspace.workflows.editor.inputs.defaultPlaceholder')}
-              value={input.default ?? ''}
-              onChange={(e) => setInputs(inputs.map((i) => (i.id === input.id ? { ...i, default: e.target.value } : i)))}
-            />
-            <button
-              type="button"
-              className="btn ghost"
-              aria-label={t('workspace.workflows.editor.inputs.remove', { n: index + 1 })}
-              onClick={() => setInputs(inputs.filter((i) => i.id !== input.id))}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="btn ghost wf-add"
-          onClick={() => setInputs([...inputs, newInput(inputs, t('workspace.workflows.editor.inputs.newLabel'))])}
-        >
-          {t('workspace.workflows.editor.inputs.add')}
-        </button>
-      </section>
-
-      <section className="grp wf-steps-grp" aria-label={t('workspace.workflows.steps.title')}>
-        <div className="grp-label">{t('workspace.workflows.steps.title')}</div>
-        <div className="wf-view-toggle wf-steps-toggle" role="group" aria-label={t('workspace.workflows.canvas.viewLabel')}>
-          <button type="button" className={`wf-view-btn${stepsView === 'canvas' ? ' active' : ''}`} aria-pressed={stepsView === 'canvas'} onClick={() => chooseView('canvas')}>
-            {t('workspace.workflows.canvas.viewCanvas')}
-          </button>
-          <button type="button" className={`wf-view-btn${stepsView === 'list' ? ' active' : ''}`} aria-pressed={stepsView === 'list'} onClick={() => chooseView('list')}>
-            {t('workspace.workflows.canvas.viewList')}
-          </button>
-        </div>
+      <div className="wf-editor">
         {stepsView === 'canvas' ? (
           <CanvasStepsEditor
             definition={def}
             onChange={setDefinition}
             problems={problems}
+            start={start}
+            onChooseView={chooseView}
             renderCard={(path) => {
               const step = stepAt(def.steps, path);
               const siblings = path.length === 1 ? def.steps : (stepAt(def.steps, [path[0]]) as Extract<WorkflowStep, { type: 'for_each' }>).steps;
@@ -218,45 +143,25 @@ export function WorkflowEditor({
             }}
           />
         ) : (
-          <StepListEditor def={def} steps={def.steps} parent={[]} setSteps={setSteps} />
+          <div className="wfe-list-layout">
+            <div className="wfe-list-col">
+              <div className="wfe-list-bar">
+                <AddStepMenu
+                  nested={false}
+                  where={t('workspace.workflows.canvas.addEnd')}
+                  onPick={(type) => setSteps(insertStep(def.steps, [], newStep(type, allStepIds(def.steps))))}
+                />
+                <ViewToggle view="list" onChoose={chooseView} />
+              </div>
+              <StepListEditor def={def} steps={def.steps} parent={[]} setSteps={setSteps} />
+            </div>
+            <aside className="wfe-start-col" aria-label={t('workspace.workflows.canvas.start')}>
+              {start}
+            </aside>
+          </div>
         )}
-      </section>
-    </div>
-    </ProviderModelsProvider>
-  );
-}
-
-/// The folder `read_file` steps read from: shown as a path, picked with the
-/// system folder dialog, and clearable.
-function FolderRow({ folder, onChange }: { folder: string | undefined; onChange: (folder: string | null) => void }) {
-  const t = useT();
-  const [error, setError] = useState<string | null>(null);
-  const choose = async () => {
-    setError(null);
-    try {
-      const picked = await pickWorkspaceFolder();
-      if (picked) onChange(picked);
-    } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : t('workspace.workflows.folder.pickFailed'));
-    }
-  };
-  return (
-    <section className="grp" aria-label={t('workspace.workflows.folder.label')}>
-      <div className="grp-label">{t('workspace.workflows.folder.label')}</div>
-      <p className="wf-muted">{t('workspace.workflows.folder.hint')}</p>
-      <div className="wf-input-row">
-        <code className="wf-folder-path">{folder || t('workspace.workflows.folder.none')}</code>
-        <button type="button" className="btn ghost" onClick={() => void choose()}>
-          {folder ? t('workspace.workflows.folder.change') : t('workspace.workflows.folder.choose')}
-        </button>
-        {folder ? (
-          <button type="button" className="btn ghost" onClick={() => onChange(null)}>
-            {t('workspace.workflows.folder.clear')}
-          </button>
-        ) : null}
       </div>
-      {error ? <p className="wf-error">{error}</p> : null}
-    </section>
+    </ProviderModelsProvider>
   );
 }
 
@@ -287,6 +192,7 @@ function StepListEditor({
           />
         ))}
       </ol>
+      {parent.length > 0 ? (
       <select
         className="sel wf-add"
         aria-label={parent.length ? t('workspace.workflows.editor.addInside') : t('workspace.workflows.editor.add')}
@@ -304,6 +210,7 @@ function StepListEditor({
           </option>
         ))}
       </select>
+      ) : null}
     </>
   );
 }
@@ -852,6 +759,63 @@ function StepCard({
       break;
   }
   const usualRetries = defaultRetries(step.type);
+  const retriesNow = step.retries ?? usualRetries ?? 0;
+  const failure =
+    step.onError === 'skip'
+      ? t('workspace.workflows.editor.failure.skip')
+      : retriesNow > 0
+        ? t('workspace.workflows.editor.failure.retry', { count: retriesNow })
+        : t('workspace.workflows.editor.failure.stop');
+  const failureSettings = (
+    <details className="wfe-failure">
+      <summary>
+        {t('workspace.workflows.editor.failure.title')}
+        {' '}
+        <span className="wfe-failure-now">{failure}</span>
+      </summary>
+      <div className="wfe-failure-body">
+        {usualRetries !== null ? (
+          <label className="wf-field wf-retries">
+            <span>{t('workspace.workflows.editor.retries')}</span>
+            <select
+              className="sel"
+              value={step.retries ?? usualRetries}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                // The usual number stays unwritten, so the stored workflow keeps
+                // following the default.
+                update((s) => ({ ...s, retries: n === usualRetries ? undefined : n }));
+              }}
+            >
+              {Array.from({ length: MAX_RETRIES + 1 }, (_, n) => (
+                <option key={n} value={n}>
+                  {t('workspace.workflows.editor.retriesCount', { count: n })}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <label className="wf-check">
+          <input
+            type="checkbox"
+            checked={step.onError === 'skip'}
+            onChange={(e) => update((s) => ({ ...s, onError: e.target.checked ? 'skip' : 'fail' }))}
+          />
+          {t('workspace.workflows.editor.keepGoing')}
+        </label>
+      </div>
+    </details>
+  );
+
+  // On the canvas the side panel has its own header, so the card is just the form.
+  if (!nestedList) {
+    return (
+      <section className="wfe-form" aria-label={typeName}>
+        <div className="wf-card-body">{body}</div>
+        {failureSettings}
+      </section>
+    );
+  }
 
   return (
     <li className="wf-card" aria-labelledby={headingId}>
@@ -890,35 +854,7 @@ function StepCard({
         </span>
       </header>
       <div className="wf-card-body">{body}</div>
-      {usualRetries !== null ? (
-        <label className="wf-field wf-retries">
-          <span>{t('workspace.workflows.editor.retries')}</span>
-          <select
-            className="sel"
-            value={step.retries ?? usualRetries}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              // The usual number stays unwritten, so the stored workflow keeps
-              // following the default.
-              update((s) => ({ ...s, retries: n === usualRetries ? undefined : n }));
-            }}
-          >
-            {Array.from({ length: MAX_RETRIES + 1 }, (_, n) => (
-              <option key={n} value={n}>
-                {t('workspace.workflows.editor.retriesCount', { count: n })}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-      <label className="wf-check">
-        <input
-          type="checkbox"
-          checked={step.onError === 'skip'}
-          onChange={(e) => update((s) => ({ ...s, onError: e.target.checked ? 'skip' : 'fail' }))}
-        />
-        {t('workspace.workflows.editor.keepGoing')}
-      </label>
+      {failureSettings}
     </li>
   );
 }
@@ -967,7 +903,7 @@ function TextField({
         />
       </div>
       <select
-        className="sel wf-insert"
+        className="sel wf-insert wfe-insert"
         aria-label={t('workspace.workflows.editor.insert.label', { field: label })}
         value=""
         onChange={(e) => {

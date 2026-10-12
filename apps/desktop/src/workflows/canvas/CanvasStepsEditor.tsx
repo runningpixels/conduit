@@ -1,23 +1,26 @@
-/// Editing a workflow's steps on the canvas: a palette adds a step after the
-/// selected one (or inside a selected loop), dragging a step moves it (into
-/// and out of loops too), the selected step's form opens beside it, Delete
-/// removes it, and a wire drawn from one step to a later one puts that
+/// Editing a workflow's steps on the canvas. A toolbar over the canvas adds a
+/// step after the selected one (or inside a selected loop); dragging a step
+/// moves it (into and out of loops too); the side column shows the Start panel
+/// (nothing or the start node selected) or the selected step's form; Delete
+/// removes the step, and a wire drawn from one step to a later one puts that
 /// step's output into a field of the later one.
 ///
 /// All of it changes the definition through `canvasEdit.ts`; the canvas then
-/// lays itself out again. The step form is the editor's own, passed in as
-/// `renderCard`, so both views edit a step the same way.
+/// lays itself out again. The step form and the Start panel are the editor's
+/// own, passed in, so both views edit the same way.
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useT } from '../../i18n';
 import type { WorkflowDefinition } from '../../ipc/contracts';
 import { refLabel } from '../refLabel';
 import { STEP_TYPE_KEY } from '../stepTypes';
-import { stepTypesFor, type StepPath, type StepType } from '../editorModel';
-import { buildCanvas, type CanvasNode } from './canvasModel';
+import { type StepPath, type StepType } from '../editorModel';
+import { START_ID, buildCanvas, type CanvasNode } from './canvasModel';
 import { addPlace, addStep, connectReference, deleteStep, dropPlace, moveStepTo, pathOf, wireChoices, type TemplateField } from './canvasEdit';
 import { WorkflowCanvas, type CanvasEditor } from './WorkflowCanvas';
-import type { InputLabels } from '../describeStep';
+import { describeStep, type InputLabels } from '../describeStep';
+import { useConnectorNames } from '../useConnectorNames';
+import { AddStepMenu, ViewToggle } from '../AddStepMenu';
 import type { ValueRef } from '../editorModel';
 
 type Wire =
@@ -29,11 +32,15 @@ export interface CanvasStepsEditorProps {
   onChange: (next: WorkflowDefinition) => void;
   /** The step form for the step at `path` (the editor's own card). */
   renderCard: (path: StepPath) => ReactNode;
+  /** The Start panel, shown when nothing or the start node is selected. */
+  start: ReactNode;
+  /** Switch to the list view (the toggle in the toolbar). */
+  onChooseView: (next: 'canvas' | 'list') => void;
   problems?: readonly string[];
   labels?: InputLabels;
 }
 
-export function CanvasStepsEditor({ definition, onChange, renderCard, problems, labels }: CanvasStepsEditorProps) {
+export function CanvasStepsEditor({ definition, onChange, renderCard, start, onChooseView, problems, labels }: CanvasStepsEditorProps) {
   const t = useT();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [wire, setWire] = useState<Wire | null>(null);
@@ -46,7 +53,15 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, problems, 
 
   // A selection that no longer exists (deleted, or undone in the list view) is dropped.
   const selected = selectedId && pathOf(definition.steps, selectedId) ? selectedId : null;
+  const highlighted = selectedId === START_ID ? START_ID : selected;
   const place = addPlace(definition, selected);
+  const connectorNames = useConnectorNames(definition.steps);
+  const flat = definition.steps.flatMap((s) => (s.type === 'for_each' ? [s, ...s.steps] : [s]));
+  const selectedStep = selected ? flat.find((s) => s.id === selected) : undefined;
+  const summary = (id: string) => {
+    const step = flat.find((s) => s.id === id);
+    return step ? describeStep(step, t, inputLabels, connectorNames, definition.steps) : id;
+  };
 
   const add = useCallback(
     (type: StepType) => {
@@ -57,23 +72,16 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, problems, 
     [definition, selected, onChange],
   );
 
-  const palette = (
-    <div className="wfc-palette" role="group" aria-label={t('workspace.workflows.canvas.paletteLabel')}>
-      <span className="wfc-palette-where">
-        {selected
-          ? place.nested && definition.steps.find((s) => s.id === selected)?.type === 'for_each'
-            ? t('workspace.workflows.canvas.addInside')
-            : t('workspace.workflows.canvas.addAfter', { step: selected })
-          : t('workspace.workflows.canvas.addEnd')}
-      </span>
-      <div className="wfc-palette-items">
-        {stepTypesFor(place.nested).map((type) => (
-          <button key={type} type="button" className="wfc-palette-item" onClick={() => add(type)}>
-            {t(STEP_TYPE_KEY[type])}
-          </button>
-        ))}
-      </div>
-    </div>
+  const where = selected
+    ? place.nested && selectedStep?.type === 'for_each'
+      ? t('workspace.workflows.canvas.addInside')
+      : t('workspace.workflows.canvas.addAfter', { step: summary(selected) })
+    : t('workspace.workflows.canvas.addEnd');
+  const toolbar = (
+    <>
+      <AddStepMenu nested={place.nested} where={where} onPick={add} />
+      <ViewToggle view="canvas" onChoose={onChooseView} />
+    </>
   );
 
   const editor: CanvasEditor = useMemo(
@@ -99,13 +107,34 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, problems, 
     [graph, definition, onChange],
   );
 
-  // The side column: the palette on top, then the selected step's form.
-  const inspector = (node: CanvasNode | null) => (
-    <>
-      {palette}
-      {node?.path ? <ol className="wf-cards wfc-card">{renderCard(node.path)}</ol> : <p className="wfc-empty">{t('workspace.workflows.canvas.selectToEdit')}</p>}
-    </>
-  );
+  // The side column: the Start panel, or the selected step's header and form.
+  const panel = (node: CanvasNode | null) => {
+    if (!node?.path || !node.step) return start;
+    const step = node.step;
+    return (
+      <div className="wfe-step-panel">
+        <header className="wfe-step-head">
+          <div className="wfe-step-line">
+            <span className="wfe-kicker">
+              {t('workspace.workflows.editor.panel.stepKind', { n: node.path.map((i) => i + 1).join('.'), kind: t(STEP_TYPE_KEY[step.type]) })}
+            </span>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => {
+                onChange(deleteStep(definition, step.id));
+                setSelectedId(null);
+              }}
+            >
+              {t('workspace.workflows.editor.panel.delete')}
+            </button>
+          </div>
+          <h2 className="wfe-title wfe-clamp">{summary(step.id)}</h2>
+        </header>
+        {renderCard(node.path)}
+      </div>
+    );
+  };
 
   const insertWire = () => {
     if (!wire || !wire.ok) return;
@@ -117,15 +146,15 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, problems, 
   };
 
   return (
-    <div className="wfc-editor">
-      <p className="wf-muted wfc-edit-hint">{t('workspace.workflows.canvas.editHint')}</p>
+    <div className="wfc-editor wfe-canvas-host">
       <WorkflowCanvas
         definition={definition}
         labels={inputLabels}
         problems={problems}
-        selectedId={selected}
+        selectedId={highlighted}
         onSelect={setSelectedId}
-        inspector={inspector}
+        panel={panel}
+        toolbar={toolbar}
         editor={editor}
       />
       {wire ? (

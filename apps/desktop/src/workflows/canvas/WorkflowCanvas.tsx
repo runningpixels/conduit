@@ -205,8 +205,9 @@ type Flow = ReturnType<typeof useReactFlow>;
 
 /**
  * Fits the drawing to the canvas. In the page layout the zoom stays between
- * READABLE_ZOOM and 1, and a drawing taller than the canvas starts at its top
- * (the rest is a pan or scroll away) rather than shrinking to fit.
+ * READABLE_ZOOM and 1. A drawing that fits shrinks to fit; one too tall to fit
+ * even at READABLE_ZOOM has to be panned anyway, so it shows at full size
+ * (width allowing), starting at its top.
  */
 function fitDrawing(flow: Flow, el: HTMLElement | null, fill: boolean) {
   if (!fill || !el) {
@@ -219,7 +220,9 @@ function fitDrawing(flow: Flow, el: HTMLElement | null, fill: boolean) {
   if (nodes.length === 0 || w === 0 || h === 0) return;
   const b = flow.getNodesBounds(nodes);
   if (b.width === 0 || b.height === 0) return;
-  const zoom = Math.max(READABLE_ZOOM, Math.min(1, (w - FIT_PAD * 2) / b.width, (h - FIT_PAD * 2) / b.height));
+  const byWidth = Math.min(1, (w - FIT_PAD * 2) / b.width);
+  const byHeight = (h - FIT_PAD * 2) / b.height;
+  const zoom = Math.max(READABLE_ZOOM, byHeight >= READABLE_ZOOM ? Math.min(byWidth, byHeight) : byWidth);
   const x = (w - b.width * zoom) / 2 - b.x * zoom;
   const y = b.height * zoom + FIT_PAD * 2 > h ? FIT_PAD - b.y * zoom : (h - b.height * zoom) / 2 - b.y * zoom;
   void flow.setViewport({ x, y, zoom });

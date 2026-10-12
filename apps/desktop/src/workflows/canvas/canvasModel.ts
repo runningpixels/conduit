@@ -17,7 +17,7 @@ import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowSt
 import type { StepPath } from '../editorModel';
 
 export const NODE_W = 280;
-export const NODE_H = 120;
+export const NODE_H = 136;
 export const START_W = 280;
 export const START_H = 136;
 export const GAP_X = 56;

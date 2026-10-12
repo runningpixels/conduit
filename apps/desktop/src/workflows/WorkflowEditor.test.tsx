@@ -28,6 +28,8 @@ const descriptor = (id: string, displayName: string, tier: number) => ({
 });
 
 beforeEach(() => {
+  // The step list, unless a test is about the canvas.
+  localStorage.setItem('conduit:v12-workflow-view', 'list');
   ipc.listProviderDescriptors.mockResolvedValue([
     descriptor('openrouter', 'OpenRouter', 1),
     descriptor('anthropic', 'Anthropic', 1),

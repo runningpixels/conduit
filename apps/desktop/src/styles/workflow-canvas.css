@@ -99,6 +99,12 @@
 .wfc-data-out { top: 30%; }
 .wfc-data-in { top: 70%; }
 .wfc-side-handle { opacity: 0; }
+/* While a wire is drawn, a step's input covers the step: drop anywhere on it. */
+.wfc-canvas .react-flow__handle.wfc-drop-all { top: 0; right: 0; left: 0; bottom: 0; width: auto; height: auto; transform: none; border: 0; border-radius: var(--r-lg); background: color-mix(in srgb, var(--signal) 10%, transparent); opacity: 1; }
+/* Editing: a wire starts from the dot on a step's right edge. */
+.wfc.is-editing .wfc-data-out { opacity: 1; width: 12px; height: 12px; background: var(--signal); border-color: var(--card); cursor: crosshair; }
+.wfc.is-editing .wfc-step,
+.wfc.is-editing .wfc-loop-head { cursor: grab; }
 
 .wfc-controls { display: flex; gap: 4px; }
 .wfc-controls .btn { background: var(--card); }
@@ -118,6 +124,13 @@
   box-shadow: var(--shadow-tab-active);
 }
 .wfc-close { float: right; margin: -4px -4px 0 var(--sp-2); }
+/* Editing: the step form is a column beside the canvas, not over it. */
+.wfc.is-editing { display: grid; grid-template-columns: minmax(0, 1fr) 380px; }
+.wfc.is-editing .wfc-inspector { position: static; width: auto; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: none; max-height: 1100px; }
+@media (max-width: 1100px) {
+  .wfc.is-editing { grid-template-columns: 1fr; }
+  .wfc.is-editing .wfc-inspector { border-left: 0; border-top: 1px solid var(--line); }
+}
 .wfc-hint { position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 5; margin: 0; padding: 6px 10px; border-radius: var(--r-sm); background: var(--card); color: var(--ink-3); font-size: var(--fs-xl); pointer-events: none; }
 .wfc-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); }
 .wfc-inspect { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -127,3 +140,23 @@
 .wfc-wire { font-size: var(--fs-xl); color: var(--ink-2); }
 .wfc-runs { display: flex; flex-direction: column; gap: 4px; }
 .wfc-run-row summary { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+/* ── Editing (workflows/canvas/CanvasStepsEditor.tsx) ───────────────────── */
+.wf-steps-toggle { max-width: 260px; margin-bottom: var(--sp-3); }
+.wfc-editor { display: flex; flex-direction: column; gap: var(--sp-2); }
+.wfc-edit-hint { margin: 0; font-size: var(--fs-xl); }
+.wfc-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--sp-4);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.wfc-palette-where { font-size: var(--fs-sm); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.wfc-palette-items { display: flex; flex-wrap: wrap; gap: 4px; }
+.wfc-palette-item { padding: 4px 9px; border: 1px solid var(--line); border-radius: var(--r-pill); font-size: var(--fs-xl); color: var(--ink-2); transition: background var(--tap), color var(--tap), border-color var(--tap); }
+.wfc-palette-item:hover { background: var(--card-hi); color: var(--ink); border-color: var(--line-hi); }
+.wfc-palette-item:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.wfc-card { margin: 0; padding: 0; list-style: none; }
+.wfc-wire-dialog { width: min(460px, 92vw); display: grid; gap: var(--sp-3); }

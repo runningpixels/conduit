@@ -394,3 +394,81 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── Apps: the home screen (pages/AppsHomePage.tsx) ─────────────────────── */
+.apps-home-search {
+  width: 100%;
+  max-width: 360px;
+  margin: 0 0 var(--sp-5);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--fs-2xl);
+}
+.apps-home-search:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.apps-home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.apps-home-grid > li { display: flex; }
+/* A card per app: tile and name, kind and last opened, what it does, and
+ * whether it goes online or uses your AI model. The whole card opens it. */
+.apps-home-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color var(--tap), background var(--tap);
+}
+.apps-home-card:hover { border-color: var(--line-hi); background: var(--card-hi); }
+.apps-home-card:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.apps-home-card-top { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.apps-home-card .app-tile-lg { width: 72px; height: 72px; border-radius: var(--r-xl); }
+.apps-home-card-title { display: grid; gap: 4px; min-width: 0; }
+.apps-home-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+  font-size: var(--fs-8xl);
+  font-weight: 700;
+}
+.apps-home-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--ink-3); font-size: var(--fs-2xl); }
+.apps-home-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: var(--fs-5xl);
+  line-height: 1.45;
+}
+.apps-home-traits { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.apps-home-trait {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  background: var(--card-hi);
+  color: var(--ink-2);
+  font-size: var(--fs-lg);
+}
+.apps-home-trait::before { content: ""; width: 6px; height: 6px; border-radius: var(--r-pill); background: var(--ink-3); }
+.apps-home-trait[data-tone="net"]::before { background: var(--signal); }
+.apps-home-trait[data-tone="ai"]::before { background: var(--accent); }
+.apps-home-nomatch { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); }

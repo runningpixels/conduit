@@ -14,7 +14,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { AppSettings } from '@conduit/config-schema';
 import { I18nProvider } from './i18n';
 import deMessages from './i18n/messages/de.json';
@@ -223,6 +223,40 @@ describe('App shell', { timeout: 20_000 }, () => {
     // "Continue" is instant because boot still selected a conversation.
     expect(screen.getByPlaceholderText('Message… or type / for tools')).toBeInTheDocument();
     expect(document.querySelector('.dest-page[data-destination="home"]')).not.toBeNull();
+  });
+
+  it('walks the grouped rail: Apps and Manage, the placeholders, and Context with its tabs', async () => {
+    const { default: App } = await import('./App');
+    render(<App />);
+    await waitFor(() => expect(document.querySelector('.dest-page[data-destination="home"]')).not.toBeNull());
+
+    // Apps is the home screen; Manage is the Apps page as it was.
+    fireEvent.click(screen.getByRole('button', { name: 'Apps' }));
+    expect(await screen.findByText('No apps yet')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Manage apps' }));
+    expect(await screen.findByText('No personal apps yet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage apps' })).toHaveAttribute('aria-current', 'page');
+
+    // Inbox and Agents say what they will be.
+    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    expect(await screen.findByText(/Approvals, questions, results and problems/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
+    expect(await screen.findByText(/asks before anything leaves your computer/)).toBeInTheDocument();
+
+    // Context opens on Documents, with its tabs; the rail marks Context.
+    fireEvent.click(screen.getByRole('button', { name: 'Context' }));
+    const tabs = await screen.findByRole('navigation', { name: 'Context sections' });
+    expect(within(tabs).getByRole('button', { name: 'Documents' })).toHaveAttribute('aria-current', 'page');
+    expect(document.querySelector('.dest-page[data-destination="documents"][data-context]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Context' })).toHaveAttribute('aria-current', 'page');
+
+    // A tab is a destination of its own, and Context reopens on the last one.
+    fireEvent.click(within(tabs).getByRole('button', { name: 'Memory' }));
+    await waitFor(() => expect(document.querySelector('.dest-page[data-destination="memory"]')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    fireEvent.keyDown(window, { key: '9', ctrlKey: true });
+    await waitFor(() => expect(document.querySelector('.dest-page[data-destination="memory"]')).not.toBeNull());
+    expect(screen.queryByText(/something went wrong/i)).toBeNull();
   });
 
   it('renders no React error boundary fallback on a clean boot', async () => {

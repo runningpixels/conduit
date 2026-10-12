@@ -72,7 +72,8 @@ import { Sidebar } from './shell/Sidebar';
 import { EXAMPLES_CHANGED_EVENT } from './examples/useExampleItems';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
-import { Rail, type Destination } from './shell/Rail';
+import { Rail, isContextTab, type ContextTab, type Destination } from './shell/Rail';
+import { ContextTabs } from './shell/ContextTabs';
 import { HomePage, type HomeAction, type WorkflowTarget } from './home/HomePage';
 import { researchUnavailableReasonId } from './chat/researchAvailability';
 import { InspectorTabs, type InspectorTab } from './inspector/InspectorTabs';
@@ -132,6 +133,8 @@ import { Onboarding, MigrationRecoveryNotice } from './onboarding/Onboarding';
 import { readDevRoute } from './devRoute';
 import { ConfirmDialog } from '@conduit/ui';
 import { AppsPage } from './pages/AppsPage';
+import { AppsHomePage } from './pages/AppsHomePage';
+import { ComingSoonPage } from './pages/ComingSoonPage';
 import type { AppSummary, StarterAppInfo } from './ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog';
 import {
@@ -379,6 +382,12 @@ export default function App() {
   // The app opens on Home. Boot still selects a conversation underneath, so
   // "Continue" is instant.
   const [destination, setDestination] = useState<Destination>('home');
+  // Context on the rail holds Documents, Library, Connectors and Memory as
+  // tabs; it opens on the one used last.
+  const [contextTab, setContextTab] = useState<ContextTab>('documents');
+  useEffect(() => {
+    if (isContextTab(destination)) setContextTab(destination);
+  }, [destination]);
   // Home's "New workflow" opens the Workflows page on its picker.
   const [workflowsStartNew, setWorkflowsStartNew] = useState(false);
   // Home's "Answer"/"Review" opens the Workflows page on the waiting workflow.
@@ -3196,6 +3205,7 @@ export default function App() {
   const navigateTo = useCallback(
     (d: Destination) => {
       if (d === 'settings') openSettings();
+      else if (d === 'context') setDestination(contextTab);
       else if (d === 'slides' && studio) setStudioDeckId(null);
       else if (d === 'writing' && writingStudio) setStudioDraftId(null);
       else {
@@ -3205,7 +3215,7 @@ export default function App() {
         setDestination(d);
       }
     },
-    [openSettings, studio, writingStudio, activeDeck, activeDraft, leaveDeckChat],
+    [openSettings, studio, writingStudio, activeDeck, activeDraft, leaveDeckChat, contextTab],
   );
 
   // ── Home ─────────────────────────────────────────────────────────────────
@@ -3295,6 +3305,10 @@ export default function App() {
     },
     [handleSelectConversation],
   );
+  const startNewApp = useCallback(async () => {
+    await openFreshChat();
+    requestAnimationFrame(() => chatViewRef.current?.insertPrompt(t('apps.launcher.newAppPrompt')));
+  }, [openFreshChat, t]);
   const handleHomeNavigate = useCallback(
     (area: Destination) => {
       if (area === 'slides') openSlidesList();
@@ -3416,13 +3430,13 @@ export default function App() {
       // Ctrl+1…9: not while presenting (the deck owns the keyboard).
       goHome: () => !presenting && navigateTo('home'),
       goChats: () => !presenting && navigateTo('chats'),
-      goApps: () => !presenting && navigateTo('apps'),
       goSlides: () => !presenting && navigateTo('slides'),
       goWriting: () => !presenting && navigateTo('writing'),
-      goDocuments: () => !presenting && navigateTo('documents'),
-      goLibrary: () => !presenting && navigateTo('library'),
+      goApps: () => !presenting && navigateTo('apps'),
+      goInbox: () => !presenting && navigateTo('inbox'),
       goWorkflows: () => !presenting && navigateTo('workflows'),
-      goConnectors: () => !presenting && navigateTo('connectors'),
+      goAgents: () => !presenting && navigateTo('agents'),
+      goContext: () => !presenting && navigateTo('context'),
       cycleProvider: () => {
         void handleCycleProvider();
       },
@@ -3846,7 +3860,8 @@ export default function App() {
         {/* Rail destinations other than Chats: a page over the body. The chat
             stays mounted underneath, so a turn in progress keeps running. */}
         {destination !== 'chats' && !anyStudio && (
-          <div className="dest-page" data-destination={destination}>
+          <div className="dest-page" data-destination={destination} data-context={isContextTab(destination) ? '' : undefined}>
+            {isContextTab(destination) && <ContextTabs current={destination} onNavigate={navigateTo} />}
             {destination === 'home' && (
               <HomePage
                 conversations={conversations}
@@ -3932,7 +3947,10 @@ export default function App() {
             {destination === 'memory' && (
               <MemoryPage settings={settings} onSettingsChange={setSettings} onStatus={setStatusMessage} />
             )}
-            {destination === 'apps' && (
+            {/* Manage is the Apps page as it was. Apps, the home screen, shows
+                the same page while an app is open, so an app opened from
+                anywhere looks and behaves the same. */}
+            {(destination === 'manage' || (destination === 'apps' && openAppId !== null)) && (
               <AppsPage
                 openAppId={openAppId}
                 onOpenAppIdChange={setOpenAppId}
@@ -3946,6 +3964,16 @@ export default function App() {
                 onStatus={setStatusMessage}
               />
             )}
+            {destination === 'apps' && openAppId === null && (
+              <AppsHomePage
+                apps={savedApps}
+                onOpen={(id) => openSavedApp(id)}
+                onNewApp={() => void startNewApp()}
+                onManage={() => navigateTo('manage')}
+              />
+            )}
+            {destination === 'inbox' && <ComingSoonPage copy="shell.inbox" onAction={() => navigateTo('workflows')} />}
+            {destination === 'agents' && <ComingSoonPage copy="shell.agents" onAction={() => navigateTo('workflows')} />}
             {destination === 'slides' && (
               <SlidesPage
                 onOpenDeck={(deck) => void handleOpenDeck(deck.id)}

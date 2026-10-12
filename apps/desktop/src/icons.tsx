@@ -390,3 +390,107 @@ export const KnowledgeIcon = (p: IconProps) => (
     <path d="M3 16.5 12 21l9-4.5" />
   </Svg>
 );
+/*
+ * Solid twins of the rail's icons: the rail draws the current destination
+ * filled inside its accent pill, the rest as outlines (the way a native nav
+ * rail marks where you are). Same grid and stroke as the outlines, so swapping
+ * one for the other never shifts its size. Holes are even-odd cut-outs, so they
+ * show whatever is behind the icon; shapes with holes skip the stroke, which
+ * would otherwise close them.
+ */
+export const HomeSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path
+      fill="currentColor"
+      stroke="none"
+      d="M11.4 2.5a1 1 0 0 1 1.2 0l8.2 6.8c.3.2.4.5.4.8V20a1.5 1.5 0 0 1-1.5 1.5H15v-5.5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5.5H4.3A1.5 1.5 0 0 1 2.8 20v-9.9c0-.3.1-.6.4-.8Z"
+    />
+  </Svg>
+);
+export const ChatSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path fill="currentColor" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </Svg>
+);
+export const SlidesSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect fill="currentColor" x="3" y="4" width="18" height="12" rx="2" />
+    <path d="M12 16v3M8 20h8" />
+  </Svg>
+);
+export const WritingSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path
+      fill="currentColor"
+      fillRule="evenodd"
+      stroke="none"
+      d="M6 3h8.5L20 8.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM8.2 11.3h5.6v1.4H8.2ZM8.2 15.3h7.6v1.4H8.2Z"
+    />
+  </Svg>
+);
+export const AppsSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect fill="currentColor" x="4" y="4" width="7" height="7" rx="2" />
+    <rect fill="currentColor" x="13" y="4" width="7" height="7" rx="2" />
+    <rect fill="currentColor" x="4" y="13" width="7" height="7" rx="2" />
+    <rect fill="currentColor" x="13" y="13" width="7" height="7" rx="3.5" />
+  </Svg>
+);
+export const SlidersSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 8h16M4 16h16" />
+    <circle fill="currentColor" cx="15" cy="8" r="2.6" />
+    <circle fill="currentColor" cx="9" cy="16" r="2.6" />
+  </Svg>
+);
+export const InboxSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 13.5 5.6 5.7A1 1 0 0 1 6.5 5h11a1 1 0 0 1 .9.7l2.6 7.8" />
+    <path fill="currentColor" d="M3 13.5h5l1.5 2.5h5l1.5-2.5h5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" />
+  </Svg>
+);
+export const WorkflowSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect fill="currentColor" x="3" y="4" width="6" height="6" rx="1.5" />
+    <rect fill="currentColor" x="15" y="14" width="6" height="6" rx="1.5" />
+    <path d="M9 7h3a3 3 0 0 1 3 3v4" />
+    <path d="M6 10v4a3 3 0 0 0 3 3h6" />
+  </Svg>
+);
+export const AgentsSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path fill="currentColor" d="M10 3.5 11.6 8 16 9.5 11.6 11 10 15.5 8.4 11 4 9.5 8.4 8Z" />
+    <path fill="currentColor" d="M17.5 14.5 18.3 16.7 20.5 17.5 18.3 18.3 17.5 20.5 16.7 18.3 14.5 17.5 16.7 16.7Z" />
+  </Svg>
+);
+export const KnowledgeSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path fill="currentColor" d="M12 3 3 7.5 12 12l9-4.5L12 3Z" />
+    <path d="M3 12.5 12 17l9-4.5" />
+    <path d="M3 16.5 12 21l9-4.5" />
+  </Svg>
+);
+export const SettingsSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path
+      fill="currentColor"
+      fillRule="evenodd"
+      stroke="none"
+      d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 6.6 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 13.4H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 6.6l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6V4a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 17.4 6l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1ZM12 9.4a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2Z"
+    />
+  </Svg>
+);
+/** Inbox: a tray, where what ran without you comes back. */
+export const InboxIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 13.5 5.6 5.7A1 1 0 0 1 6.5 5h11a1 1 0 0 1 .9.7l2.6 7.8V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" />
+    <path d="M3 13.5h5l1.5 2.5h5l1.5-2.5h5" />
+  </Svg>
+);
+/** Agents: a large spark and a small one, work that goes on by itself. */
+export const AgentsIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 3.5 11.6 8 16 9.5 11.6 11 10 15.5 8.4 11 4 9.5 8.4 8Z" />
+    <path d="M17.5 14.5 18.3 16.7 20.5 17.5 18.3 18.3 17.5 20.5 16.7 18.3 14.5 17.5 16.7 16.7Z" />
+  </Svg>
+);

@@ -8,8 +8,14 @@ function app(id: string, name: string, extra: Partial<AppSummary> = {}): AppSumm
 }
 
 const APPS = [
-  app('a1', 'World weather', { icon: '☀', category: 'live-data', description: 'Weather in eight cities' }),
-  app('a2', 'Pomodoro', { icon: '25:00' }),
+  app('a1', 'World weather', {
+    icon: '☀',
+    category: 'live-data',
+    description: 'Weather in eight cities',
+    hosts: ['api.open-meteo.com'],
+    lastOpenedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  }),
+  app('a2', 'Pomodoro', { icon: '25:00', llm: true }),
   app('a3', 'Habit tracker'),
 ];
 
@@ -30,6 +36,22 @@ describe('AppsHomePage', () => {
     // The tile is the app's own mark, or its initials when it has none.
     expect(within(grid).getByRole('button', { name: /World weather/ }).querySelector('.app-tile')?.textContent).toBe('☀');
     expect(within(grid).getByRole('button', { name: /Habit tracker/ }).querySelector('.app-tile')?.textContent).toBe('Ht');
+  });
+
+  it('says what each app is: kind, when it was opened, what it does, what it uses', () => {
+    renderHome();
+    const weather = within(screen.getByRole('list', { name: 'Your apps' })).getByRole('button', { name: 'World weather' });
+    expect(weather.querySelector('.apps-home-meta')?.textContent).toBe('Live data · Opened 2h ago');
+    expect(weather.querySelector('.apps-home-desc')?.textContent).toBe('Weather in eight cities');
+    expect([...weather.querySelectorAll('.apps-home-trait')].map((el) => el.textContent)).toEqual(['Uses the internet, asks first']);
+
+    const pomodoro = within(screen.getByRole('list', { name: 'Your apps' })).getByRole('button', { name: 'Pomodoro' });
+    expect(pomodoro.querySelector('.apps-home-meta')?.textContent).toBe('Tools · Not opened yet');
+    expect(pomodoro.querySelector('.apps-home-desc')).toBeNull();
+    expect([...pomodoro.querySelectorAll('.apps-home-trait')].map((el) => el.textContent)).toEqual([
+      'Works without the internet',
+      'Uses your AI model',
+    ]);
   });
 
   it('opens an app on click', () => {

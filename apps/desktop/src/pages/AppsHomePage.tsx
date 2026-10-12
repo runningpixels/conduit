@@ -1,18 +1,22 @@
-/// Apps: the home screen of your apps — a grid of their tiles, one click to
-/// open. Managing them (details, network access, starters, delete) is the
+/// Apps: your apps as cards, one click to open: the app's tile and name,
+/// its kind and when you last opened it, what it does, and whether it goes
+/// online or uses your AI model. Managing them (details, network access, starters, delete) is the
 /// Manage page beside it on the rail, which is the Apps page as it was.
 ///
 /// Opening an app goes through the same flow as everywhere else
 /// (`onOpen` → App.tsx `openSavedApp`), and the app itself shows here, in the
 /// same view Manage uses.
 ///
-/// Arranging, folders, a dock and widgets are planned; until then the grid
-/// keeps the order the apps list already has (most recently opened first).
+/// The cards keep the order the apps list already has (most recently opened
+/// first).
 
 import { useMemo, useState } from 'react';
 import { useT } from '../i18n';
 import type { AppSummary } from '../ipc/contracts';
 import { AppTile } from '../apps/AppTile';
+import { useFormatters } from '../i18n/formatters';
+import { useExampleItems } from '../examples/useExampleItems';
+import { ExampleChip } from '../examples/ExampleChip';
 import { PageEmpty, PageFrame } from '../shell/PageFrame';
 
 export interface AppsHomePageProps {
@@ -26,6 +30,8 @@ export interface AppsHomePageProps {
 
 export function AppsHomePage({ apps, onOpen, onNewApp, onManage }: AppsHomePageProps) {
   const t = useT();
+  const fmt = useFormatters();
+  const { isExample } = useExampleItems();
   const [query, setQuery] = useState('');
   const shown = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
@@ -78,9 +84,32 @@ export function AppsHomePage({ apps, onOpen, onNewApp, onManage }: AppsHomePageP
             <ul className="apps-home-grid" aria-label={t('apps.launcher.gridLabel')}>
               {shown.map((app) => (
                 <li key={app.id}>
-                  <button type="button" className="apps-home-icon" title={app.description ?? app.name} onClick={() => onOpen(app.id)}>
-                    <AppTile icon={app.icon} name={app.name} category={app.category} size="lg" />
-                    <span className="apps-home-name">{app.name}</span>
+                  <button type="button" className="apps-home-card" aria-label={app.name} onClick={() => onOpen(app.id)}>
+                    <span className="apps-home-card-top">
+                      <AppTile icon={app.icon} name={app.name} category={app.category} size="lg" />
+                      <span className="apps-home-card-title">
+                        <span className="apps-home-name">{app.name}</span>
+                        <span className="apps-home-meta">
+                          {t(`apps.category.${app.category}`)}
+                          {' · '}
+                          {app.lastOpenedAt
+                            ? t('apps.launcher.opened', { when: fmt.timeAgo(app.lastOpenedAt) })
+                            : t('apps.launcher.neverOpened')}
+                          {isExample('app', app.id) && <ExampleChip />}
+                        </span>
+                      </span>
+                    </span>
+                    {app.description && <span className="apps-home-desc">{app.description}</span>}
+                    <span className="apps-home-traits">
+                      <span className="apps-home-trait" data-tone={app.hosts.length > 0 ? 'net' : 'off'}>
+                        {app.hosts.length > 0 ? t('apps.card.usesInternet') : t('apps.view.offline')}
+                      </span>
+                      {app.llm && (
+                        <span className="apps-home-trait" data-tone="ai">
+                          {t('apps.launcher.usesAi')}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 </li>
               ))}

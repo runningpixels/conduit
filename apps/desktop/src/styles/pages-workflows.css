@@ -1,16 +1,22 @@
 /* Workflows page: pages/WorkflowsPage.tsx — saved routines, their steps, runs. */
 
+/* Readable type: nothing on this page under 13px, and section titles in
+   sentence case at 16px rather than the uppercase mono micro-label. Scoped to
+   the page, so the shared tokens and other pages stay as they are. */
+.wf-page .grp-label { margin-bottom: var(--sp-2); font-family: var(--font-ui); font-size: var(--fs-8xl); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); }
+.wf-page .pill { font-size: var(--fs-3xl); }
+
 .wf-detail,
 .wf-edit { max-width: 52rem; display: grid; gap: var(--sp-5); }
 .wf-detail .grp,
 .wf-edit .grp { margin-bottom: 0; }
 
 .wf-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
-.wf-name { margin: 0; font-size: var(--fs-4xl); color: var(--ink); }
-.wf-description { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--fs-2xl); }
-.wf-muted { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); }
+.wf-name { margin: 0; font-size: var(--fs-5xl); color: var(--ink); }
+.wf-description { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--fs-5xl); }
+.wf-muted { margin: 0; color: var(--ink-3); font-size: var(--fs-5xl); }
 
-.wf-steps { margin: 0; padding-left: 1.4em; display: grid; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-2xl); }
+.wf-steps { margin: 0; padding-left: 1.4em; display: grid; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-5xl); }
 .wf-steps .wf-steps { margin-top: var(--sp-2); }
 .wf-flag {
   margin-left: var(--sp-2);
@@ -19,13 +25,13 @@
   background: var(--bg-side);
   border: 1px solid var(--line-soft);
   color: var(--ink-3);
-  font-size: var(--fs-lg);
+  font-size: var(--fs-3xl);
 }
 
-.wf-field { display: grid; gap: var(--sp-1); font-size: var(--fs-xl); color: var(--ink-2); }
+.wf-field { display: grid; gap: var(--sp-1); font-size: var(--fs-5xl); color: var(--ink-2); }
 .wf-run-box { display: grid; gap: var(--sp-3); }
-.wf-json { font-family: var(--font-mono); font-size: var(--fs-xl); min-height: 16rem; }
-.wf-error { margin: 0; color: var(--err); font-size: var(--fs-2xl); white-space: pre-wrap; }
+.wf-json { font-family: var(--font-mono); font-size: var(--fs-3xl); min-height: 16rem; }
+.wf-error { margin: 0; color: var(--err); font-size: var(--fs-5xl); white-space: pre-wrap; }
 
 .wf-runs,
 .wf-run-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
@@ -41,7 +47,7 @@
   background: transparent;
   color: var(--ink-2);
   font: inherit;
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-5xl);
   text-align: left;
   cursor: pointer;
 }
@@ -49,10 +55,10 @@
 .wf-run-step summary:hover { background: var(--bg-side); }
 .wf-run-row[aria-current="true"] { background: var(--hue-weak); color: var(--hue-text); }
 .wf-run-step-nested { padding-left: var(--sp-5); }
-.wf-step-name { font-size: var(--fs-xl); }
+.wf-step-name { font-size: var(--fs-5xl); }
 .wf-step-id { font-family: var(--font-mono); }
 
-.wf-status { min-width: 6.5em; font-size: var(--fs-xl); }
+.wf-status { min-width: 6.5em; font-size: var(--fs-5xl); }
 .wf-status-completed { color: var(--ok); }
 .wf-status-failed { color: var(--err); }
 .wf-status-running { color: var(--warn); }
@@ -62,7 +68,7 @@
 .wf-status-skipped { color: var(--ink-3); }
 .wf-rerun { margin: var(--sp-2) 10px 0; }
 
-.wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-3); font-size: var(--fs-lg); }
+.wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-3); font-size: var(--fs-3xl); }
 .wf-io {
   margin: 0 10px;
   padding: var(--sp-2) var(--sp-3);
@@ -72,7 +78,7 @@
   background: var(--bg-side);
   border: 1px solid var(--line-soft);
   font-family: var(--font-mono);
-  font-size: var(--fs-lg);
+  font-size: var(--fs-3xl);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -96,7 +102,7 @@
   border: 1px solid var(--line-soft);
   background: var(--bg-side);
 }
-.wf-starter-name { margin: 0; color: var(--ink); font-size: var(--fs-2xl); font-weight: 600; }
+.wf-starter-name { margin: 0; color: var(--ink); font-size: var(--fs-5xl); font-weight: 600; }
 .wf-starter .btn { justify-self: start; }
 
 /* ── Editor ──────────────────────────────────────────────────────────────── */
@@ -119,18 +125,18 @@
   background: var(--bg-side);
 }
 .wf-card-head { display: flex; align-items: center; gap: var(--sp-2); }
-.wf-card-title { color: var(--ink); font-size: var(--fs-2xl); font-weight: 600; }
-.wf-card-id { color: var(--ink-3); font-family: var(--font-mono); font-size: var(--fs-lg); }
+.wf-card-title { color: var(--ink); font-size: var(--fs-5xl); font-weight: 600; }
+.wf-card-id { color: var(--ink-3); font-family: var(--font-mono); font-size: var(--fs-3xl); }
 .wf-card-actions { margin-left: auto; display: flex; gap: var(--sp-1); }
 .wf-card-body { display: grid; gap: var(--sp-3); }
 .wf-nested { padding-left: var(--sp-3); border-left: 2px solid var(--line-soft); display: grid; gap: var(--sp-3); }
-.wf-check { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-3); font-size: var(--fs-xl); }
+.wf-check { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-3); font-size: var(--fs-5xl); }
 
 .wf-text-field { display: grid; gap: var(--sp-1); }
 .wf-insert { justify-self: start; }
 
 .wf-problems { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line-soft); }
-.wf-problems ul { margin: 0; padding-left: 1.2em; color: var(--warn); font-size: var(--fs-xl); }
+.wf-problems ul { margin: 0; padding-left: 1.2em; color: var(--warn); font-size: var(--fs-5xl); }
 .wf-json-toggle { margin-left: auto; }
 .wf-saved { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
@@ -153,7 +159,7 @@
   border-radius: var(--r-pill);
   background: var(--hue-weak);
   color: var(--hue-text);
-  font-size: var(--fs-xl);
+  font-size: var(--fs-5xl);
   line-height: 1.5;
   white-space: nowrap;
   user-select: all;
@@ -172,7 +178,7 @@
 }
 .wf-chip-remove:hover { opacity: 1; background: var(--bg-side); }
 .wf-schedule { display: grid; gap: var(--sp-3); }
-.wf-next-run { margin: 0; color: var(--ink); font-size: var(--fs-2xl); }
+.wf-next-run { margin: 0; color: var(--ink); font-size: var(--fs-5xl); }
 .wf-background { display: grid; gap: var(--sp-2); }
 .wf-offer {
   display: grid;
@@ -182,16 +188,16 @@
   border: 1px solid var(--line-soft);
   background: var(--bg-side);
 }
-.wf-offer b { color: var(--ink); font-size: var(--fs-2xl); }
+.wf-offer b { color: var(--ink); font-size: var(--fs-5xl); }
 .wf-offer-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.wf-permission-list { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: var(--fs-xl); display: grid; gap: 2px; }
+.wf-permission-list { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: var(--fs-5xl); display: grid; gap: 2px; }
 .wf-allowed { overflow-wrap: anywhere; }
 .wf-review { border-color: var(--warn); }
 .wf-tools { margin: 0; padding: 0; border: 0; display: grid; gap: var(--sp-1); }
-.wf-tools legend { padding: 0; margin-bottom: var(--sp-1); color: var(--ink-2); font-size: var(--fs-xl); }
+.wf-tools legend { padding: 0; margin-bottom: var(--sp-1); color: var(--ink-2); font-size: var(--fs-5xl); }
 .wf-question-form { display: grid; gap: var(--sp-2); justify-items: start; }
 .wf-question-form .wf-field { justify-self: stretch; }
-.wf-review-what { margin: 0; color: var(--ink); font-size: var(--fs-2xl); overflow-wrap: anywhere; }
+.wf-review-what { margin: 0; color: var(--ink); font-size: var(--fs-5xl); overflow-wrap: anywhere; }
 
 /* ── ADR-011: a workflow's steps on the activity line ─────────────────────
    Numbered nodes on a line that runs from the accent into the signal colour,
@@ -220,7 +226,7 @@
   display: grid;
   place-items: center;
   border-radius: var(--r-round);
-  font: 600 var(--fs-md) / 1 var(--font-mono);
+  font: 600 var(--fs-3xl) / 1 var(--font-mono);
   color: var(--accent-text);
   background: var(--accent-soft);
   outline: 1px solid var(--accent-line);
@@ -258,11 +264,11 @@
 
 /* ── Results: the latest result, the inbox toggle, unread dots (workflows/ResultView.tsx) ── */
 .wf-result { display: grid; gap: var(--sp-3); }
-.wf-result-eyebrow { margin: 0; color: var(--ink-3); font: 500 var(--fs-md)/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
-.wf-result-title { margin: 0; font-size: var(--fs-4xl); color: var(--ink); overflow-wrap: anywhere; }
+.wf-result-eyebrow { margin: 0; color: var(--ink-2); font-size: var(--fs-3xl); line-height: 1.2; }
+.wf-result-title { margin: 0; font-size: var(--fs-5xl); color: var(--ink); overflow-wrap: anywhere; }
 .wf-result-body { min-width: 0; }
-.wf-result-preview { margin: 0; color: var(--ink-2); font-size: var(--fs-2xl); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.wf-result-file { margin: 0; font-size: var(--fs-2xl); }
+.wf-result-preview { margin: 0; color: var(--ink-2); font-size: var(--fs-5xl); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wf-result-file { margin: 0; font-size: var(--fs-5xl); }
 .wf-result-path { font-family: var(--font-mono); user-select: text; overflow-wrap: anywhere; }
 .wf-result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .wf-result-others { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
@@ -281,7 +287,7 @@
 .wf-view-btn {
   flex: 1;
   padding: 4px 10px;
-  font: 500 var(--fs-lg)/1 var(--font-ui);
+  font: 500 var(--fs-3xl)/1 var(--font-ui);
   color: var(--ink-3);
   background: transparent;
   border: 0;

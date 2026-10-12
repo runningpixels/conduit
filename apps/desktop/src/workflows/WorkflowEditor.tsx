@@ -185,7 +185,7 @@ export function WorkflowEditor({
         </button>
       </section>
 
-      <section className="grp" aria-label={t('workspace.workflows.steps.title')}>
+      <section className="grp wf-steps-grp" aria-label={t('workspace.workflows.steps.title')}>
         <div className="grp-label">{t('workspace.workflows.steps.title')}</div>
         <div className="wf-view-toggle wf-steps-toggle" role="group" aria-label={t('workspace.workflows.canvas.viewLabel')}>
           <button type="button" className={`wf-view-btn${stepsView === 'canvas' ? ' active' : ''}`} aria-pressed={stepsView === 'canvas'} onClick={() => chooseView('canvas')}>

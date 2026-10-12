@@ -90,13 +90,22 @@ export interface WorkflowCanvasProps {
   onSelect?: (id: string | null) => void;
   /** Replaces the built-in inspector (the editor shows the step form). */
   inspector?: (node: CanvasNode | null) => ReactNode;
+  /**
+   * The page layout: the canvas fills its container and this column sits
+   * beside it at all times, for the selection (the start node included, so it
+   * can be selected) or, with nothing selected, whatever the page shows then.
+   * `details` is the built-in step inspector for the selected step.
+   */
+  panel?: (node: CanvasNode | null, details: ReactNode) => ReactNode;
+  /** Drawn over the canvas, top left (add a step, canvas or list). */
+  toolbar?: ReactNode;
   editor?: CanvasEditor;
   className?: string;
 }
 
-const StartNode = memo(function StartNode({ data }: NodeProps<Node<NodeData>>) {
+const StartNode = memo(function StartNode({ data, selected }: NodeProps<Node<NodeData>>) {
   return (
-    <div className="wfc-node wfc-start">
+    <div className={`wfc-node wfc-start${selected ? ' is-selected' : ''}`}>
       <span className="wfc-kind">{data.kind}</span>
       {data.startLines?.map((line) => (
         <span key={line} className="wfc-line">
@@ -119,6 +128,7 @@ function useDropTarget(id: string): string {
 }
 
 const StepNode = memo(function StepNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
+  const t = useT();
   const drop = useDropTarget(id);
   return (
     <div className={`wfc-node wfc-step${selected ? ' is-selected' : ''}${data.problem ? ' has-problem' : ''}`} data-status={data.status}>
@@ -126,6 +136,7 @@ const StepNode = memo(function StepNode({ id, data, selected }: NodeProps<Node<N
       <Handle type="target" position={Position.Left} id="flow-left" isConnectable={false} className="wfc-side-handle" />
       <span className="wfc-head">
         <span className="wfc-kind">{data.kind}</span>
+        {data.problem ? <span className="wfc-needs-fix">{t('workspace.workflows.canvas.needsFix')}</span> : null}
         {data.statusText ? <span className={STATUS_CLASS[data.status] ?? 'wfc-status'}>{data.statusText}</span> : null}
       </span>
       <span className="wfc-line">{data.line}</span>
@@ -148,6 +159,7 @@ const StepNode = memo(function StepNode({ id, data, selected }: NodeProps<Node<N
 });
 
 const LoopNode = memo(function LoopNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
+  const t = useT();
   const drop = useDropTarget(id);
   return (
     <div className={`wfc-loop${selected ? ' is-selected' : ''}${data.problem ? ' has-problem' : ''}`} data-status={data.status}>
@@ -155,6 +167,7 @@ const LoopNode = memo(function LoopNode({ id, data, selected }: NodeProps<Node<N
       <span className="wfc-loop-head">
         <span className="wfc-kind">{data.kind}</span>
         <span className="wfc-line">{data.line}</span>
+        {data.problem ? <span className="wfc-needs-fix">{t('workspace.workflows.canvas.needsFix')}</span> : null}
         {data.iterations ? <span className="wfc-flag wfc-iter">{data.iterations}</span> : null}
         {data.statusText ? <span className={STATUS_CLASS[data.status] ?? 'wfc-status'}>{data.statusText}</span> : null}
       </span>
@@ -186,7 +199,35 @@ function startLines(t: Translate, def: WorkflowDefinition, labels: InputLabels):
   return lines;
 }
 
-function CanvasControls() {
+/** Least zoom the page layout fits to: below it text gets hard to read, so the canvas pans instead. */
+const READABLE_ZOOM = 0.85;
+const FIT_PAD = 40;
+
+type Flow = ReturnType<typeof useReactFlow>;
+
+/**
+ * Fits the drawing to the canvas. In the page layout the zoom stays between
+ * READABLE_ZOOM and 1, and a drawing taller than the canvas starts at its top
+ * (the rest is a pan or scroll away) rather than shrinking to fit.
+ */
+function fitDrawing(flow: Flow, el: HTMLElement | null, fill: boolean) {
+  if (!fill || !el) {
+    void flow.fitView({ padding: 0.15 });
+    return;
+  }
+  const nodes = flow.getNodes();
+  const w = el.clientWidth;
+  const h = el.clientHeight;
+  if (nodes.length === 0 || w === 0 || h === 0) return;
+  const b = flow.getNodesBounds(nodes);
+  if (b.width === 0 || b.height === 0) return;
+  const zoom = Math.max(READABLE_ZOOM, Math.min(1, (w - FIT_PAD * 2) / b.width, (h - FIT_PAD * 2) / b.height));
+  const x = (w - b.width * zoom) / 2 - b.x * zoom;
+  const y = b.height * zoom + FIT_PAD * 2 > h ? FIT_PAD - b.y * zoom : (h - b.height * zoom) / 2 - b.y * zoom;
+  void flow.setViewport({ x, y, zoom });
+}
+
+function CanvasControls({ expanded, onExpand, onFit }: { expanded: boolean; onExpand: () => void; onFit: () => void }) {
   const t = useT();
   const flow = useReactFlow();
   return (
@@ -197,8 +238,11 @@ function CanvasControls() {
       <button type="button" className="btn ghost" aria-label={t('workspace.workflows.canvas.zoomIn')} title={t('workspace.workflows.canvas.zoomIn')} onClick={() => void flow.zoomIn()}>
         +
       </button>
-      <button type="button" className="btn ghost" onClick={() => void flow.fitView({ padding: 0.15 })}>
+      <button type="button" className="btn ghost" onClick={onFit}>
         {t('workspace.workflows.canvas.fit')}
+      </button>
+      <button type="button" className="btn ghost" aria-pressed={expanded} onClick={onExpand}>
+        {expanded ? t('workspace.workflows.canvas.exitFullScreen') : t('workspace.workflows.canvas.fullScreen')}
       </button>
     </Panel>
   );
@@ -209,12 +253,12 @@ function CanvasControls() {
  * when the canvas gets a new size: it is often first drawn inside a closed
  * section, at zero size, and fitting then leaves it tiny in a corner.
  */
-function FitOnChange({ signature, box }: { signature: string; box: React.RefObject<HTMLDivElement | null> }) {
+function FitOnChange({ signature, box, fill }: { signature: string; box: React.RefObject<HTMLDivElement | null>; fill: boolean }) {
   const flow = useReactFlow();
   useEffect(() => {
-    const id = requestAnimationFrame(() => void flow.fitView({ padding: 0.15 }));
+    const id = requestAnimationFrame(() => fitDrawing(flow, box.current, fill));
     return () => cancelAnimationFrame(id);
-  }, [flow, signature]);
+  }, [flow, signature, box, fill]);
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -223,11 +267,11 @@ function FitOnChange({ signature, box }: { signature: string; box: React.RefObje
       const size = `${Math.round(el.clientWidth / 40)}x${Math.round(el.clientHeight / 40)}`;
       if (el.clientWidth === 0 || size === last) return;
       last = size;
-      void flow.fitView({ padding: 0.15 });
+      fitDrawing(flow, el, fill);
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [flow, box]);
+  }, [flow, box, fill]);
   return null;
 }
 
@@ -246,9 +290,12 @@ function Canvas({
   selectedId: controlledId,
   onSelect,
   inspector,
+  panel,
+  toolbar,
   editor,
   className,
 }: WorkflowCanvasProps) {
+  const fill = panel !== undefined;
   const t = useT();
   const box = useRef<HTMLDivElement>(null);
   const [ownSelected, setOwnSelected] = useState<string | null>(null);
@@ -303,12 +350,12 @@ function Canvas({
           extent: n.parent && !editor?.onNodeDragStop ? ('parent' as const) : undefined,
           selected: n.id === selectedId,
           draggable: Boolean(editor?.onNodeDragStop) && n.kind !== 'start',
-          selectable: n.kind !== 'start',
+          selectable: n.kind !== 'start' || fill,
           connectable: Boolean(editor?.onConnect) && n.kind !== 'start',
           ariaLabel: step ? `${data.kind}: ${data.line}` : data.kind,
         };
       }),
-    [graph, statuses, problemSteps, selectedId, editor, t, labels, connectorNames, definition],
+    [graph, statuses, problemSteps, selectedId, editor, fill, t, labels, connectorNames, definition],
   );
 
   // React Flow keeps what it measured on its own node objects; rebuilding them
@@ -360,7 +407,21 @@ function Canvas({
     return () => observer.disconnect();
   }, []);
   const scale = boxWidth > 0 ? Math.min(1, (boxWidth - 64) / Math.max(graph.width, 1)) : 1;
-  const height = Math.round(Math.min(1100, Math.max(360, graph.height * scale + 96)));
+  // Editing keeps the canvas at least as tall as the palette and form beside it.
+  const height = Math.round(Math.min(1100, Math.max(editor ? 640 : 360, graph.height * scale + 96)));
+  // Full screen: the canvas covers the window below the title bar until Esc or
+  // the button. Esc is caught first so it doesn't also cancel the editor.
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setExpanded(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [expanded]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const signature = graph.nodes.map((n) => n.id).join('|');
 
@@ -378,8 +439,8 @@ function Canvas({
     : undefined;
 
   return (
-    <div className={`wfc${editor ? ' is-editing' : ''}${className ? ` ${className}` : ''}`}>
-      <div className="wfc-canvas" ref={box} style={{ height }} aria-label={t('workspace.workflows.canvas.ariaLabel')} role="group">
+    <div className={`wfc${editor ? ' is-editing' : ''}${fill ? ' is-fill' : ''}${expanded ? ' is-expanded' : ''}${className ? ` ${className}` : ''}`}>
+      <div className="wfc-canvas" ref={box} style={expanded || fill ? undefined : { height }} aria-label={t('workspace.workflows.canvas.ariaLabel')} role="group">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -394,20 +455,27 @@ function Canvas({
           elementsSelectable
           deleteKeyCode={editor?.onDelete ? ['Delete', 'Backspace'] : null}
           onNodesDelete={(deleted) => deleted.forEach((n) => n.id !== START_ID && editor?.onDelete?.(n.id))}
-          onNodeClick={(_e, node) => select(node.id === START_ID ? null : node.id)}
+          onNodeClick={(_e, node) => select(node.id === START_ID && !fill ? null : node.id)}
           onPaneClick={() => select(null)}
           onNodeDragStop={onNodeDragStop}
           onConnect={(c: Connection) => {
             if (c.source && c.target && c.source !== c.target) editor?.onConnect?.(c.source, c.target);
           }}
           proOptions={{ hideAttribution: true }}
-          // The wheel scrolls the page; drag pans, the buttons zoom.
-          preventScrolling={false}
+          // Inline, the wheel scrolls the page; filling the page, it pans the
+          // drawing. Drag pans too, the buttons and a pinch zoom.
+          preventScrolling={fill}
+          panOnScroll={fill}
           zoomOnScroll={false}
           zoomOnPinch
         >
-          <FitOnChange signature={signature} box={box} />
-          <CanvasControls />
+          <FitOnChange signature={signature} box={box} fill={fill} />
+          <CanvasControls expanded={expanded} onExpand={() => setExpanded((v) => !v)} onFit={() => fitDrawing(flowApi, box.current, fill)} />
+          {toolbar ? (
+            <Panel position="top-left" className="wfc-toolbar">
+              {toolbar}
+            </Panel>
+          ) : null}
           {editor?.palette ? (
             <Panel position="top-left" className="wfc-palette-panel">
               {editor.palette}
@@ -415,7 +483,16 @@ function Canvas({
           ) : null}
         </ReactFlow>
       </div>
-      {selected || editor ? (
+      {panel ? (
+        <aside className="wfc-inspector wfc-panel" aria-label={t('workspace.workflows.canvas.inspector')}>
+          {panel(
+            selected,
+            selected?.step ? (
+              <RunInspector node={selected} definition={definition} graph={graph.edges} run={statuses.get(selected.id)} hasRun={run != null} labels={labels} connectorNames={connectorNames} problems={problemSteps.get(selected.id) ?? []} />
+            ) : null,
+          )}
+        </aside>
+      ) : selected || editor ? (
         <aside className="wfc-inspector" aria-label={t('workspace.workflows.canvas.inspector')}>
           {selected && !editor ? (
             <button type="button" className="btn ghost wfc-close" onClick={() => select(null)}>

@@ -15,9 +15,9 @@
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowStep } from '../../ipc/contracts';
 import type { StepPath } from '../editorModel';
 
-export const NODE_W = 248;
+export const NODE_W = 280;
 export const NODE_H = 120;
-export const START_W = 248;
+export const START_W = 280;
 export const START_H = 96;
 export const GAP_X = 56;
 export const GAP_Y = 56;

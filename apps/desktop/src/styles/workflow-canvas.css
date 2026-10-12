@@ -163,3 +163,5 @@
 /* ── Editing (workflows/canvas/CanvasStepsEditor.tsx) ───────────────────── */
 .wfc-editor { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 .wfc-wire-dialog { width: min(460px, 92vw); display: grid; gap: var(--sp-3); }
+/* A loop's own data dots sit on its title row, clear of the steps inside it. */
+.wfc-loop > .wfc-data-handle { top: 22px; }

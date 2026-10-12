@@ -107,7 +107,8 @@
 .wfe-setting { display: grid; gap: var(--sp-2); }
 .wfe-setting-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
 .wfe-setting-text { display: grid; gap: var(--sp-1); min-width: 0; }
-.wfe-setting-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-1); }
+.wfe-setting-actions { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-1); }
+.wfe-setting-actions .btn { white-space: nowrap; }
 .wfe-path { overflow-wrap: anywhere; color: var(--ink-2); font-family: var(--font-mono); font-size: var(--fs-3xl); }
 
 /* ── Inside a step's form ────────────────────────────────────────────────── */

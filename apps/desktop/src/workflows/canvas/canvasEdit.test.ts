@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { WorkflowDefinition } from '../../ipc/contracts';
 import { STARTER_WORKFLOWS } from '../starters';
 import { buildCanvas } from './canvasModel';
-import { TEMPLATE_FIELDS, addPlace, addStep, connectReference, deleteStep, dropPlace, moveStepTo, pathOf, wireChoices } from './canvasEdit';
+import { TEMPLATE_FIELDS, addPlace, addStep, connectFlow, connectReference, deleteStep, disconnectFlow, dropPlace, flowChoices, moveStepTo, pathOf, wireChoices } from './canvasEdit';
 
 const briefing = STARTER_WORKFLOWS.find((s) => s.id === 'briefing')!.definition as WorkflowDefinition;
 const ids = (def: WorkflowDefinition) => def.steps.map((s) => (s.type === 'for_each' ? `${s.id}[${s.steps.map((c) => c.id).join(',')}]` : s.id));
@@ -113,5 +113,63 @@ describe('wires', () => {
     const inner = connectReference(briefing, 'card', TEMPLATE_FIELDS.template[0], 'steps.pick.text');
     expect(pathOf(inner.steps, 'card')).toEqual([2, 2]);
     expect(JSON.stringify(inner.steps[2])).toContain('{{steps.pick.text}}');
+  });
+});
+
+describe('flow wires', () => {
+  const tpl = (id: string, after?: string[]): WorkflowDefinition['steps'][number] => ({ id, type: 'template', template: id, ...(after ? { after } : {}) });
+  const afters = (def: WorkflowDefinition) => def.steps.map((s) => s.after);
+
+  it('makes a step wait for another as well, keeping what it waited for', () => {
+    const def: WorkflowDefinition = { steps: [tpl('a'), tpl('b'), tpl('c')] };
+    expect(afters(connectFlow(def, 'a', 'c'))).toEqual([undefined, undefined, ['b', 'a']]);
+    // Waiting for the step before is the default: nothing to store.
+    expect(connectFlow(def, 'b', 'c')).toBe(def);
+  });
+
+  it('refuses a wire to a step that is not later in the list', () => {
+    const def: WorkflowDefinition = { steps: [tpl('a'), tpl('b')] };
+    expect(flowChoices(def, 'b', 'a')).toEqual({ ok: false, reason: 'later' });
+    expect(flowChoices(def, 'a', 'a')).toEqual({ ok: false, reason: 'later' });
+    expect(connectFlow(def, 'b', 'a')).toBe(def);
+  });
+
+  it('asks for a side when the wire leaves a branch, and stores the arm', () => {
+    const def: WorkflowDefinition = { steps: [{ id: 'if', type: 'branch', value: 'x', is: 'empty' }, tpl('a'), tpl('b')] };
+    expect(flowChoices(def, 'if', 'b')).toEqual({ ok: true, branch: true });
+    expect(flowChoices(def, 'a', 'b')).toEqual({ ok: true, branch: false });
+    expect(afters(connectFlow(def, 'if', 'b', 'no'))).toEqual([undefined, undefined, ['a', 'if.no']]);
+  });
+
+  it('removes a dependency; the last one leaves a step that starts with the run', () => {
+    const def: WorkflowDefinition = { steps: [tpl('a'), tpl('b'), tpl('c', ['b', 'a'])] };
+    expect(afters(disconnectFlow(def, 'c', 'a'))).toEqual([undefined, undefined, undefined]);
+    expect(afters(disconnectFlow(def, 'c', 'b'))).toEqual([undefined, undefined, ['a']]);
+    const alone = disconnectFlow({ steps: [tpl('a'), tpl('b')] }, 'b', 'a');
+    expect(alone.steps[1].after).toEqual([]);
+    expect(disconnectFlow(def, 'c', 'zzz')).toBe(def);
+  });
+
+  it('rewires the steps that waited for a deleted step to what it waited for', () => {
+    const def: WorkflowDefinition = { steps: [tpl('a'), tpl('b', ['a']), tpl('c', ['a']), tpl('d', ['b', 'c'])] };
+    const next = deleteStep(def, 'b');
+    expect(next.steps.map((s) => s.id)).toEqual(['a', 'c', 'd']);
+    expect(afters(next)).toEqual([undefined, ['a'], ['a', 'c']]);
+    // A plain chain is a plain removal.
+    expect(afters(deleteStep({ steps: [tpl('a'), tpl('b'), tpl('c')] }, 'b'))).toEqual([undefined, undefined]);
+  });
+
+  it('spells out what a step waited for when its step before is deleted', () => {
+    const def: WorkflowDefinition = { steps: [tpl('a'), tpl('p', ['a']), tpl('q'), tpl('r', ['a'])] };
+    // q waited for p implicitly; with p gone it waits for what p waited for.
+    expect(afters(deleteStep(def, 'p'))).toEqual([undefined, undefined, ['a']]);
+  });
+
+  it('replaces the arms of a deleted branch with what the branch waited for', () => {
+    const def: WorkflowDefinition = {
+      steps: [tpl('a'), { id: 'if', type: 'branch', value: 'x', is: 'empty' }, tpl('y', ['if.yes']), tpl('n', ['if.no']), tpl('m', ['y', 'n'])],
+    };
+    const next = deleteStep(def, 'if');
+    expect(next.steps.map((s) => [s.id, s.after])).toEqual([['a', undefined], ['y', undefined], ['n', ['a']], ['m', ['y', 'n']]]);
   });
 });

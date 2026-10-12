@@ -15,6 +15,7 @@
 
 .wf-steps { margin: 0; padding-left: 1.4em; display: grid; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-5xl); }
 .wf-steps .wf-steps { margin-top: var(--sp-2); }
+.wf-steps > li > .wf-muted { display: block; }
 .wf-flag {
   margin-left: var(--sp-2);
   padding: 1px 6px;
@@ -58,6 +59,7 @@
 .wf-status-paused { color: var(--warn); }
 .wf-status-reused { color: var(--ink-3); }
 .wf-status-skipped { color: var(--ink-3); }
+.wf-status-not-taken { color: var(--ink-3); }
 .wf-rerun { margin: var(--sp-2) 10px 0; }
 
 .wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-3); font-size: var(--fs-3xl); }

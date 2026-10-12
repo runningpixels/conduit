@@ -40,6 +40,7 @@ const STATUS_KEY: Record<Exclude<NodeStatus, 'idle'>, string> = {
   stopped: 'workspace.workflows.run.stopped',
   reused: 'workspace.workflows.run.reused',
   waiting: 'workspace.workflows.run.paused',
+  not_taken: 'workspace.workflows.run.notTaken',
 };
 
 /** The badge class per status, written out for the stylesheet's dead-rule check. */
@@ -51,6 +52,7 @@ const STATUS_CLASS: Record<string, string> = {
   skipped: 'wfc-status wfc-status-skipped',
   stopped: 'wfc-status wfc-status-stopped',
   reused: 'wfc-status wfc-status-reused',
+  not_taken: 'wfc-status wfc-status-not-taken',
 };
 
 interface NodeData extends Record<string, unknown> {
@@ -61,6 +63,10 @@ interface NodeData extends Record<string, unknown> {
   iterations: string | null;
   flags: string[];
   problem: boolean;
+  /** Flow wires may start here: editing, and not a step inside a loop. */
+  flowEditable: boolean;
+  /** A branch: two bottom handles, one per side. */
+  branch: boolean;
   startLines?: string[];
 }
 
@@ -70,6 +76,10 @@ export interface CanvasEditor {
   onNodeDragStop?: (node: CanvasNode, center: { x: number; y: number }) => void;
   /** A wire was drawn from one step's output to another step. */
   onConnect?: (source: string, target: string) => void;
+  /** A wire was drawn from one step's bottom dot to a later step's top: it should wait for it. */
+  onConnectFlow?: (source: string, target: string, arm: 'yes' | 'no' | null) => void;
+  /** A selected flow wire was deleted: `target` stops waiting for `entry` (a step id, or `<branch>.yes` / `.no`). */
+  onDisconnectFlow?: (target: string, entry: string) => void;
   /** Delete pressed on a selected step. */
   onDelete?: (id: string) => void;
 }
@@ -148,7 +158,15 @@ const StepNode = memo(function StepNode({ id, data, selected }: NodeProps<Node<N
           ))}
         </span>
       ) : null}
-      <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={false} />
+      {data.branch ? (
+        <>
+          <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={false} className="wfc-side-handle" />
+          <Handle type="source" position={Position.Bottom} id="arm-yes" isConnectable={data.flowEditable} className="wfc-arm-handle wfc-arm-yes" />
+          <Handle type="source" position={Position.Bottom} id="arm-no" isConnectable={data.flowEditable} className="wfc-arm-handle wfc-arm-no" />
+        </>
+      ) : (
+        <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={data.flowEditable} className={data.flowEditable ? 'wfc-flow-out' : undefined} />
+      )}
       <Handle type="source" position={Position.Right} id="flow-right" isConnectable={false} className="wfc-side-handle" />
       <Handle type="target" position={Position.Right} id="data-in" className={`wfc-data-handle wfc-data-in${drop}`} />
       <Handle type="source" position={Position.Right} id="data-out" className="wfc-data-handle wfc-data-out" />
@@ -169,7 +187,7 @@ const LoopNode = memo(function LoopNode({ id, data, selected }: NodeProps<Node<N
         {data.iterations ? <span className="wfc-flag wfc-iter">{data.iterations}</span> : null}
         {data.statusText ? <span className={STATUS_CLASS[data.status] ?? 'wfc-status'}>{data.statusText}</span> : null}
       </span>
-      <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={false} />
+      <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={data.flowEditable} className={data.flowEditable ? 'wfc-flow-out' : undefined} />
       <Handle type="target" position={Position.Right} id="data-in" className={`wfc-data-handle wfc-data-in${drop}`} />
       <Handle type="source" position={Position.Right} id="data-out" className="wfc-data-handle wfc-data-out" />
     </div>
@@ -328,6 +346,8 @@ function Canvas({
               iterations: iterationText(t, nodeRun),
               flags: step.onError === 'skip' ? [t('workspace.workflows.step.continuesOnError')] : [],
               problem: problemSteps.has(n.id),
+              flowEditable: Boolean(editor?.onConnectFlow) && n.parent === null,
+              branch: step.type === 'branch',
             }
           : {
               kind: t('workspace.workflows.canvas.start'),
@@ -337,6 +357,8 @@ function Canvas({
               iterations: null,
               flags: [],
               problem: false,
+              flowEditable: false,
+              branch: false,
               startLines: startLines(t, definition, labels),
             };
         return {
@@ -374,11 +396,31 @@ function Canvas({
     });
   }, [derived, setNodes]);
 
+  const byNode = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n] as const)), [graph]);
   const edges: Edge[] = useMemo(
     () =>
       graph.edges.map((e: CanvasEdge) =>
         e.kind === 'flow'
-          ? { id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, className: 'wfc-edge-flow', selectable: false }
+          ? {
+              id: e.id,
+              source: e.source,
+              target: e.target,
+              sourceHandle: e.sourceHandle,
+              targetHandle: e.targetHandle,
+              className: 'wfc-edge-flow',
+              // Wires into a top-level step are its dependencies: selectable (and deletable) while editing.
+              selectable: Boolean(editor?.onDisconnectFlow) && e.source !== START_ID && byNode.get(e.target)?.parent === null,
+              deletable: Boolean(editor?.onDisconnectFlow) && e.source !== START_ID && byNode.get(e.target)?.parent === null,
+              ...(e.arm
+                ? {
+                    label: t(e.arm === 'yes' ? 'workspace.workflows.canvas.arm.yes' : 'workspace.workflows.canvas.arm.no'),
+                    labelStyle: { fontSize: 'var(--fs-5xl)', fontWeight: 600, fill: 'var(--ink-2)' },
+                    labelBgStyle: { fill: 'var(--bg)' },
+                    labelBgPadding: [6, 3] as [number, number],
+                  }
+                : {}),
+              data: { entry: e.arm ? `${e.source}.${e.arm}` : e.source },
+            }
           : {
               id: e.id,
               source: e.source,
@@ -392,7 +434,7 @@ function Canvas({
               data: { fields: e.fields },
             },
       ),
-    [graph],
+    [graph, editor, t, byNode],
   );
 
   const byId = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n] as const)), [graph]);
@@ -455,12 +497,26 @@ function Canvas({
           nodesConnectable={Boolean(editor?.onConnect)}
           elementsSelectable
           deleteKeyCode={editor?.onDelete ? ['Delete', 'Backspace'] : null}
-          onNodesDelete={(deleted) => deleted.forEach((n) => n.id !== START_ID && editor?.onDelete?.(n.id))}
+          onDelete={({ nodes: gone, edges: cut }) => {
+            const steps = gone.filter((n) => n.id !== START_ID);
+            if (steps.length > 0) {
+              steps.forEach((n) => editor?.onDelete?.(n.id));
+              return;
+            }
+            // Only wires were deleted: the step they led to stops waiting for what they came from.
+            for (const edge of cut) {
+              const entry = (edge.data as { entry?: string } | undefined)?.entry;
+              if (entry && entry !== START_ID) editor?.onDisconnectFlow?.(edge.target, entry);
+            }
+          }}
           onNodeClick={(_e, node) => select(node.id === START_ID && !fill ? null : node.id)}
           onPaneClick={() => select(null)}
           onNodeDragStop={onNodeDragStop}
           onConnect={(c: Connection) => {
-            if (c.source && c.target && c.source !== c.target) editor?.onConnect?.(c.source, c.target);
+            if (!c.source || !c.target || c.source === c.target) return;
+            // A wire from a bottom dot is "runs after"; from the right-hand dot it carries a value.
+            if (c.sourceHandle === 'data-out') editor?.onConnect?.(c.source, c.target);
+            else editor?.onConnectFlow?.(c.source, c.target, c.sourceHandle === 'arm-yes' ? 'yes' : c.sourceHandle === 'arm-no' ? 'no' : null);
           }}
           proOptions={{ hideAttribution: true }}
           // Inline, the wheel scrolls the page; filling the page, it pans the

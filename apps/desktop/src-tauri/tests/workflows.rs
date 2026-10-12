@@ -1211,7 +1211,9 @@ async fn an_unapproved_step_pauses_the_run_and_allow_once_carries_on() {
         assert_eq!(review.url.as_deref(), Some(format!("{base}/a").as_str()));
         let runs = repo::list_runs(&h.state.db, &id, 1).await.unwrap();
         assert_eq!(runs[0].status, "paused", "the run shows it is waiting");
-        assert!(h.reviews.answer(&review.run_id, Decision::AllowOnce));
+        assert!(h
+            .reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::AllowOnce));
     };
     let (detail, ()) = tokio::join!(run, answer);
     assert_eq!(detail.unwrap().run.status, "completed");
@@ -1235,7 +1237,9 @@ async fn always_allow_saves_the_permission_for_next_time() {
     let answer = async {
         for _ in 0..2 {
             let review = h.next_review().await;
-            assert!(h.reviews.answer(&review.run_id, Decision::AlwaysAllow));
+            assert!(h
+                .reviews
+                .answer(&review.run_id, Some(&review.step_id), Decision::AlwaysAllow));
             // Let the run take the answer before looking for the next question.
             while !h.reviews.list().is_empty() {
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -1271,7 +1275,8 @@ async fn deny_fails_the_step_and_nobody_answering_counts_as_deny() {
     let run = runner.run(&id, &no_inputs, "schedule");
     let answer = async {
         let review = h.next_review().await;
-        h.reviews.answer(&review.run_id, Decision::Deny);
+        h.reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::Deny);
     };
     let (detail, ()) = tokio::join!(run, answer);
     let detail = detail.unwrap();
@@ -1338,7 +1343,8 @@ async fn a_new_model_provider_counts_as_outside_the_approval() {
             }
         );
         assert_eq!(review.permission.local, Some(true));
-        h.reviews.answer(&review.run_id, Decision::AllowOnce);
+        h.reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::AllowOnce);
     };
     let (detail, ()) = tokio::join!(run, answer);
     assert_eq!(detail.unwrap().run.status, "completed");
@@ -1495,7 +1501,8 @@ async fn a_run_waiting_for_an_answer_holds_up_no_other_scheduled_run() {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         assert_eq!(*order.lock().unwrap(), vec![approved.clone()]);
-        h.reviews.answer(&review.run_id, Decision::AllowOnce);
+        h.reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::AllowOnce);
     };
     let (finished, ()) = tokio::join!(runs, answer);
     assert_eq!(*order.lock().unwrap(), vec![approved.clone(), asks.clone()]);
@@ -2108,7 +2115,7 @@ async fn an_ask_step_waits_for_the_answer_and_carries_on_with_it() {
         assert_eq!(q.choices, vec!["Rust", "Go"]);
         let runs = repo::list_runs(&h.state.db, &id, 1).await.unwrap();
         assert_eq!(runs[0].status, "paused");
-        assert!(questions.answer(&q.run_id, "Go".into()));
+        assert!(questions.answer(&q.run_id, Some(&q.step_id), "Go".into()));
     };
     let (detail, ()) = tokio::join!(run, answer);
     let detail = detail.unwrap();
@@ -2260,7 +2267,8 @@ async fn an_agent_step_without_a_tool_loop_fails_and_needs_approval_unattended()
             review.permission.permission,
             Permission::AgentTools { .. }
         ));
-        h.reviews.answer(&review.run_id, Decision::Deny);
+        h.reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::Deny);
     };
     let (detail, ()) = tokio::join!(run, answer);
     let detail = detail.unwrap();
@@ -2443,7 +2451,8 @@ async fn a_scheduled_run_pauses_when_a_step_moves_to_a_new_provider() {
                 provider: "lmstudio".into()
             }
         );
-        h.reviews.answer(&review.run_id, Decision::AllowOnce);
+        h.reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::AllowOnce);
     };
     let (detail, ()) = tokio::join!(run, answer);
     assert_eq!(detail.unwrap().run.status, "completed");
@@ -3118,7 +3127,9 @@ async fn a_scheduled_run_pauses_for_a_new_folder() {
         assert_eq!(review.step_id, "f");
         assert_eq!(review.permission.permission, folder);
         assert_eq!(review.url, None);
-        assert!(h.reviews.answer(&review.run_id, Decision::Deny));
+        assert!(h
+            .reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::Deny));
     };
     let (detail, ()) = tokio::join!(run, answer);
     let detail = detail.unwrap();
@@ -4100,7 +4111,9 @@ async fn a_scheduled_update_pauses_for_each_new_document_and_remembers_the_answe
                 "label": "Change the deck \u{201c}Weekly numbers\u{201d}", "local": null,
             })
         );
-        assert!(h.reviews.answer(&review.run_id, Decision::Deny));
+        assert!(h
+            .reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::Deny));
     };
     let (detail, ()) = tokio::join!(run, answer);
     let detail = detail.unwrap();
@@ -4142,7 +4155,9 @@ async fn a_scheduled_update_pauses_for_each_new_document_and_remembers_the_answe
             review.permission.label.as_deref(),
             Some("Change the deck \u{201c}Weekly figures\u{201d}")
         );
-        assert!(h.reviews.answer(&review.run_id, Decision::AllowOnce));
+        assert!(h
+            .reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::AllowOnce));
     };
     let (detail, ()) = tokio::join!(run, answer);
     assert_eq!(detail.unwrap().run.status, "completed");
@@ -4955,7 +4970,9 @@ async fn a_scheduled_research_step_asks_for_the_research_permission() {
         let review = h.next_review().await;
         assert_eq!(review.step_id, "r");
         assert_eq!(review.permission.permission, Permission::Research);
-        assert!(h.reviews.answer(&review.run_id, Decision::Deny));
+        assert!(h
+            .reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::Deny));
     };
     let (detail, ()) = tokio::join!(run, answer);
     let detail = detail.unwrap();
@@ -5199,7 +5216,9 @@ async fn a_scheduled_documents_step_is_reviewed_by_collection_title() {
             review.permission.label.as_deref(),
             Some("Search your documents: Project notes")
         );
-        assert!(h.reviews.answer(&review.run_id, Decision::AllowOnce));
+        assert!(h
+            .reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::AllowOnce));
     };
     let (detail, ()) = tokio::join!(run, answer);
     assert_eq!(detail.unwrap().run.status, "completed");
@@ -5559,7 +5578,9 @@ async fn a_scheduled_connector_step_is_reviewed_by_connector_name_and_tool() {
         );
         // Nothing has run, and the connector hasn't been started, yet.
         assert!(mgr.active_version_ids().is_empty());
-        assert!(h.reviews.answer(&review.run_id, Decision::AllowOnce));
+        assert!(h
+            .reviews
+            .answer(&review.run_id, Some(&review.step_id), Decision::AllowOnce));
     };
     let (detail, ()) = tokio::join!(run, answer);
     assert_eq!(detail.unwrap().run.status, "completed");
@@ -6333,4 +6354,378 @@ async fn the_reading_briefing_follows_the_links_and_saves_a_new_document_each_ru
         .await
         .unwrap();
     assert_eq!(results.len(), 2);
+}
+
+// ── The graph runner ────────────────────────────────────────────────────────
+
+type Visits = Arc<Mutex<Vec<(std::time::Instant, std::time::Instant)>>>;
+
+/// Answers every request with a page after `delay`, noting when each request
+/// began and when it was answered.
+async fn serve_slow(delay: std::time::Duration) -> (String, Visits) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let visits: Visits = Arc::new(Mutex::new(Vec::new()));
+    let seen = visits.clone();
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let seen = seen.clone();
+            tokio::spawn(async move {
+                let began = std::time::Instant::now();
+                let mut buf = vec![0u8; 8192];
+                let _ = socket.read(&mut buf).await;
+                tokio::time::sleep(delay).await;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{PAGE_B}",
+                    PAGE_B.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                seen.lock()
+                    .unwrap()
+                    .push((began, std::time::Instant::now()));
+            });
+        }
+    });
+    (format!("http://{addr}"), visits)
+}
+
+fn statuses_of(run: &repo::WorkflowRunDetail) -> Vec<(String, String)> {
+    let mut rows: Vec<(String, String)> = run
+        .steps
+        .iter()
+        .map(|s| (s.step_id.clone(), s.status.clone()))
+        .collect();
+    rows.sort();
+    rows
+}
+
+fn status_of<'a>(run: &'a repo::WorkflowRunDetail, id: &str) -> &'a str {
+    step(run, id, None).status.as_str()
+}
+
+#[tokio::test]
+async fn two_steps_after_the_same_step_run_side_by_side_and_a_join_waits_for_both() {
+    let (base, visits) = serve_slow(std::time::Duration::from_millis(600)).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "start", "type": "template", "template": "go" },
+            { "id": "left", "type": "fetch_page", "urls": [format!("{base}/left")], "after": ["start"] },
+            { "id": "right", "type": "fetch_page", "urls": [format!("{base}/right")], "after": ["start"] },
+            { "id": "join", "type": "template",
+              "template": "{{steps.left.text}} / {{steps.right.text}}", "after": ["left", "right"] },
+        ]}))
+        .await;
+    let began = std::time::Instant::now();
+    let run = h.run(&id).await;
+    let took = began.elapsed();
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+
+    // Both fetches were at the server at the same time.
+    let visits = visits.lock().unwrap().clone();
+    assert_eq!(visits.len(), 2);
+    let ((a_start, a_end), (b_start, b_end)) = (visits[0], visits[1]);
+    assert!(
+        a_start < b_end && b_start < a_end,
+        "the two fetches overlapped"
+    );
+    assert!(
+        took < std::time::Duration::from_millis(1150),
+        "side by side, not one after the other: {took:?}"
+    );
+
+    // The join started after both were done, and saw both.
+    let join = step(&run, "join", None);
+    for side in ["left", "right"] {
+        assert!(
+            step(&run, side, None).finished_at.as_deref().unwrap() <= join.started_at.as_str(),
+            "{side} finished before the join began"
+        );
+    }
+    assert_eq!(
+        join.output.as_ref().unwrap()["text"],
+        "Sunny all week. / Sunny all week."
+    );
+}
+
+fn branching(mood_test: &str) -> Value {
+    json!({
+        "inputs": [ { "id": "mood", "label": "Mood", "default": mood_test } ],
+        "steps": [
+            { "id": "pick", "type": "branch", "value": "{{inputs.mood}}", "is": "equals", "text": "happy" },
+            { "id": "glad", "type": "template", "template": "Glad", "after": ["pick.yes"] },
+            { "id": "sad", "type": "template", "template": "Sad", "after": ["pick.no"] },
+            { "id": "more_sad", "type": "template", "template": "Even sadder: {{steps.sad.text}}", "after": ["sad"] },
+            { "id": "merge", "type": "template",
+              "template": "[{{steps.glad.text}}{{steps.sad.text}}]", "after": ["glad", "sad"] },
+        ]
+    })
+}
+
+#[tokio::test]
+async fn a_branch_takes_one_way_and_the_other_is_not_taken() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(branching("happy")).await;
+
+    let yes = h.run(&id).await;
+    assert_eq!(yes.run.status, "completed", "{:?}", yes.run.error);
+    assert_eq!(
+        statuses_of(&yes),
+        vec![
+            ("glad".to_string(), "completed".to_string()),
+            ("merge".to_string(), "completed".to_string()),
+            ("more_sad".to_string(), "not_taken".to_string()),
+            ("pick".to_string(), "completed".to_string()),
+            ("sad".to_string(), "not_taken".to_string()),
+        ]
+    );
+    let pick = step(&yes, "pick", None).output.as_ref().unwrap();
+    assert_eq!(
+        (pick["passed"].clone(), pick["text"].clone()),
+        (json!(true), json!("yes"))
+    );
+    // The merge reads the not-taken way as empty.
+    assert_eq!(
+        step(&yes, "merge", None).output.as_ref().unwrap()["text"],
+        "[Glad]"
+    );
+    // A step that was not taken did no work and says so.
+    let sad = step(&yes, "sad", None);
+    assert_eq!(
+        sad.output.as_ref().unwrap(),
+        &json!({ "notTaken": true, "text": "" })
+    );
+    assert!(sad.error.is_none());
+
+    // The other way round.
+    let mut inputs = HashMap::new();
+    inputs.insert("mood".to_string(), "blue".to_string());
+    let no = h.manual_runner().run(&id, &inputs, "manual").await.unwrap();
+    assert_eq!(no.run.status, "completed", "{:?}", no.run.error);
+    assert_eq!(status_of(&no, "glad"), "not_taken");
+    assert_eq!(status_of(&no, "sad"), "completed");
+    assert_eq!(
+        step(&no, "more_sad", None).output.as_ref().unwrap()["text"],
+        "Even sadder: Sad"
+    );
+    assert_eq!(
+        step(&no, "merge", None).output.as_ref().unwrap()["text"],
+        "[Sad]"
+    );
+    assert_eq!(
+        step(&no, "pick", None).output.as_ref().unwrap()["text"],
+        "no"
+    );
+}
+
+#[tokio::test]
+async fn a_failing_step_stops_the_one_running_beside_it() {
+    let hanging = serve_hanging().await;
+    let (gone, _) = serve_statuses(vec![404]).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "start", "type": "template", "template": "go" },
+            { "id": "slow", "type": "fetch_page", "urls": [format!("{hanging}/slow")], "after": ["start"] },
+            { "id": "bad", "type": "fetch_page", "urls": [format!("{gone}/gone")], "after": ["start"] },
+            { "id": "after_slow", "type": "template", "template": "never", "after": ["slow"] },
+            { "id": "after_bad", "type": "template", "template": "never", "after": ["bad"] },
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "failed");
+    assert!(
+        run.run.error.as_deref().unwrap().contains("404"),
+        "{:?}",
+        run.run.error
+    );
+    assert_eq!(status_of(&run, "bad"), "failed");
+    assert_eq!(status_of(&run, "slow"), "stopped");
+    assert!(
+        run.steps.iter().all(|s| !s.step_id.starts_with("after_")),
+        "nothing new started after the failure: {:?}",
+        statuses_of(&run)
+    );
+}
+
+#[tokio::test]
+async fn a_rerun_from_one_branch_reuses_the_other() {
+    let (left_base, left_hits) = serve_statuses(vec![200]).await;
+    let (right_base, right_hits) = serve_statuses(vec![200]).await;
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "start", "type": "template", "template": "go" },
+            { "id": "left", "type": "fetch_page", "urls": [format!("{left_base}/l")], "after": ["start"] },
+            { "id": "right", "type": "fetch_page", "urls": [format!("{right_base}/r")], "after": ["start"] },
+            { "id": "after_left", "type": "template", "template": "L {{steps.left.text}}", "after": ["left"] },
+            { "id": "join", "type": "template",
+              "template": "{{steps.after_left.text}} {{steps.right.text}}", "after": ["after_left", "right"] },
+        ]}))
+        .await;
+    let first = h.run(&id).await;
+    assert_eq!(first.run.status, "completed", "{:?}", first.run.error);
+    assert_eq!((hits(&left_hits), hits(&right_hits)), (1, 1));
+
+    let again = h.rerun(&first, "left").await.unwrap();
+    assert_eq!(again.run.status, "completed", "{:?}", again.run.error);
+    assert_eq!(
+        (hits(&left_hits), hits(&right_hits)),
+        (2, 1),
+        "only the chosen branch was fetched again"
+    );
+    assert_eq!(status_of(&again, "start"), "reused");
+    assert_eq!(status_of(&again, "right"), "reused");
+    assert_eq!(status_of(&again, "left"), "completed");
+    assert_eq!(status_of(&again, "after_left"), "completed");
+    assert_eq!(status_of(&again, "join"), "completed");
+}
+
+#[tokio::test]
+async fn a_rerun_keeps_the_way_a_branch_went() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(branching("happy")).await;
+    let first = h.run(&id).await;
+    let again = h.rerun(&first, "merge").await.unwrap();
+    assert_eq!(again.run.status, "completed", "{:?}", again.run.error);
+    assert_eq!(status_of(&again, "pick"), "reused");
+    assert_eq!(status_of(&again, "glad"), "reused");
+    assert_eq!(status_of(&again, "sad"), "not_taken");
+    assert_eq!(status_of(&again, "more_sad"), "not_taken");
+    assert_eq!(status_of(&again, "merge"), "completed");
+    assert_eq!(
+        step(&again, "merge", None).output.as_ref().unwrap()["text"],
+        "[Glad]"
+    );
+}
+
+#[tokio::test]
+async fn two_ask_steps_side_by_side_both_wait_and_both_answers_resume_the_run() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "first", "type": "ask", "question": "First?", "after": [] },
+            { "id": "second", "type": "ask", "question": "Second?", "after": [] },
+            { "id": "done", "type": "template",
+              "template": "{{steps.first.answer}}+{{steps.second.answer}}", "after": ["first", "second"] },
+        ]}))
+        .await;
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answers = async {
+        for _ in 0..300 {
+            if questions.list().len() == 2 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let waiting = questions.list();
+        assert_eq!(waiting.len(), 2, "both questions are open at once");
+        let run_id = waiting[0].run_id.clone();
+        let runs = repo::list_runs(&h.state.db, &id, 1).await.unwrap();
+        assert_eq!(runs[0].status, "paused");
+        // Without saying which, it is unclear which one is meant.
+        assert!(questions.get(&run_id, None).is_none());
+        assert!(!questions.answer(&run_id, None, "x".into()));
+        // Answering one leaves the run paused on the other.
+        assert!(questions.answer(&run_id, Some("second"), "B".into()));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let runs = repo::list_runs(&h.state.db, &id, 1).await.unwrap();
+        assert_eq!(runs[0].status, "paused");
+        assert_eq!(questions.list().len(), 1);
+        // The run alone now names the one that is left.
+        assert!(questions.answer(&run_id, None, "A".into()));
+    };
+    let (detail, ()) = tokio::join!(run, answers);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert_eq!(
+        step(&detail, "done", None).output.as_ref().unwrap()["text"],
+        "A+B"
+    );
+    assert!(questions.list().is_empty());
+}
+
+#[tokio::test]
+async fn a_condition_cannot_run_alongside_other_steps() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "start", "type": "template", "template": "go" },
+            { "id": "gate", "type": "condition", "value": "{{steps.start.text}}", "is": "not_empty" },
+            { "id": "beside", "type": "template", "template": "x", "after": ["start"] },
+        ]}))
+        .await;
+    let error = h
+        .manual_runner()
+        .run(&id, &HashMap::new(), "manual")
+        .await
+        .unwrap_err();
+    assert!(
+        error.contains("gate stops the run, so it can't run alongside other steps."),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn a_condition_that_fails_still_ends_a_graph_run_as_nothing_new() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "start", "type": "template", "template": "" },
+            { "id": "gate", "type": "condition", "value": "{{steps.start.text}}", "is": "not_empty" },
+            { "id": "tell", "type": "template", "template": "never" },
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed");
+    assert_eq!(run.run.outcome.as_deref(), Some("nothing_new"));
+    assert!(run.steps.iter().all(|s| s.step_id != "tell"));
+}
+
+#[tokio::test]
+async fn model_steps_side_by_side_share_the_workflow_conversation() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "start", "type": "template", "template": "one\ntwo" },
+            { "id": "a", "type": "summarize", "prompt": "Sum", "input": "alpha {{steps.start.text}}", "after": ["start"] },
+            { "id": "b", "type": "summarize", "prompt": "Sum", "input": "beta {{steps.start.text}}", "after": ["start"] },
+            { "id": "join", "type": "template", "template": "{{steps.a.text}} {{steps.b.text}}", "after": ["a", "b"] },
+        ]}))
+        .await;
+    let run = h.run(&id).await;
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert_eq!(h.model.requests.lock().unwrap().len(), 2);
+    assert_eq!(
+        step(&run, "join", None).output.as_ref().unwrap()["text"],
+        "SUMMARY: alpha one SUMMARY: beta one"
+    );
+}
+
+#[tokio::test]
+async fn agent_steps_side_by_side_take_turns_in_the_workflow_conversation() {
+    let model = EchoModel {
+        tool_call: Some(("calculator", json!({ "expression": "6*7" }))),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "start", "type": "template", "template": "go" },
+            { "id": "a", "type": "agent", "prompt": "Work it out", "input": "6*7?", "tools": ["calculator"], "after": ["start"] },
+            { "id": "b", "type": "agent", "prompt": "Work it out", "input": "6*7?", "tools": ["calculator"], "after": ["start"] },
+        ]}))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let run = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
+    assert_eq!(status_of(&run, "a"), "completed");
+    assert_eq!(status_of(&run, "b"), "completed");
 }

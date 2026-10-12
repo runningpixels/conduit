@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep } from '../../ipc/contracts';
 import { STARTER_WORKFLOWS } from '../starters';
-import { GAP_Y, LOOP_GAP, LOOP_HEAD, LOOP_PAD, NODE_H, NODE_W, START_H, START_ID, START_W, buildCanvas, problemsByStep, runStatuses, stepReferences } from './canvasModel';
+import { GAP_X, GAP_Y, LOOP_GAP, LOOP_HEAD, LOOP_PAD, NODE_H, NODE_W, START_H, START_ID, START_W, buildCanvas, problemsByStep, runStatuses, stepReferences } from './canvasModel';
 
 const briefing = STARTER_WORKFLOWS.find((s) => s.id === 'briefing')!.definition as WorkflowDefinition;
 
@@ -135,5 +135,70 @@ describe('problemsByStep', () => {
     );
     expect([...byStep.keys()]).toEqual(['sum', 'save']);
     expect(general).toEqual(['The workflow needs at least one step.']);
+  });
+});
+
+describe('buildCanvas with steps that wait for others', () => {
+  const t = (id: string, after?: string[]): WorkflowDefinition['steps'][number] => ({ id, type: 'template', template: id, ...(after ? { after } : {}) });
+  const flows = (g: ReturnType<typeof buildCanvas>) => g.edges.filter((e) => e.kind === 'flow').map((e) => `${e.source}>${e.target}`);
+  const at = (g: ReturnType<typeof buildCanvas>, id: string) => g.nodes.find((n) => n.id === id)!;
+
+  it('puts two steps that wait for the same step side by side, centred, in one layer', () => {
+    const g = buildCanvas({ steps: [t('a'), t('b', ['a']), t('c', ['a'])] });
+    expect(at(g, 'b').y).toBe(at(g, 'c').y);
+    expect(at(g, 'b').y).toBe(at(g, 'a').y + NODE_H + GAP_Y);
+    expect(at(g, 'b').x).toBe(-NODE_W - GAP_X / 2);
+    expect(at(g, 'c').x).toBe(GAP_X / 2);
+    expect(at(g, 'a').x + NODE_W / 2).toBe(0);
+    expect(flows(g)).toEqual(['__start>a', 'a>b', 'a>c']);
+    expect(g.width).toBe(2 * NODE_W + GAP_X);
+  });
+
+  it('puts a join below the longest path, with a wire from each step it waits for', () => {
+    const g = buildCanvas({ steps: [t('a'), t('b', ['a']), t('c', ['a']), t('x', ['c']), t('join', ['b', 'x'])] });
+    expect(at(g, 'x').y).toBe(at(g, 'b').y + NODE_H + GAP_Y);
+    expect(at(g, 'join').y).toBe(at(g, 'x').y + NODE_H + GAP_Y);
+    expect(at(g, 'join').x + NODE_W / 2).toBe(0);
+    expect(flows(g)).toEqual(['__start>a', 'a>b', 'a>c', 'c>x', 'b>join', 'x>join']);
+  });
+
+  it('hangs a step that waits for nothing off the start, beside the first step', () => {
+    const g = buildCanvas({ steps: [t('a'), t('b', [])] });
+    expect(at(g, 'a').y).toBe(at(g, 'b').y);
+    expect(flows(g)).toEqual(['__start>a', '__start>b']);
+  });
+
+  it('draws the arms of a branch as labelled wires from their own handles', () => {
+    const branch: WorkflowDefinition['steps'][number] = { id: 'if', type: 'branch', value: '{{steps.a.text}}', is: 'not_empty' };
+    const g = buildCanvas({ steps: [t('a'), branch, t('yes', ['if.yes']), t('no', ['if.no']), t('merge', ['yes', 'no'])] });
+    const arms = g.edges.filter((e) => e.arm);
+    expect(arms.map((e) => [e.id, e.source, e.target, e.arm, e.sourceHandle])).toEqual([
+      ['flow:if.yes->yes', 'if', 'yes', 'yes', 'arm-yes'],
+      ['flow:if.no->no', 'if', 'no', 'no', 'arm-no'],
+    ]);
+    expect(at(g, 'yes').y).toBe(at(g, 'no').y);
+    expect(at(g, 'yes').x).toBeLessThan(at(g, 'no').x);
+    expect(at(g, 'merge').y).toBe(at(g, 'yes').y + NODE_H + GAP_Y);
+  });
+
+  it('gives both arms of one branch their own wire into a step that waits for both', () => {
+    const branch: WorkflowDefinition['steps'][number] = { id: 'if', type: 'branch', value: 'x', is: 'empty' };
+    const g = buildCanvas({ steps: [branch, t('end', ['if.yes', 'if.no'])] });
+    expect(g.edges.filter((e) => e.kind === 'flow').map((e) => e.id)).toEqual(['flow:__start->if', 'flow:if.yes->end', 'flow:if.no->end']);
+  });
+
+  it('is the same drawing as before when no step says what it waits for', () => {
+    const g = buildCanvas(linear);
+    expect(flows(g)).toEqual(['__start>fetch', 'fetch>sum', 'sum>save']);
+    expect(g.nodes.every((n) => n.x + n.width / 2 === 0)).toBe(true);
+  });
+});
+
+describe('runStatuses with a branch', () => {
+  it('reports a step that was not taken', () => {
+    const def: WorkflowDefinition = { steps: [{ id: 'if', type: 'branch', value: 'x', is: 'empty' }, { id: 'yes', type: 'template', template: 'y', after: ['if.yes'] }] };
+    const s = runStatuses(def, detail([row('if', 'completed'), row('yes', 'not_taken')], 'completed'));
+    expect(s.get('yes')?.status).toBe('not_taken');
+    expect(s.get('if')?.status).toBe('completed');
   });
 });

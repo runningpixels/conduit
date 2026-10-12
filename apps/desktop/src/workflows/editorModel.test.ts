@@ -376,3 +376,51 @@ describe('triggers and outputs', () => {
     expect(stepTypesFor(false)).toEqual(expect.arrayContaining(['export_file', 'save_memory']));
   });
 });
+
+describe('valuesAt with a runs-after graph', () => {
+  const tpl = (id: string, after?: string[]): WorkflowStep => ({ id, type: 'template', template: id, ...(after ? { after } : {}) });
+  const stepIds = (d: WorkflowDefinition, path: number[]) => [...new Set(valuesAt(d, path).filter((r) => r.source.kind === 'step').map((r) => (r.source as { stepId: string }).stepId))];
+
+  it('does not offer the output of a parallel sibling, only ancestors', () => {
+    const d: WorkflowDefinition = { steps: [tpl('a'), tpl('b', ['a']), tpl('c', ['a']), tpl('join', ['b', 'c'])] };
+    expect(stepIds(d, [2]).sort()).toEqual(['a']);
+    expect(stepIds(d, [3]).sort()).toEqual(['a', 'b', 'c']);
+    expect(stepIds(d, [1])).toEqual(['a']);
+  });
+
+  it('follows a chain of ancestors through a step that waits for nothing', () => {
+    const d: WorkflowDefinition = { steps: [tpl('a'), tpl('b', []), tpl('c', ['b'])] };
+    expect(stepIds(d, [2])).toEqual(['b']);
+    expect(stepIds(d, [1])).toEqual([]);
+  });
+
+  it('offers a loop body the ancestors of the loop plus its own earlier steps', () => {
+    const d: WorkflowDefinition = {
+      steps: [tpl('a'), tpl('side', ['a']), { id: 'each', type: 'for_each', items: 'steps.a.results', after: ['a'], steps: [tpl('x'), tpl('y')] }],
+    };
+    expect(stepIds(d, [2, 1]).sort()).toEqual(['a', 'x']);
+  });
+
+  it('offers every earlier step when no step says what it waits for', () => {
+    const d: WorkflowDefinition = { steps: [tpl('a'), tpl('b'), tpl('c')] };
+    expect(stepIds(d, [2]).sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('the branch step and removing steps', () => {
+  it('is offered at the top level only, and starts as a test of a value', () => {
+    expect(stepTypesFor(false)).toContain('branch');
+    expect(stepTypesFor(true)).not.toContain('branch');
+    expect(newStep('branch', new Set())).toEqual({ id: 'branch', type: 'branch', value: '', is: 'not_empty' });
+    expect(withConditionTest({ id: 'b', type: 'branch', value: 'x', is: 'empty' }, 'contains')).toEqual({ id: 'b', type: 'branch', value: 'x', is: 'contains', text: '' });
+  });
+
+  it('rewires dependants when a top-level step is removed', () => {
+    const steps: WorkflowStep[] = [
+      { id: 'a', type: 'template', template: '' },
+      { id: 'b', type: 'template', template: '', after: ['a'] },
+      { id: 'c', type: 'template', template: '', after: ['b'] },
+    ];
+    expect(removeStep(steps, [1]).map((s) => s.after)).toEqual([undefined, undefined]);
+  });
+});

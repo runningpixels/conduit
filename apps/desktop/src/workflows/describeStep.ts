@@ -57,6 +57,15 @@ const CONDITION_STEP_KEY: Record<ConditionTest, string> = {
   equals: 'workspace.workflows.step.condition.equals',
 };
 
+const BRANCH_STEP_KEY: Record<ConditionTest, string> = {
+  changed: 'workspace.workflows.step.branch.changed',
+  not_empty: 'workspace.workflows.step.branch.notEmpty',
+  empty: 'workspace.workflows.step.branch.empty',
+  contains: 'workspace.workflows.step.branch.contains',
+  not_contains: 'workspace.workflows.step.branch.notContains',
+  equals: 'workspace.workflows.step.branch.equals',
+};
+
 /// What one entry of a list is called, by the list's name ("pages" -> "page").
 const SINGULAR: Record<string, string> = {
   pages: 'page',
@@ -167,5 +176,7 @@ function describeKind(
       return t('workspace.workflows.step.notify', { title: q(step.title) });
     case 'condition':
       return t(CONDITION_STEP_KEY[step.is], { value: q(step.value), text: q(step.text ?? '') });
+    case 'branch':
+      return t(BRANCH_STEP_KEY[step.is], { value: q(step.value), text: q(step.text ?? '') });
   }
 }

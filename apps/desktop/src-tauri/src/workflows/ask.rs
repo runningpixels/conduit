@@ -34,12 +34,15 @@ impl Pending for PendingQuestion {
     fn run_id(&self) -> &str {
         &self.run_id
     }
+    fn step_id(&self) -> &str {
+        &self.step_id
+    }
     fn requested_at(&self) -> &str {
         &self.requested_at
     }
 }
 
-/// Runs waiting for an answer to an "Ask me" step, by run id.
+/// Runs waiting for an answer to an "Ask me" step, by run id and step id.
 pub type Questions = Waiting<PendingQuestion, String>;
 
 /// `answer` checked against `question`: trimmed, not empty, not too long, and
@@ -94,8 +97,8 @@ mod tests {
     async fn a_question_is_answered_through_the_registry() {
         let questions = Questions::default();
         let rx = questions.ask(question(&[]));
-        assert_eq!(questions.get("r1").unwrap().question, "Which topic?");
-        assert!(questions.answer("r1", "Rust".into()));
+        assert_eq!(questions.get("r1", None).unwrap().question, "Which topic?");
+        assert!(questions.answer("r1", Some("ask"), "Rust".into()));
         assert_eq!(rx.await.unwrap(), "Rust");
         assert!(questions.list().is_empty());
     }

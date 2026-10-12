@@ -2,19 +2,19 @@
 /// and what each node's status is in a run. Pure functions over the
 /// definition and run detail, so `WorkflowCanvas` only draws.
 ///
-/// The engine runs steps in order (one level of `for_each` nesting), so the
-/// layout is the order: a start node, then the steps top to bottom down one
-/// centre line (a page scrolls down, so the drawing does too), each loop a
-/// frame holding its own steps, also top to bottom: the drawing stays one card
-/// wide, so it is readable without shrinking. There are no saved positions
-/// yet; they come with the graph runner, when order stops being the whole
-/// story.
+/// The layout comes from what each step waits for (`after`; without it, the
+/// step before): a start node, then layers top to bottom (a page scrolls down,
+/// so the drawing does too), a step's layer being the longest path from the
+/// start. Steps of one layer sit side by side in list order, centred; a plain
+/// list is one card wide, so it is readable without shrinking. Each loop is a
+/// frame holding its own steps, top to bottom. There are no saved positions.
 ///
 /// Two kinds of wire: **flow** (what runs next, from the order) and **data**
 /// (step B's settings read step A's output through `{{steps.A.…}}`).
 
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowStep } from '../../ipc/contracts';
 import type { StepPath } from '../editorModel';
+import { dependencies, entryFor, parseEntry } from '../stepGraph';
 
 export const NODE_W = 280;
 export const NODE_H = 136;
@@ -46,7 +46,7 @@ export interface CanvasNode {
 }
 
 /** Where a wire leaves and enters a node: the flow runs top to bottom, data along the right side. */
-export type HandleId = 'flow-top' | 'flow-bottom' | 'flow-left' | 'flow-right' | 'data-in' | 'data-out';
+export type HandleId = 'flow-top' | 'flow-bottom' | 'flow-left' | 'flow-right' | 'data-in' | 'data-out' | 'arm-yes' | 'arm-no';
 
 export interface CanvasEdge {
   id: string;
@@ -55,6 +55,8 @@ export interface CanvasEdge {
   target: string;
   sourceHandle: HandleId;
   targetHandle: HandleId;
+  /** A flow wire leaving one side of a branch: the canvas labels it "Yes" / "No". */
+  arm?: 'yes' | 'no';
   /** For a data wire: the outputs read, e.g. `["text", "pages"]`. */
   fields?: string[];
   /** A data wire between steps that already follow each other: the flow says it, so it is not drawn. */
@@ -67,6 +69,19 @@ export interface CanvasGraph {
   /** The drawing's size, for sizing the canvas to it. */
   width: number;
   height: number;
+}
+
+/** A flow wire into `target`; from a branch's `arm` it leaves that side. */
+function flowEdge(source: string, arm: 'yes' | 'no' | null, target: string): CanvasEdge {
+  return {
+    id: `flow:${entryFor(source, arm)}->${target}`,
+    kind: 'flow',
+    source,
+    target,
+    sourceHandle: arm ? (arm === 'yes' ? 'arm-yes' : 'arm-no') : 'flow-bottom',
+    targetHandle: 'flow-top',
+    ...(arm ? { arm } : {}),
+  };
 }
 
 /** Every `steps.<id>.<field>` a value reads, as `[id, field]` pairs. */
@@ -92,55 +107,80 @@ function ownSettings(step: WorkflowStep): unknown {
   return rest;
 }
 
-/** The canvas for a definition: nodes laid out in order, flow and data wires. */
+/** The canvas for a definition: nodes laid out in layers, flow and data wires. */
 export function buildCanvas(def: WorkflowDefinition): CanvasGraph {
   const nodes: CanvasNode[] = [];
   const edges: CanvasEdge[] = [];
-  const flow = (source: string, target: string, sourceHandle: HandleId, targetHandle: HandleId) =>
-    edges.push({ id: `flow:${source}->${target}`, kind: 'flow', source, target, sourceHandle, targetHandle });
+  const ids = new Set<string>();
 
-  // Everything is centred on x = 0; a loop frame is as wide as its steps.
-  nodes.push({ id: START_ID, kind: 'start', x: -START_W / 2, y: 0, width: START_W, height: START_H, parent: null });
-  let y = START_H + GAP_Y;
-  let previous = START_ID;
-  let half = START_W / 2;
+  // What each top-level step waits for; a layer is the longest path from the start.
+  const deps = dependencies(def.steps);
+  const layerOf = new Map<string, number>();
+  const layers: number[][] = [];
   def.steps.forEach((step, index) => {
-    if (step.type === 'for_each') {
-      const inner = step.steps;
-      const width = NODE_W + 2 * LOOP_PAD;
-      const rows = Math.max(1, inner.length);
-      const height = LOOP_HEAD + rows * NODE_H + (rows - 1) * LOOP_GAP + LOOP_PAD;
-      nodes.push({ id: step.id, kind: 'loop', x: -width / 2, y, width, height, parent: null, step, path: [index] });
-      let innerPrevious: string | null = null;
-      inner.forEach((child, childIndex) => {
-        nodes.push({
-          id: child.id,
-          kind: 'step',
-          x: LOOP_PAD,
-          y: LOOP_HEAD + childIndex * (NODE_H + LOOP_GAP),
-          width: NODE_W,
-          height: NODE_H,
-          parent: step.id,
-          step: child,
-          path: [index, childIndex],
-        });
-        if (innerPrevious) flow(innerPrevious, child.id, 'flow-bottom', 'flow-top');
-        innerPrevious = child.id;
-      });
-      flow(previous, step.id, 'flow-bottom', 'flow-top');
-      y += height + GAP_Y;
-      half = Math.max(half, width / 2);
-    } else {
-      nodes.push({ id: step.id, kind: 'step', x: -NODE_W / 2, y, width: NODE_W, height: NODE_H, parent: null, step, path: [index] });
-      flow(previous, step.id, 'flow-bottom', 'flow-top');
-      y += NODE_H + GAP_Y;
-      half = Math.max(half, NODE_W / 2);
-    }
-    previous = step.id;
+    const parents = (deps.get(step.id) ?? []).map((entry) => layerOf.get(parseEntry(entry).id) ?? 0);
+    const layer = parents.length === 0 ? 0 : Math.max(...parents) + 1;
+    layerOf.set(step.id, layer);
+    (layers[layer] ??= []).push(index);
   });
 
+  const sizeOf = (step: WorkflowStep) => {
+    if (step.type !== 'for_each') return { width: NODE_W, height: NODE_H };
+    const rows = Math.max(1, step.steps.length);
+    return { width: NODE_W + 2 * LOOP_PAD, height: LOOP_HEAD + rows * NODE_H + (rows - 1) * LOOP_GAP + LOOP_PAD };
+  };
+
+  // Everything is centred on x = 0; the steps of a layer sit side by side.
+  nodes.push({ id: START_ID, kind: 'start', x: -START_W / 2, y: 0, width: START_W, height: START_H, parent: null });
+  let y = START_H + GAP_Y;
+  let half = START_W / 2;
+  for (const row of layers) {
+    if (!row) continue;
+    const sizes = row.map((index) => sizeOf(def.steps[index]));
+    const total = sizes.reduce((sum, s) => sum + s.width, 0) + (row.length - 1) * GAP_X;
+    const rowHeight = Math.max(...sizes.map((s) => s.height));
+    let x = -total / 2;
+    row.forEach((index, n) => {
+      const step = def.steps[index];
+      const { width, height } = sizes[n];
+      if (step.type === 'for_each') {
+        nodes.push({ id: step.id, kind: 'loop', x, y, width, height, parent: null, step, path: [index] });
+        let innerPrevious: string | null = null;
+        step.steps.forEach((child, childIndex) => {
+          nodes.push({
+            id: child.id,
+            kind: 'step',
+            x: LOOP_PAD,
+            y: LOOP_HEAD + childIndex * (NODE_H + LOOP_GAP),
+            width: NODE_W,
+            height: NODE_H,
+            parent: step.id,
+            step: child,
+            path: [index, childIndex],
+          });
+          if (innerPrevious) edges.push(flowEdge(innerPrevious, null, child.id));
+          innerPrevious = child.id;
+        });
+      } else {
+        nodes.push({ id: step.id, kind: 'step', x, y, width, height, parent: null, step, path: [index] });
+      }
+      x += width + GAP_X;
+    });
+    y += rowHeight + GAP_Y;
+    half = Math.max(half, total / 2);
+  }
+  // Flow wires follow the dependencies; a step that waits for nothing hangs off the start.
+  for (const step of def.steps) {
+    const entries = deps.get(step.id) ?? [];
+    if (entries.length === 0) edges.push(flowEdge(START_ID, null, step.id));
+    for (const entry of entries) {
+      const { id, arm } = parseEntry(entry);
+      edges.push(flowEdge(id, arm, step.id));
+    }
+  }
+  for (const n of nodes) ids.add(n.id);
+
 // Data wires: one per (source, target) pair, listing the fields read.
-  const ids = new Set(nodes.map((n) => n.id));
   const wires = new Map<string, CanvasEdge>();
   for (const node of nodes) {
     if (!node.step) continue;
@@ -162,7 +202,7 @@ export function buildCanvas(def: WorkflowDefinition): CanvasGraph {
 
 // ── Run status ─────────────────────────────────────────────────────────────
 
-export type NodeStatus = 'idle' | 'running' | 'completed' | 'failed' | 'skipped' | 'stopped' | 'reused' | 'waiting';
+export type NodeStatus = 'idle' | 'running' | 'completed' | 'failed' | 'skipped' | 'stopped' | 'reused' | 'waiting' | 'not_taken';
 
 export interface NodeRun {
   status: NodeStatus;
@@ -173,7 +213,7 @@ export interface NodeRun {
 }
 
 /** The order statuses win in when a step ran several times (loop iterations). */
-const PRIORITY: NodeStatus[] = ['running', 'waiting', 'failed', 'stopped', 'completed', 'reused', 'skipped', 'idle'];
+const PRIORITY: NodeStatus[] = ['running', 'waiting', 'failed', 'stopped', 'completed', 'reused', 'skipped', 'not_taken', 'idle'];
 
 function outputItems(row: WorkflowRunStep | undefined): number | null {
   const out = row?.output as { items?: unknown } | null | undefined;

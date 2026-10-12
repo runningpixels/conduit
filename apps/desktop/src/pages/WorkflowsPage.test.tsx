@@ -568,7 +568,7 @@ describe('WorkflowsPage', () => {
     expect(panel).toHaveTextContent('It wants to read pages on bbc.com.');
     expect(panel).toHaveTextContent(/If nobody answers by /);
     fireEvent.click(within(panel).getByRole('button', { name: 'Always allow' }));
-    await waitFor(() => expect(ipc.answerWorkflowReview).toHaveBeenCalledWith('r9', 'alwaysAllow'));
+    await waitFor(() => expect(ipc.answerWorkflowReview).toHaveBeenCalledWith('r9', 'alwaysAllow', 'fetch'));
     expect(screen.queryByRole('group', { name: 'Waiting for you' })).not.toBeInTheDocument();
   });
 
@@ -699,7 +699,7 @@ describe('WorkflowsPage', () => {
     expect(panel).toHaveTextContent('Which topic?');
     expect(panel).toHaveTextContent(/the answer is “Rust”/);
     fireEvent.click(within(panel).getByRole('button', { name: 'Go' }));
-    await waitFor(() => expect(ipc.answerWorkflowQuestion).toHaveBeenCalledWith('r7', 'Go'));
+    await waitFor(() => expect(ipc.answerWorkflowQuestion).toHaveBeenCalledWith('r7', 'Go', 'ask'));
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Waiting for you' })).not.toBeInTheDocument());
     unmount();
 
@@ -712,7 +712,7 @@ describe('WorkflowsPage', () => {
     expect(send).toBeDisabled();
     fireEvent.change(within(typed).getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Cover Go too' } });
     fireEvent.click(send);
-    await waitFor(() => expect(ipc.answerWorkflowQuestion).toHaveBeenLastCalledWith('r7', 'Cover Go too'));
+    await waitFor(() => expect(ipc.answerWorkflowQuestion).toHaveBeenLastCalledWith('r7', 'Cover Go too', 'ask'));
   });
 
   it('shows when a scheduled workflow runs next, in the list', async () => {

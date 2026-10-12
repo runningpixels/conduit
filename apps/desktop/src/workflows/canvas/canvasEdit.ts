@@ -19,6 +19,7 @@ import {
   type StepType,
   type ValueRef,
 } from '../editorModel';
+import { addDependency, entryFor, removeDependency, type Arm } from '../stepGraph';
 import type { CanvasGraph, CanvasNode } from './canvasModel';
 
 /** Where a step sits: in the top-level list (`loop: null`) or inside a loop, at `index`. */
@@ -79,7 +80,7 @@ export function addStep(def: WorkflowDefinition, type: StepType, selectedId: str
   return { def: { ...def, steps: insertStep(def.steps, parent, step, place.index) }, id: step.id };
 }
 
-/** Delete a step (a loop goes with the steps inside it). */
+/** Delete a step (a loop goes with the steps inside it); steps that waited for it wait for what it waited for. */
 export function deleteStep(def: WorkflowDefinition, id: string): WorkflowDefinition {
   const path = pathOf(def.steps, id);
   return path ? { ...def, steps: removeStep(def.steps, path) } : def;
@@ -168,6 +169,7 @@ export const TEMPLATE_FIELDS: Record<StepType, TemplateField[]> = {
   save_memory: [F('text', 'workspace.workflows.editor.memory.text')],
   notify: [F('body', 'workspace.workflows.editor.notify.body'), F('title', 'workspace.workflows.editor.notify.title')],
   condition: [F('value', 'workspace.workflows.editor.condition.value'), F('text', 'workspace.workflows.editor.condition.text')],
+  branch: [F('value', 'workspace.workflows.editor.condition.value'), F('text', 'workspace.workflows.editor.condition.text')],
   ask: [F('question', 'workspace.workflows.editor.ask.question')],
 };
 
@@ -222,4 +224,35 @@ export function connectReference(def: WorkflowDefinition, target: string, field:
       return s;
     }),
   };
+}
+
+// ── Flow wires ────────────────────────────────────────────────────────────
+
+/**
+ * What a flow wire from the bottom of `source` to the top of `target` does:
+ * `ok` with `branch: true` when `source` is a branch (the caller asks which
+ * side), or why not: `later` when `target` is not after `source` in the list
+ * (the list order is the run order, so a step can only wait for an earlier
+ * one), `nested` for steps inside a loop (a loop's steps stay in a line).
+ */
+export function flowChoices(def: WorkflowDefinition, source: string, target: string): { ok: true; branch: boolean } | { ok: false; reason: 'later' | 'nested' } {
+  const from = def.steps.findIndex((s) => s.id === source);
+  const to = def.steps.findIndex((s) => s.id === target);
+  if (from < 0 || to < 0) return { ok: false, reason: 'nested' };
+  if (from >= to) return { ok: false, reason: 'later' };
+  return { ok: true, branch: def.steps[from].type === 'branch' };
+}
+
+/** `target` also waits for `source` (or its yes / no side). */
+export function connectFlow(def: WorkflowDefinition, source: string, target: string, arm: Arm | null = null): WorkflowDefinition {
+  const choice = flowChoices(def, source, target);
+  if (!choice.ok) return def;
+  const steps = addDependency(def.steps, target, entryFor(source, arm));
+  return JSON.stringify(steps) === JSON.stringify(def.steps) ? def : { ...def, steps };
+}
+
+/** `target` stops waiting for `entry` (a step id, or `<branch>.yes` / `.no`). */
+export function disconnectFlow(def: WorkflowDefinition, target: string, entry: string): WorkflowDefinition {
+  const steps = removeDependency(def.steps, target, entry);
+  return JSON.stringify(steps) === JSON.stringify(def.steps) ? def : { ...def, steps };
 }

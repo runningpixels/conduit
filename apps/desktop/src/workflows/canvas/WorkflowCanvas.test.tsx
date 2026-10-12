@@ -65,4 +65,22 @@ describe('WorkflowCanvas', () => {
     expect(node('gist').querySelector('.has-problem')).not.toBeNull();
     expect(node('fetch').querySelector('.has-problem')).toBeNull();
   });
+
+  it('dims a step a run did not take and says so, and labels the arms of a branch', () => {
+    const def: WorkflowDefinition = {
+      steps: [
+        { id: 'if', type: 'branch', value: '{{inputs.x}}', is: 'empty' },
+        { id: 'yes', type: 'template', template: 'y', after: ['if.yes'] },
+        { id: 'no', type: 'template', template: 'n', after: ['if.no'] },
+      ],
+    };
+    const detail: WorkflowRunDetail = {
+      run: { id: 'r', workflowId: 'w', status: 'completed' } as WorkflowRunDetail['run'],
+      steps: [row('if', 'completed'), row('yes', 'completed'), row('no', 'not_taken')],
+    };
+    render(<WorkflowCanvas definition={def} run={detail} />);
+    expect(within(node('no')).getByText('Not taken')).toBeTruthy();
+    expect(node('no').querySelector('[data-status="not_taken"]')).not.toBeNull();
+    expect(within(node('if')).getByText('If… otherwise')).toBeTruthy();
+  });
 });

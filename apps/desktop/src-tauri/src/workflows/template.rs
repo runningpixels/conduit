@@ -200,8 +200,32 @@ fn missing(ctx: &Value, path: &str) -> TemplateError {
     TemplateError::Missing(path.to_string())
 }
 
+/// Whether `path` runs through a step that was not taken (a branch's other
+/// way), which reads as empty rather than as a missing value.
+fn through_not_taken(ctx: &Value, path: &str) -> bool {
+    let mut cur = ctx;
+    for seg in path.split('.') {
+        cur = match cur {
+            Value::Object(map) => match map.get(seg) {
+                Some(v) => v,
+                None => return false,
+            },
+            Value::Array(items) => match seg.parse::<usize>().ok().and_then(|i| items.get(i)) {
+                Some(v) => v,
+                None => return false,
+            },
+            _ => return false,
+        };
+        if cur.get("notTaken") == Some(&Value::Bool(true)) {
+            return true;
+        }
+    }
+    false
+}
+
 fn value_to_text(ctx: &Value, path: &str) -> Result<String, TemplateError> {
     match resolve(ctx, path) {
+        None if through_not_taken(ctx, path) => Ok(String::new()),
         None => Err(missing(ctx, path)),
         Some(Value::Null) => Ok(String::new()),
         Some(Value::String(s)) => Ok(s.clone()),
@@ -228,6 +252,11 @@ fn render_inner(template: &str, ctx: &Value) -> Result<String, TemplateError> {
                 let (body, after) = find_each_body(template, span.end)?;
                 let list = resolve(ctx, path);
                 let list = match list {
+                    // A list a step that was not taken would have made is empty.
+                    None if through_not_taken(ctx, path) => {
+                        pos = after;
+                        continue;
+                    }
                     None => return Err(missing(ctx, path)),
                     Some(Value::Null) => return Err(TemplateError::Missing(path.to_string())),
                     Some(Value::Array(arr)) => arr,
@@ -468,6 +497,30 @@ mod tests {
         );
         // The text of a skipped step is empty, not missing.
         assert_eq!(render("[{{item.summary.text}}]", &ctx).unwrap(), "[]");
+    }
+
+    #[test]
+    fn a_path_through_a_step_that_was_not_taken_is_empty() {
+        let ctx = json!({
+            "steps": {
+                "no_path": { "notTaken": true, "text": "" },
+                "yes_path": { "text": "A" },
+            },
+        });
+        assert_eq!(
+            render(
+                "[{{steps.yes_path.text}}{{steps.no_path.text}}{{steps.no_path.pages.0.title}}]",
+                &ctx
+            )
+            .unwrap(),
+            "[A]"
+        );
+        assert_eq!(
+            render("{{#each steps.no_path.items}}x{{/each}}.", &ctx).unwrap(),
+            "."
+        );
+        // A step that simply isn't there is still an error.
+        assert!(render("{{steps.gone.text}}", &ctx).is_err());
     }
 
     #[test]

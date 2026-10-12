@@ -55,6 +55,8 @@ import {
   type ValueRef,
 } from './editorModel';
 import { refLabel } from './refLabel';
+import { entryName, runsAfterLine, stepName } from './runsAfter';
+import { addDependency, dependencies, entryFor, parseEntry, removeDependency } from './stepGraph';
 import { CollectionPicker } from './CollectionPicker';
 import { ConnectorStepBody } from './ConnectorStepBody';
 import { DocumentPicker } from './DocumentPicker';
@@ -105,7 +107,7 @@ export function WorkflowEditor({
   const def = draft.definition;
   // Canvas or list, the same remembered choice as the workflow's page.
   const [view, setView] = useState<WorkflowViewPref>(() => readWorkflowView());
-  const branchy = def.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'agent');
+  const branchy = def.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'branch' || s.type === 'agent' || s.after !== undefined);
   const stepsView = view === 'auto' ? (branchy ? 'canvas' : 'list') : view;
   const chooseView = (next: 'canvas' | 'list') => {
     setView(next);
@@ -757,6 +759,43 @@ function StepCard({
         </>
       );
       break;
+    case 'branch':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.condition.value')}
+            value={step.value}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'branch' ? { ...s, value: v } : s))}
+          />
+          <label className="wf-field">
+            <span>{t('workspace.workflows.editor.branch.is')}</span>
+            <select
+              className="sel"
+              value={step.is}
+              onChange={(e) =>
+                update((s) => withConditionTest(s, e.target.value as (typeof CONDITION_TESTS)[number]))
+              }
+            >
+              {CONDITION_TESTS.map((test) => (
+                <option key={test} value={test}>
+                  {t(CONDITION_TEST_KEY[test])}
+                </option>
+              ))}
+            </select>
+          </label>
+          {conditionNeedsText(step.is) ? (
+            <TextField
+              label={t('workspace.workflows.editor.condition.text')}
+              value={step.text ?? ''}
+              refs={refs}
+              onChange={(v) => update((s) => (s.type === 'branch' ? { ...s, text: v } : s))}
+            />
+          ) : null}
+          <p className="wf-muted">{t('workspace.workflows.editor.branch.hint')}</p>
+        </>
+      );
+      break;
   }
   const usualRetries = defaultRetries(step.type);
   const retriesNow = step.retries ?? usualRetries ?? 0;
@@ -807,11 +846,14 @@ function StepCard({
     </details>
   );
 
+  const runsAfter = path.length === 1 ? <RunsAfterControl def={def} step={step} index={path[0]} setSteps={setSteps} /> : null;
+
   // On the canvas the side panel has its own header, so the card is just the form.
   if (!nestedList) {
     return (
       <section className="wfe-form" aria-label={typeName}>
         <div className="wf-card-body">{body}</div>
+        {runsAfter}
         {failureSettings}
       </section>
     );
@@ -853,9 +895,67 @@ function StepCard({
           </button>
         </span>
       </header>
+      {path.length === 1 && runsAfterLine(def.steps, path[0], t) ? <p className="wf-muted">{runsAfterLine(def.steps, path[0], t)}</p> : null}
       <div className="wf-card-body">{body}</div>
+      {runsAfter}
       {failureSettings}
     </li>
+  );
+}
+
+/// "Runs after": which earlier steps a top-level step waits for. The default
+/// is the step before; ticking several makes it wait for all of them (a join),
+/// and two steps that wait for the same step run side by side. A branch offers
+/// its yes and no sides too.
+function RunsAfterControl({
+  def,
+  step,
+  index,
+  setSteps,
+}: {
+  def: WorkflowDefinition;
+  step: WorkflowStep;
+  index: number;
+  setSteps: (steps: WorkflowStep[]) => void;
+}) {
+  const t = useT();
+  if (index === 0) return null;
+  const steps = def.steps;
+  const entries = dependencies(steps).get(step.id) ?? [];
+  const isDefault = entries.length === 1 && entries[0] === steps[index - 1].id;
+  const now = isDefault
+    ? t('workspace.workflows.editor.runsAfter.previous')
+    : entries.length === 0
+      ? t('workspace.workflows.editor.runsAfter.start')
+      : entries.map((e) => entryName(steps, e, t)).join(', ');
+  const options = steps.slice(0, index).flatMap((earlier) =>
+    earlier.type === 'branch'
+      ? [entryFor(earlier.id, null), entryFor(earlier.id, 'yes'), entryFor(earlier.id, 'no')]
+      : [entryFor(earlier.id, null)],
+  );
+  return (
+    <details className="wfe-failure">
+      <summary>
+        {t('workspace.workflows.editor.runsAfter.title')}{' '}
+        <span className="wfe-failure-now">{now}</span>
+      </summary>
+      <fieldset className="wfe-failure-body wf-tools">
+        <legend>{t('workspace.workflows.editor.runsAfter.title')}</legend>
+        {options.map((entry) => (
+          <label key={entry} className="wf-check">
+            <input
+              type="checkbox"
+              checked={entries.includes(entry)}
+              onChange={(e) =>
+                setSteps(e.target.checked ? addDependency(steps, step.id, entry) : removeDependency(steps, step.id, entry))
+              }
+            />
+            {parseEntry(entry).arm ? entryName(steps, entry, t) : stepName(steps, entry, t)}
+          </label>
+        ))}
+        <p className="wf-muted">{t('workspace.workflows.editor.runsAfter.hint')}</p>
+      </fieldset>
+    </details>
   );
 }
 

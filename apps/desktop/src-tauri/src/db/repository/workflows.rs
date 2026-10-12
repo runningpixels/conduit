@@ -446,6 +446,33 @@ pub async fn start_step(
     Ok(id)
 }
 
+/// What a step that was not taken (a branch's other way) leaves behind: no
+/// work done, an empty `text`, and `notTaken` so templates read it as empty.
+pub fn not_taken_output() -> Value {
+    serde_json::json!({ "notTaken": true, "text": "" })
+}
+
+/// Record a step as `not_taken` in one go: it never started, so it has no
+/// time to speak of.
+pub async fn record_not_taken(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_id: &str,
+    step_id: &str,
+    input: &Value,
+) -> Result<(), DbError> {
+    let row = start_step(pool, enc, run_id, step_id, None, input).await?;
+    finish_step(
+        pool,
+        enc,
+        &row,
+        "not_taken",
+        Some(&not_taken_output()),
+        None,
+    )
+    .await
+}
+
 pub async fn finish_step(
     pool: &SqlitePool,
     enc: &Encryption,

@@ -61,6 +61,7 @@
 .wfc-status-stopped,
 .wfc-status-skipped,
 .wfc-status-reused { color: var(--ink-3); }
+.wfc-status-not-taken { color: var(--ink-3); }
 
 .wfc-step:hover { border-color: var(--line-hi); }
 .wfc-step.is-selected,
@@ -70,6 +71,7 @@
 .wfc-step[data-status="waiting"] { border-color: var(--warn); border-style: dashed; }
 .wfc-step[data-status="completed"] { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
 .wfc-step[data-status="failed"] { border-color: var(--err); }
+.wfc-step[data-status="not_taken"] { opacity: .5; border-style: dashed; }
 .wfc-step[data-status="skipped"],
 .wfc-step[data-status="stopped"] { opacity: .65; }
 /* A flagged step: the colour of the "Fix these" list and a label, so it never
@@ -100,6 +102,14 @@
 .wfc-iter { color: var(--ink-2); }
 
 .wfc-data-handle { opacity: 0; }
+/* A branch's two sides: yes on the left of its bottom edge, no on the right. */
+.wfc-arm-handle { opacity: 0; }
+.wfc-canvas .react-flow__handle.wfc-arm-yes { left: 28%; }
+.wfc-canvas .react-flow__handle.wfc-arm-no { left: 72%; }
+/* Editing: a "runs after" wire starts from the dot on a step's bottom edge. */
+.wfc.is-editing .wfc-flow-out,
+.wfc.is-editing .wfc-arm-handle { opacity: 1; width: 12px; height: 12px; background: var(--ink-3); border-color: var(--card); cursor: crosshair; }
+.wfc-edge-flow.selected .react-flow__edge-path { stroke: var(--accent); }
 .wfc-data-out { top: 30%; }
 .wfc-data-in { top: 70%; }
 .wfc-side-handle { opacity: 0; }

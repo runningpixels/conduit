@@ -11,6 +11,7 @@
 /// so anything offered here is accepted on save.
 
 import type { WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep, WorkflowTrigger } from '../ipc/contracts';
+import { ancestorsOf, dependencies, removeTopLevel } from './stepGraph';
 
 export type StepType = WorkflowStep['type'];
 export type StepPath = readonly number[];
@@ -35,6 +36,7 @@ export const STEP_TYPES: readonly StepType[] = [
   'ask',
   'notify',
   'condition',
+  'branch',
 ];
 
 /// The kinds offered in a list: a condition (like `onlyIfChanged`), the
@@ -43,7 +45,7 @@ export const STEP_TYPES: readonly StepType[] = [
 export function stepTypesFor(nested: boolean): readonly StepType[] {
   return nested
     ? STEP_TYPES.filter(
-        (type) => type !== 'condition' && type !== 'edit_deck' && type !== 'edit_draft' && type !== 'research',
+        (type) => type !== 'condition' && type !== 'branch' && type !== 'edit_deck' && type !== 'edit_draft' && type !== 'research',
       )
     : STEP_TYPES;
 }
@@ -58,7 +60,7 @@ export function conditionNeedsText(is: string): boolean {
 
 /// `step` with its test set to `is`: the `text` goes when the new test has no use for it.
 export function withConditionTest(step: WorkflowStep, is: (typeof CONDITION_TESTS)[number]): WorkflowStep {
-  if (step.type !== 'condition') return step;
+  if (step.type !== 'condition' && step.type !== 'branch') return step;
   const { text, ...rest } = step;
   return conditionNeedsText(is) ? { ...rest, is, text: text ?? '' } : { ...rest, is };
 }
@@ -191,6 +193,7 @@ const ID_PREFIX: Record<StepType, string> = {
   ask: 'ask',
   notify: 'notify',
   condition: 'check',
+  branch: 'branch',
 };
 
 /// Every step id in the definition, nested ones included.
@@ -256,6 +259,8 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, title: '', body: '' };
     case 'condition':
       return { id, type, value: '', is: 'changed' };
+    case 'branch':
+      return { id, type, value: '', is: 'not_empty' };
   }
 }
 
@@ -315,6 +320,8 @@ export function insertStep(
 }
 
 export function removeStep(steps: readonly WorkflowStep[], path: StepPath): WorkflowStep[] {
+  // A top-level step's dependants wait for what it waited for.
+  if (path.length === 1) return removeTopLevel(steps, path[0]);
   const parent = path.slice(0, -1);
   const index = path[path.length - 1];
   return mapList(steps, parent, (list) => list.filter((_, i) => i !== index));
@@ -462,6 +469,7 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       return [{ field: 'answer', list: false }];
     case 'notify':
     case 'condition':
+    case 'branch':
       return [];
   }
 }
@@ -483,8 +491,13 @@ export function valuesAt(def: WorkflowDefinition, path: StepPath): ValueRef[] {
   const earlier: ValueRef[] = [];
   let list: readonly WorkflowStep[] = def.steps;
   let innermostLoop: WorkflowStep | undefined;
+  const deps = dependencies(def.steps);
   path.forEach((index, depth) => {
-    for (const step of list.slice(0, index)) {
+    // At the top level a step may read only the steps it runs after (directly
+    // or not); with no `after` anywhere that is every earlier step.
+    const before = list.slice(0, index);
+    const reachable = depth === 0 && list[index] ? ancestorsOf(def.steps, list[index].id, deps) : null;
+    for (const step of reachable ? before.filter((s) => reachable.has(s.id)) : before) {
       for (const out of stepOutputs(step)) {
         earlier.push({ path: `steps.${step.id}.${out.field}`, source: { kind: 'step', stepId: step.id }, field: out.field, list: out.list });
       }

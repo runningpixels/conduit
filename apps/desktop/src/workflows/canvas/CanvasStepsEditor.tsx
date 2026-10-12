@@ -16,16 +16,20 @@ import { refLabel } from '../refLabel';
 import { STEP_TYPE_KEY } from '../stepTypes';
 import { type StepPath, type StepType } from '../editorModel';
 import { START_ID, buildCanvas, type CanvasNode } from './canvasModel';
-import { addPlace, addStep, connectReference, deleteStep, dropPlace, moveStepTo, pathOf, wireChoices, type TemplateField } from './canvasEdit';
+import { addPlace, addStep, connectFlow, connectReference, deleteStep, disconnectFlow, dropPlace, flowChoices, moveStepTo, pathOf, wireChoices, type TemplateField } from './canvasEdit';
 import { WorkflowCanvas, type CanvasEditor } from './WorkflowCanvas';
 import { describeStep, type InputLabels } from '../describeStep';
 import { useConnectorNames } from '../useConnectorNames';
 import { AddStepMenu, ViewToggle } from '../AddStepMenu';
 import type { ValueRef } from '../editorModel';
+import type { Arm } from '../stepGraph';
 
 type Wire =
   | { source: string; target: string; ok: true; outputs: ValueRef[]; fields: TemplateField[]; output: string; field: string }
   | { source: string; target: string; ok: false; reason: 'later' | 'nothing' };
+
+/** A "runs after" wire that needs an answer or an apology: which side of a branch, or why not. */
+type FlowWire = { source: string; target: string } & ({ ask: true } | { ask: false; reason: 'later' | 'nested' });
 
 export interface CanvasStepsEditorProps {
   definition: WorkflowDefinition;
@@ -44,6 +48,7 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
   const t = useT();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [wire, setWire] = useState<Wire | null>(null);
+  const [flow, setFlow] = useState<FlowWire | null>(null);
   const graph = useMemo(() => buildCanvas(definition), [definition]);
   // Inputs by their names, so a step reads "Fetch 1 page: [Page]", not the template.
   const inputLabels = useMemo(
@@ -99,6 +104,18 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
             : { source, target, ok: false, reason: choices.reason },
         );
       },
+      onConnectFlow: (source: string, target: string, arm: Arm | null) => {
+        const choice = flowChoices(definition, source, target);
+        if (!choice.ok) return setFlow({ source, target, ask: false, reason: choice.reason });
+        if (choice.branch && !arm) return setFlow({ source, target, ask: true });
+        const next = connectFlow(definition, source, target, arm);
+        if (next !== definition) onChange(next);
+        setSelectedId(target);
+      },
+      onDisconnectFlow: (target: string, entry: string) => {
+        const next = disconnectFlow(definition, target, entry);
+        if (next !== definition) onChange(next);
+      },
       onDelete: (id: string) => {
         onChange(deleteStep(definition, id));
         setSelectedId(null);
@@ -145,6 +162,13 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
     setWire(null);
   };
 
+  const chooseArm = (arm: Arm) => {
+    if (!flow || !flow.ask) return;
+    onChange(connectFlow(definition, flow.source, flow.target, arm));
+    setSelectedId(flow.target);
+    setFlow(null);
+  };
+
   return (
     <div className="wfc-editor wfe-canvas-host">
       <WorkflowCanvas
@@ -157,6 +181,52 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
         toolbar={toolbar}
         editor={editor}
       />
+      {flow ? (
+        <div
+          className="cu-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setFlow(null);
+          }}
+        >
+          <div
+            className="cu-dialog wfc-wire-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('workspace.workflows.canvas.flow.title', { target: flow.target })}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setFlow(null);
+              }
+            }}
+          >
+            <h2 className="cu-dialog-title">{t('workspace.workflows.canvas.flow.title', { target: flow.target })}</h2>
+            <div className="cu-dialog-body">
+              {flow.ask
+                ? t('workspace.workflows.canvas.flow.which', { source: flow.source })
+                : flow.reason === 'later'
+                  ? t('workspace.workflows.canvas.flow.later', { source: flow.source, target: flow.target })
+                  : t('workspace.workflows.canvas.flow.nested')}
+            </div>
+            <div className="cu-dialog-actions">
+              <button type="button" className="btn ghost" autoFocus={!flow.ask} onClick={() => setFlow(null)}>
+                {flow.ask ? t('common.actions.cancel') : t('workspace.workflows.canvas.wire.ok')}
+              </button>
+              {flow.ask ? (
+                <>
+                  <button type="button" className="btn primary" autoFocus onClick={() => chooseArm('yes')}>
+                    {t('workspace.workflows.canvas.flow.yes')}
+                  </button>
+                  <button type="button" className="btn primary" onClick={() => chooseArm('no')}>
+                    {t('workspace.workflows.canvas.flow.no')}
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       {wire ? (
         <div
           className="cu-dialog-backdrop"

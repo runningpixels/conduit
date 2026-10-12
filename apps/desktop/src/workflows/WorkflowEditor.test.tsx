@@ -626,3 +626,46 @@ describe('the Start panel (list view)', () => {
     expect(out.draft.definition.steps.map((s) => s.type)).toEqual(['template', 'notify']);
   });
 });
+
+describe('Runs after', () => {
+  const steps: WorkflowStep[] = [
+    { id: 'a', type: 'template', template: 'A' },
+    { id: 'b', type: 'template', template: 'B' },
+    { id: 'c', type: 'template', template: 'C' },
+  ];
+
+  it('shows the step before as the default and lets a step wait for another as well', () => {
+    const out = renderEditor({ steps });
+    const third = within(card(/3\. Write text/));
+    expect(third.getByText('The step before')).toBeInTheDocument();
+    fireEvent.click(third.getByText('Runs after', { selector: 'summary' }));
+    expect(third.getByRole('checkbox', { name: '2. Write text' })).toBeChecked();
+    fireEvent.click(third.getByRole('checkbox', { name: '1. Write text' }));
+    expect(out.draft.definition.steps[2].after).toEqual(['b', 'a']);
+    // Untick the step before: it now waits for the first only.
+    fireEvent.click(third.getByRole('checkbox', { name: '2. Write text' }));
+    expect(out.draft.definition.steps[2].after).toEqual(['a']);
+  });
+
+  it('offers the first step nothing, and the sides of a branch to those after it', () => {
+    renderEditor({ steps: [{ id: 'if', type: 'branch', value: 'x', is: 'empty' }, { id: 'y', type: 'template', template: '' }] });
+    expect(within(card(/1\. If… otherwise/)).queryByText('Runs after')).toBeNull();
+    const second = within(card(/2\. Write text/));
+    fireEvent.click(second.getByText('Runs after', { selector: 'summary' }));
+    expect(second.getByRole('checkbox', { name: '1. If… otherwise: if yes' })).toBeInTheDocument();
+    expect(second.getByRole('checkbox', { name: '1. If… otherwise: if no' })).toBeInTheDocument();
+  });
+
+  it('says in the list when a step does not simply follow the one before', () => {
+    renderEditor({ steps: [steps[0], { ...steps[1], after: ['a'] }, { ...steps[2], after: ['a', 'b'] }] });
+    expect(within(card(/2\. Write text/)).queryByText(/^Runs after:/)).toBeNull();
+    expect(within(card(/3\. Write text/)).getByText('Runs after: 1. Write text, 2. Write text')).toBeInTheDocument();
+  });
+
+  it('shows the branch form with the same fields as a condition', () => {
+    const out = renderEditor({ steps: [{ id: 'if', type: 'branch', value: '', is: 'contains', text: '' }] });
+    const form = within(card(/If… otherwise/));
+    fireEvent.change(form.getByLabelText('If it'), { target: { value: 'equals' } });
+    expect(out.draft.definition.steps[0]).toMatchObject({ type: 'branch', is: 'equals' });
+  });
+});

@@ -326,7 +326,8 @@ fn collect(
             | StepAction::ParseData { .. }
             | StepAction::Notify { .. }
             | StepAction::Ask { .. }
-            | StepAction::Condition { .. } => {}
+            | StepAction::Condition { .. }
+            | StepAction::Branch { .. } => {}
             // Files go to the app's own exports folder, and a suggested
             // memory waits for the user to accept it: neither needs leave.
             StepAction::ExportFile { .. } | StepAction::SaveMemory { .. } => {}
@@ -478,12 +479,15 @@ impl Pending for PendingReview {
     fn run_id(&self) -> &str {
         &self.run_id
     }
+    fn step_id(&self) -> &str {
+        &self.step_id
+    }
     fn requested_at(&self) -> &str {
         &self.requested_at
     }
 }
 
-/// Scheduled runs waiting for a permission answer, by run id.
+/// Scheduled runs waiting for a permission answer, by run id and step id.
 pub type Reviews = Waiting<PendingReview, Decision>;
 
 #[cfg(test)]
@@ -706,10 +710,13 @@ mod tests {
         let rx = reviews.ask(review);
         assert_eq!(*seen.lock().unwrap(), 1);
         assert_eq!(reviews.list().len(), 1);
-        assert!(reviews.answer("r1", Decision::AlwaysAllow));
+        assert!(reviews.answer("r1", None, Decision::AlwaysAllow));
         assert_eq!(rx.await.unwrap(), Decision::AlwaysAllow);
         assert!(reviews.list().is_empty());
-        assert!(!reviews.answer("r1", Decision::Deny), "only once");
+        assert!(
+            !reviews.answer("r1", Some("fetch"), Decision::Deny),
+            "only once"
+        );
     }
 
     #[test]

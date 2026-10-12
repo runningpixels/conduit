@@ -2091,8 +2091,9 @@ export async function listWorkflowReviews(): Promise<WorkflowReview[]> {
 }
 
 /** Answer a paused run; resolves `false` if it was no longer waiting. */
-export async function answerWorkflowReview(runId: string, decision: WorkflowReviewDecision): Promise<boolean> {
-  return invokeCommand<boolean>('answer_workflow_review', { runId, decision });
+export async function answerWorkflowReview(runId: string, decision: WorkflowReviewDecision, stepId?: string): Promise<boolean> {
+  // The step says which wait this answers: a run can wait on several steps at once.
+  return invokeCommand<boolean>('answer_workflow_review', { runId, decision, stepId });
 }
 
 /** Runs waiting at an "Ask me" step, oldest first. */
@@ -2101,8 +2102,8 @@ export async function listWorkflowQuestions(): Promise<WorkflowQuestion[]> {
 }
 
 /** Answer a run waiting at an "Ask me" step; resolves `false` if it was no longer waiting. */
-export async function answerWorkflowQuestion(runId: string, answer: string): Promise<boolean> {
-  return invokeCommand<boolean>('answer_workflow_question', { runId, answer });
+export async function answerWorkflowQuestion(runId: string, answer: string, stepId?: string): Promise<boolean> {
+  return invokeCommand<boolean>('answer_workflow_question', { runId, answer, stepId });
 }
 
 /** Ask a workflow's run in progress to stop; resolves `false` if it wasn't running. */

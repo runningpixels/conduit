@@ -23,7 +23,7 @@ const GROUPS: readonly { key: string; types: readonly StepType[] }[] = [
   },
   {
     key: 'workspace.workflows.editor.addMenu.flow',
-    types: ['for_each', 'condition', 'ask'],
+    types: ['for_each', 'condition', 'branch', 'ask'],
   },
 ];
 

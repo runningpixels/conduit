@@ -110,6 +110,12 @@ const finishedRun: WorkflowRunDetail = {
 
 beforeAll(installReactFlowStubs);
 
+/** The Runs tab, with the run that is open in it. */
+async function runDetail() {
+  fireEvent.click(await screen.findByRole('tab', { name: /^Runs/ }));
+  return screen.findByRole('region', { name: 'What this run did' });
+}
+
 describe('WorkflowsPage', () => {
   beforeEach(() => {
     // The step list, unless a test is about the canvas.
@@ -216,9 +222,15 @@ describe('WorkflowsPage', () => {
       fireEvent.click(button);
       expect(ipc.draftWorkflow).toHaveBeenCalledWith('update my deck from a CSV');
       expect(await screen.findByDisplayValue('Deck refresh')).toBeInTheDocument();
-      const notes = screen.getByRole('group', { name: 'Still to fill in before you save' });
+      // The page hands the notes to the editor, which lists them.
+      const notes = screen.getByRole('region', { name: 'Still to fill in before you save' });
       expect(within(notes).getAllByRole('checkbox')).toHaveLength(2);
       expect(within(notes).getByText('Pick the deck to update')).toBeInTheDocument();
+      // The problems sit behind the pill in the editing bar.
+      const pill = await screen.findByRole('button', { name: '1 thing to fix' });
+      expect(pill).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(pill);
+      expect(pill).toHaveAttribute('aria-expanded', 'true');
       expect(screen.getAllByText('Choose the deck this step updates.').length).toBeGreaterThan(0);
       expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
       // Never saved on its own.
@@ -400,7 +412,7 @@ describe('WorkflowsPage', () => {
   it('opens a workflow with a loop on the canvas, and remembers the list when chosen', async () => {
     localStorage.removeItem('conduit:v12-workflow-view');
     render(<WorkflowsPage onStatus={vi.fn()} />);
-    const steps = (await screen.findByText('How it’s built')).closest('details')!;
+    const steps = await screen.findByRole('tabpanel');
     expect(within(steps).getByRole('button', { name: 'Canvas' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(steps).getByRole('group', { name: 'Workflow canvas' })).toBeInTheDocument();
     expect(steps.querySelector('.react-flow__node[data-id="read"]')).not.toBeNull();
@@ -413,13 +425,15 @@ describe('WorkflowsPage', () => {
   it('shows the steps in words and runs with the inputs as edited', async () => {
     const onStatus = vi.fn();
     render(<WorkflowsPage onStatus={onStatus} />);
-    const steps = (await screen.findByText('How it’s built')).closest('details')!;
+    const steps = await screen.findByRole('tabpanel');
     expect(within(steps).getByText('Fetch 2 pages: [First site], [Second site]')).toBeInTheDocument();
     expect(within(steps).getByText('For each story from step 2:')).toBeInTheDocument();
     expect(within(steps).getByText(/^Ask the model: “Summarize this article/)).toBeInTheDocument();
     expect(within(steps).getAllByText('keeps going if this fails').length).toBeGreaterThan(0);
     expect(within(steps).getByText(/^Save as a document: “Morning briefing/)).toBeInTheDocument();
 
+    // The values for the next run sit on the Start node.
+    fireEvent.click(screen.getByRole('button', { name: /^Asks for / }));
     const first = screen.getByRole('textbox', { name: 'First site' });
     expect(first).toHaveValue('https://news.ycombinator.com');
     fireEvent.change(first, { target: { value: 'https://example.com' } });
@@ -433,8 +447,8 @@ describe('WorkflowsPage', () => {
       }),
     );
 
-    // The run it just did opens, with each step and the error that ended it.
-    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    // The run it just did opens in the Runs tab, with each step and the error that ended it.
+    const detail = await runDetail();
     expect(within(detail).getByText('Step "fetch" failed: the site answered 404')).toBeInTheDocument();
     expect(within(detail).getByText('fetch')).toBeInTheDocument();
     expect(within(detail).getByText(/ #1$/)).toBeInTheDocument();
@@ -485,7 +499,7 @@ describe('WorkflowsPage', () => {
     });
     render(<WorkflowsPage onStatus={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
-    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    const detail = await runDetail();
     expect(within(detail).getByText(/Read the file: \[File path\]/)).toBeInTheDocument();
     expect(within(detail).getByText('file')).toBeInTheDocument();
     expect(within(detail).getAllByRole('button', { name: 'Show in folder' })).toHaveLength(1);
@@ -508,7 +522,7 @@ describe('WorkflowsPage', () => {
     const onOpenDocument = vi.fn();
     render(<WorkflowsPage onStatus={vi.fn()} onOpenDocument={onOpenDocument} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
-    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    const detail = await runDetail();
     fireEvent.click(within(detail).getByRole('button', { name: 'Open “Morning briefing”' }));
     expect(onOpenDocument).toHaveBeenCalledWith('c1', 'a1');
   });
@@ -531,7 +545,7 @@ describe('WorkflowsPage', () => {
     });
     await waitFor(() => expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Morning briefing stopped', dismissMs: 10_000 })));
     expect(screen.queryByRole('button', { name: /^Stop/ })).not.toBeInTheDocument();
-    const detail = await screen.findByRole('region', { name: 'What this run did' });
+    const detail = await runDetail();
     expect(within(detail).getByText(/^Stopped/)).toBeInTheDocument();
     expect(within(detail).queryByText('Stopped before it finished.')).not.toBeInTheDocument();
   });
@@ -704,7 +718,12 @@ describe('WorkflowsPage', () => {
   it('shows when a scheduled workflow runs next, in the list', async () => {
     ipc.listWorkflows.mockResolvedValue([{ ...summary, nextRunAt: '2026-09-30T06:00:00.000Z' }]);
     render(<WorkflowsPage onStatus={vi.fn()} />);
-    expect(await screen.findByText(/^Next: /)).toBeInTheDocument();
+    // In the list and in the Starts chip.
+    await waitFor(() => expect(screen.getAllByText(/^Next: /).length).toBeGreaterThan(0));
+    const starts = await screen.findByRole('button', { name: /^Starts Next: / });
+    // The schedule sits on the Start node.
+    expect(screen.queryByRole('region', { name: 'Schedule' })).toBeNull();
+    fireEvent.click(starts);
     expect(await screen.findByRole('region', { name: 'Schedule' })).toBeInTheDocument();
   });
 
@@ -726,6 +745,7 @@ describe('WorkflowsPage', () => {
 
     // Unreadable JSON is reported as you type, and saving waits for a fix.
     fireEvent.change(box, { target: { value: '{ not json' } });
+    fireEvent.click(await screen.findByRole('button', { name: '1 thing to fix' }));
     expect(await screen.findByText(/^Line 1, column 3: expected a quoted name/)).toBeInTheDocument();
     expect(save()).toBeDisabled();
 
@@ -734,6 +754,9 @@ describe('WorkflowsPage', () => {
     fireEvent.change(box, { target: { value: '{"steps":[{"id":"a","type":"template","template":"{{steps.b.text}}"}]}' } });
     expect(await screen.findByText(/reads steps.b.text/)).toBeInTheDocument();
     expect(save()).toBeDisabled();
+    // Escape closes the list.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: '1 thing to fix' })).toHaveAttribute('aria-expanded', 'false');
 
     const good = { steps: [{ id: 'a', type: 'template', template: 'hello' }] };
     fireEvent.change(box, { target: { value: JSON.stringify(good) } });
@@ -765,6 +788,7 @@ describe('WorkflowsPage', () => {
     // It starts with one empty fetch step; saving waits until it is valid.
     ipc.validateWorkflow.mockResolvedValue(['Step "fetch" has no pages to fetch.']);
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Read one page' } });
+    fireEvent.click(await screen.findByRole('button', { name: '1 thing to fix' }));
     expect(await screen.findByText('Step "fetch" has no pages to fetch.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 
@@ -787,9 +811,11 @@ describe('WorkflowsPage', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     render(<WorkflowsPage onStatus={vi.fn()} />);
     await screen.findByRole('heading', { name: 'Morning briefing' });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(ipc.deleteWorkflow).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     await waitFor(() => expect(ipc.deleteWorkflow).toHaveBeenCalledWith('w1'));
     expect(confirmSpy).toHaveBeenCalledTimes(2);
   });
@@ -911,7 +937,7 @@ describe('WorkflowsPage', () => {
       render(<WorkflowsPage onStatus={vi.fn()} />);
       expect(await screen.findByRole('button', { name: 'Running…' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
-      expect(await screen.findByRole('region', { name: 'What this run did' })).toBeInTheDocument();
+      expect(await runDetail()).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     });
 
@@ -920,7 +946,7 @@ describe('WorkflowsPage', () => {
       ipc.getWorkflowRun.mockResolvedValue(liveDetail);
       render(<WorkflowsPage onStatus={vi.fn()} />);
       await screen.findByRole('button', { name: 'Running…' });
-      await screen.findByRole('region', { name: 'What this run did' });
+      await runDetail();
 
       const done = { ...live, status: 'completed' as const, finishedAt: '2026-09-28T08:00:09Z' };
       ipc.listWorkflowRuns.mockResolvedValue([done]);
@@ -964,7 +990,7 @@ describe('WorkflowsPage', () => {
       const onOpenDocument = vi.fn();
       const onResultsSeen = vi.fn();
       render(<WorkflowsPage onStatus={vi.fn()} onOpenDocument={onOpenDocument} onResultsSeen={onResultsSeen} />);
-      const latest = await screen.findByRole('region', { name: 'Latest result' });
+      const latest = await screen.findByRole('region', { name: 'Latest run' });
       expect(within(latest).getByRole('heading', { name: 'Briefing r2' })).toBeInTheDocument();
       await waitFor(() => expect(ipc.markWorkflowRunsSeen).toHaveBeenCalledWith(['r2']));
       await waitFor(() => expect(onResultsSeen).toHaveBeenCalled());
@@ -972,21 +998,36 @@ describe('WorkflowsPage', () => {
       expect(onOpenDocument).toHaveBeenCalledWith('c1', 'a1');
     });
 
-    it('has no latest result before the first run, and shows the steps open', async () => {
+    it('has no latest run before the first run, and opens on the steps', async () => {
       render(<WorkflowsPage onStatus={vi.fn()} />);
-      await screen.findByText('No runs yet.');
-      expect(screen.queryByRole('region', { name: 'Latest result' })).toBeNull();
-      expect(screen.getByText('How it’s built').closest('details')).toHaveAttribute('open');
+      const latest = await screen.findByRole('region', { name: 'Latest run' });
+      expect(latest).toHaveTextContent('No runs yet.');
+      expect(screen.queryByRole('region', { name: 'Recent runs' })).toBeNull();
+      expect(screen.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tabpanel')).toHaveTextContent('Fetch 2 pages');
     });
 
-    it('opens the result of any run from its row', async () => {
+    it('opens the result of any run from the Results tab', async () => {
       ipc.listWorkflowRuns.mockResolvedValue([saved('r2'), saved('r1', { seenAt: '2026-09-28T09:00:00Z' })]);
       render(<WorkflowsPage onStatus={vi.fn()} />);
-      await screen.findByRole('region', { name: 'Latest result' });
-      const rows = screen.getAllByRole('button', { name: /^Open the result from/ });
+      await screen.findByRole('region', { name: 'Latest run' });
+      fireEvent.click(screen.getByRole('tab', { name: 'Results 2' }));
+      const list = screen.getByRole('list', { name: 'Results' });
+      const rows = within(list).getAllByRole('button');
       expect(rows).toHaveLength(2);
+      // The newest is open to begin with.
+      expect(rows[0]).toHaveAttribute('aria-current', 'true');
+      expect(screen.getByRole('heading', { name: 'Briefing r2' })).toBeInTheDocument();
       fireEvent.click(rows[1]);
       expect(await screen.findByRole('heading', { name: 'Briefing r1' })).toBeInTheDocument();
+      expect(rows[1]).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('says so on the Results tab when the workflow has saved nothing', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([finishedRun.run]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('tab', { name: 'Results' }));
+      expect(screen.getByText('This workflow hasn’t saved anything yet.')).toBeInTheDocument();
     });
 
     it('lists every result in the inbox, newest first, and marks the one shown as seen', async () => {
@@ -1029,6 +1070,203 @@ describe('WorkflowsPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Run details' }));
       expect(await screen.findByRole('region', { name: 'What this run did' })).toBeInTheDocument();
       expect(ipc.getWorkflowRun).toHaveBeenCalledWith('r1');
+    });
+  });
+
+  describe('the open workflow', () => {
+    const finished = { ...finishedRun.run, id: 'r3', status: 'completed' as const, error: null };
+
+    it('has Steps, Runs and Results tabs, with counts, and opens on Steps', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([
+        finished,
+        { ...finished, id: 'r2', outputs: [{ kind: 'document', title: 'Briefing', stepId: 'save', artifactId: 'a1', conversationId: 'c1', preview: 'x' }] },
+      ]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const tabs = await screen.findByRole('tablist');
+      expect(within(tabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Steps', 'Runs 2', 'Results 1']);
+      expect(screen.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', screen.getByRole('tab', { name: 'Steps' }).id);
+      fireEvent.click(screen.getByRole('tab', { name: 'Runs 2' }));
+      expect(screen.getByRole('tab', { name: 'Runs 2' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('summarises what starts it, what it asks for, its model and its folder', async () => {
+      ipc.getWorkflow.mockResolvedValue({
+        ...record,
+        definition: {
+          ...briefing.definition,
+          trigger: { kind: 'folder' },
+          folder: 'E:\\notes\\inbox',
+          model: { provider: 'openrouter', model: 'deepseek/flash' },
+        },
+      });
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      expect(await screen.findByRole('button', { name: 'Starts A new file in the folder' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Asks for First site, Second site/ })).toBeInTheDocument();
+      expect(screen.getByText('deepseek/flash')).toBeInTheDocument();
+      expect(screen.getByText('inbox')).toBeInTheDocument();
+    });
+
+    it('says "Same as chat" and "None" by default, and leaves out Asks for when it asks for nothing', async () => {
+      ipc.getWorkflow.mockResolvedValue({ ...record, definition: { steps: briefing.definition.steps } });
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      expect(await screen.findByRole('button', { name: 'Starts Only when I run it' })).toBeInTheDocument();
+      expect(screen.getByText('Same as chat')).toBeInTheDocument();
+      expect(screen.getByText('None')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Asks for/ })).toBeNull();
+    });
+
+    it('opens the Start node from the Starts chip, with the values for the next run', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('tab', { name: 'Runs' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Starts / }));
+      expect(screen.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
+      const panel = screen.getByRole('complementary', { name: 'Step details' });
+      expect(within(panel).getByRole('heading', { name: 'Start' })).toBeInTheDocument();
+      expect(within(panel).getByRole('region', { name: 'Values for the next run' })).toBeInTheDocument();
+      expect(within(panel).getByRole('textbox', { name: 'First site' })).toBeInTheDocument();
+      expect(await within(panel).findByRole('region', { name: 'Schedule' })).toBeInTheDocument();
+      // Back returns to the latest run.
+      fireEvent.click(within(panel).getByRole('button', { name: 'Back' }));
+      expect(within(panel).getByRole('region', { name: 'Latest run' })).toBeInTheDocument();
+    });
+
+    it('switches the side panel between the latest run, the Start node and a step', async () => {
+      localStorage.setItem('conduit:v12-workflow-view', 'canvas');
+      ipc.listWorkflowRuns.mockResolvedValue([finished]);
+      const { container } = render(<WorkflowsPage onStatus={vi.fn()} />);
+      const panel = await screen.findByRole('complementary', { name: 'Step details' });
+      expect(within(panel).getByRole('region', { name: 'Latest run' })).toBeInTheDocument();
+      expect(within(panel).getByRole('region', { name: 'Recent runs' })).toBeInTheDocument();
+      const node = (id: string) => container.querySelector(`.react-flow__node[data-id="${id}"]`) as HTMLElement;
+      await waitFor(() => expect(node('read')).not.toBeNull());
+      fireEvent.click(node('read'));
+      expect(within(panel).queryByRole('region', { name: 'Latest run' })).toBeNull();
+      expect(within(panel).getByRole('button', { name: 'Back' })).toBeInTheDocument();
+      fireEvent.click(within(panel).getByRole('button', { name: 'Back' }));
+      expect(within(panel).getByRole('region', { name: 'Latest run' })).toBeInTheDocument();
+      fireEvent.click(node('__start'));
+      expect(within(panel).getByRole('heading', { name: 'Start' })).toBeInTheDocument();
+    });
+
+    it('opens a recent run in the Runs tab', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([finished, { ...finished, id: 'r2', status: 'failed' as const }]);
+      ipc.getWorkflowRun.mockImplementation(async (id: string) => ({ ...finishedRun, run: { ...finishedRun.run, id, status: id === 'r2' ? 'failed' : 'completed' } }));
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const recent = await screen.findByRole('region', { name: 'Recent runs' });
+      fireEvent.click(within(recent).getByRole('button', { name: /Failed/ }));
+      await waitFor(() => expect(screen.getByRole('tab', { name: /^Runs/ })).toHaveAttribute('aria-selected', 'true'));
+      expect(ipc.getWorkflowRun).toHaveBeenCalledWith('r2');
+      const list = screen.getByRole('list', { name: 'Recent runs' });
+      await waitFor(() => expect(within(list).getAllByRole('button')[1]).toHaveAttribute('aria-current', 'true'));
+    });
+
+    it('lists every run in the Runs tab, opens the newest, and opens another when picked', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([finished, { ...finished, id: 'r2', trigger: 'schedule' }]);
+      ipc.getWorkflowRun.mockImplementation(async (id: string) => ({ ...finishedRun, run: { ...finishedRun.run, id } }));
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('tab', { name: 'Runs 2' }));
+      expect(await screen.findByRole('region', { name: 'What this run did' })).toBeInTheDocument();
+      expect(ipc.getWorkflowRun).toHaveBeenCalledWith('r3');
+      const list = screen.getByRole('list', { name: 'Recent runs' });
+      const rows = within(list).getAllByRole('button');
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toHaveAttribute('aria-current', 'true');
+      fireEvent.click(rows[1]);
+      await waitFor(() => expect(ipc.getWorkflowRun).toHaveBeenCalledWith('r2'));
+      await waitFor(() => expect(rows[1]).toHaveAttribute('aria-current', 'true'));
+    });
+
+    it('shows a run waiting for an answer above that run in the Runs tab', async () => {
+      const live = { ...finished, id: 'r9', status: 'paused' as const, finishedAt: null };
+      ipc.listWorkflowRuns.mockResolvedValue([live]);
+      ipc.getWorkflowRun.mockResolvedValue({ run: live, steps: [] });
+      ipc.listWorkflowQuestions.mockResolvedValue([
+        { runId: 'r9', workflowId: 'w1', workflowName: 'Morning briefing', stepId: 'ask', question: 'Which topic?', choices: [], default: null, requestedAt: '2026-09-29T06:00:00.000Z', expiresAt: '2026-09-30T06:00:00.000Z' },
+      ]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('tab', { name: /^Runs/ }));
+      const detail = await screen.findByRole('region', { name: 'What this run did' });
+      const panel = screen.getByRole('group', { name: 'Waiting for you' });
+      expect(panel).toHaveTextContent('Which topic?');
+      expect(panel.compareDocumentPosition(detail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('keeps Delete in the More menu, which Escape closes', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const more = await screen.findByRole('button', { name: 'More actions' });
+      expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+      fireEvent.click(more);
+      expect(more).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeEnabled();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+    });
+  });
+
+  describe('editing', () => {
+    it('hides the workflow list while editing and brings it back after Cancel', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+      expect(screen.queryByRole('navigation', { name: 'Workflows' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'New workflow' })).toBeNull();
+      expect(document.querySelector('.wf-page')).toHaveClass('is-editing');
+      expect(screen.getByText('Editing')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(await screen.findByRole('navigation', { name: 'Workflows' })).toBeInTheDocument();
+      expect(ipc.updateWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('goes back with the back button, as Cancel does', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+      fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      expect(await screen.findByRole('heading', { name: 'Morning briefing' })).toBeInTheDocument();
+      expect(ipc.updateWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('saves under the name typed in the bar, and disables Save for an empty name', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+      const name = screen.getByRole('textbox', { name: 'Name' });
+      expect(name).toHaveValue('Morning briefing');
+      fireEvent.change(name, { target: { value: '   ' } });
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+      fireEvent.change(name, { target: { value: 'Renamed' } });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(ipc.updateWorkflow).toHaveBeenCalledWith('w1', 'Renamed', 'Two sites, one briefing', briefing.definition));
+    });
+
+    it('counts what needs fixing in a pill that lists the problems, and keeps Save off until they are gone', async () => {
+      ipc.validateWorkflow.mockResolvedValue(['First problem.', 'Second problem.']);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+      const pill = await screen.findByRole('button', { name: '2 things to fix' });
+      expect(screen.queryByText('First problem.')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+      fireEvent.click(pill);
+      expect(pill).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('First problem.')).toBeInTheDocument();
+      expect(screen.getByText('Second problem.')).toBeInTheDocument();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(pill).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByText('First problem.')).toBeNull();
+      // No problems, no pill.
+      ipc.validateWorkflow.mockResolvedValue([]);
+      fireEvent.click(screen.getByRole('button', { name: 'Edit as JSON' }));
+      await waitFor(() => expect(screen.queryByRole('button', { name: /to fix$/ })).toBeNull());
+    });
+
+    it('shows a failed save under the bar', async () => {
+      ipc.updateWorkflow.mockRejectedValue({ message: 'The name is taken.' });
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('The name is taken.');
     });
   });
 

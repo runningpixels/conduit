@@ -1,0 +1,133 @@
+/* Workflow editor (workflows/WorkflowEditor.tsx and canvas/CanvasStepsEditor.tsx): the editing workspace, Start panel and Add a step menu. */
+
+/* The editor fills the height its page gives it: the canvas (or the list) below, no page scroll. */
+.wf-editor { display: flex; flex-direction: column; gap: 0; min-height: 0; height: 100%; }
+.wfe-canvas-host { flex: 1; min-height: 0; height: 100%; gap: 0; }
+.wfe-canvas-host .wfc { flex: 1; min-height: 0; }
+
+/* Readable type in the editor: labels 14px in ink, help 14px in ink-2, nothing under 13px. */
+.wf-editor .wf-field > span,
+.wf-editor .wfe-field > span { color: var(--ink); font-size: var(--fs-5xl); }
+.wf-editor .wf-muted { color: var(--ink-2); font-size: var(--fs-5xl); }
+.wf-editor .wf-check { color: var(--ink-2); }
+.wf-editor .sel { font-size: var(--fs-5xl); height: 32px; }
+.wf-editor .mem-input { font-size: var(--fs-5xl); }
+.wf-editor .btn { font-size: var(--fs-5xl); }
+
+/* ── Add a step ──────────────────────────────────────────────────────────── */
+.wfe-add { position: relative; }
+.wfe-menu {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  left: 0;
+  z-index: 30;
+  width: min(520px, 86vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-tab-active);
+}
+.wfe-menu-where { margin: 0 0 var(--sp-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: var(--fs-3xl); }
+.wfe-menu-groups { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4) var(--sp-5); }
+.wfe-menu-group { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.wfe-menu-heading { margin-bottom: var(--sp-1); color: var(--ink); font-size: var(--fs-5xl); font-weight: 600; }
+.wfe-menu-item {
+  padding: 6px var(--sp-2);
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--ink-2);
+  font-size: var(--fs-5xl);
+}
+.wfe-menu-item:hover,
+.wfe-menu-item:focus-visible { background: var(--card-hi); color: var(--ink); outline: none; }
+@media (max-width: 560px) {
+  .wfe-menu-groups { grid-template-columns: 1fr; }
+}
+
+/* ── The list view: the cards left, the Start panel right ────────────────── */
+.wfe-list-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 420px; }
+.wfe-list-col { min-height: 0; overflow-y: auto; padding: var(--sp-5); display: grid; gap: var(--sp-4); align-content: start; }
+.wfe-list-bar { position: relative; z-index: 2; display: flex; align-items: center; gap: var(--sp-3); }
+.wfe-start-col { min-height: 0; overflow-y: auto; padding: var(--sp-5); background: var(--bg-side); border-left: 1px solid var(--line); font-size: var(--fs-5xl); }
+@media (max-width: 1100px) {
+  .wfe-list-layout { grid-template-columns: 1fr; grid-template-rows: minmax(320px, 1fr) auto; }
+  .wfe-start-col { border-left: 0; border-top: 1px solid var(--line); }
+}
+
+/* ── Panel headings ──────────────────────────────────────────────────────── */
+.wfe-title { margin: 0; color: var(--ink); font-size: var(--fs-10xl); font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.wfe-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.wfe-kicker { color: var(--ink-3); font-size: var(--fs-3xl); }
+.wfe-step-panel { display: grid; gap: var(--sp-4); }
+.wfe-step-head { display: grid; gap: var(--sp-1); }
+.wfe-step-line { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.wfe-form { display: grid; gap: var(--sp-3); }
+
+/* ── The Start panel ─────────────────────────────────────────────────────── */
+.wfe-start { display: grid; gap: var(--sp-5); }
+.wfe-start-head { display: grid; gap: var(--sp-1); }
+.wfe-section { display: grid; gap: var(--sp-3); min-width: 0; }
+.wfe-h { margin: 0; padding: 0; color: var(--ink); font-size: var(--fs-8xl); font-weight: 600; }
+.wfe-help { margin: 0; color: var(--ink-2); font-size: var(--fs-5xl); }
+.wfe-label { color: var(--ink); font-size: var(--fs-5xl); }
+.wfe-error { margin: 0; color: var(--err); font-size: var(--fs-5xl); white-space: pre-wrap; }
+.wfe-field { display: grid; gap: var(--sp-1); }
+.wfe-notes { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
+.wfe-check { display: flex; align-items: flex-start; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-5xl); }
+.wfe-check input { margin-top: 3px; }
+
+.wfe-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.wfe-fieldset > legend { margin-bottom: var(--sp-3); }
+.wfe-radio-group { display: grid; gap: var(--sp-2); }
+.wfe-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--fs-5xl);
+  cursor: pointer;
+}
+.wfe-radio:hover { border-color: var(--line-hi); }
+.wfe-radio.is-selected { border-color: var(--accent); background: var(--accent-soft); }
+.wfe-radio:focus-within { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+.wfe-radio-extra { display: grid; gap: var(--sp-3); padding: 0 var(--sp-1) var(--sp-2) var(--sp-5); }
+
+.wfe-inputs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--sp-2); align-items: center; }
+.wfe-col-head { color: var(--ink-3); font-size: var(--fs-3xl); }
+.wfe-add-value { justify-self: start; }
+
+.wfe-settings { padding-top: var(--sp-5); border-top: 1px solid var(--line); }
+.wfe-setting { display: grid; gap: var(--sp-2); }
+.wfe-setting-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.wfe-setting-text { display: grid; gap: var(--sp-1); min-width: 0; }
+.wfe-setting-actions { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-1); }
+.wfe-setting-actions .btn { white-space: nowrap; }
+.wfe-path { overflow-wrap: anywhere; color: var(--ink-2); font-family: var(--font-mono); font-size: var(--fs-3xl); }
+
+/* ── Inside a step's form ────────────────────────────────────────────────── */
+.wfe-failure { border-top: 1px solid var(--line-soft); padding-top: var(--sp-3); }
+.wfe-failure > summary { cursor: pointer; color: var(--ink); font-size: var(--fs-5xl); }
+.wfe-failure-now { color: var(--ink-3); }
+.wfe-failure-now::before { content: "· "; }
+.wfe-failure-body { display: grid; gap: var(--sp-3); padding-top: var(--sp-3); }
+/* "+ Insert a value": still a select, drawn as a small dashed button. */
+.wfe-insert {
+  appearance: none;
+  height: auto;
+  padding: 4px var(--sp-3);
+  border: 1px dashed var(--line-hi);
+  background: transparent;
+  background-image: none;
+  color: var(--ink-2);
+  font-size: var(--fs-3xl);
+  cursor: pointer;
+}
+.wf-editor .wfe-insert { height: auto; font-size: var(--fs-3xl); }
+.wfe-insert:hover { color: var(--ink); border-color: var(--accent-line); }

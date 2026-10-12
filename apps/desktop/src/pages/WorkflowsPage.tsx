@@ -20,7 +20,10 @@ import { documentEditSummary } from '../workflows/documentEditSummary';
 import { UndoUpdate } from '../workflows/UndoUpdate';
 import { useConnectorNames } from '../workflows/useConnectorNames';
 import { WorkflowCanvas } from '../workflows/canvas/WorkflowCanvas';
+import { START_ID } from '../workflows/canvas/canvasModel';
 import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../shell/uiPrefs';
+import { MoreMenu, SummaryChips, WorkflowTabs, tabPanelId, tabButtonId, type WorkflowTab } from '../workflows/WorkflowViewParts';
+import { WorkflowEditBar } from '../workflows/WorkflowEditBar';
 import {
   connectorStepSummary,
   dataStepSummary,
@@ -92,6 +95,17 @@ const STATUS_CLASS: Record<string, string> = {
   skipped: 'wf-status wf-status-skipped',
   stopped: 'wf-status wf-status-stopped',
 };
+
+/** The colour of a run's status word, written out so the stylesheet's dead-rule check sees the classes. */
+const RUN_TONE: Record<string, string> = {
+  completed: 'wfv-tone wfv-tone-ok',
+  failed: 'wfv-tone wfv-tone-err',
+  running: 'wfv-tone wfv-tone-warn',
+  paused: 'wfv-tone wfv-tone-warn',
+  stopped: 'wfv-tone wfv-tone-muted',
+};
+
+const NO_STEPS: WorkflowStep[] = [];
 
 /// `draft` is the editor, for a new workflow (`workflowId: null`) or an
 /// existing one. `json` is set while the JSON view is open.
@@ -185,14 +199,14 @@ export function WorkflowsPage({
   const [selectedResultId, setSelectedResultId] = useState<string | null>(
     focus?.view === 'results' ? (focus.runId ?? null) : null,
   );
-  /// A run picked with "Open" in the run list; the result section shows it instead of the latest.
-  const [shownResultId, setShownResultId] = useState<string | null>(null);
-  /// The "How it's built" section; `null` follows the default (open until the first run).
-  const [stepsOpen, setStepsOpen] = useState<boolean | null>(null);
+  /// The open workflow's tab, the node selected in its Steps tab (a step id or the start node), and the
+  /// result picked in its Results tab. Component state only; a different workflow starts over.
+  const [tab, setTab] = useState<WorkflowTab>('steps');
+  const [selectedStep, setSelectedStep] = useState<string | null>(null);
+  const [resultSel, setResultSel] = useState<string | null>(null);
+  const [stepsPref, setStepsPref] = useState<WorkflowViewPref>(() => readWorkflowView());
   /// A run to open on its workflow page once that workflow has loaded ("Run details" from Results).
   const pendingRunRef = useRef<string | null>(null);
-  const runDetailRef = useRef<HTMLDivElement | null>(null);
-  const scrollToRun = useRef(false);
   /// This page started a run and is waiting for it to end.
   const [started, setStarted] = useState(false);
   /// Reviews the backend has not accepted an answer to yet.
@@ -400,13 +414,12 @@ export function WorkflowsPage({
       .catch(() => {});
   }
 
-  /// Open a run on its workflow page, with its steps showing.
+  /// Open a run on its workflow page, in the Runs tab with its steps showing.
   function showRunDetails(workflowId: string, runId: string) {
     setView('workflows');
     setMode({ kind: 'view' });
-    scrollToRun.current = true;
     if (workflowId === selectedId) {
-      void openRunDetail(runId);
+      void openRunInTab(runId);
     } else {
       pendingRunRef.current = runId;
       setSelectedId(workflowId);
@@ -498,8 +511,9 @@ export function WorkflowsPage({
     }
     let cancelled = false;
     setOpenRun(null);
-    setShownResultId(null);
-    setStepsOpen(null);
+    setTab('steps');
+    setSelectedStep(null);
+    setResultSel(null);
     void Promise.all([getWorkflow(selectedId), listWorkflowRuns(selectedId, 20)]).then(
       ([nextRecord, nextRuns]) => {
         if (cancelled) return;
@@ -510,7 +524,9 @@ export function WorkflowsPage({
         if (pending) {
           void getWorkflowRun(pending).then(
             (detail) => {
-              if (!cancelled) setOpenRun(detail);
+              if (cancelled) return;
+              setOpenRun(detail);
+              setTab('runs');
             },
             () => {},
           );
@@ -648,13 +664,28 @@ export function WorkflowsPage({
     }
   }
 
-  async function openRunDetail(runId: string) {
+  async function openRunDetail(runId: string): Promise<boolean> {
     try {
       setOpenRun(await getWorkflowRun(runId));
+      return true;
     } catch (e) {
       onStatus(t('workspace.workflows.status.loadFailed', { error: errorText(e) }));
+      return false;
     }
   }
+
+  /// Open a run and switch to the Runs tab once it is loaded (so the tab does not pick the newest first).
+  async function openRunInTab(runId: string) {
+    if (await openRunDetail(runId)) setTab('runs');
+  }
+
+  // The Runs tab always has a run open: the newest, until one is picked. A run
+  // in progress is followed by the poll instead.
+  useEffect(() => {
+    if (tab !== 'runs' || openRun || running || !runs[0]) return;
+    void openRunDetail(runs[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, openRun, running, runs]);
 
   /// The definition being edited, from whichever view is open.
   function currentDefinition(m: Extract<Mode, { kind: 'draft' }>): WorkflowDefinition | null {
@@ -692,6 +723,11 @@ export function WorkflowsPage({
     } finally {
       setBusy(false);
     }
+  }
+
+  function cancelEdit() {
+    setMode({ kind: 'view' });
+    setEditError(null);
   }
 
   /// Switch between the visual editor and the JSON view, keeping the draft.
@@ -751,14 +787,24 @@ export function WorkflowsPage({
                 ? t('workspace.workflows.run.skipped')
                 : t('workspace.workflows.run.running');
 
-  // "Run details" asked for the steps: bring them into view once they are on screen.
-  useEffect(() => {
-    if (!openRun || !scrollToRun.current) return;
-    scrollToRun.current = false;
-    runDetailRef.current?.scrollIntoView?.({ block: 'start' });
-  }, [openRun]);
+  const runWord = (r: WorkflowRun) => (isNothingNew(r) ? t('workspace.workflows.run.nothingNew') : statusLabel(r.status));
+  const runTone = (r: WorkflowRun) => (isNothingNew(r) ? RUN_TONE.stopped : (RUN_TONE[r.status] ?? RUN_TONE.stopped));
+  const stepNames = useConnectorNames(record?.definition.steps ?? NO_STEPS);
+  /// This workflow's runs that saved something, for its Results tab.
+  const wfResults = useMemo(() => runs.filter((r) => primaryOutput(r) != null), [runs]);
 
   const effectiveView = !loaded || summaries.length > 0 ? view : 'workflows';
+  // A result picked in the Results tab is seen once it is on screen.
+  const shownWfResult =
+    tab === 'results' && mode.kind === 'view' && effectiveView === 'workflows' && record
+      ? (wfResults.find((r) => r.id === resultSel) ?? wfResults[0] ?? null)
+      : null;
+  const shownWfResultId = shownWfResult?.id ?? null;
+  const shownWfResultUnread = shownWfResult != null && isUnread(shownWfResult);
+  useEffect(() => {
+    if (shownWfResultId && shownWfResultUnread) markSeen([shownWfResultId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownWfResultId, shownWfResultUnread]);
   const unreadCount = results.filter((r) => isUnread(r.run)).length;
   const shownResult = results.find((r) => r.run.id === selectedResultId) ?? results[0] ?? null;
   // Seeing a result in the inbox marks it seen.
@@ -872,6 +918,9 @@ export function WorkflowsPage({
     </button>
   );
 
+  /// The editor takes the whole page (no workflow list); the open workflow fills the pane.
+  let editing = false;
+  let viewing = false;
   let detail;
   if (!loaded) {
     detail = <div className="artifact-skeleton" aria-hidden="true" />;
@@ -918,135 +967,102 @@ export function WorkflowsPage({
       />
     );
   } else if (mode.kind === 'draft') {
+    editing = true;
     detail = (
-      <section className="wf-edit" aria-label={t('workspace.workflows.edit.title')}>
-        {mode.notes && mode.notes.length > 0 ? (
-          <div className="wf-notes" role="group" aria-label={t('workspace.workflows.describe.notes')}>
-            <p className="wf-io-label">{t('workspace.workflows.describe.notes')}</p>
-            <ul>
-              {mode.notes.map((note, index) => (
-                <li key={`${index}-${note}`}>
-                  <label className="wf-check">
-                    <input type="checkbox" />
-                    <span>{note}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        {mode.json == null ? (
-          <WorkflowEditor draft={mode.draft} onChange={(draft) => setMode({ ...mode, draft })} problems={problems} />
-        ) : (
-          <label className="wf-field">
-            <span>{t('workspace.workflows.edit.definition')}</span>
-            <textarea
-              className="mem-input wf-json"
-              spellCheck={false}
-              rows={18}
-              value={mode.json}
-              onChange={(e) => setMode({ ...mode, json: e.target.value })}
-            />
-          </label>
-        )}
-        {problems.length > 0 ? (
-          <div className="wf-problems" role="status">
-            <p className="wf-io-label">{t('workspace.workflows.editor.problems')}</p>
-            <ul>
-              {problems.map((problem) => (
-                <li key={problem}>{problem}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+      <section className="wfv-edit" aria-label={t('workspace.workflows.edit.title')}>
+        <WorkflowEditBar
+          name={mode.draft.name}
+          onName={(name) => setMode({ ...mode, draft: { ...mode.draft, name } })}
+          problems={problems}
+          json={mode.json != null}
+          onToggleJson={toggleJson}
+          onCancel={cancelEdit}
+          onSave={() => void saveDraft()}
+          busy={busy}
+        />
         {editError ? (
-          <p className="wf-error" role="alert">
+          <p className="wf-error wfv-edit-error" role="alert">
             {editError}
           </p>
         ) : null}
-        <div className="mem-actions">
-          <button
-            type="button"
-            className="btn primary"
-            onClick={() => void saveDraft()}
-            disabled={busy || problems.length > 0 || !mode.draft.name.trim()}
-          >
-            {t('workspace.workflows.edit.save')}
-          </button>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => {
-              setMode({ kind: 'view' });
-              setEditError(null);
-            }}
-          >
-            {t('common.actions.cancel')}
-          </button>
-          <button type="button" className="btn ghost wf-json-toggle" onClick={toggleJson}>
-            {mode.json == null ? t('workspace.workflows.editor.showJson') : t('workspace.workflows.editor.showVisual')}
-          </button>
-        </div>
+        {mode.json == null ? (
+          <div className="wfv-edit-body">
+            <WorkflowEditor
+              draft={mode.draft}
+              onChange={(draft) => setMode({ ...mode, draft })}
+              problems={problems}
+              notes={mode.notes}
+            />
+          </div>
+        ) : (
+          <div className="wfv-edit-body wfv-edit-json">
+            <label className="wf-field">
+              <span>{t('workspace.workflows.edit.definition')}</span>
+              <textarea
+                className="mem-input wf-json wfv-json"
+                spellCheck={false}
+                value={mode.json}
+                onChange={(e) => setMode({ ...mode, json: e.target.value })}
+              />
+            </label>
+          </div>
+        )}
       </section>
     );
   } else if (!record) {
     detail = <div className="artifact-skeleton" aria-hidden="true" />;
   } else {
+    viewing = true;
     const workflowInputs = record.definition.inputs ?? [];
     const inputLabels = Object.fromEntries(workflowInputs.map((i) => [i.id, i.label]));
     const nextRunAt = summaries.find((w) => w.id === record.id)?.nextRunAt;
-    // The newest run that ended with something to show (or failed), and the run picked from the list.
+    // The newest run that ended with something to show (or failed).
     const latest = runs.find((r) => !isLive(r.status) && (primaryOutput(r) != null || r.status === 'failed')) ?? null;
-    const shown = (shownResultId ? runs.find((r) => r.id === shownResultId) : null) ?? latest;
-    detail = (
-      <div className="wf-detail" ref={detailRef}>
-        <header className="wf-detail-head">
-          <div>
-            <h3 className="wf-name">{record.name}</h3>
-            {record.description ? <p className="wf-description">{record.description}</p> : null}
-            {nextRunAt ? (
-              <span className="wf-flag wf-detail-next">
-                {t('workspace.workflows.list.nextRun', { when: formatNextRun(nextRunAt, fmt.locale) })}
-              </span>
-            ) : null}
-          </div>
-          <div className="mem-actions">
-            <button type="button" className="btn primary" onClick={() => void run()} disabled={running || busy}>
-              {liveRun?.status === 'paused'
-                ? t('workspace.workflows.run.paused')
-                : running
-                  ? t('workspace.workflows.run.running')
-                  : t('workspace.workflows.run.now')}
-            </button>
-            {running ? (
-              <button type="button" className="btn" onClick={() => void stop()} disabled={stopping}>
-                {stopping ? t('workspace.workflows.run.stopping') : t('workspace.workflows.run.stop')}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn ghost"
-              disabled={busy || running}
-              onClick={() => {
-                setEditError(null);
-                setMode({
-                  kind: 'draft',
-                  workflowId: record.id,
-                  draft: { name: record.name, description: record.description ?? '', definition: record.definition },
-                  json: null,
-                });
-              }}
-            >
-              {t('workspace.workflows.actions.edit')}
-            </button>
-            <button type="button" className="btn ghost" disabled={busy || running} onClick={() => void remove()}>
-              {t('common.actions.delete')}
-            </button>
-          </div>
-        </header>
+    const recent = runs.slice(0, 3);
+    const resultRun = wfResults.find((r) => r.id === resultSel) ?? wfResults[0] ?? null;
+    const canvasRun = openRun && openRun.run.workflowId === record.id ? openRun : null;
+    const waitingStepId = openRun
+      ? (reviews.find((r) => r.runId === openRun.run.id)?.stepId ??
+        questions.find((q) => q.runId === openRun.run.id)?.stepId ??
+        null)
+      : null;
+    const branchy = record.definition.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'agent');
+    const stepsView = stepsPref === 'auto' ? (branchy ? 'canvas' : 'list') : stepsPref;
+    const chooseStepsView = (next: 'canvas' | 'list') => {
+      setStepsPref(next);
+      writeWorkflowView(next);
+    };
+    const runDuration = (r: WorkflowRun) => {
+      const ms = durationMs(r.startedAt, r.finishedAt);
+      return ms != null ? fmt.duration(ms) : null;
+    };
 
+    const stepsToggle = (
+      <div className="wf-view-toggle" role="group" aria-label={t('workspace.workflows.canvas.viewLabel')}>
+        <button
+          type="button"
+          className={`wf-view-btn${stepsView === 'canvas' ? ' active' : ''}`}
+          aria-pressed={stepsView === 'canvas'}
+          onClick={() => chooseStepsView('canvas')}
+        >
+          {t('workspace.workflows.canvas.viewCanvas')}
+        </button>
+        <button
+          type="button"
+          className={`wf-view-btn${stepsView === 'list' ? ' active' : ''}`}
+          aria-pressed={stepsView === 'list'}
+          onClick={() => chooseStepsView('list')}
+        >
+          {t('workspace.workflows.canvas.viewList')}
+        </button>
+      </div>
+    );
+
+    /// The permission reviews and "Ask me" questions this workflow is waiting on (one run's, when given).
+    const waiting = (runId?: string) => (
+      <>
         {reviews
-          .filter((review) => review.workflowId === record.id)
+          .filter((review) => review.workflowId === record.id && (!runId || review.runId === runId))
           .map((review) => (
             <section
               key={review.runId}
@@ -1095,9 +1111,8 @@ export function WorkflowsPage({
               ) : null}
             </section>
           ))}
-
         {questions
-          .filter((question) => question.workflowId === record.id)
+          .filter((question) => question.workflowId === record.id && (!runId || question.runId === runId))
           .map((question) => (
             <QuestionPanel
               key={question.runId}
@@ -1106,150 +1121,295 @@ export function WorkflowsPage({
               onAnswer={(text) => reply(question, text)}
             />
           ))}
+      </>
+    );
 
-        {shown ? (
-          <section className="grp" aria-label={t('workspace.workflows.result.latest')}>
-            <div className="grp-label">
-              {shown === latest
-                ? t('workspace.workflows.result.latest')
-                : t('workspace.workflows.result.from', { when: fmt.timeAgo(shown.startedAt) })}
-            </div>
-            <ResultView
-              key={shown.id}
-              run={shown}
-              workflowName={record.name}
-              compact={shown === latest}
-              onOpenDocument={onOpenDocument}
-              onOpenDeck={onOpenDeck}
-              onOpenDraft={onOpenDraft}
-              onRunDetails={() => {
-                scrollToRun.current = true;
-                void openRunDetail(shown.id);
-              }}
-            />
-          </section>
-        ) : null}
+    const backButton = (
+      <button type="button" className="btn ghost wfv-back" onClick={() => setSelectedStep(null)}>
+        <span aria-hidden="true">←</span> {t('workspace.workflows.view.back')}
+      </button>
+    );
 
-        <section className="grp" aria-label={t('workspace.workflows.runs.title')}>
-          <div className="grp-label">{t('workspace.workflows.runs.title')}</div>
-          {runs.length === 0 ? (
-            <p className="wf-muted">{t('workspace.workflows.runs.none')}</p>
-          ) : (
-            <ul className="wf-runs">
-              {runs.map((r) => {
-                const ms = durationMs(r.startedAt, r.finishedAt);
-                const hasResult = primaryOutput(r) != null;
-                return (
-                  <li key={r.id} className="wf-run-item">
-                    <button
-                      type="button"
-                      className="wf-run-row"
-                      aria-current={openRun?.run.id === r.id ? 'true' : undefined}
-                      onClick={() => void openRunDetail(r.id)}
-                    >
-                      {hasResult && isUnread(r) ? (
-                        <span className="wf-unread-dot" role="img" aria-label={t('workspace.workflows.results.unread')} />
-                      ) : null}
-                      <span className={STATUS_CLASS[r.status] ?? 'wf-status'}>
-                        {isNothingNew(r) ? t('workspace.workflows.run.nothingNew') : statusLabel(r.status)}
-                      </span>
-                      <span>{fmt.timeAgo(r.startedAt)}</span>
-                      {runTriggerLabel(r, t) ? <span className="wf-muted wf-run-trigger">{runTriggerLabel(r, t)}</span> : null}
-                      {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
-                    </button>
-                    {hasResult ? (
-                      <button
-                        type="button"
-                        className="btn ghost wf-run-open"
-                        aria-label={t('workspace.workflows.runs.openLabel', { when: fmt.timeAgo(r.startedAt) })}
-                        onClick={() => setShownResultId(r.id)}
-                      >
-                        {t('workspace.workflows.runs.open')}
-                      </button>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        {openRun ? (
-          <div ref={runDetailRef}>
-            <RunDetail
-              detail={openRun}
-              steps={record.definition.steps}
-              labels={inputLabels}
-              statusLabel={statusLabel}
-              onOpenDocument={onOpenDocument}
-              onOpenDeck={onOpenDeck}
-              onOpenDraft={onOpenDraft}
-              onRestoreDocument={onRestoreDocument}
-              canRerun={!running && !busy}
-              onRerunFrom={(stepId) => void run(() => rerunWorkflowFrom(openRun.run.id, stepId))}
+    /// The column beside the steps: the start node's values and schedule, a step's details, or the latest run.
+    const renderPanel = (id: string | null, details: ReactNode) => {
+      if (id === START_ID) {
+        return (
+          <div className="wfv-panel-body">
+            {backButton}
+            <h4 className="wfv-h">{t('workspace.workflows.canvas.start')}</h4>
+            {workflowInputs.length > 0 ? (
+              <section className="wfv-section" aria-label={t('workspace.workflows.view.nextRunValues')}>
+                <h5 className="wfv-h wfv-h-sub">{t('workspace.workflows.view.nextRunValues')}</h5>
+                {workflowInputs.map((input) => (
+                  <label key={input.id} className="wf-field">
+                    <span>{input.label}</span>
+                    <input
+                      className="mem-input"
+                      value={inputs[input.id] ?? ''}
+                      onChange={(e) => setInputs({ ...inputs, [input.id]: e.target.value })}
+                      disabled={running}
+                    />
+                  </label>
+                ))}
+              </section>
+            ) : null}
+            <ScheduleSection
+              workflowId={record.id}
+              refreshKey={refreshKey}
+              definitionVersion={record.version}
+              trigger={record.definition.trigger}
+              folder={record.definition.folder}
+              onStatus={onStatus}
+              onChanged={() => void refreshList()}
             />
           </div>
-        ) : null}
-
-        {workflowInputs.length > 0 ? (
-          <section className="grp wf-run-box" aria-label={t('workspace.workflows.inputs.title')}>
-            <div className="grp-label">{t('workspace.workflows.inputs.title')}</div>
-            {workflowInputs.map((input) => (
-              <label key={input.id} className="wf-field">
-                <span>{input.label}</span>
-                <input
-                  className="mem-input"
-                  value={inputs[input.id] ?? ''}
-                  onChange={(e) => setInputs({ ...inputs, [input.id]: e.target.value })}
-                  disabled={running}
+        );
+      }
+      if (id) {
+        return (
+          <div className="wfv-panel-body">
+            {backButton}
+            {details}
+          </div>
+        );
+      }
+      return (
+        <div className="wfv-panel-body">
+          {waiting()}
+          <section className="wfv-section" aria-label={t('workspace.workflows.view.latestRun')}>
+            <h4 className="wfv-h">{t('workspace.workflows.view.latestRun')}</h4>
+            {latest ? (
+              <>
+                <p className="wfv-statusline">
+                  <span className={runTone(latest)}>
+                    <span className="wfv-dot" aria-hidden="true" />
+                    {runWord(latest)}
+                  </span>
+                  <span>{fmt.timeAgo(latest.startedAt)}</span>
+                  {runDuration(latest) ? <span>{runDuration(latest)}</span> : null}
+                </p>
+                <ResultView
+                  key={latest.id}
+                  run={latest}
+                  workflowName={record.name}
+                  compact
+                  onOpenDocument={onOpenDocument}
+                  onOpenDeck={onOpenDeck}
+                  onOpenDraft={onOpenDraft}
+                  onRunDetails={() => void openRunInTab(latest.id)}
                 />
-              </label>
-            ))}
+              </>
+            ) : (
+              <p className="wf-muted">{t('workspace.workflows.runs.none')}</p>
+            )}
           </section>
-        ) : null}
+          {recent.length > 0 ? (
+            <section className="wfv-section" aria-label={t('workspace.workflows.runs.title')}>
+              <h4 className="wfv-h">{t('workspace.workflows.runs.title')}</h4>
+              <ul className="wfv-recent">
+                {recent.map((r) => (
+                  <li key={r.id}>
+                    <button type="button" className="wfv-recent-row" onClick={() => void openRunInTab(r.id)}>
+                      <span className={runTone(r)}>{runWord(r)}</span>
+                      <span>{fmt.timeAgo(r.startedAt)}</span>
+                      {runDuration(r) ? <span>{runDuration(r)}</span> : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button type="button" className="btn ghost wfv-all-runs" onClick={() => setTab('runs')}>
+                {t('workspace.workflows.view.allRuns')}
+              </button>
+            </section>
+          ) : null}
+        </div>
+      );
+    };
 
-        <ScheduleSection
-          workflowId={record.id}
-          refreshKey={refreshKey}
-          definitionVersion={record.version}
-          trigger={record.definition.trigger}
-          folder={record.definition.folder}
-          onStatus={onStatus}
-          onChanged={() => void refreshList()}
+    detail = (
+      <div className="wfv" ref={detailRef}>
+        <header className="wfv-head">
+          <div className="wfv-title">
+            <h3 className="wfv-name">{record.name}</h3>
+            {record.description ? <p className="wfv-description">{record.description}</p> : null}
+          </div>
+          <div className="wfv-actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || running}
+              onClick={() => {
+                setEditError(null);
+                setMode({
+                  kind: 'draft',
+                  workflowId: record.id,
+                  draft: { name: record.name, description: record.description ?? '', definition: record.definition },
+                  json: null,
+                });
+              }}
+            >
+              {t('workspace.workflows.actions.edit')}
+            </button>
+            <MoreMenu deleteDisabled={busy || running} onDelete={() => void remove()} />
+            <button type="button" className="btn primary" onClick={() => void run()} disabled={running || busy}>
+              {liveRun?.status === 'paused'
+                ? t('workspace.workflows.run.paused')
+                : running
+                  ? t('workspace.workflows.run.running')
+                  : t('workspace.workflows.run.now')}
+            </button>
+            {running ? (
+              <button type="button" className="btn" onClick={() => void stop()} disabled={stopping}>
+                {stopping ? t('workspace.workflows.run.stopping') : t('workspace.workflows.run.stop')}
+              </button>
+            ) : null}
+          </div>
+        </header>
+
+        <SummaryChips
+          definition={record.definition}
+          nextRunAt={nextRunAt}
+          onOpenStart={() => {
+            setTab('steps');
+            setSelectedStep(START_ID);
+          }}
         />
 
-        <details
-          className="grp wf-built"
-          open={stepsOpen ?? runs.length === 0}
-          onToggle={(e) => setStepsOpen(e.currentTarget.open)}
-        >
-          <summary className="grp-label">{t('workspace.workflows.steps.built')}</summary>
-          <StepsView
-            definition={record.definition}
-            labels={inputLabels}
-            run={openRun && openRun.run.workflowId === record.id ? openRun : null}
-            waitingStepId={
-              openRun
-                ? (reviews.find((r) => r.runId === openRun.run.id)?.stepId ??
-                  questions.find((q) => q.runId === openRun.run.id)?.stepId ??
-                  null)
-                : null
-            }
-          />
-        </details>
+        <WorkflowTabs tab={tab} onTab={setTab} runCount={runs.length} resultCount={wfResults.length} />
+
+        {tab === 'steps' ? (
+          <div role="tabpanel" id={tabPanelId('steps')} aria-labelledby={tabButtonId('steps')} className="wfv-pane wfv-pane-steps">
+            {stepsView === 'canvas' ? (
+              <WorkflowCanvas
+                definition={record.definition}
+                labels={inputLabels}
+                connectorNames={stepNames}
+                run={canvasRun}
+                waitingStepId={waitingStepId}
+                selectedId={selectedStep}
+                onSelect={setSelectedStep}
+                toolbar={stepsToggle}
+                panel={(node, details) => renderPanel(node?.id ?? null, details)}
+              />
+            ) : (
+              <div className="wfv-listview">
+                <div className="wfv-listview-steps">
+                  {stepsToggle}
+                  <StepList steps={record.definition.steps} labels={inputLabels} connectorNames={stepNames} />
+                </div>
+                <aside className="wfv-panel" aria-label={t('workspace.workflows.canvas.inspector')}>
+                  {renderPanel(selectedStep === START_ID ? START_ID : null, null)}
+                </aside>
+              </div>
+            )}
+          </div>
+        ) : tab === 'runs' ? (
+          <div role="tabpanel" id={tabPanelId('runs')} aria-labelledby={tabButtonId('runs')} className="wfv-pane wfv-pane-split">
+            <div className="wfv-side">
+              {runs.length === 0 ? (
+                <p className="wf-muted">{t('workspace.workflows.runs.none')}</p>
+              ) : (
+                <ul className="wfv-runlist" aria-label={t('workspace.workflows.runs.title')}>
+                  {runs.map((r) => (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        className="wfv-run-row"
+                        aria-current={openRun?.run.id === r.id ? 'true' : undefined}
+                        onClick={() => void openRunDetail(r.id)}
+                      >
+                        <span className="wfv-run-top">
+                          <span className={runTone(r)}>{runWord(r)}</span>
+                          <span>{fmt.timeAgo(r.startedAt)}</span>
+                          {primaryOutput(r) != null && isUnread(r) ? (
+                            <span className="wf-unread-dot" role="img" aria-label={t('workspace.workflows.results.unread')} />
+                          ) : null}
+                        </span>
+                        <span className="wfv-run-sub">
+                          {[runTriggerLabel(r, t), runDuration(r)].filter(Boolean).join(' · ')}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="wfv-main">
+              {openRun ? (
+                <>
+                  {waiting(openRun.run.id)}
+                  <RunDetail
+                    detail={openRun}
+                    steps={record.definition.steps}
+                    labels={inputLabels}
+                    statusLabel={statusLabel}
+                    onOpenDocument={onOpenDocument}
+                    onOpenDeck={onOpenDeck}
+                    onOpenDraft={onOpenDraft}
+                    onRestoreDocument={onRestoreDocument}
+                    canRerun={!running && !busy}
+                    onRerunFrom={(stepId) => void run(() => rerunWorkflowFrom(openRun.run.id, stepId))}
+                  />
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div role="tabpanel" id={tabPanelId('results')} aria-labelledby={tabButtonId('results')} className="wfv-pane wfv-pane-split">
+            {resultRun ? (
+              <>
+                <div className="wfv-side">
+                  <ul className="wfv-runlist" aria-label={t('workspace.workflows.results.tabResults')}>
+                    {wfResults.map((r) => (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          className="wfv-run-row"
+                          aria-current={resultRun.id === r.id ? 'true' : undefined}
+                          onClick={() => setResultSel(r.id)}
+                        >
+                          <span className="wfv-run-top">
+                            <span className="wfv-result-title">{primaryOutput(r)?.title}</span>
+                            {isUnread(r) ? (
+                              <span className="wf-unread-dot" role="img" aria-label={t('workspace.workflows.results.unread')} />
+                            ) : null}
+                          </span>
+                          <span className="wfv-run-sub">{fmt.timeAgo(r.finishedAt ?? r.startedAt)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="wfv-main">
+                  <ResultView
+                    key={resultRun.id}
+                    run={resultRun}
+                    workflowName={record.name}
+                    onOpenDocument={onOpenDocument}
+                    onOpenDeck={onOpenDeck}
+                    onOpenDraft={onOpenDraft}
+                    onRunDetails={() => void openRunInTab(resultRun.id)}
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="wfv-empty">{t('workspace.workflows.view.resultsNone')}</p>
+            )}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <PageFrame
-      className="wf-page"
+      className={editing ? 'wf-page is-editing' : viewing ? 'wf-page is-viewing' : 'wf-page'}
       title={t('workspace.workflows.page.title')}
       subtitle={t('workspace.workflows.page.subtitle')}
       about={t('workspace.workflows.page.about')}
-      actions={summaries.length > 0 ? newButton : undefined}
-      list={summaries.length > 0 ? (effectiveView === 'results' ? resultRows : list) : undefined}
-      listHeader={summaries.length > 0 ? resultsHeader : undefined}
+      actions={summaries.length > 0 && !editing ? newButton : undefined}
+      list={summaries.length > 0 && !editing ? (effectiveView === 'results' ? resultRows : list) : undefined}
+      listHeader={summaries.length > 0 && !editing ? resultsHeader : undefined}
       listLabel={effectiveView === 'results' ? t('workspace.workflows.results.tabResults') : t('workspace.workflows.page.title')}
     >
       {detail}
@@ -1410,47 +1570,6 @@ function StarterPicker({
         </button>
       ) : null}
     </section>
-  );
-}
-
-/// The steps as a canvas or a list. The choice is remembered; until one is
-/// made, a workflow with loops, conditions or agent steps opens as a canvas.
-function StepsView({
-  definition,
-  labels,
-  run,
-  waitingStepId,
-}: {
-  definition: WorkflowDefinition;
-  labels: InputLabels;
-  run: WorkflowRunDetail | null;
-  waitingStepId: string | null;
-}) {
-  const t = useT();
-  const [pref, setPref] = useState<WorkflowViewPref>(() => readWorkflowView());
-  const names = useConnectorNames(definition.steps);
-  const branchy = definition.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'agent');
-  const view = pref === 'auto' ? (branchy ? 'canvas' : 'list') : pref;
-  const choose = (next: 'canvas' | 'list') => {
-    setPref(next);
-    writeWorkflowView(next);
-  };
-  return (
-    <div className="wf-steps-view">
-      <div className="wf-view-toggle" role="group" aria-label={t('workspace.workflows.canvas.viewLabel')}>
-        <button type="button" className={`wf-view-btn${view === 'canvas' ? ' active' : ''}`} aria-pressed={view === 'canvas'} onClick={() => choose('canvas')}>
-          {t('workspace.workflows.canvas.viewCanvas')}
-        </button>
-        <button type="button" className={`wf-view-btn${view === 'list' ? ' active' : ''}`} aria-pressed={view === 'list'} onClick={() => choose('list')}>
-          {t('workspace.workflows.canvas.viewList')}
-        </button>
-      </div>
-      {view === 'canvas' ? (
-        <WorkflowCanvas definition={definition} labels={labels} connectorNames={names} run={run} waitingStepId={waitingStepId} />
-      ) : (
-        <StepList steps={definition.steps} labels={labels} connectorNames={names} />
-      )}
-    </div>
   );
 }
 

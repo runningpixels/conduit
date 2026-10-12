@@ -3,8 +3,6 @@
  * steps; flow wires are solid, data wires dashed. A node's status tints its
  * border; the inspector sits beside the canvas. */
 
-.wf-steps-view { display: flex; flex-direction: column; gap: var(--sp-3); }
-.wf-steps-view > .wf-view-toggle { align-self: flex-start; min-width: 240px; }
 .wfc {
   position: relative;
   border: 1px solid var(--line);
@@ -44,18 +42,18 @@
 }
 .wfc-start { border-style: dashed; background: var(--card-hi); }
 .wfc-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.wfc-kind { font-size: var(--fs-sm); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.wfc-kind { font-size: var(--fs-xl); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .wfc-line {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   overflow: hidden;
-  font-size: var(--fs-3xl);
-  line-height: 1.35;
+  font-size: var(--fs-5xl);
+  line-height: 1.4;
 }
 .wfc-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
-.wfc-flag { padding: 2px 6px; border-radius: var(--r-pill); background: var(--card-hi); color: var(--ink-3); font-size: var(--fs-sm); white-space: nowrap; }
-.wfc-status { padding: 2px 7px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; background: var(--card-hi); }
+.wfc-flag { padding: 2px 8px; border-radius: var(--r-pill); background: var(--card-hi); color: var(--ink-2); font-size: var(--fs-xl); white-space: nowrap; }
+.wfc-status { padding: 2px 8px; border-radius: var(--r-pill); font-size: var(--fs-xl); font-weight: 600; white-space: nowrap; background: var(--card-hi); }
 .wfc-status-running { color: var(--warn); }
 .wfc-status-waiting { color: var(--warn); }
 .wfc-status-completed { color: var(--ok); }
@@ -73,8 +71,13 @@
 .wfc-step[data-status="failed"] { border-color: var(--err); }
 .wfc-step[data-status="skipped"],
 .wfc-step[data-status="stopped"] { opacity: .65; }
+/* A flagged step: the colour of the "Fix these" list and a label, so it never
+   reads as a second selection (the accent and --err are close in dark). */
 .wfc-step.has-problem,
-.wfc-loop.has-problem { border-color: var(--err); box-shadow: var(--shadow-tab-active); }
+.wfc-loop.has-problem { border-color: var(--warn); border-style: dashed; }
+.wfc-step.has-problem.is-selected,
+.wfc-loop.has-problem.is-selected { border-color: var(--accent); border-style: solid; }
+.wfc-needs-fix { flex: none; padding: 1px 7px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); font-size: var(--fs-sm); font-weight: 600; }
 @media (prefers-reduced-motion: no-preference) {
   .wfc-step[data-status="running"] { animation: wfc-pulse var(--duration-slow) var(--ease-standard) infinite alternate; }
 }
@@ -107,6 +110,16 @@
 .wfc.is-editing .wfc-loop-head { cursor: grab; }
 
 .wfc-controls { display: flex; gap: 4px; }
+.wfc-toolbar { display: flex; align-items: flex-start; gap: var(--sp-2); }
+/* The page layout: the canvas fills its container, the panel sits beside it. */
+.wfc.is-fill { display: grid; grid-template-columns: minmax(0, 1fr) 420px; height: 100%; min-height: 480px; border: 0; border-radius: 0; }
+.wfc.is-fill .wfc-canvas { height: 100%; }
+.wfc.is-fill .wfc-panel { position: static; width: auto; max-height: none; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: none; background: var(--bg-side); padding: var(--sp-5); font-size: var(--fs-5xl); }
+.wfc.is-fill.is-expanded { grid-template-rows: minmax(0, 1fr); }
+@media (max-width: 1100px) {
+  .wfc.is-fill { grid-template-columns: 1fr; grid-template-rows: minmax(420px, 1fr) auto; }
+  .wfc.is-fill .wfc-panel { border-left: 0; border-top: 1px solid var(--line); }
+}
 .wfc-controls .btn { background: var(--card); }
 
 .wfc-inspector {
@@ -127,36 +140,28 @@
 /* Editing: the step form is a column beside the canvas, not over it. */
 .wfc.is-editing { display: grid; grid-template-columns: minmax(0, 1fr) 380px; }
 .wfc.is-editing .wfc-inspector { position: static; width: auto; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: none; max-height: 1100px; }
+/* Full screen: everything below the title bar. */
+.wfc.is-expanded { position: fixed; top: var(--titlebar-h); right: 0; bottom: 0; left: 0; z-index: 900; border-radius: 0; }
+.wfc.is-expanded:not(.is-editing) { display: grid; grid-template-rows: minmax(0, 1fr); }
+.wfc.is-expanded .wfc-canvas { height: 100%; }
+.wfc.is-editing.is-expanded { grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) 420px; }
+.wfc.is-editing.is-expanded .wfc-inspector { max-height: none; }
 @media (max-width: 1100px) {
   .wfc.is-editing { grid-template-columns: 1fr; }
   .wfc.is-editing .wfc-inspector { border-left: 0; border-top: 1px solid var(--line); }
 }
 .wfc-hint { position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 5; margin: 0; padding: 6px 10px; border-radius: var(--r-sm); background: var(--card); color: var(--ink-3); font-size: var(--fs-xl); pointer-events: none; }
-.wfc-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); }
+.wfc-empty { margin: 0; color: var(--ink-2); font-size: var(--fs-5xl); }
 .wfc-inspect { display: flex; flex-direction: column; gap: var(--sp-2); }
-.wfc-inspect-line { margin: 0; font-size: var(--fs-2xl); line-height: 1.45; }
-.wfc-inspect-id { font-size: var(--fs-lg); }
+.wfc-inspect-line { margin: 0; font-size: var(--fs-8xl); line-height: 1.45; }
+.wfc-inspect-id { font-size: var(--fs-3xl); }
 .wfc-wires { display: flex; flex-direction: column; gap: 2px; }
-.wfc-wire { font-size: var(--fs-xl); color: var(--ink-2); }
+.wfc-wire { font-size: var(--fs-5xl); color: var(--ink-2); }
 .wfc-runs { display: flex; flex-direction: column; gap: 4px; }
 .wfc-run-row summary { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 
 /* ── Editing (workflows/canvas/CanvasStepsEditor.tsx) ───────────────────── */
-.wf-steps-toggle { max-width: 260px; margin-bottom: var(--sp-3); }
-.wfc-editor { display: flex; flex-direction: column; gap: var(--sp-2); }
-.wfc-edit-hint { margin: 0; font-size: var(--fs-xl); }
-.wfc-palette {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: var(--sp-4);
-  padding-bottom: var(--sp-4);
-  border-bottom: 1px solid var(--line);
-}
-.wfc-palette-where { font-size: var(--fs-sm); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
-.wfc-palette-items { display: flex; flex-wrap: wrap; gap: 4px; }
-.wfc-palette-item { padding: 4px 9px; border: 1px solid var(--line); border-radius: var(--r-pill); font-size: var(--fs-xl); color: var(--ink-2); transition: background var(--tap), color var(--tap), border-color var(--tap); }
-.wfc-palette-item:hover { background: var(--card-hi); color: var(--ink); border-color: var(--line-hi); }
-.wfc-palette-item:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
-.wfc-card { margin: 0; padding: 0; list-style: none; }
+.wfc-editor { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 .wfc-wire-dialog { width: min(460px, 92vw); display: grid; gap: var(--sp-3); }
+/* A loop's own data dots sit on its title row, clear of the steps inside it. */
+.wfc-loop > .wfc-data-handle { top: 22px; }

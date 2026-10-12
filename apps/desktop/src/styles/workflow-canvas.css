@@ -65,6 +65,7 @@
 .wfc-step:hover { border-color: var(--line-hi); }
 .wfc-step.is-selected,
 .wfc-loop.is-selected { border-color: var(--accent); }
+.wfc-start.is-selected { border-color: var(--accent); border-style: solid; }
 .wfc-step[data-status="running"] { border-color: var(--warn); }
 .wfc-step[data-status="waiting"] { border-color: var(--warn); border-style: dashed; }
 .wfc-step[data-status="completed"] { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }

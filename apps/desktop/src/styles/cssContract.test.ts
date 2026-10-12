@@ -322,6 +322,11 @@ const NOT_IN_MARKUP: Record<string, string> = {
   // variant has no rule of its own (the base `.theme-picker` covers it), so
   // only the `onboarding` override needs registering here.
   'theme-picker--onboarding': 'built from a template literal in ModePicker.tsx',
+  // React Flow (@xyflow/react) puts these on its own elements; workflow-canvas.css restyles them.
+  'react-flow': 'React Flow class, set by @xyflow/react',
+  'react-flow__edge-path': 'React Flow class, set by @xyflow/react',
+  'react-flow__handle': 'React Flow class, set by @xyflow/react',
+  'react-flow__node': 'React Flow class, set by @xyflow/react',
 };
 
 describe('no dead rules', () => {

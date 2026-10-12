@@ -1812,8 +1812,12 @@ Production npm dependencies bundled into the renderer.
 | [@types/geojson](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/geojson) | 7946.0.16 | `MIT` |
 | [@types/prismjs](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/prismjs) | 1.26.6 | `MIT` |
 | [@types/react](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react) | 19.3.0 | `MIT` |
+| [@types/react-dom](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom) | 19.3.0 | `MIT` |
 | [@types/trusted-types](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/trusted-types) | 2.0.7 | `MIT` |
 | [@upsetjs/venn.js](https://github.com/upsetjs/venn.js) | 2.0.0 | `MIT` |
+| [@xyflow/react](https://reactflow.dev) | 12.12.0 | `MIT` |
+| [@xyflow/system](https://github.com/xyflow/xyflow#readme) | 0.0.83 | `MIT` |
+| [classcat](https://github.com/jorgebucaran/classcat#readme) | 5.0.5 | `MIT` |
 | [clsx](https://github.com/lukeed/clsx#readme) | 2.1.1 | `MIT` |
 | [commander](https://github.com/tj/commander.js#readme) | 7.2.0, 8.3.0, 15.0.0 | `MIT` |
 | [cose-base](https://github.com/iVis-at-Bilkent/cose-base#readme) | 1.0.3, 2.2.0 | `MIT` |
@@ -1828,9 +1832,9 @@ Production npm dependencies bundled into the renderer.
 | [hachure-fill](https://github.com/pshihn/hachure-fill#readme) | 0.5.2 | `MIT` |
 | [iconv-lite](https://github.com/ashtuchkin/iconv-lite) | 0.6.3 | `MIT` |
 | [import-meta-resolve](https://github.com/wooorm/import-meta-resolve#readme) | 4.2.0 | `MIT` |
-| [katex](https://katex.org) | 0.16.47, 0.18.9 | `MIT` |
+| [katex](https://katex.org) | 0.16.47, 0.18.11 | `MIT` |
 | [layout-base](https://github.com/iVis-at-Bilkent/layout-base#readme) | 1.0.2, 2.0.1 | `MIT` |
-| [lodash-es](https://lodash.com/custom-builds) | 4.17.23, 4.18.1 | `MIT` |
+| [lodash-es](https://lodash.com/custom-builds) | 4.18.1 | `MIT` |
 | [marked](https://marked.js.org) | 16.4.2 | `MIT` |
 | [mermaid](https://github.com/mermaid-js/mermaid#readme) | 12.0.0 | `MIT` |
 | [package-manager-detector](https://github.com/antfu-collective/package-manager-detector#readme) | 1.8.0 | `MIT` |
@@ -1848,10 +1852,12 @@ Production npm dependencies bundled into the renderer.
 | [stylis](https://github.com/thysultan/stylis.js) | 4.4.0 | `MIT` |
 | [tinyexec](https://github.com/tinylibs/tinyexec#readme) | 1.3.1 | `MIT` |
 | [ts-dedent](https://github.com/tamino-martinius/node-ts-dedent#readme) | 2.3.0 | `MIT` |
+| [use-sync-external-store](https://github.com/react/react#readme) | 1.7.0 | `MIT` |
 | [uuid](https://github.com/uuidjs/uuid#readme) | 14.0.2 | `MIT` |
 | [w3c-keyname](https://github.com/marijnh/w3c-keyname#readme) | 2.2.8 | `MIT` |
+| [zustand](https://github.com/pmndrs/zustand) | 4.5.7 | `MIT` |
 | [khroma](https://github.com/fabiospampinato/khroma#readme) | 2.1.0 | `Unknown` |
 | [robust-predicates](https://github.com/mourner/robust-predicates#readme) | 3.0.3 | `Unlicense` |
 
-Total: **150 packages**.
+Total: **156 packages**.
 

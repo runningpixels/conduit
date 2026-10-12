@@ -221,6 +221,22 @@ export function applyExpandedStatus(value: ExpandedStatusPref): void {
   document.documentElement.setAttribute('data-expanded-status', value);
 }
 
+/* ── Workflow steps: canvas or list ──────────────────────────────────────
+ * How a workflow's steps are shown on its page. `auto` (never chosen) lets
+ * the page pick: the canvas for workflows with loops, conditions or agent
+ * steps, the list for a plain sequence. Renderer-only. */
+
+const WORKFLOW_VIEW_KEY = 'conduit:v12-workflow-view';
+export type WorkflowViewPref = 'auto' | 'canvas' | 'list';
+
+export function readWorkflowView(): WorkflowViewPref {
+  return readPref(WORKFLOW_VIEW_KEY, ['auto', 'canvas', 'list'], 'auto');
+}
+
+export function writeWorkflowView(value: WorkflowViewPref): void {
+  writePref(WORKFLOW_VIEW_KEY, value);
+}
+
 /* ── Mermaid diagram scale ───────────────────────────────────────────────
  * Mermaid's natural viewBox size reads large next to chat prose. We stamp a
  * display multiplier onto the SVG width/height (not a CSS transform) so the

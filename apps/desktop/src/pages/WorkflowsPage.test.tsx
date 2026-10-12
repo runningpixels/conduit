@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { WorkflowRecord, WorkflowRunDetail, WorkflowSummary } from '../ipc/contracts';
 import { STARTER_WORKFLOWS } from '../workflows/starters';
 import { WorkflowsPage } from './WorkflowsPage';
 import { I18nProvider } from '../i18n';
+import { installReactFlowStubs } from '../test/reactFlowStubs';
 
 const ipc = vi.hoisted(() => ({
   listWorkflows: vi.fn(),
@@ -107,8 +108,12 @@ const finishedRun: WorkflowRunDetail = {
   ],
 };
 
+beforeAll(installReactFlowStubs);
+
 describe('WorkflowsPage', () => {
   beforeEach(() => {
+    // The step list, unless a test is about the canvas.
+    localStorage.setItem('conduit:v12-workflow-view', 'list');
     for (const fn of Object.values(ipc)) fn.mockReset();
     ipc.getSettings.mockRejectedValue(new Error('not in tests'));
     ipc.getStartAtLogin.mockRejectedValue(new Error('not in tests'));
@@ -390,6 +395,19 @@ describe('WorkflowsPage', () => {
     const detail = await screen.findByRole('region', { name: 'What this run did' });
     expect(detail).toHaveTextContent('Changed 1 slide');
     expect(within(detail).queryByRole('button', { name: 'Undo this update' })).toBeNull();
+  });
+
+  it('opens a workflow with a loop on the canvas, and remembers the list when chosen', async () => {
+    localStorage.removeItem('conduit:v12-workflow-view');
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const steps = (await screen.findByText('How it’s built')).closest('details')!;
+    expect(within(steps).getByRole('button', { name: 'Canvas' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(steps).getByRole('group', { name: 'Workflow canvas' })).toBeInTheDocument();
+    expect(steps.querySelector('.react-flow__node[data-id="read"]')).not.toBeNull();
+    fireEvent.click(within(steps).getByRole('button', { name: 'List' }));
+    expect(within(steps).getByText('Fetch 2 pages: [First site], [Second site]')).toBeInTheDocument();
+    expect(within(steps).queryByRole('group', { name: 'Workflow canvas' })).toBeNull();
+    expect(localStorage.getItem('conduit:v12-workflow-view')).toBe('list');
   });
 
   it('shows the steps in words and runs with the inputs as edited', async () => {

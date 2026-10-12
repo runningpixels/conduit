@@ -19,6 +19,8 @@ import { useFormatters } from '../i18n/formatters';
 import { documentEditSummary } from '../workflows/documentEditSummary';
 import { UndoUpdate } from '../workflows/UndoUpdate';
 import { useConnectorNames } from '../workflows/useConnectorNames';
+import { WorkflowCanvas } from '../workflows/canvas/WorkflowCanvas';
+import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../shell/uiPrefs';
 import {
   connectorStepSummary,
   dataStepSummary,
@@ -1222,7 +1224,18 @@ export function WorkflowsPage({
           onToggle={(e) => setStepsOpen(e.currentTarget.open)}
         >
           <summary className="grp-label">{t('workspace.workflows.steps.built')}</summary>
-          <StepList steps={record.definition.steps} labels={inputLabels} />
+          <StepsView
+            definition={record.definition}
+            labels={inputLabels}
+            run={openRun && openRun.run.workflowId === record.id ? openRun : null}
+            waitingStepId={
+              openRun
+                ? (reviews.find((r) => r.runId === openRun.run.id)?.stepId ??
+                  questions.find((q) => q.runId === openRun.run.id)?.stepId ??
+                  null)
+                : null
+            }
+          />
         </details>
       </div>
     );
@@ -1397,6 +1410,47 @@ function StarterPicker({
         </button>
       ) : null}
     </section>
+  );
+}
+
+/// The steps as a canvas or a list. The choice is remembered; until one is
+/// made, a workflow with loops, conditions or agent steps opens as a canvas.
+function StepsView({
+  definition,
+  labels,
+  run,
+  waitingStepId,
+}: {
+  definition: WorkflowDefinition;
+  labels: InputLabels;
+  run: WorkflowRunDetail | null;
+  waitingStepId: string | null;
+}) {
+  const t = useT();
+  const [pref, setPref] = useState<WorkflowViewPref>(() => readWorkflowView());
+  const names = useConnectorNames(definition.steps);
+  const branchy = definition.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'agent');
+  const view = pref === 'auto' ? (branchy ? 'canvas' : 'list') : pref;
+  const choose = (next: 'canvas' | 'list') => {
+    setPref(next);
+    writeWorkflowView(next);
+  };
+  return (
+    <div className="wf-steps-view">
+      <div className="wf-view-toggle" role="group" aria-label={t('workspace.workflows.canvas.viewLabel')}>
+        <button type="button" className={`wf-view-btn${view === 'canvas' ? ' active' : ''}`} aria-pressed={view === 'canvas'} onClick={() => choose('canvas')}>
+          {t('workspace.workflows.canvas.viewCanvas')}
+        </button>
+        <button type="button" className={`wf-view-btn${view === 'list' ? ' active' : ''}`} aria-pressed={view === 'list'} onClick={() => choose('list')}>
+          {t('workspace.workflows.canvas.viewList')}
+        </button>
+      </div>
+      {view === 'canvas' ? (
+        <WorkflowCanvas definition={definition} labels={labels} connectorNames={names} run={run} waitingStepId={waitingStepId} />
+      ) : (
+        <StepList steps={definition.steps} labels={labels} connectorNames={names} />
+      )}
+    </div>
   );
 }
 

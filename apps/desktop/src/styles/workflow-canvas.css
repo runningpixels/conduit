@@ -1,0 +1,129 @@
+/* Workflow canvas (workflows/canvas/WorkflowCanvas.tsx): React Flow drawn in
+ * the app's own tokens. Nodes are cards; a loop is a dashed frame holding its
+ * steps; flow wires are solid, data wires dashed. A node's status tints its
+ * border; the inspector sits beside the canvas. */
+
+.wf-steps-view { display: flex; flex-direction: column; gap: var(--sp-3); }
+.wf-steps-view > .wf-view-toggle { align-self: flex-start; min-width: 240px; }
+.wfc {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--card);
+}
+.wfc-canvas {
+  position: relative;
+  background-color: var(--bg);
+  background-image: radial-gradient(color-mix(in srgb, var(--ink-3) 28%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.wfc-canvas .react-flow { background: transparent; --xy-edge-stroke: var(--line-hi); --xy-edge-stroke-selected: var(--accent); --xy-handle-background-color: var(--card); --xy-handle-border-color: var(--line-hi); }
+.wfc-canvas .react-flow__node { font-family: inherit; }
+.wfc-canvas .react-flow__node:focus-visible { outline: none; }
+.wfc-canvas .react-flow__node:focus-visible > .wfc-node,
+.wfc-canvas .react-flow__node:focus-visible > .wfc-loop { outline: 2px solid var(--hue); outline-offset: 2px; }
+/* Handles stay out of sight; editing shows the ones a wire can start from. */
+.wfc-canvas .react-flow__handle { width: 9px; height: 9px; border-width: 1.5px; opacity: 0; }
+.wfc-edge-flow .react-flow__edge-path { stroke: var(--line-hi); stroke-width: 2; }
+.wfc-edge-data .react-flow__edge-path { stroke: color-mix(in srgb, var(--signal) 70%, transparent); stroke-width: 1.5; stroke-dasharray: 5 5; }
+
+.wfc-node {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--ink);
+  transition: border-color var(--tap);
+}
+.wfc-start { border-style: dashed; background: var(--card-hi); }
+.wfc-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.wfc-kind { font-size: var(--fs-sm); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.wfc-line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-size: var(--fs-3xl);
+  line-height: 1.35;
+}
+.wfc-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
+.wfc-flag { padding: 2px 6px; border-radius: var(--r-pill); background: var(--card-hi); color: var(--ink-3); font-size: var(--fs-sm); white-space: nowrap; }
+.wfc-status { padding: 2px 7px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; background: var(--card-hi); }
+.wfc-status-running { color: var(--warn); }
+.wfc-status-waiting { color: var(--warn); }
+.wfc-status-completed { color: var(--ok); }
+.wfc-status-failed { color: var(--err); }
+.wfc-status-stopped,
+.wfc-status-skipped,
+.wfc-status-reused { color: var(--ink-3); }
+
+.wfc-step:hover { border-color: var(--line-hi); }
+.wfc-step.is-selected,
+.wfc-loop.is-selected { border-color: var(--accent); }
+.wfc-step[data-status="running"] { border-color: var(--warn); }
+.wfc-step[data-status="waiting"] { border-color: var(--warn); border-style: dashed; }
+.wfc-step[data-status="completed"] { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
+.wfc-step[data-status="failed"] { border-color: var(--err); }
+.wfc-step[data-status="skipped"],
+.wfc-step[data-status="stopped"] { opacity: .65; }
+.wfc-step.has-problem,
+.wfc-loop.has-problem { border-color: var(--err); box-shadow: var(--shadow-tab-active); }
+@media (prefers-reduced-motion: no-preference) {
+  .wfc-step[data-status="running"] { animation: wfc-pulse var(--duration-slow) var(--ease-standard) infinite alternate; }
+}
+@keyframes wfc-pulse { to { border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); } }
+
+.wfc-loop {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border: 1.5px dashed var(--line-hi);
+  border-radius: var(--r-xl);
+  background: color-mix(in srgb, var(--card-hi) 55%, transparent);
+}
+.wfc-loop-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; min-width: 0; }
+.wfc-loop-head .wfc-line { -webkit-line-clamp: 1; flex: 1; min-width: 0; color: var(--ink-2); }
+.wfc-loop[data-status="running"] { border-color: var(--warn); }
+.wfc-loop[data-status="completed"] { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
+.wfc-loop[data-status="failed"] { border-color: var(--err); }
+.wfc-iter { color: var(--ink-2); }
+
+.wfc-data-handle { opacity: 0; }
+.wfc-data-out { top: 30%; }
+.wfc-data-in { top: 70%; }
+.wfc-side-handle { opacity: 0; }
+
+.wfc-controls { display: flex; gap: 4px; }
+.wfc-controls .btn { background: var(--card); }
+
+.wfc-inspector {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  bottom: var(--sp-3);
+  z-index: 5;
+  width: min(340px, calc(100% - 2 * var(--sp-3)));
+  padding: var(--sp-4);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-tab-active);
+}
+.wfc-close { float: right; margin: -4px -4px 0 var(--sp-2); }
+.wfc-hint { position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 5; margin: 0; padding: 6px 10px; border-radius: var(--r-sm); background: var(--card); color: var(--ink-3); font-size: var(--fs-xl); pointer-events: none; }
+.wfc-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); }
+.wfc-inspect { display: flex; flex-direction: column; gap: var(--sp-2); }
+.wfc-inspect-line { margin: 0; font-size: var(--fs-2xl); line-height: 1.45; }
+.wfc-inspect-id { font-size: var(--fs-lg); }
+.wfc-wires { display: flex; flex-direction: column; gap: 2px; }
+.wfc-wire { font-size: var(--fs-xl); color: var(--ink-2); }
+.wfc-runs { display: flex; flex-direction: column; gap: 4px; }
+.wfc-run-row summary { display: flex; align-items: center; gap: 6px; cursor: pointer; }

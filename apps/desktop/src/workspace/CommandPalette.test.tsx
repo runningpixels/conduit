@@ -133,7 +133,7 @@ describe('CommandPalette navigation', () => {
     renderPalette({ onNavigate });
     type('>go to');
     const labels = screen.getAllByRole('option').map((o) => o.textContent ?? '');
-    for (const name of ['Home', 'Chats', 'Apps', 'Slides', 'Writing', 'Documents', 'Library', 'Workflows', 'Connectors', 'Memory', 'Settings']) {
+    for (const name of ['Home', 'Chats', 'Slides', 'Writing', 'Apps', 'Manage apps', 'Inbox', 'Workflows', 'Agents', 'Context', 'Documents', 'Library', 'Connectors', 'Memory', 'Settings']) {
       expect(labels.some((l) => l.includes(`Go to ${name}`)), name).toBe(true);
     }
     fireEvent.click(screen.getByRole('option', { name: /Go to Memory/ }));
@@ -146,12 +146,14 @@ describe('CommandPalette navigation', () => {
     expect(screen.getByRole('option', { name: /Go to Home/ }).textContent).toMatch(/1/);
   });
 
-  it('gives Writing Ctrl+5 and leaves Memory without a number', () => {
+  it('gives Writing Ctrl+4 and Context Ctrl+9, and leaves Memory without a number', () => {
     const onNavigate = vi.fn();
     renderPalette({ onNavigate });
+    type('>go to context');
+    expect(screen.getByRole('option', { name: /Go to Context/ }).textContent).toMatch(/9/);
     type('>go to writing');
     const writing = screen.getByRole('option', { name: /Go to Writing/ });
-    expect(writing.textContent).toMatch(/5/);
+    expect(writing.textContent).toMatch(/4/);
     fireEvent.click(writing);
     expect(onNavigate).toHaveBeenCalledWith('writing');
     type('>go to memory');

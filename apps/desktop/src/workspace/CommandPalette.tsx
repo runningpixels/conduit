@@ -13,10 +13,18 @@ import { useModelPrices } from '../lib/useModelPrices';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { organizationBadge } from '../lib/conversationOrganization';
 import { useFocusTrap } from '../shell/useFocusTrap';
-import { DESTINATIONS, type Destination } from '../shell/Rail';
+import { CONTEXT_TABS, DESTINATIONS, type Destination } from '../shell/Rail';
+import { HOTKEYS } from './useHotkeys';
 import { allowUserBranding } from '../brand/buildFlags';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
+
+/** The Ctrl+1…9 chord that opens `destination`, if it has one. */
+function navChord(destination: Destination): string | undefined {
+  const id = `go${destination.charAt(0).toUpperCase()}${destination.slice(1)}`;
+  const binding = HOTKEYS.find((h) => h.group === 'navigate' && h.id === id);
+  return binding ? modShortcutHint(binding.display) : undefined;
+}
 
 export interface CommandPaletteConversation {
   id: string;
@@ -228,17 +236,17 @@ export function CommandPalette({
     };
   }, [open]);
 
-  // "Go to Home … Settings": one command per rail destination, with the
-  // Ctrl+1…9 chord where it has one.
+  // "Go to Home … Settings": one command per rail destination, then Context's
+  // tabs, with the Ctrl+1…9 chord where it has one.
   const navItems = useCallback(
     (group: string): PaletteItem[] =>
       onNavigate
-        ? DESTINATIONS.map((destination, index) => ({
+        ? [...DESTINATIONS, ...CONTEXT_TABS].map((destination) => ({
             id: `go-${destination}`,
             group,
             kind: 'cmd' as const,
             label: t(`workspace.commandPalette.go.${destination}`),
-            tail: index < 9 ? modShortcutHint(String(index + 1)) : undefined,
+            tail: navChord(destination),
             run: () => {
               onNavigate(destination);
               onClose();

@@ -235,9 +235,9 @@ describe('Writing in the shell', { timeout: 30_000 }, () => {
     vi.clearAllMocks();
   });
 
-  it('Ctrl+5 opens Writing; opening a draft shows its studio with the chat as the dock', async () => {
+  it('Ctrl+4 opens Writing; opening a draft shows its studio with the chat as the dock', async () => {
     await boot();
-    fireEvent.keyDown(window, { key: '5', ctrlKey: true });
+    fireEvent.keyDown(window, { key: '4', ctrlKey: true });
     expect(await screen.findByRole('heading', { name: 'Writing' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Writing' })).toHaveAttribute('aria-current', 'page');
     fireEvent.click(await screen.findByRole('button', { name: 'Open One repo' }));

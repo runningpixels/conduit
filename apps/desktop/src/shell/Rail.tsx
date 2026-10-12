@@ -6,23 +6,44 @@
 /// Every destination carries its label under its icon — the rail is how a
 /// first-time user finds their way around, so nothing here is icon-only.
 ///
+/// The buttons sit in groups, split by hairlines, by what they are for: making things
+/// (Chats, Slides, Writing), apps (the home screen, and Manage), what runs
+/// without you (Inbox, Workflows, Agents), and Context — the one place for
+/// what the model knows and can use (Documents, Library, Connectors, Memory),
+/// which open as tabs of a single page. Icons are outlines; the current
+/// destination's turns solid inside its accent pill.
+///
 /// A toolbar in ARIA terms: one tab stop, arrow keys move between buttons,
 /// Home/End jump to the ends. `aria-current="page"` marks where you are.
 
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { appName } from '../brand';
 import {
+  AgentsIcon,
+  AgentsSolidIcon,
+  AppsSolidIcon,
+  ChatSolidIcon,
+  HomeSolidIcon,
+  InboxSolidIcon,
+  KnowledgeSolidIcon,
+  SettingsSolidIcon,
+  SlidersSolidIcon,
+  SlidesSolidIcon,
+  WorkflowSolidIcon,
+  WritingSolidIcon,
   BrandMark,
   ChatIcon,
   ConnectorsIcon,
   HomeIcon,
   IdeaIcon,
+  InboxIcon,
   KnowledgeIcon,
   MemoryIcon,
   MoonIcon,
   SettingsIcon,
   SkillIcon,
+  SlidersIcon,
   SlidesIcon,
   SunIcon,
   WorkflowIcon,
@@ -33,46 +54,88 @@ import {
 export type Destination =
   | 'home'
   | 'chats'
-  | 'apps'
   | 'slides'
   | 'writing'
-  | 'ideas'
+  /** Apps: the home screen of your apps, to open and use them. */
+  | 'apps'
+  /** Manage: the apps list with details, network access and starters. */
+  | 'manage'
+  | 'inbox'
+  | 'workflows'
+  | 'agents'
+  /** Context on the rail; navigating to it opens the last Context tab. */
+  | 'context'
   | 'documents'
   | 'library'
-  | 'workflows'
   | 'connectors'
   | 'memory'
+  | 'ideas'
   | 'settings';
 
-/** Destinations the rail shows, in order. Ideas is not one of them: it lives
- *  in the new-chat screen, and its page opens from there ("More ideas"). */
-export const DESTINATIONS: readonly Destination[] = [
-  'home',
-  'chats',
-  'apps',
-  'slides',
-  'writing',
-  'documents',
-  'library',
-  'workflows',
-  'connectors',
-  'memory',
-  'settings',
+/** The pages Context holds, in tab order. Each is still a destination of its
+ *  own (deep links, Home's tiles and the palette land on the right tab). */
+export const CONTEXT_TABS = ['documents', 'library', 'connectors', 'memory'] as const satisfies readonly Destination[];
+export type ContextTab = (typeof CONTEXT_TABS)[number];
+
+export function isContextTab(d: Destination): d is ContextTab {
+  return (CONTEXT_TABS as readonly Destination[]).includes(d);
+}
+
+/** The rail button that stands for `d`: Context for its tabs, else `d`. */
+export function railItemFor(d: Destination): Destination {
+  return isContextTab(d) ? 'context' : d;
+}
+
+/** The rail's bands, top to bottom. Settings sits apart at the bottom. Ideas
+ *  is not on the rail: it lives in the new-chat screen ("More ideas"). */
+export const RAIL_BANDS: ReadonlyArray<{ id: string; items: readonly Destination[] }> = [
+  { id: 'top', items: ['home'] },
+  { id: 'make', items: ['chats', 'slides', 'writing'] },
+  { id: 'apps', items: ['apps', 'manage'] },
+  { id: 'automate', items: ['inbox', 'workflows', 'agents'] },
+  { id: 'context', items: ['context'] },
 ];
+
+/** Destinations the rail shows, in order. */
+export const DESTINATIONS: readonly Destination[] = [...RAIL_BANDS.flatMap((band) => band.items), 'settings'];
 
 const ICONS: Record<Destination, ReactNode> = {
   home: <HomeIcon />,
   chats: <ChatIcon />,
-  apps: <AppsIcon />,
   slides: <SlidesIcon />,
   writing: <WritingIcon />,
-  ideas: <IdeaIcon />,
+  apps: <AppsIcon />,
+  manage: <SlidersIcon />,
+  inbox: <InboxIcon />,
+  workflows: <WorkflowIcon />,
+  agents: <AgentsIcon />,
+  context: <KnowledgeIcon />,
   documents: <KnowledgeIcon />,
   library: <SkillIcon />,
-  workflows: <WorkflowIcon />,
   connectors: <ConnectorsIcon />,
   memory: <MemoryIcon />,
+  ideas: <IdeaIcon />,
   settings: <SettingsIcon />,
+};
+
+/** The solid icon each rail button shows while it is where you are. */
+const SOLID_ICONS: Partial<Record<Destination, ReactNode>> = {
+  home: <HomeSolidIcon />,
+  chats: <ChatSolidIcon />,
+  slides: <SlidesSolidIcon />,
+  writing: <WritingSolidIcon />,
+  apps: <AppsSolidIcon />,
+  manage: <SlidersSolidIcon />,
+  inbox: <InboxSolidIcon />,
+  workflows: <WorkflowSolidIcon />,
+  agents: <AgentsSolidIcon />,
+  context: <KnowledgeSolidIcon />,
+  settings: <SettingsSolidIcon />,
+};
+
+/** Destinations whose short rail label needs a fuller accessible name. */
+const ARIA_LABEL_KEYS: Partial<Record<Destination, string>> = {
+  manage: 'shell.rail.manageAria',
 };
 
 export interface RailProps {
@@ -99,10 +162,12 @@ export function Rail({
 }: RailProps) {
   const t = useT();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const shown = DESTINATIONS.filter((d) => !hidden.includes(d));
-  const top = shown.filter((d) => d !== 'settings');
-  const bottom = shown.filter((d) => d === 'settings');
-  const order = [...top, ...bottom];
+  const bands = RAIL_BANDS.map((band) => ({ ...band, items: band.items.filter((d) => !hidden.includes(d)) })).filter(
+    (band) => band.items.length > 0,
+  );
+  const bottom: Destination[] = hidden.includes('settings') ? [] : ['settings'];
+  const order = [...bands.flatMap((band) => band.items), ...bottom];
+  const here = railItemFor(destination);
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     const index = order.indexOf((event.target as HTMLElement).dataset.destination as Destination);
@@ -119,8 +184,10 @@ export function Rail({
 
   const button = (d: Destination) => {
     const index = order.indexOf(d);
-    const current = d === destination;
+    const current = d === here;
     const label = t(`shell.rail.${d}`);
+    const ariaKey = ARIA_LABEL_KEYS[d];
+    const name = ariaKey ? t(ariaKey) : label;
     return (
       <button
         key={d}
@@ -131,12 +198,12 @@ export function Rail({
         className="rail-btn"
         data-destination={d}
         aria-current={current ? 'page' : undefined}
-        aria-label={dots[d] ? t('shell.rail.withNew', { label }) : label}
-        tabIndex={current || (!order.includes(destination) && index === 0) ? 0 : -1}
+        aria-label={dots[d] ? t('shell.rail.withNew', { label: name }) : name}
+        tabIndex={current || (!order.includes(here) && index === 0) ? 0 : -1}
         onClick={() => onNavigate(d)}
       >
-        <span className="rail-icon">
-          {ICONS[d]}
+        <span className="rail-icon" data-filled={current && SOLID_ICONS[d] ? '' : undefined}>
+          {(current && SOLID_ICONS[d]) || ICONS[d]}
           {dots[d] && <span className="rail-dot" aria-hidden="true" />}
         </span>
         <span className="rail-label" aria-hidden="true">
@@ -157,7 +224,18 @@ export function Rail({
         </span>
       </div>
       <div className="rail-group" role="toolbar" aria-orientation="vertical" aria-label={t('shell.rail.ariaLabel')}>
-        {top.map(button)}
+        {bands.map((band, i) =>
+          band.id === 'top' ? (
+            band.items.map(button)
+          ) : (
+            <Fragment key={band.id}>
+              {i > 0 && <span className="rail-rule" aria-hidden="true" />}
+              <div className="rail-band" data-band={band.id}>
+                {band.items.map(button)}
+              </div>
+            </Fragment>
+          ),
+        )}
         <span className="rail-spacer" aria-hidden="true" />
         {bottom.map(button)}
       </div>

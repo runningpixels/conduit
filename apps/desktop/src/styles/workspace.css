@@ -1005,6 +1005,54 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   width: 100%;
 }
 .rail-spacer { flex: 1; }
+/* Groups: the rail's buttons gathered by what they are for — make (Chats,
+ * Slides, Writing), apps (Apps, Manage), what runs without you (Inbox,
+ * Workflows, Agents) and Context — split by a short hairline. */
+.rail-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+.rail-rule {
+  flex: none;
+  width: 32px;
+  height: 1px;
+  /* Shrinks on a short window so Settings never falls off the bottom. */
+  margin: clamp(var(--sp-1), 1vh, var(--sp-2)) 0;
+  background: color-mix(in srgb, var(--ink-3) 35%, transparent);
+}
+
+/* Context: Documents, Library, Connectors and Memory as tabs of one page,
+ * above whichever of the four is open. */
+.dest-page[data-context] { grid-template-rows: auto minmax(0, 1fr); }
+.context-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-6) 0;
+}
+.context-tabs-label {
+  margin-right: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.context-tab {
+  padding: 5px 12px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  color: var(--ink-3);
+  transition: background var(--tap), color var(--tap);
+}
+.context-tab:hover { color: var(--ink); background: var(--card-hi); }
+.context-tab[aria-current="page"] { color: var(--ink); background: var(--card-hi); font-weight: 700; }
+.context-tab:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
 .rail-btn {
   width: 76px;
   min-height: 52px;

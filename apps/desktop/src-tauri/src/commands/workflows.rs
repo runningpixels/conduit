@@ -591,15 +591,19 @@ pub fn list_workflow_reviews(reviews: State<'_, Reviews>) -> Vec<PendingReview> 
     reviews.list()
 }
 
-/// Answer a paused run: `allowOnce`, `alwaysAllow` or `deny`. `false` when it
-/// is no longer waiting (answered, stopped, or expired).
+/// Answer a paused run: `allowOnce`, `alwaysAllow` or `deny`. A run whose
+/// steps run side by side can wait on several; `step_id` says which, and may be
+/// left out when the run waits on one thing. `false` when it is no longer
+/// waiting (answered, stopped, or expired), or `step_id` is missing and the
+/// run waits on more than one.
 #[tauri::command]
 pub fn answer_workflow_review(
     reviews: State<'_, Reviews>,
     run_id: String,
     decision: Decision,
+    step_id: Option<String>,
 ) -> bool {
-    reviews.answer(&run_id, decision)
+    reviews.answer(&run_id, step_id.as_deref(), decision)
 }
 
 /// Runs waiting at an "Ask me" step, oldest first.
@@ -608,17 +612,21 @@ pub fn list_workflow_questions(questions: State<'_, Questions>) -> Vec<PendingQu
     questions.list()
 }
 
-/// Answer a run waiting at an "Ask me" step. `Ok(false)` when it is no longer
-/// waiting; `Err` when the answer won't do (empty, or not one of the choices).
+/// Answer a run waiting at an "Ask me" step. A run whose steps run side by
+/// side can ask several questions at once; `step_id` says which, and may be
+/// left out when the run asks one. `Ok(false)` when it is no longer waiting
+/// (or `step_id` is missing and several questions are open); `Err` when the
+/// answer won't do (empty, or not one of the choices).
 #[tauri::command]
 pub fn answer_workflow_question(
     questions: State<'_, Questions>,
     run_id: String,
     answer: String,
+    step_id: Option<String>,
 ) -> Result<bool, String> {
-    let Some(pending) = questions.get(&run_id) else {
+    let Some(pending) = questions.get(&run_id, step_id.as_deref()) else {
         return Ok(false);
     };
     let answer = ask::checked_answer(&pending, &answer)?;
-    Ok(questions.answer(&run_id, answer))
+    Ok(questions.answer(&run_id, Some(&pending.step_id), answer))
 }

@@ -139,6 +139,11 @@ pub struct Step {
     /// without one, the workflow's (or the chat's active) model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelChoice>,
+    /// The steps this one waits for, top-level steps only. Entries are step
+    /// ids, or `<branch>.yes` / `<branch>.no`. Absent: the step before it in
+    /// the list; empty: nothing (it starts with the run). See [`dependencies`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<Vec<String>>,
 }
 
 /// Most retries a step may ask for.
@@ -170,6 +175,10 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 /// - `notify`: `delivered` (or `sent`, `unchanged` and `hash` with `onlyIfChanged`)
 /// - `condition`: `passed`, `is`, `hash`, `previousHash`, `changed` and `text`
 ///   (why it passed or stopped the run)
+/// - `branch`: `passed`, `arm` and `text` (`yes` or `no`), `reason` (why), and
+///   the test's `is`, `hash`, `previousHash` and `changed`
+/// - a step that was not taken (a branch's other way): `notTaken` and an empty
+///   `text`; reading any field of it gives an empty value
 /// - `ask`: `answer`
 /// - `agent`: `text` (its answer) and `toolCalls` (the tools it called)
 /// - `edit_deck`: `deckId`, `title`, `changed` (slide ids), `skippedPinned`,
@@ -344,6 +353,21 @@ pub enum StepAction {
         value: String,
         /// One of [`CONDITION_TESTS`]. Kept as text so a wrong one is reported
         /// in plain words by [`validate`] rather than as a parse error.
+        #[serde(default)]
+        is: String,
+        /// What `contains`, `not_contains` and `equals` compare with (a
+        /// template); not allowed with the other tests.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+    },
+    /// "If... otherwise": the same test as `condition`, but the run carries on
+    /// down both ways. Steps that run `after` `<id>.yes` go when it passed, those
+    /// after `<id>.no` when it didn't; the other way's steps are not taken.
+    /// Top-level steps only.
+    Branch {
+        /// A template: the text to test.
+        value: String,
+        /// One of [`CONDITION_TESTS`].
         #[serde(default)]
         is: String,
         /// What `contains`, `not_contains` and `equals` compare with (a
@@ -526,7 +550,7 @@ const DEFINITION_KEYS: &[&str] = &["inputs", "model", "folder", "trigger", "step
 const TRIGGER_KEYS: &[&str] = &["kind", "url", "everyMinutes"];
 const MODEL_KEYS: &[&str] = &["provider", "model"];
 const INPUT_KEYS: &[&str] = &["id", "label", "default"];
-const STEP_KEYS: &[&str] = &["id", "type", "onError", "retries"];
+const STEP_KEYS: &[&str] = &["id", "type", "onError", "retries", "after"];
 
 /// Every step type, as written in a definition's `"type"` (read from the
 /// enum's own error message, so a new variant appears here by itself).
@@ -578,7 +602,7 @@ pub fn action_keys(step_type: &str) -> &'static [&'static str] {
         "agent" => &["prompt", "input", "tools", "model"],
         "ask" => &["question", "choices", "default"],
         "notify" => &["title", "body", "onlyIfChanged"],
-        "condition" => &["value", "is", "text"],
+        "condition" | "branch" => &["value", "is", "text"],
         "read_file" => &["path"],
         "parse_data" => &["input", "format"],
         "edit_deck" => &["deck", "instructions", "input", "model"],
@@ -748,8 +772,33 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
     }
     let mut all_ids = HashSet::new();
     let mut count = 0;
+    let deps = dependencies(&def.steps);
+    let ancestry = ancestors(&deps);
+    check_graph(&def.steps, &deps, &ancestry, &mut problems);
+    let top = TopLevel {
+        visible: ancestry
+            .iter()
+            .map(|set| {
+                let mut ids: Vec<usize> = set.iter().copied().collect();
+                ids.sort_unstable();
+                ids.into_iter().map(|j| def.steps[j].id.clone()).collect()
+            })
+            .collect(),
+        unrelated: ancestry
+            .iter()
+            .enumerate()
+            .map(|(i, set)| {
+                (0..i)
+                    .filter(|j| !set.contains(j))
+                    .map(|j| def.steps[j].id.clone())
+                    .collect()
+            })
+            .collect(),
+    };
     let scope = Scope {
         inputs: &input_ids,
+        top: Some(&top),
+        unrelated: Vec::new(),
         steps: Vec::new(),
         in_loop: false,
         has_folder: folder.is_some(),
@@ -776,6 +825,10 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
 #[derive(Clone)]
 struct Scope<'a> {
     inputs: &'a HashSet<&'a str>,
+    /// Set while checking the top-level steps: what each may read.
+    top: Option<&'a TopLevel>,
+    /// Earlier top-level steps the step being checked does not come after.
+    unrelated: Vec<String>,
     steps: Vec<String>,
     in_loop: bool,
     /// The workflow has a folder to read files from.
@@ -906,13 +959,26 @@ fn check_steps(
     count: &mut usize,
     problems: &mut Vec<String>,
 ) {
-    for step in steps {
+    for (position, step) in steps.iter().enumerate() {
         *count += 1;
-        let name = if step.id.is_empty() {
-            "(unnamed)"
-        } else {
-            step.id.as_str()
-        };
+        let name = name_of(step);
+        // A top-level step reads only the steps it comes after.
+        if let Some(top) = scope.top {
+            scope.steps = top.visible[position].clone();
+            scope.unrelated = top.unrelated[position].clone();
+        }
+        if scope.in_loop {
+            if step.after.is_some() {
+                problems.push(format!(
+                    "Step \"{name}\" can't say what it runs after: the steps in a repeated step always run in order."
+                ));
+            }
+            if matches!(step.action, StepAction::Branch { .. }) {
+                problems.push(format!(
+                    "Step \"{name}\" is an if/otherwise inside a repeated step; those only work on the steps at the top level."
+                ));
+            }
+        }
         if !is_id(&step.id) {
             problems.push(format!(
                 "Step id \"{}\" should use lowercase letters, digits and _.",
@@ -1166,8 +1232,8 @@ fn check_steps(
                 }
                 texts.extend(strings_in(arguments));
             }
-            StepAction::Condition { value, is, text } => {
-                if scope.in_loop {
+            StepAction::Condition { value, is, text } | StepAction::Branch { value, is, text } => {
+                if scope.in_loop && matches!(step.action, StepAction::Condition { .. }) {
                     problems.push(format!(
                         "Step \"{name}\" is a condition inside a repeated step; conditions only work on the steps at the top level."
                     ));
@@ -1228,6 +1294,7 @@ fn check_steps(
                         if scope.loops.iter().any(|l| l.id == id))
                 };
                 let inner = Scope {
+                    top: None,
                     in_loop: true,
                     own: body.iter().map(|s| s.id.clone()).collect(),
                     item_is_loop_result: from_loop_result,
@@ -1336,9 +1403,16 @@ fn check_path(path: &str, scope: &Scope<'_>, step: &str, problems: &mut Vec<Stri
     let root = parts.next().unwrap_or_default();
     let ok = match root {
         "inputs" => parts.next().is_some_and(|id| scope.inputs.contains(id)),
-        "steps" => parts
-            .next()
-            .is_some_and(|id| scope.steps.iter().any(|s| s == id)),
+        "steps" => {
+            let id = parts.next();
+            if let Some(id) = id.filter(|id| scope.unrelated.iter().any(|s| s == id)) {
+                problems.push(format!(
+                    "Step \"{step}\" uses {id}, which doesn't run before it."
+                ));
+                return;
+            }
+            id.is_some_and(|id| scope.steps.iter().any(|s| s == id))
+        }
         "run" => true,
         "item" | "index" => scope.in_loop,
         "trigger" => match scope.trigger {
@@ -1365,6 +1439,143 @@ fn check_path(path: &str, scope: &Scope<'_>, step: &str, problems: &mut Vec<Stri
         problems.push(format!(
             "Step \"{step}\" reads {path}, which doesn't exist at that point."
         ));
+    }
+}
+
+/// One thing a top-level step waits for: another step, and for a branch, the
+/// arm (`Some(true)` for yes, `Some(false)` for no) or `None` for "however it
+/// went".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Dependency {
+    pub step: usize,
+    pub arm: Option<bool>,
+}
+
+/// An `after` entry as (step id, arm): `"fetch"`, `"check.yes"`, `"check.no"`.
+/// `None` for anything else.
+pub fn split_after(entry: &str) -> Option<(&str, Option<bool>)> {
+    let mut parts = entry.split('.');
+    let id = parts.next()?;
+    let arm = match (parts.next(), parts.next()) {
+        (None, _) => None,
+        (Some("yes"), None) => Some(true),
+        (Some("no"), None) => Some(false),
+        _ => return None,
+    };
+    Some((id, arm))
+}
+
+/// What each top-level step waits for: its `after`, else the step before it
+/// (the first step waits for nothing). An entry that doesn't name an earlier
+/// step is left out; [`validate`] reports it.
+pub fn dependencies(steps: &[Step]) -> Vec<Vec<Dependency>> {
+    steps
+        .iter()
+        .enumerate()
+        .map(|(i, step)| match &step.after {
+            None if i == 0 => Vec::new(),
+            None => vec![Dependency {
+                step: i - 1,
+                arm: None,
+            }],
+            Some(list) => list
+                .iter()
+                .filter_map(|entry| {
+                    let (id, arm) = split_after(entry)?;
+                    let at = steps.iter().position(|s| s.id == id)?;
+                    (at < i).then_some(Dependency { step: at, arm })
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// For each step, every step it comes after, directly or not (by index).
+pub fn ancestors(deps: &[Vec<Dependency>]) -> Vec<HashSet<usize>> {
+    let mut all: Vec<HashSet<usize>> = Vec::with_capacity(deps.len());
+    for own in deps {
+        let mut set = HashSet::new();
+        for dep in own {
+            set.insert(dep.step);
+            set.extend(all[dep.step].iter().copied());
+        }
+        all.push(set);
+    }
+    all
+}
+
+/// The ancestors of each top-level step as ids, and the other earlier
+/// top-level steps (which it may not read).
+struct TopLevel {
+    visible: Vec<Vec<String>>,
+    unrelated: Vec<Vec<String>>,
+}
+
+fn name_of(step: &Step) -> &str {
+    if step.id.is_empty() {
+        "(unnamed)"
+    } else {
+        step.id.as_str()
+    }
+}
+
+/// The checks on how the top-level steps are wired together.
+fn check_graph(
+    steps: &[Step],
+    deps: &[Vec<Dependency>],
+    ancestors: &[HashSet<usize>],
+    problems: &mut Vec<String>,
+) {
+    for (i, step) in steps.iter().enumerate() {
+        let name = name_of(step);
+        for entry in step.after.iter().flatten() {
+            let Some((id, arm)) = split_after(entry) else {
+                problems.push(format!(
+                    "Step \"{name}\" runs after \"{entry}\", which isn't a step or a branch's way. Use a step's id, or a branch's id followed by .yes or .no."
+                ));
+                continue;
+            };
+            let Some(at) = steps.iter().position(|s| s.id == id) else {
+                problems.push(format!(
+                    "Step \"{name}\" runs after \"{id}\", but there is no step with that id."
+                ));
+                continue;
+            };
+            if at >= i {
+                problems.push(format!(
+                    "Step \"{name}\" runs after \"{id}\", which comes later in the list. A step can only run after one before it."
+                ));
+            } else if arm.is_some() && !matches!(steps[at].action, StepAction::Branch { .. }) {
+                problems.push(format!(
+                    "Step \"{name}\" runs after \"{entry}\", but {id} isn't an if/otherwise step, so it has no yes or no."
+                ));
+            }
+        }
+        match &step.action {
+            StepAction::Branch { .. } => {
+                let followed = deps
+                    .iter()
+                    .any(|own| own.iter().any(|d| d.step == i && d.arm.is_some()));
+                if !followed {
+                    problems.push(format!("Nothing follows {name}'s yes or no."));
+                }
+            }
+            StepAction::Condition { .. } => {
+                let alongside = (0..steps.len()).filter(|j| *j != i).any(|j| {
+                    if j < i {
+                        !ancestors[i].contains(&j)
+                    } else {
+                        !ancestors[j].contains(&i)
+                    }
+                });
+                if alongside {
+                    problems.push(format!(
+                        "{name} stops the run, so it can't run alongside other steps."
+                    ));
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -2065,5 +2276,257 @@ mod tests {
                     .to_string()
             ]
         );
+    }
+
+    // ── The step graph ──────────────────────────────────────────────────────
+
+    fn tpl(id: &str, template: &str, after: Option<Value>) -> Value {
+        let mut step = json!({ "id": id, "type": "template", "template": template });
+        if let Some(after) = after {
+            step["after"] = after;
+        }
+        step
+    }
+
+    fn branch(id: &str, after: Option<Value>) -> Value {
+        let mut step =
+            json!({ "id": id, "type": "branch", "value": "{{steps.a.text}}", "is": "not_empty" });
+        if let Some(after) = after {
+            step["after"] = after;
+        }
+        step
+    }
+
+    #[test]
+    fn a_workflow_with_branches_parallel_steps_and_a_join_is_valid() {
+        let raw = json!({ "steps": [
+            tpl("a", "x", None),
+            branch("pick", None),
+            tpl("yes_path", "y", Some(json!(["pick.yes"]))),
+            tpl("no_path", "n", Some(json!(["pick.no"]))),
+            tpl("side", "s {{steps.a.text}}", Some(json!(["a"]))),
+            tpl("root", "r", Some(json!([]))),
+            tpl("merge", "{{steps.yes_path.text}}{{steps.no_path.text}}{{steps.side.text}}{{steps.root.text}}",
+                Some(json!(["yes_path", "no_path", "side", "root"]))),
+        ]});
+        assert_eq!(check_value(&raw), Ok(()));
+        let d = def(raw);
+        assert_eq!(d.steps[2].after, Some(vec!["pick.yes".to_string()]));
+        // Round-trips, and a step with no `after` stores none.
+        let json = serde_json::to_string(&d).unwrap();
+        assert_eq!(parse(&json).unwrap(), d);
+        assert!(!json.contains("\"after\":null"));
+        // Absent means "the step before it"; `[]` means "nothing".
+        let deps = dependencies(&d.steps);
+        assert_eq!(deps[0], vec![]);
+        assert_eq!(deps[1], vec![Dependency { step: 0, arm: None }]);
+        assert_eq!(
+            deps[2],
+            vec![Dependency {
+                step: 1,
+                arm: Some(true)
+            }]
+        );
+        assert_eq!(
+            deps[3],
+            vec![Dependency {
+                step: 1,
+                arm: Some(false)
+            }]
+        );
+        assert_eq!(deps[5], vec![]);
+    }
+
+    #[test]
+    fn a_step_may_only_read_steps_it_comes_after() {
+        let problems = problems_of(json!({ "steps": [
+            tpl("a", "x", None),
+            tpl("left", "l", Some(json!(["a"]))),
+            tpl("right", "{{steps.left.text}} {{steps.a.text}}", Some(json!(["a"]))),
+        ]}));
+        assert_eq!(
+            problems,
+            vec!["Step \"right\" uses left, which doesn't run before it."]
+        );
+        // Reading through a longer way round is fine.
+        assert_eq!(
+            validate(&def(json!({ "steps": [
+                tpl("a", "x", None),
+                tpl("b", "{{steps.a.text}}", None),
+                tpl("c", "{{steps.a.text}}{{steps.b.text}}", None),
+            ]}))),
+            Ok(())
+        );
+        // A loop over something it doesn't come after is the same problem.
+        let loops = problems_of(json!({ "steps": [
+            { "id": "pages", "type": "fetch_page", "urls": ["https://example.com"] },
+            tpl("other", "o", Some(json!([]))),
+            { "id": "each", "type": "for_each", "items": "steps.other.items", "after": ["pages"], "steps": [
+                tpl("inner", "{{item.url}}", None)
+            ]},
+        ]}));
+        assert_eq!(
+            loops,
+            vec!["Step \"each\" uses other, which doesn't run before it."]
+        );
+    }
+
+    #[test]
+    fn after_must_name_an_earlier_step_or_a_branchs_way() {
+        let after = |entry: Value| {
+            validate(&def(json!({ "steps": [
+                tpl("a", "x", None),
+                branch("pick", Some(json!(["a"]))),
+                tpl("yes_path", "y", Some(json!(["pick.yes"]))),
+                tpl("last", "z", Some(entry)),
+            ]})))
+            .err()
+            .unwrap_or_default()
+        };
+        assert_eq!(
+            after(json!(["later"])),
+            vec!["Step \"last\" runs after \"later\", but there is no step with that id."]
+        );
+        assert_eq!(
+            after(json!(["last"])),
+            vec!["Step \"last\" runs after \"last\", which comes later in the list. A step can only run after one before it."]
+        );
+        assert_eq!(
+            after(json!(["a.yes"])),
+            vec!["Step \"last\" runs after \"a.yes\", but a isn't an if/otherwise step, so it has no yes or no."]
+        );
+        assert_eq!(
+            after(json!(["pick.maybe"])),
+            vec!["Step \"last\" runs after \"pick.maybe\", which isn't a step or a branch's way. Use a step's id, or a branch's id followed by .yes or .no."]
+        );
+        assert!(after(json!(["pick.no", "yes_path"])).is_empty());
+    }
+
+    #[test]
+    fn a_step_cannot_wait_for_a_later_one() {
+        let problems = problems_of(json!({ "steps": [
+            tpl("a", "x", Some(json!(["b"]))),
+            tpl("b", "y", None),
+        ]}));
+        assert_eq!(
+            problems,
+            vec!["Step \"a\" runs after \"b\", which comes later in the list. A step can only run after one before it."]
+        );
+    }
+
+    #[test]
+    fn a_branch_needs_something_on_one_of_its_ways() {
+        let problems = problems_of(json!({ "steps": [
+            tpl("a", "x", None),
+            branch("pick", None),
+            tpl("plain", "p", Some(json!(["pick"]))),
+        ]}));
+        assert_eq!(problems, vec!["Nothing follows pick's yes or no."]);
+        // One way is enough.
+        assert_eq!(
+            validate(&def(json!({ "steps": [
+                tpl("a", "x", None),
+                branch("pick", None),
+                tpl("only_no", "p", Some(json!(["pick.no"]))),
+            ]}))),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_condition_must_be_a_gate() {
+        let gate = |after: Option<Value>| {
+            let mut step =
+                json!({ "id": "gate", "type": "condition", "value": "text", "is": "not_empty" });
+            if let Some(after) = after {
+                step["after"] = after;
+            }
+            step
+        };
+        let problems = problems_of(json!({ "steps": [
+            tpl("a", "x", None),
+            gate(None),
+            tpl("beside", "b", Some(json!(["a"]))),
+        ]}));
+        assert_eq!(
+            problems,
+            vec!["gate stops the run, so it can't run alongside other steps."]
+        );
+        // A parallel root before it is just as much alongside.
+        let root = problems_of(json!({ "steps": [
+            tpl("a", "x", None),
+            tpl("root", "r", Some(json!([]))),
+            gate(None),
+        ]}));
+        assert_eq!(
+            root,
+            vec!["gate stops the run, so it can't run alongside other steps."]
+        );
+        // Everything upstream or downstream of it is fine, however wired.
+        assert_eq!(
+            validate(&def(json!({ "steps": [
+                tpl("a", "x", None),
+                tpl("b", "y", Some(json!(["a"]))),
+                gate(Some(json!(["a", "b"]))),
+                tpl("c", "z", Some(json!(["gate"]))),
+                tpl("d", "w", Some(json!(["gate"]))),
+            ]}))),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn after_and_branches_are_for_the_top_level_only() {
+        let problems = problems_of(json!({ "steps": [
+            { "id": "pages", "type": "fetch_page", "urls": ["https://example.com"] },
+            { "id": "each", "type": "for_each", "items": "steps.pages.pages", "steps": [
+                tpl("first", "{{item.url}}", Some(json!([]))),
+                { "id": "inner", "type": "branch", "value": "{{item.url}}", "is": "not_empty" },
+            ]},
+        ]}));
+        assert!(
+            problems.contains(
+                &"Step \"first\" can't say what it runs after: the steps in a repeated step always run in order."
+                    .to_string()
+            ),
+            "{problems:?}"
+        );
+        assert!(
+            problems.contains(
+                &"Step \"inner\" is an if/otherwise inside a repeated step; those only work on the steps at the top level."
+                    .to_string()
+            ),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_branch_checks_its_test_like_a_condition() {
+        let problems = problems_of(json!({ "steps": [
+            tpl("a", "x", None),
+            { "id": "pick", "type": "branch", "value": "{{steps.a.text}}", "is": "contains" },
+            tpl("go", "g", Some(json!(["pick.yes"]))),
+        ]}));
+        assert_eq!(
+            problems,
+            vec!["Step \"pick\": \"contains\" needs some text to compare with."]
+        );
+    }
+
+    #[test]
+    fn saving_accepts_after_and_the_branch_keys_and_rejects_others() {
+        let ok = json!({ "steps": [
+            tpl("a", "x", None),
+            { "id": "pick", "type": "branch", "value": "{{steps.a.text}}", "is": "equals", "text": "x" },
+            tpl("y", "y", Some(json!(["pick.yes"]))),
+        ]});
+        assert_eq!(check_value(&ok), Ok(()));
+        assert_eq!(
+            unknown_settings(&json!({ "steps": [
+                { "id": "pick", "type": "branch", "value": "v", "is": "empty", "after": [], "else": "x" }
+            ]})),
+            vec!["Step \"pick\": unknown setting \"else\".".to_string()]
+        );
+        assert!(step_types().iter().any(|t| t == "branch"));
     }
 }

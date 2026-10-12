@@ -23,4 +23,5 @@ export const STEP_TYPE_KEY: Record<StepType, string> = {
   edit_deck: 'workspace.workflows.editor.type.editDeck',
   edit_draft: 'workspace.workflows.editor.type.editDraft',
   condition: 'workspace.workflows.editor.type.condition',
+  branch: 'workspace.workflows.editor.type.branch',
 };

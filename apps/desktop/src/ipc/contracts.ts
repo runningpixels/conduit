@@ -797,6 +797,8 @@ export type WorkflowStep = {
   onError?: 'fail' | 'skip';
   /** Tries again after a failure; unset takes the step kind's default (`defaultRetries`). */
   retries?: number | null;
+  /** Top level only: the steps this one waits for (ids, or `<branchId>.yes` / `.no`). Absent: the step before it; `[]`: the start. */
+  after?: string[];
 } & (
   | { type: 'fetch_page'; urls: string[] }
   | { type: 'web_search'; query: string; maxResults?: number | null }
@@ -808,6 +810,8 @@ export type WorkflowStep = {
   | { type: 'save_memory'; text: string }
   | { type: 'notify'; title: string; body?: string; onlyIfChanged?: boolean }
   | { type: 'condition'; value: string; is: ConditionTest; text?: string }
+  /** If… otherwise: later steps wait on the yes or no arm through `after`. */
+  | { type: 'branch'; value: string; is: ConditionTest; text?: string }
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
   | { type: 'agent'; prompt: string; input?: string; tools?: string[]; model?: WorkflowModel }
   | { type: 'read_file'; path: string }
@@ -890,7 +894,7 @@ export interface WorkflowRunStep {
   runId: string;
   stepId: string;
   iteration: number | null;
-  status: 'running' | 'completed' | 'failed' | 'skipped' | 'stopped' | 'reused';
+  status: 'running' | 'completed' | 'failed' | 'skipped' | 'stopped' | 'reused' | 'not_taken';
   input: unknown;
   output: unknown;
   error: string | null;

@@ -31,10 +31,16 @@
 //!   "Before <workflow>", runs the model with only the deck or draft tools and
 //!   with pinned text out of its reach, snapshots "Workflow: <workflow>" if
 //!   anything changed, and announces the change to the page.
-//! - A run can start partway (`run_from`): the top-level steps before the
-//!   chosen one aren't run again; their outputs come from an earlier run and
-//!   are recorded as `reused`, so fixing a template doesn't re-fetch pages or
-//!   ask the model again.
+//! - The top-level steps are a graph (`Step::after`, by default the step
+//!   before): a step starts once every step it waits for has resolved, up to
+//!   four at a time ([`Exec::graph`]). It runs when it waits for nothing or at
+//!   least one of them was taken; otherwise it is recorded as `not_taken`
+//!   without any work (a `branch` takes its yes or no way). A step failing
+//!   stops new steps and cancels the running ones (they end `stopped`).
+//! - A run can start partway (`run_from`): the chosen step and everything that
+//!   comes after it run again; every other top-level step with a usable row in
+//!   an earlier run is recorded as `reused` with its output, so fixing a
+//!   template doesn't re-fetch pages or ask the model again.
 //! - A `condition` step that doesn't pass ends the run as `completed` with the
 //!   outcome "nothing new" (`Flow::Stop`), and `onlyIfChanged` on `notify` and
 //!   `save_artifact` skips the step; both compare a hash with the one the same
@@ -51,6 +57,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use futures::stream::{FuturesUnordered, StreamExt};
 
 use provider_core::schema::{
     Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest,
@@ -243,9 +250,9 @@ impl Runner<'_> {
             serde_json::from_value(workflow.definition.clone())
                 .map_err(|e| definition::unreadable(&e))?;
         definition::validate(&def).map_err(|problems| problems.join(" "))?;
-        let (start, reused) = match resume {
+        let reused = match resume {
             Some(resume) => reusable(&def.steps, resume)?,
-            None => (0, Vec::new()),
+            None => Vec::new(),
         };
         let item = match (item, &def.trigger) {
             (Some(item), _) => Some(item),
@@ -307,25 +314,35 @@ impl Runner<'_> {
             workflow_model: def.model.as_ref(),
             folder: def.folder.as_deref(),
             started: Instant::now(),
-            waited: Mutex::new(Duration::ZERO),
+            stop: self.stop.child_token(),
+            waits: Mutex::new(Waits::default()),
+            wait_gate: tokio::sync::Mutex::new(()),
+            agent_gate: tokio::sync::Mutex::new(()),
             tokens: Mutex::new(0),
             over_budget: Mutex::new(None),
         };
+        // What the earlier run left standing in for the steps that don't run
+        // again, recorded before anything else starts.
+        let mut done: Vec<Option<Resolution>> = vec![None; def.steps.len()];
         for Reused {
+            index,
             step_id,
             input,
             output,
         } in reused
         {
+            let taken = output["notTaken"] != json!(true);
+            let status = if taken { "reused" } else { "not_taken" };
             let row = repo::start_step(pool, enc, &run.id, &step_id, None, &input)
                 .await
                 .map_err(|e| e.to_string())?;
-            repo::finish_step(pool, enc, &row, "reused", Some(&output), None)
+            repo::finish_step(pool, enc, &row, status, Some(&output), None)
                 .await
                 .map_err(|e| e.to_string())?;
+            done[index] = Some(Resolution::of(&def.steps[index], &output));
             set_step_output(&mut ctx, &step_id, output);
         }
-        let result = exec.steps(&def.steps[start..], &mut ctx, None).await;
+        let result = exec.graph(&def.steps, &mut ctx, done).await;
         let over_budget = exec.over_budget();
         if let Ok(Flow::Stop(step_id)) = &result {
             repo::finish_run_with_outcome(pool, &run.id, repo::NOTHING_NEW, step_id)
@@ -400,12 +417,74 @@ struct Exec<'a> {
     /// The workflow's folder for `read_file` steps.
     folder: Option<&'a str>,
     started: Instant,
-    /// Time spent waiting for the user, which the budget doesn't count.
-    waited: Mutex<Duration>,
+    /// Cancelled when the run is stopped, and when a step fails so the steps
+    /// running beside it end as `stopped`. A child of the runner's token.
+    stop: CancellationToken,
+    /// Waits for the user that are open, and the time spent waiting, which
+    /// the budget doesn't count.
+    waits: Mutex<Waits>,
+    /// Held while the run's status changes for a wait, so `paused` and
+    /// `running` are written in the order the waits began and ended.
+    wait_gate: tokio::sync::Mutex<()>,
+    /// One agent turn at a time: a conversation takes one agent turn at a
+    /// time, and every model step of a workflow shares its conversation.
+    agent_gate: tokio::sync::Mutex<()>,
     tokens: Mutex<u64>,
     /// Set when a budget is exceeded; the run ends with this reason.
     over_budget: Mutex<Option<String>>,
 }
+
+/// How many waits for the user are open at once, and for how long the run has
+/// waited: overlapping waits are counted once.
+#[derive(Default)]
+struct Waits {
+    open: usize,
+    /// When the first of the open waits began.
+    since: Option<Instant>,
+    /// The time of the waits that have all ended.
+    waited: Duration,
+}
+
+/// How a top-level step ended, as the steps after it see it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Resolution {
+    /// Completed, reused or skipped after an error; `false` when not taken.
+    taken: bool,
+    /// For a branch that ran: whether it passed (yes) or not (no).
+    arm: Option<bool>,
+}
+
+impl Resolution {
+    /// From the output a step left behind.
+    fn of(step: &Step, output: &Value) -> Self {
+        Self {
+            taken: output["notTaken"] != json!(true),
+            arm: match step.action {
+                StepAction::Branch { .. } => output["passed"].as_bool(),
+                _ => None,
+            },
+        }
+    }
+
+    fn not_taken() -> Self {
+        Self {
+            taken: false,
+            arm: None,
+        }
+    }
+
+    /// Whether this satisfies what a step waits for.
+    fn satisfies(self, dep: &definition::Dependency) -> bool {
+        self.taken && dep.arm.is_none_or(|want| self.arm == Some(want))
+    }
+}
+
+/// Most top-level steps running at once.
+const MAX_PARALLEL: usize = 4;
+
+/// A top-level step running: its index, how it ended, and the context it ran
+/// in (which holds its output).
+type StepJob<'f> = Pin<Box<dyn Future<Output = (usize, Result<Flow, String>, Value)> + Send + 'f>>;
 
 /// Which kind of saved document an update step changes.
 #[derive(Debug, Clone, Copy)]
@@ -604,6 +683,104 @@ enum Flow {
 type StepFuture<'f> = Pin<Box<dyn Future<Output = Result<Flow, String>> + Send + 'f>>;
 
 impl Exec<'_> {
+    /// Run the top-level `steps` as a graph: a step starts once everything in
+    /// its `after` has resolved, up to [`MAX_PARALLEL`] at a time. `done`
+    /// holds the steps already resolved (reused from an earlier run).
+    ///
+    /// A ready step runs when it has no `after` or at least one entry was
+    /// taken; otherwise it is recorded as `not_taken` without any work. Each
+    /// step renders from a snapshot of `ctx` taken as it starts, when all its
+    /// ancestors are done. The first failure stops new steps from starting and
+    /// cancels the running ones; the run ends with that failure.
+    async fn graph(
+        &self,
+        steps: &[Step],
+        ctx: &mut Value,
+        mut done: Vec<Option<Resolution>>,
+    ) -> Result<Flow, String> {
+        let pool = &self.runner.state.db;
+        let enc = &self.runner.state.encryption;
+        let deps = definition::dependencies(steps);
+        let mut started: Vec<bool> = done.iter().map(Option::is_some).collect();
+        let mut running: FuturesUnordered<StepJob<'_>> = FuturesUnordered::new();
+        let mut failure: Option<String> = None;
+        let mut stopped_at: Option<String> = None;
+        loop {
+            if failure.is_none() && stopped_at.is_none() {
+                if self.stop.is_cancelled() {
+                    failure = Some(STOPPED.to_string());
+                } else if let Some(reason) = self.check_time() {
+                    failure = Some(reason);
+                    self.stop.cancel();
+                }
+            }
+            // Start what is ready; a step not taken resolves at once, which
+            // may make the steps after it ready.
+            while failure.is_none() && stopped_at.is_none() {
+                let mut progressed = false;
+                for (i, step) in steps.iter().enumerate() {
+                    if started[i] || running.len() >= MAX_PARALLEL {
+                        continue;
+                    }
+                    let ready = deps[i].iter().all(|d| done[d.step].is_some());
+                    if !ready {
+                        continue;
+                    }
+                    let taken = deps[i].is_empty()
+                        || deps[i]
+                            .iter()
+                            .any(|d| done[d.step].is_some_and(|r| r.satisfies(d)));
+                    started[i] = true;
+                    progressed = true;
+                    if !taken {
+                        let input = json!({ "type": step_type(&step.action) });
+                        repo::record_not_taken(pool, enc, self.run_id, &step.id, &input)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        done[i] = Some(Resolution::not_taken());
+                        set_step_output(ctx, &step.id, repo::not_taken_output());
+                        continue;
+                    }
+                    let mut snapshot = ctx.clone();
+                    running.push(Box::pin(async move {
+                        let result = self.step(step, &mut snapshot, None).await;
+                        (i, result, snapshot)
+                    }));
+                }
+                if !progressed {
+                    break;
+                }
+            }
+            let Some((i, result, snapshot)) = running.next().await else {
+                break;
+            };
+            let step = &steps[i];
+            match result {
+                Ok(flow) => {
+                    if let Some(output) = snapshot["steps"].get(&step.id) {
+                        done[i] = Some(Resolution::of(step, output));
+                        set_step_output(ctx, &step.id, output.clone());
+                    }
+                    if let Flow::Stop(at) = flow {
+                        stopped_at = Some(at);
+                    }
+                }
+                Err(error) => {
+                    if failure.is_none() {
+                        failure = Some(error);
+                        // The steps still running end as stopped.
+                        self.stop.cancel();
+                    }
+                }
+            }
+        }
+        match (failure, stopped_at) {
+            (Some(error), _) => Err(error),
+            (None, Some(at)) => Ok(Flow::Stop(at)),
+            (None, None) => Ok(Flow::Continue),
+        }
+    }
+
     /// Run `steps` in order against `ctx`, recording each. `iteration` is the
     /// element index when these are a `for_each` body.
     fn steps<'f>(
@@ -614,7 +791,7 @@ impl Exec<'_> {
     ) -> StepFuture<'f> {
         Box::pin(async move {
             for step in steps {
-                if self.runner.stop.is_cancelled() {
+                if self.stop.is_cancelled() {
                     return Err(STOPPED.to_string());
                 }
                 if let Some(reason) = self.check_time() {
@@ -663,7 +840,7 @@ impl Exec<'_> {
                     Flow::Continue
                 })
             }
-            Err(_) if self.runner.stop.is_cancelled() => {
+            Err(_) if self.stop.is_cancelled() => {
                 repo::finish_step(pool, enc, &row, "stopped", None, Some(STOPPED))
                     .await
                     .map_err(|e| e.to_string())?;
@@ -917,7 +1094,7 @@ impl Exec<'_> {
                 let input = filled["input"].as_str().unwrap_or_default();
                 data::parse_data(input, format)
             }
-            StepAction::Condition { is, .. } => {
+            StepAction::Condition { is, .. } | StepAction::Branch { is, .. } => {
                 let value = filled["value"].as_str().unwrap_or_default();
                 let text = filled["text"].as_str().unwrap_or_default();
                 let previous = if is == "changed" {
@@ -927,7 +1104,19 @@ impl Exec<'_> {
                 } else {
                     None
                 };
-                Ok(evaluate_condition(is, value, text, previous.as_deref()))
+                let mut output = evaluate_condition(is, value, text, previous.as_deref());
+                if matches!(step.action, StepAction::Branch { .. }) {
+                    // The way it went is the step's text; why moves to `reason`.
+                    let arm = if output["passed"] == json!(true) {
+                        "yes"
+                    } else {
+                        "no"
+                    };
+                    output["reason"] = output["text"].take();
+                    output["text"] = json!(arm);
+                    output["arm"] = json!(arm);
+                }
+                Ok(output)
             }
             StepAction::ExportFile { .. } => {
                 let name = filled["name"].as_str().unwrap_or_default();
@@ -1020,7 +1209,7 @@ impl Exec<'_> {
     ) -> Result<T, String> {
         tokio::select! {
             result = work => result,
-            _ = self.runner.stop.cancelled() => Err(STOPPED.to_string()),
+            _ = self.stop.cancelled() => Err(STOPPED.to_string()),
             _ = tokio::time::sleep(self.time_left()) => {
                 Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()))
             }
@@ -1059,24 +1248,16 @@ impl Exec<'_> {
             requested_at: super::scheduler::to_iso(now),
             expires_at: super::scheduler::to_iso(expires),
         };
-        repo::set_run_status(pool, self.run_id, "paused")
-            .await
-            .map_err(|e| e.to_string())?;
+        self.begin_wait().await?;
         let answer = unattended.reviews.ask(review);
-        let asked = Instant::now();
         let decision = tokio::select! {
             decision = answer => decision.ok(),
-            _ = self.runner.stop.cancelled() => None,
+            _ = self.stop.cancelled() => None,
             _ = tokio::time::sleep(unattended.wait) => None,
         };
-        unattended.reviews.clear(self.run_id);
-        if let Ok(mut waited) = self.waited.lock() {
-            *waited += asked.elapsed();
-        }
-        repo::set_run_status(pool, self.run_id, "running")
-            .await
-            .map_err(|e| e.to_string())?;
-        if self.runner.stop.is_cancelled() {
+        unattended.reviews.clear(self.run_id, step_id);
+        self.end_wait().await?;
+        if self.stop.is_cancelled() {
             return Err(STOPPED.to_string());
         }
         match decision {
@@ -1122,7 +1303,6 @@ impl Exec<'_> {
             .unattended
             .as_ref()
             .map_or(REVIEW_WAIT, |u| u.wait);
-        let pool = &self.runner.state.db;
         let now = chrono::Utc::now();
         let expires = now + chrono::Duration::from_std(wait).unwrap_or_default();
         let pending = PendingQuestion {
@@ -1136,24 +1316,16 @@ impl Exec<'_> {
             requested_at: super::scheduler::to_iso(now),
             expires_at: super::scheduler::to_iso(expires),
         };
-        repo::set_run_status(pool, self.run_id, "paused")
-            .await
-            .map_err(|e| e.to_string())?;
+        self.begin_wait().await?;
         let answer = questions.ask(pending);
-        let asked = Instant::now();
         let answer = tokio::select! {
             answer = answer => answer.ok(),
-            _ = self.runner.stop.cancelled() => None,
+            _ = self.stop.cancelled() => None,
             _ = tokio::time::sleep(wait) => None,
         };
-        questions.clear(self.run_id);
-        if let Ok(mut waited) = self.waited.lock() {
-            *waited += asked.elapsed();
-        }
-        repo::set_run_status(pool, self.run_id, "running")
-            .await
-            .map_err(|e| e.to_string())?;
-        if self.runner.stop.is_cancelled() {
+        questions.clear(self.run_id, step_id);
+        self.end_wait().await?;
+        if self.stop.is_cancelled() {
             return Err(STOPPED.to_string());
         }
         match (answer, default) {
@@ -1176,8 +1348,63 @@ impl Exec<'_> {
     }
 
     fn running_time(&self) -> Duration {
-        let waited = self.waited.lock().map(|w| *w).unwrap_or_default();
-        self.started.elapsed().saturating_sub(waited)
+        self.started.elapsed().saturating_sub(self.time_waited())
+    }
+
+    /// Time spent waiting for the user: overlapping waits count once, and one
+    /// still open counts up to now.
+    fn time_waited(&self) -> Duration {
+        self.waits
+            .lock()
+            .map(|w| w.waited + w.since.map_or(Duration::ZERO, |since| since.elapsed()))
+            .unwrap_or_default()
+    }
+
+    /// A wait for the user begins. The run shows as `paused` from the first
+    /// open wait until the last one ends.
+    async fn begin_wait(&self) -> Result<(), String> {
+        let _order = self.wait_gate.lock().await;
+        let first = {
+            let mut waits = self
+                .waits
+                .lock()
+                .map_err(|_| "Lock poisoned.".to_string())?;
+            waits.open += 1;
+            if waits.open == 1 {
+                waits.since = Some(Instant::now());
+            }
+            waits.open == 1
+        };
+        if first {
+            repo::set_run_status(&self.runner.state.db, self.run_id, "paused")
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// A wait for the user ends; the run is `running` again when none is open.
+    async fn end_wait(&self) -> Result<(), String> {
+        let _order = self.wait_gate.lock().await;
+        let last = {
+            let mut waits = self
+                .waits
+                .lock()
+                .map_err(|_| "Lock poisoned.".to_string())?;
+            waits.open = waits.open.saturating_sub(1);
+            if waits.open == 0 {
+                if let Some(since) = waits.since.take() {
+                    waits.waited += since.elapsed();
+                }
+            }
+            waits.open == 0
+        };
+        if last {
+            repo::set_run_status(&self.runner.state.db, self.run_id, "running")
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     fn time_left(&self) -> Duration {
@@ -1404,6 +1631,12 @@ impl Exec<'_> {
             .runner
             .connectors
             .ok_or("The agent step can't run here.")?;
+        // A conversation takes one agent turn at a time and the workflow's
+        // steps share one, so agent steps running side by side take turns.
+        let _turn = tokio::select! {
+            turn = self.agent_gate.lock() => turn,
+            _ = self.stop.cancelled() => return Err(STOPPED.to_string()),
+        };
         let text = if input.trim().is_empty() {
             prompt.to_string()
         } else {
@@ -1479,7 +1712,7 @@ impl Exec<'_> {
         // Stop and the run's time limit end the research the way they end
         // every step; what it had verified by then is still saved.
         let halted = || {
-            if self.runner.stop.is_cancelled() {
+            if self.stop.is_cancelled() {
                 Some(ResearchStatus::Stopped)
             } else if self.over_budget().is_some() || self.time_left().is_zero() {
                 Some(ResearchStatus::Failed)
@@ -1497,7 +1730,7 @@ impl Exec<'_> {
             &halted,
         )
         .await;
-        if self.runner.stop.is_cancelled() {
+        if self.stop.is_cancelled() {
             return Err(STOPPED.to_string());
         }
         if let Some(reason) = self.over_budget().or_else(|| self.check_time()) {
@@ -1929,7 +2162,7 @@ impl Exec<'_> {
                 .min(budget.busy_wait.saturating_sub(began.elapsed()));
             tokio::select! {
                 _ = tokio::time::sleep(wait) => {}
-                _ = self.runner.stop.cancelled() => return Err(STOPPED.to_string()),
+                _ = self.stop.cancelled() => return Err(STOPPED.to_string()),
                 _ = tokio::time::sleep(self.time_left()) => {
                     return Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()));
                 }
@@ -2034,7 +2267,7 @@ impl Exec<'_> {
                 let _ = stream.await;
                 Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()))
             }
-            _ = self.runner.stop.cancelled() => {
+            _ = self.stop.cancelled() => {
                 // Retried: a stop in the first moment can land before the
                 // stream is registered, when there is nothing to cancel yet.
                 loop {
@@ -2096,7 +2329,7 @@ impl Exec<'_> {
 
     /// A failed try may be repeated: not once the run is stopped or out of budget.
     fn may_retry(&self) -> bool {
-        !self.runner.stop.is_cancelled() && self.over_budget().is_none()
+        !self.stop.is_cancelled() && self.over_budget().is_none()
     }
 
     /// Wait before retry number `retry` (0.5 s, 1 s, 2 s…); given up if the run
@@ -2105,7 +2338,7 @@ impl Exec<'_> {
         let wait = RETRY_BASE * 2u32.pow(retry.saturating_sub(1).min(4));
         tokio::select! {
             _ = tokio::time::sleep(wait) => Ok(()),
-            _ = self.runner.stop.cancelled() => Err(STOPPED.to_string()),
+            _ = self.stop.cancelled() => Err(STOPPED.to_string()),
             _ = tokio::time::sleep(self.time_left()) => {
                 Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()))
             }
@@ -2369,6 +2602,10 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             "type": "condition", "value": render(value)?, "is": is,
             "text": text.as_deref().map(render).transpose()?,
         }),
+        StepAction::Branch { value, is, text } => json!({
+            "type": "branch", "value": render(value)?, "is": is,
+            "text": text.as_deref().map(render).transpose()?,
+        }),
         StepAction::ExportFile { name, content } => {
             json!({ "type": "export_file", "name": render(name)?, "content": render(content)? })
         }
@@ -2411,7 +2648,10 @@ const MAX_RECORDED_DATA_CHARS: usize = 500;
 /// condition's value, which can be a whole page, is cut short.
 fn recorded_input(action: &StepAction, filled: &Value) -> Value {
     let mut input = filled.clone();
-    if matches!(action, StepAction::Condition { .. }) {
+    if matches!(
+        action,
+        StepAction::Condition { .. } | StepAction::Branch { .. }
+    ) {
         if let Some(value) = filled["value"].as_str() {
             input["value"] = json!(cap_text(value, MAX_RECORDED_CONDITION_CHARS));
         }
@@ -2589,6 +2829,7 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::Ask { .. } => "ask",
         StepAction::Notify { .. } => "notify",
         StepAction::Condition { .. } => "condition",
+        StepAction::Branch { .. } => "branch",
         StepAction::ReadFile { .. } => "read_file",
         StepAction::ParseData { .. } => "parse_data",
         StepAction::Research { .. } => "research",
@@ -2659,7 +2900,7 @@ impl ResearchIo for ResearchStepIo<'_, '_> {
         if let Some(reason) = exec.over_budget().or_else(|| exec.check_time()) {
             return Err(reason);
         }
-        if exec.runner.stop.is_cancelled() {
+        if exec.stop.is_cancelled() {
             return Err(STOPPED.to_string());
         }
         let mut request = exec.request(
@@ -2750,14 +2991,20 @@ pub(crate) fn parse_json_reply(reply: &str) -> Option<Value> {
 
 /// An earlier step's record, standing in for running it again.
 struct Reused {
+    /// Its place in the workflow's top-level steps.
+    index: usize,
     step_id: String,
     input: Value,
     output: Value,
 }
 
-/// Where `resume` starts in `steps`, and the earlier steps to reuse.
-fn reusable(steps: &[Step], resume: &Resume) -> Result<(usize, Vec<Reused>), String> {
-    let start = steps
+/// The earlier steps to reuse when `resume` starts at `resume.from_step`: the
+/// step itself and everything that comes after it run again. Every other
+/// top-level step with a usable row in the earlier run is reused (a branch's
+/// other way too, as it was), and the rest run, with whatever depends on them.
+/// A step that `from_step` itself comes after must have a usable row.
+fn reusable(steps: &[Step], resume: &Resume) -> Result<Vec<Reused>, String> {
+    let from = steps
         .iter()
         .position(|s| s.id == resume.from_step)
         .ok_or_else(|| {
@@ -2766,39 +3013,51 @@ fn reusable(steps: &[Step], resume: &Resume) -> Result<(usize, Vec<Reused>), Str
                 resume.from_step
             )
         })?;
-    let mut reused = Vec::with_capacity(start);
-    for step in &steps[..start] {
+    let deps = definition::dependencies(steps);
+    let ancestry = definition::ancestors(&deps);
+    let mut runs = vec![false; steps.len()];
+    let mut reused = Vec::new();
+    for (i, step) in steps.iter().enumerate() {
+        if i == from || ancestry[i].contains(&from) {
+            runs[i] = true;
+            continue;
+        }
         let row = resume
             .earlier
             .iter()
-            .find(|r| r.step_id == step.id && r.iteration.is_none())
-            .ok_or_else(|| {
-                format!(
-                    "Step \"{}\" didn't run last time, so the run can't start after it.",
-                    step.id
-                )
-            })?;
-        let output = match (row.status.as_str(), &row.output) {
-            ("completed" | "reused", Some(output)) => output.clone(),
+            .find(|r| r.step_id == step.id && r.iteration.is_none());
+        let output = row.and_then(|row| match (row.status.as_str(), &row.output) {
+            ("completed" | "reused", Some(output)) => Some(output.clone()),
+            ("not_taken", _) => Some(repo::not_taken_output()),
             // A step allowed to fail carried on with its error as its output.
             ("failed" | "skipped", _) if step.on_error == OnError::Skip => {
-                skipped_output(row.error.as_deref().unwrap_or_default())
+                Some(skipped_output(row.error.as_deref().unwrap_or_default()))
             }
-            _ => {
-                return Err(format!(
-                    "Step \"{}\" didn't finish last time, so the run can't start after it.",
-                    step.id
-                ))
-            }
-        };
-        let input = row.input.clone().unwrap_or(Value::Null);
-        reused.push(Reused {
-            step_id: step.id.clone(),
-            input,
-            output,
+            _ => None,
         });
+        match output {
+            Some(output) if !deps[i].iter().any(|d| runs[d.step]) => reused.push(Reused {
+                index: i,
+                step_id: step.id.clone(),
+                input: row.and_then(|r| r.input.clone()).unwrap_or(Value::Null),
+                output,
+            }),
+            _ if ancestry[from].contains(&i) => {
+                return Err(match row {
+                    None => format!(
+                        "Step \"{}\" didn't run last time, so the run can't start after it.",
+                        step.id
+                    ),
+                    Some(_) => format!(
+                        "Step \"{}\" didn't finish last time, so the run can't start after it.",
+                        step.id
+                    ),
+                });
+            }
+            _ => runs[i] = true,
+        }
     }
-    Ok((start, reused))
+    Ok(reused)
 }
 
 /// Retries for `step`: what it says, or its kind's default.

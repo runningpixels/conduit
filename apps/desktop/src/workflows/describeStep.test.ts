@@ -51,3 +51,13 @@ describe('describeStep for_each', () => {
     expect(describeStep(loop('inputs.urls'), tt)).toBe('forEach {"items":"inputs.urls"}');
   });
 });
+
+describe('describeStep branch', () => {
+  const tt = (id: string, values?: Record<string, unknown>) => `${id.split('.').pop()} ${JSON.stringify(values)}`;
+  it('reads as an "If" line with the value and text', () => {
+    expect(describeStep({ id: 'b', type: 'branch', value: 'plain', is: 'contains', text: 'urgent' }, tt)).toBe(
+      'contains {"value":"plain","text":"urgent"}',
+    );
+    expect(describeStep({ id: 'b', type: 'branch', value: 'x', is: 'empty' }, (id) => id)).toBe('workspace.workflows.step.branch.empty');
+  });
+});

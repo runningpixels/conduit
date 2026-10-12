@@ -1763,6 +1763,8 @@ Production npm dependencies bundled into the renderer.
 | [@codemirror/lint](https://www.npmjs.com/package/@codemirror/lint) | 6.9.7 | `MIT` |
 | [@codemirror/state](https://www.npmjs.com/package/@codemirror/state) | 6.7.6 | `MIT` |
 | [@codemirror/view](https://www.npmjs.com/package/@codemirror/view) | 6.43.13 | `MIT` |
+| [@dagrejs/dagre](https://github.com/dagrejs/dagre#readme) | 3.1.1 | `MIT` |
+| [@dagrejs/graphlib](https://github.com/dagrejs/graphlib#readme) | 4.0.5 | `MIT` |
 | [@formatjs/fast-memoize](https://github.com/formatjs/formatjs#readme) | 3.1.7 | `MIT` |
 | [@formatjs/icu-messageformat-parser](https://github.com/formatjs/formatjs#readme) | 3.5.20 | `MIT` |
 | [@formatjs/icu-skeleton-parser](https://github.com/formatjs/formatjs#readme) | 2.1.12 | `MIT` |
@@ -1859,5 +1861,5 @@ Production npm dependencies bundled into the renderer.
 | [khroma](https://github.com/fabiospampinato/khroma#readme) | 2.1.0 | `Unknown` |
 | [robust-predicates](https://github.com/mourner/robust-predicates#readme) | 3.0.3 | `Unlicense` |
 
-Total: **156 packages**.
+Total: **158 packages**.
 

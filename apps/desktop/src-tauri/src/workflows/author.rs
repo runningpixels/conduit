@@ -339,6 +339,18 @@ const EXAMPLES: &[(&str, &str)] = &[
     ),
 ];
 
+/// Step types that exist but that drafting doesn't offer yet: a branch needs
+/// the `after` setting to mean anything, and drafts stay a straight line.
+const NOT_TAUGHT: &[&str] = &["branch"];
+
+/// The step types the model is shown.
+fn taught_step_types() -> Vec<String> {
+    step_types()
+        .into_iter()
+        .filter(|kind| !NOT_TAUGHT.contains(&kind.as_str()))
+        .collect()
+}
+
 /// The step catalog the model is shown. Step types and their settings come
 /// from the definition code (the enum's own list and `action_keys`), the
 /// limits from its constants; a unit test fails when a step type or setting has
@@ -357,7 +369,7 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
         definition::MAX_STEPS
     ));
     out.push_str("STEP TYPES (required settings first; \"template\" means {{...}} references are filled in):\n");
-    for kind in step_types() {
+    for kind in taught_step_types() {
         match SPECS.iter().find(|s| s.kind == kind) {
             Some(spec) => {
                 out.push_str(&format!("\n- {}: {}\n", spec.kind, spec.what));
@@ -1106,8 +1118,9 @@ mod tests {
     #[test]
     fn the_catalog_names_every_step_type_and_setting() {
         let catalog = catalog_text();
-        let types = step_types();
+        let types = taught_step_types();
         assert!(types.len() >= 14, "{types:?}");
+        assert!(step_types().iter().any(|t| t == "branch"));
         for kind in &types {
             assert!(catalog.contains(kind.as_str()), "missing step type {kind}");
             let spec = SPECS

@@ -78,6 +78,7 @@ import { findStep, needsCollections, needsDocumentTarget, newStep, triggerNeedsF
 import { describeJsonError } from '../workflows/jsonError';
 import { reviewText } from '../workflows/permissionText';
 import { ResultView } from '../workflows/ResultView';
+import { runsAfterLine } from '../workflows/runsAfter';
 import { isUnread, primaryOutput } from '../workflows/results';
 import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
 import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
@@ -93,6 +94,7 @@ const STATUS_CLASS: Record<string, string> = {
   paused: 'wf-status wf-status-paused',
   reused: 'wf-status wf-status-reused',
   skipped: 'wf-status wf-status-skipped',
+  not_taken: 'wf-status wf-status-not-taken',
   stopped: 'wf-status wf-status-stopped',
 };
 
@@ -147,6 +149,11 @@ function durationMs(start: string, end: string | null): number | null {
   return Number.isFinite(ms) && ms >= 0 ? ms : null;
 }
 
+
+/** One open wait: a run can wait on several steps at once (parallel Ask me steps or reviews). */
+function waitKey(wait: { runId: string; stepId: string }): string {
+  return `${wait.runId}:${wait.stepId}`;
+}
 export function WorkflowsPage({
   onStatus,
   onOpenDocument,
@@ -467,23 +474,24 @@ export function WorkflowsPage({
 
   /// The panel stays until the backend takes the answer; a refusal is shown in it.
   async function answer(review: WorkflowReview, decision: WorkflowReviewDecision) {
-    markAnswering(review.runId, true);
+    const key = waitKey(review);
+    markAnswering(key, true);
     setReviewErrors((current) => {
-      const { [review.runId]: _cleared, ...rest } = current;
+      const { [key]: _cleared, ...rest } = current;
       return rest;
     });
     try {
-      const taken = await answerWorkflowReview(review.runId, decision);
+      const taken = await answerWorkflowReview(review.runId, decision, review.stepId);
       if (!taken) onStatus(t('workspace.workflows.review.gone'));
     } catch (e) {
       setReviewErrors((current) => ({
         ...current,
-        [review.runId]: t('workspace.workflows.status.actionFailed', { error: errorText(e) }),
+        [key]: t('workspace.workflows.status.actionFailed', { error: errorText(e) }),
       }));
-      markAnswering(review.runId, false);
+      markAnswering(key, false);
       return;
     }
-    markAnswering(review.runId, false);
+    markAnswering(key, false);
     setReviews(await listWorkflowReviews().catch(() => []));
     if (selectedId) setRuns(await listWorkflowRuns(selectedId, 20).catch(() => runs));
   }
@@ -491,13 +499,13 @@ export function WorkflowsPage({
   /// Resolves to why the answer was refused, or `null` once it was taken.
   async function reply(question: WorkflowQuestion, text: string): Promise<string | null> {
     try {
-      const taken = await answerWorkflowQuestion(question.runId, text);
+      const taken = await answerWorkflowQuestion(question.runId, text, question.stepId);
       if (!taken) onStatus(t('workspace.workflows.review.gone'));
     } catch (e) {
       return t('workspace.workflows.question.failed', { error: errorText(e) });
     }
     // Gone only now, so a refused answer keeps its panel and the typed text.
-    setQuestions((current) => current.filter((q) => q.runId !== question.runId));
+    setQuestions((current) => current.filter((q) => waitKey(q) !== waitKey(question)));
     setQuestions(await listWorkflowQuestions().catch(() => []));
     return null;
   }
@@ -785,7 +793,9 @@ export function WorkflowsPage({
               ? t('workspace.workflows.run.reused')
               : status === 'skipped'
                 ? t('workspace.workflows.run.skipped')
-                : t('workspace.workflows.run.running');
+                : status === 'not_taken'
+                  ? t('workspace.workflows.run.notTaken')
+                  : t('workspace.workflows.run.running');
 
   const runWord = (r: WorkflowRun) => (isNothingNew(r) ? t('workspace.workflows.run.nothingNew') : statusLabel(r.status));
   const runTone = (r: WorkflowRun) => (isNothingNew(r) ? RUN_TONE.stopped : (RUN_TONE[r.status] ?? RUN_TONE.stopped));
@@ -1026,7 +1036,7 @@ export function WorkflowsPage({
         questions.find((q) => q.runId === openRun.run.id)?.stepId ??
         null)
       : null;
-    const branchy = record.definition.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'agent');
+    const branchy = record.definition.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'branch' || s.type === 'agent' || s.after !== undefined);
     const stepsView = stepsPref === 'auto' ? (branchy ? 'canvas' : 'list') : stepsPref;
     const chooseStepsView = (next: 'canvas' | 'list') => {
       setStepsPref(next);
@@ -1065,7 +1075,7 @@ export function WorkflowsPage({
           .filter((review) => review.workflowId === record.id && (!runId || review.runId === runId))
           .map((review) => (
             <section
-              key={review.runId}
+              key={waitKey(review)}
               className="wf-offer wf-review"
               role="group"
               aria-label={t('workspace.workflows.review.title')}
@@ -1082,7 +1092,7 @@ export function WorkflowsPage({
                 <button
                   type="button"
                   className="btn primary"
-                  disabled={answering.has(review.runId)}
+                  disabled={answering.has(waitKey(review))}
                   onClick={() => void answer(review, 'allowOnce')}
                 >
                   {t('workspace.workflows.review.allowOnce')}
@@ -1090,7 +1100,7 @@ export function WorkflowsPage({
                 <button
                   type="button"
                   className="btn"
-                  disabled={answering.has(review.runId)}
+                  disabled={answering.has(waitKey(review))}
                   onClick={() => void answer(review, 'alwaysAllow')}
                 >
                   {t('workspace.workflows.review.alwaysAllow')}
@@ -1098,15 +1108,15 @@ export function WorkflowsPage({
                 <button
                   type="button"
                   className="btn ghost"
-                  disabled={answering.has(review.runId)}
+                  disabled={answering.has(waitKey(review))}
                   onClick={() => void answer(review, 'deny')}
                 >
                   {t('workspace.workflows.review.deny')}
                 </button>
               </div>
-              {reviewErrors[review.runId] ? (
+              {reviewErrors[waitKey(review)] ? (
                 <p className="wf-error" role="alert">
-                  {reviewErrors[review.runId]}
+                  {reviewErrors[waitKey(review)]}
                 </p>
               ) : null}
             </section>
@@ -1115,7 +1125,7 @@ export function WorkflowsPage({
           .filter((question) => question.workflowId === record.id && (!runId || question.runId === runId))
           .map((question) => (
             <QuestionPanel
-              key={question.runId}
+              key={waitKey(question)}
               question={question}
               expires={formatNextRun(question.expiresAt, fmt.locale)}
               onAnswer={(text) => reply(question, text)}
@@ -1591,9 +1601,10 @@ function StepList({
   const names = connectorNames ?? looked;
   return (
     <ol className="wf-steps">
-      {steps.map((step) => (
+      {steps.map((step, index) => (
         <li key={step.id}>
           <span>{describeStep(step, t, labels, names, scope)}</span>
+          {steps === scope && runsAfterLine(scope, index, t) ? <span className="wf-muted">{runsAfterLine(scope, index, t)}</span> : null}
           {step.onError === 'skip' ? <span className="wf-flag">{t('workspace.workflows.step.continuesOnError')}</span> : null}
           {step.type === 'for_each' ? <StepList steps={step.steps} labels={labels} connectorNames={names} scope={scope} /> : null}
         </li>

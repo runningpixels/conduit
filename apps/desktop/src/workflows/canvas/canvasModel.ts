@@ -5,7 +5,8 @@
 /// The engine runs steps in order (one level of `for_each` nesting), so the
 /// layout is the order: a start node, then the steps top to bottom down one
 /// centre line (a page scrolls down, so the drawing does too), each loop a
-/// frame holding its own steps left to right. There are no saved positions
+/// frame holding its own steps, also top to bottom: the drawing stays one card
+/// wide, so it is readable without shrinking. There are no saved positions
 /// yet; they come with the graph runner, when order stops being the whole
 /// story.
 ///
@@ -18,11 +19,13 @@ import type { StepPath } from '../editorModel';
 export const NODE_W = 280;
 export const NODE_H = 120;
 export const START_W = 280;
-export const START_H = 96;
+export const START_H = 136;
 export const GAP_X = 56;
 export const GAP_Y = 56;
 export const LOOP_PAD = 20;
 export const LOOP_HEAD = 44;
+/** Between the steps inside a loop frame. */
+export const LOOP_GAP = 32;
 
 export const START_ID = '__start';
 
@@ -42,7 +45,7 @@ export interface CanvasNode {
   path?: StepPath;
 }
 
-/** Where a wire leaves and enters a node: the chain runs top to bottom, a loop's steps left to right, data along the right side. */
+/** Where a wire leaves and enters a node: the flow runs top to bottom, data along the right side. */
 export type HandleId = 'flow-top' | 'flow-bottom' | 'flow-left' | 'flow-right' | 'data-in' | 'data-out';
 
 export interface CanvasEdge {
@@ -104,23 +107,24 @@ export function buildCanvas(def: WorkflowDefinition): CanvasGraph {
   def.steps.forEach((step, index) => {
     if (step.type === 'for_each') {
       const inner = step.steps;
-      const width = Math.max(NODE_W, inner.length * NODE_W + Math.max(0, inner.length - 1) * GAP_X) + 2 * LOOP_PAD;
-      const height = LOOP_HEAD + NODE_H + LOOP_PAD;
+      const width = NODE_W + 2 * LOOP_PAD;
+      const rows = Math.max(1, inner.length);
+      const height = LOOP_HEAD + rows * NODE_H + (rows - 1) * LOOP_GAP + LOOP_PAD;
       nodes.push({ id: step.id, kind: 'loop', x: -width / 2, y, width, height, parent: null, step, path: [index] });
       let innerPrevious: string | null = null;
       inner.forEach((child, childIndex) => {
         nodes.push({
           id: child.id,
           kind: 'step',
-          x: LOOP_PAD + childIndex * (NODE_W + GAP_X),
-          y: LOOP_HEAD,
+          x: LOOP_PAD,
+          y: LOOP_HEAD + childIndex * (NODE_H + LOOP_GAP),
           width: NODE_W,
           height: NODE_H,
           parent: step.id,
           step: child,
           path: [index, childIndex],
         });
-        if (innerPrevious) flow(innerPrevious, child.id, 'flow-right', 'flow-left');
+        if (innerPrevious) flow(innerPrevious, child.id, 'flow-bottom', 'flow-top');
         innerPrevious = child.id;
       });
       flow(previous, step.id, 'flow-bottom', 'flow-top');

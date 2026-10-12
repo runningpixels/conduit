@@ -127,7 +127,7 @@ export function dropPlace(graph: CanvasGraph, draggedId: string, center: { x: nu
       const inside = center.x >= frame.x && center.x <= frame.x + frame.width && center.y >= frame.y && center.y <= frame.y + frame.height;
       if (!inside) continue;
       const children = graph.nodes.filter((n) => n.parent === frame.id && n.id !== draggedId);
-      const index = children.filter((c) => abs(c).x + c.width / 2 < center.x).length;
+      const index = children.filter((c) => abs(c).y + c.height / 2 < center.y).length;
       return { loop: frame.id, index };
     }
   }

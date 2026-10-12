@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep } from '../../ipc/contracts';
 import { STARTER_WORKFLOWS } from '../starters';
-import { GAP_X, GAP_Y, LOOP_HEAD, LOOP_PAD, NODE_H, NODE_W, START_H, START_ID, START_W, buildCanvas, problemsByStep, runStatuses, stepReferences } from './canvasModel';
+import { GAP_Y, LOOP_GAP, LOOP_HEAD, LOOP_PAD, NODE_H, NODE_W, START_H, START_ID, START_W, buildCanvas, problemsByStep, runStatuses, stepReferences } from './canvasModel';
 
 const briefing = STARTER_WORKFLOWS.find((s) => s.id === 'briefing')!.definition as WorkflowDefinition;
 
@@ -62,20 +62,22 @@ describe('buildCanvas', () => {
     const loop = nodes.find((n) => n.id === 'read')!;
     expect(loop.kind).toBe('loop');
     expect(loop.x + loop.width / 2).toBe(0);
-    expect(loop.width).toBe(3 * NODE_W + 2 * GAP_X + 2 * LOOP_PAD);
+    // One card wide: the loop's steps run down inside the frame, like the chain.
+    expect(loop.width).toBe(NODE_W + 2 * LOOP_PAD);
+    expect(loop.height).toBe(LOOP_HEAD + 3 * NODE_H + 2 * LOOP_GAP + LOOP_PAD);
     const inner = nodes.filter((n) => n.parent === 'read');
     expect(inner.map((n) => [n.id, n.x, n.y])).toEqual([
       ['article', LOOP_PAD, LOOP_HEAD],
-      ['gist', LOOP_PAD + NODE_W + GAP_X, LOOP_HEAD],
-      ['card', LOOP_PAD + 2 * (NODE_W + GAP_X), LOOP_HEAD],
+      ['gist', LOOP_PAD, LOOP_HEAD + NODE_H + LOOP_GAP],
+      ['card', LOOP_PAD, LOOP_HEAD + 2 * (NODE_H + LOOP_GAP)],
     ]);
     expect(inner.map((n) => n.path)).toEqual([[2, 0], [2, 1], [2, 2]]);
     const flow = edges.filter((e) => e.kind === 'flow').map((e) => `${e.source}>${e.target}`);
     expect(flow.sort()).toEqual(['__start>fetch', 'article>gist', 'fetch>pick', 'gist>card', 'pick>read', 'read>write', 'write>save']);
-    // The chain runs down; a loop's own steps run across.
+    // The chain runs down, and so do a loop's own steps.
     const handles = (s: string, t: string) => edges.find((e) => e.source === s && e.target === t);
     expect(handles('pick', 'read')).toMatchObject({ sourceHandle: 'flow-bottom', targetHandle: 'flow-top' });
-    expect(handles('article', 'gist')).toMatchObject({ sourceHandle: 'flow-right', targetHandle: 'flow-left' });
+    expect(handles('article', 'gist')).toMatchObject({ sourceHandle: 'flow-bottom', targetHandle: 'flow-top' });
     // The loop reads the stories `pick` chose; the steps inside read each other.
     const data = edges.filter((e) => e.kind === 'data').map((e) => `${e.source}>${e.target}`);
     expect(data).toContain('pick>read');

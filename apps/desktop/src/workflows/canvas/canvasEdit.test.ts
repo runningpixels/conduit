@@ -69,13 +69,13 @@ describe('dropPlace', () => {
     expect(write).toBeTruthy();
   });
 
-  it('finds the slot inside a loop frame from the left-right position', () => {
+  it('finds the slot inside a loop frame from the up-down position', () => {
     const frame = node('read');
-    const y = frame.y + frame.height / 2;
-    expect(dropPlace(graph, 'write', { x: frame.x + 10, y }, false)).toEqual({ loop: 'read', index: 0 });
-    expect(dropPlace(graph, 'write', { x: frame.x + frame.width - 10, y }, false)).toEqual({ loop: 'read', index: 3 });
+    const x = frame.x + frame.width / 2;
+    expect(dropPlace(graph, 'write', { x, y: frame.y + 10 }, false)).toEqual({ loop: 'read', index: 0 });
+    expect(dropPlace(graph, 'write', { x, y: frame.y + frame.height - 10 }, false)).toEqual({ loop: 'read', index: 3 });
     // A loop dragged over a frame stays in the top-level list.
-    expect(dropPlace(graph, 'read', { x: frame.x + 10, y }, true).loop).toBeNull();
+    expect(dropPlace(graph, 'read', { x, y: frame.y + 10 }, true).loop).toBeNull();
   });
 });
 

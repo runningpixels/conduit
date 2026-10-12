@@ -147,17 +147,21 @@ describe('buildCanvas with steps that wait for others', () => {
     const g = buildCanvas({ steps: [t('a'), t('b', ['a']), t('c', ['a'])] });
     expect(at(g, 'b').y).toBe(at(g, 'c').y);
     expect(at(g, 'b').y).toBe(at(g, 'a').y + NODE_H + GAP_Y);
-    expect(at(g, 'b').x).toBe(-NODE_W - GAP_X / 2);
-    expect(at(g, 'c').x).toBe(GAP_X / 2);
+    // Side by side and centred under a (which side each gets is dagre's call).
+    expect(Math.abs(at(g, 'b').x - at(g, 'c').x)).toBe(NODE_W + GAP_X);
+    expect(at(g, 'b').x + at(g, 'c').x + NODE_W).toBe(0);
     expect(at(g, 'a').x + NODE_W / 2).toBe(0);
     expect(flows(g)).toEqual(['__start>a', 'a>b', 'a>c']);
     expect(g.width).toBe(2 * NODE_W + GAP_X);
   });
 
-  it('puts a join below the longest path, with a wire from each step it waits for', () => {
+  it('puts a join below every step it waits for, with a wire from each', () => {
     const g = buildCanvas({ steps: [t('a'), t('b', ['a']), t('c', ['a']), t('x', ['c']), t('join', ['b', 'x'])] });
-    expect(at(g, 'x').y).toBe(at(g, 'b').y + NODE_H + GAP_Y);
+    // Below everything it waits for; b may sit beside x, just above the join.
+    expect(at(g, 'x').y).toBe(at(g, 'c').y + NODE_H + GAP_Y);
+    expect(at(g, 'b').y).toBeGreaterThan(at(g, 'a').y);
     expect(at(g, 'join').y).toBe(at(g, 'x').y + NODE_H + GAP_Y);
+    expect(at(g, 'join').y).toBeGreaterThan(at(g, 'b').y);
     expect(at(g, 'join').x + NODE_W / 2).toBe(0);
     expect(flows(g)).toEqual(['__start>a', 'a>b', 'a>c', 'c>x', 'b>join', 'x>join']);
   });

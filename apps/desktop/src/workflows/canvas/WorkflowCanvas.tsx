@@ -10,6 +10,7 @@
 
 import '@xyflow/react/dist/style.css';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Handle,
   Panel,
@@ -218,6 +219,8 @@ function startLines(t: Translate, def: WorkflowDefinition, labels: InputLabels):
 /** Least zoom the page layout fits to: below it text gets hard to read, so the canvas pans instead. */
 const READABLE_ZOOM = 0.85;
 const FIT_PAD = 40;
+/** Room at the top for the toolbar drawn over the canvas (add a step, canvas or list, zoom). */
+const FIT_TOP = 72;
 
 type Flow = ReturnType<typeof useReactFlow>;
 
@@ -239,10 +242,10 @@ function fitDrawing(flow: Flow, el: HTMLElement | null, fill: boolean) {
   const b = flow.getNodesBounds(nodes);
   if (b.width === 0 || b.height === 0) return;
   const byWidth = Math.min(1, (w - FIT_PAD * 2) / b.width);
-  const byHeight = (h - FIT_PAD * 2) / b.height;
+  const byHeight = (h - FIT_TOP - FIT_PAD) / b.height;
   const zoom = Math.max(READABLE_ZOOM, byHeight >= READABLE_ZOOM ? Math.min(byWidth, byHeight) : byWidth);
   const x = (w - b.width * zoom) / 2 - b.x * zoom;
-  const y = b.height * zoom + FIT_PAD * 2 > h ? FIT_PAD - b.y * zoom : (h - b.height * zoom) / 2 - b.y * zoom;
+  const y = b.height * zoom + FIT_TOP + FIT_PAD > h ? FIT_TOP - b.y * zoom : Math.max(FIT_TOP, (h - b.height * zoom) / 2) - b.y * zoom;
   void flow.setViewport({ x, y, zoom });
 }
 
@@ -397,6 +400,9 @@ function Canvas({
   }, [derived, setNodes]);
 
   const byNode = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n] as const)), [graph]);
+  // The selected wire: edges are rebuilt from the definition, so React Flow
+  // only knows one is selected (and Delete only reaches it) if we say so.
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const edges: Edge[] = useMemo(
     () =>
       graph.edges.map((e: CanvasEdge) =>
@@ -411,6 +417,7 @@ function Canvas({
               // Wires into a top-level step are its dependencies: selectable (and deletable) while editing.
               selectable: Boolean(editor?.onDisconnectFlow) && e.source !== START_ID && byNode.get(e.target)?.parent === null,
               deletable: Boolean(editor?.onDisconnectFlow) && e.source !== START_ID && byNode.get(e.target)?.parent === null,
+              selected: e.id === selectedEdge,
               ...(e.arm
                 ? {
                     label: t(e.arm === 'yes' ? 'workspace.workflows.canvas.arm.yes' : 'workspace.workflows.canvas.arm.no'),
@@ -434,7 +441,7 @@ function Canvas({
               data: { fields: e.fields },
             },
       ),
-    [graph, editor, t, byNode],
+    [graph, editor, t, byNode, selectedEdge],
   );
 
   const byId = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n] as const)), [graph]);
@@ -481,7 +488,7 @@ function Canvas({
       }
     : undefined;
 
-  return (
+  const drawing = (
     <div className={`wfc${editor ? ' is-editing' : ''}${fill ? ' is-fill' : ''}${expanded ? ' is-expanded' : ''}${className ? ` ${className}` : ''}`}>
       <div className="wfc-canvas" ref={box} style={expanded || fill ? undefined : { height }} aria-label={t('workspace.workflows.canvas.ariaLabel')} role="group">
         <ReactFlow
@@ -509,8 +516,19 @@ function Canvas({
               if (entry && entry !== START_ID) editor?.onDisconnectFlow?.(edge.target, entry);
             }
           }}
-          onNodeClick={(_e, node) => select(node.id === START_ID && !fill ? null : node.id)}
-          onPaneClick={() => select(null)}
+          onNodeClick={(_e, node) => {
+            setSelectedEdge(null);
+            select(node.id === START_ID && !fill ? null : node.id);
+          }}
+          onEdgeClick={(_e, edge) => {
+            if (edge.selectable === false) return;
+            setSelectedEdge(edge.id);
+            select(null);
+          }}
+          onPaneClick={() => {
+            setSelectedEdge(null);
+            select(null);
+          }}
           onNodeDragStop={onNodeDragStop}
           onConnect={(c: Connection) => {
             if (!c.source || !c.target || c.source === c.target) return;
@@ -558,6 +576,9 @@ function Canvas({
       )}
     </div>
   );
+  // Full screen draws into the page's body: a page's layout (a transformed
+  // ancestor, a positioned pane) would otherwise keep a fixed box inside it.
+  return expanded ? createPortal(drawing, document.body) : drawing;
 }
 
 /** What a step reads from and who reads it, as "step id (field)" lines. */

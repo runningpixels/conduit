@@ -3,15 +3,17 @@
 /// definition and run detail, so `WorkflowCanvas` only draws.
 ///
 /// The layout comes from what each step waits for (`after`; without it, the
-/// step before): a start node, then layers top to bottom (a page scrolls down,
-/// so the drawing does too), a step's layer being the longest path from the
-/// start. Steps of one layer sit side by side in list order, centred; a plain
-/// list is one card wide, so it is readable without shrinking. Each loop is a
-/// frame holding its own steps, top to bottom. There are no saved positions.
+/// step before), placed by dagre: a start node, then ranks top to bottom (a
+/// page scrolls down, so the drawing does too), with steps that run side by
+/// side in lanes that make room for their branches and keep wires from
+/// crossing. A plain list is one card wide, so it is readable without
+/// shrinking. Each loop is a frame holding its own steps, top to bottom.
+/// There are no saved positions.
 ///
 /// Two kinds of wire: **flow** (what runs next, from the order) and **data**
 /// (step B's settings read step A's output through `{{steps.A.…}}`).
 
+import dagre from '@dagrejs/dagre';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowStep } from '../../ipc/contracts';
 import type { StepPath } from '../editorModel';
 import { dependencies, entryFor, parseEntry } from '../stepGraph';
@@ -113,16 +115,8 @@ export function buildCanvas(def: WorkflowDefinition): CanvasGraph {
   const edges: CanvasEdge[] = [];
   const ids = new Set<string>();
 
-  // What each top-level step waits for; a layer is the longest path from the start.
+  // What each top-level step waits for.
   const deps = dependencies(def.steps);
-  const layerOf = new Map<string, number>();
-  const layers: number[][] = [];
-  def.steps.forEach((step, index) => {
-    const parents = (deps.get(step.id) ?? []).map((entry) => layerOf.get(parseEntry(entry).id) ?? 0);
-    const layer = parents.length === 0 ? 0 : Math.max(...parents) + 1;
-    layerOf.set(step.id, layer);
-    (layers[layer] ??= []).push(index);
-  });
 
   const sizeOf = (step: WorkflowStep) => {
     if (step.type !== 'for_each') return { width: NODE_W, height: NODE_H };
@@ -130,45 +124,76 @@ export function buildCanvas(def: WorkflowDefinition): CanvasGraph {
     return { width: NODE_W + 2 * LOOP_PAD, height: LOOP_HEAD + rows * NODE_H + (rows - 1) * LOOP_GAP + LOOP_PAD };
   };
 
-  // Everything is centred on x = 0; the steps of a layer sit side by side.
+  // dagre places the start and the top-level steps; a loop's own steps sit
+  // inside its frame. Positions come back as centres.
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ rankdir: 'TB', nodesep: GAP_X, ranksep: GAP_Y, marginx: 0, marginy: 0 });
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setNode(START_ID, { width: START_W, height: START_H });
+  def.steps.forEach((step) => g.setNode(step.id, sizeOf(step)));
+  // A branch's yes side sits left of its no side. (Only that: pinning other
+  // siblings to list order made dagre cross wires it would otherwise not.)
+  const yes = new Map<string, string>();
+  const no = new Map<string, string>();
+  def.steps.forEach((step) => {
+    const entries = deps.get(step.id) ?? [];
+    if (entries.length === 0) {
+      // Heavy, so a step that starts with the run sits at the top, beside the
+      // others that do, rather than sliding down next to what reads it.
+      g.setEdge(START_ID, step.id, { weight: 8 });
+    }
+    for (const entry of entries) {
+      const { id, arm } = parseEntry(entry);
+      if (!g.hasNode(id)) continue;
+      g.setEdge(id, step.id);
+      if (arm === 'yes' && !yes.has(id)) yes.set(id, step.id);
+      if (arm === 'no' && !no.has(id)) no.set(id, step.id);
+    }
+  });
+  const constraints = [...yes].flatMap(([branch, left]) => {
+    const right = no.get(branch);
+    return right && right !== left ? [{ left, right }] : [];
+  });
+  dagre.layout(g, { constraints });
+  // Centred on the start, which sits at the top: x = 0 is its middle, y = 0 its top.
+  const origin = g.node(START_ID);
+  const dx = -origin.x;
+  const dy = -(origin.y - START_H / 2);
+  const at = (id: string, width: number, height: number) => {
+    const n = g.node(id);
+    return { x: Math.round(n.x + dx - width / 2), y: Math.round(n.y + dy - height / 2) };
+  };
+
   nodes.push({ id: START_ID, kind: 'start', x: -START_W / 2, y: 0, width: START_W, height: START_H, parent: null });
-  let y = START_H + GAP_Y;
   let half = START_W / 2;
-  for (const row of layers) {
-    if (!row) continue;
-    const sizes = row.map((index) => sizeOf(def.steps[index]));
-    const total = sizes.reduce((sum, s) => sum + s.width, 0) + (row.length - 1) * GAP_X;
-    const rowHeight = Math.max(...sizes.map((s) => s.height));
-    let x = -total / 2;
-    row.forEach((index, n) => {
-      const step = def.steps[index];
-      const { width, height } = sizes[n];
-      if (step.type === 'for_each') {
-        nodes.push({ id: step.id, kind: 'loop', x, y, width, height, parent: null, step, path: [index] });
-        let innerPrevious: string | null = null;
-        step.steps.forEach((child, childIndex) => {
-          nodes.push({
-            id: child.id,
-            kind: 'step',
-            x: LOOP_PAD,
-            y: LOOP_HEAD + childIndex * (NODE_H + LOOP_GAP),
-            width: NODE_W,
-            height: NODE_H,
-            parent: step.id,
-            step: child,
-            path: [index, childIndex],
-          });
-          if (innerPrevious) edges.push(flowEdge(innerPrevious, null, child.id));
-          innerPrevious = child.id;
+  let bottom = START_H;
+  def.steps.forEach((step, index) => {
+    const { width, height } = sizeOf(step);
+    const { x, y } = at(step.id, width, height);
+    half = Math.max(half, Math.abs(x), Math.abs(x + width));
+    bottom = Math.max(bottom, y + height);
+    if (step.type === 'for_each') {
+      nodes.push({ id: step.id, kind: 'loop', x, y, width, height, parent: null, step, path: [index] });
+      let innerPrevious: string | null = null;
+      step.steps.forEach((child, childIndex) => {
+        nodes.push({
+          id: child.id,
+          kind: 'step',
+          x: LOOP_PAD,
+          y: LOOP_HEAD + childIndex * (NODE_H + LOOP_GAP),
+          width: NODE_W,
+          height: NODE_H,
+          parent: step.id,
+          step: child,
+          path: [index, childIndex],
         });
-      } else {
-        nodes.push({ id: step.id, kind: 'step', x, y, width, height, parent: null, step, path: [index] });
-      }
-      x += width + GAP_X;
-    });
-    y += rowHeight + GAP_Y;
-    half = Math.max(half, total / 2);
-  }
+        if (innerPrevious) edges.push(flowEdge(innerPrevious, null, child.id));
+        innerPrevious = child.id;
+      });
+    } else {
+      nodes.push({ id: step.id, kind: 'step', x, y, width, height, parent: null, step, path: [index] });
+    }
+  });
   // Flow wires follow the dependencies; a step that waits for nothing hangs off the start.
   for (const step of def.steps) {
     const entries = deps.get(step.id) ?? [];
@@ -197,7 +222,7 @@ export function buildCanvas(def: WorkflowDefinition): CanvasGraph {
     if (flows.has(`${wire.source}>${wire.target}`)) wire.adjacent = true;
     edges.push(wire);
   }
-  return { nodes, edges, width: 2 * half, height: y - GAP_Y };
+  return { nodes, edges, width: 2 * half, height: bottom };
 }
 
 // ── Run status ─────────────────────────────────────────────────────────────

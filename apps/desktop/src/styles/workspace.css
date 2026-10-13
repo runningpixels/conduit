@@ -1249,7 +1249,9 @@ html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
 .page-list-head { padding: 0 var(--sp-1) var(--sp-2); display: grid; gap: var(--sp-2); }
 .page-list-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* The title keeps room for its longest word; a long status (a workflow's
+     next run) wraps instead of squeezing the title into broken words. */
+  grid-template-columns: minmax(min-content, 1fr) minmax(0, auto);
   gap: 2px var(--sp-2);
   width: 100%;
   padding: 10px 12px;
@@ -1262,8 +1264,8 @@ html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
 /* Selected: the accent's soft fill and border, the same mark the rail uses. */
 .page-list-item[aria-current="true"] { background: var(--accent-soft); color: var(--ink); outline: 1px solid var(--accent-line); outline-offset: -1px; }
 /* Titles wrap rather than clip: a list row may be two lines, never a riddle. */
-.page-list-item-title { font-size: var(--fs-5xl); font-weight: 600; overflow-wrap: anywhere; line-height: 1.35; }
-.page-list-item-status { font-size: var(--fs-md); color: var(--ink-3); align-self: center; }
+.page-list-item-title { font-size: var(--fs-5xl); font-weight: 600; overflow-wrap: break-word; line-height: 1.35; }
+.page-list-item-status { min-width: 0; font-size: var(--fs-md); color: var(--ink-3); align-self: center; text-align: right; }
 .page-list-item-meta { grid-column: 1 / -1; font-size: var(--fs-md); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .page-list-group {
   padding: var(--sp-3) 10px 4px;

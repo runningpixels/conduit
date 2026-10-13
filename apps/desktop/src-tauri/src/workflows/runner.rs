@@ -33,9 +33,10 @@
 //!   anything changed, and announces the change to the page.
 //! - The top-level steps are a graph (`Step::after`, by default the step
 //!   before): a step starts once every step it waits for has resolved, up to
-//!   four at a time ([`Exec::graph`]). It runs when it waits for nothing or at
-//!   least one of them was taken; otherwise it is recorded as `not_taken`
-//!   without any work (a `branch` takes its yes or no way). A step failing
+//!   four at a time ([`Exec::graph`]). A step naming a branch's side runs only
+//!   when the branch went that way; otherwise it runs when it waits for
+//!   nothing or at least one of them was taken, and else is recorded as
+//!   `not_taken` without any work. A step failing
 //!   stops new steps and cancels the running ones (they end `stopped`).
 //! - A run can start partway (`run_from`): the chosen step and everything that
 //!   comes after it run again; every other top-level step with a usable row in
@@ -159,7 +160,7 @@ impl<'a> Unattended<'a> {
         Self {
             reviews,
             approved: Mutex::new(approved.into_iter().collect()),
-            wait: REVIEW_WAIT,
+            wait: review_wait(),
         }
     }
 }
@@ -174,6 +175,19 @@ pub struct Resume {
 
 /// How long a paused run waits for an answer.
 pub const REVIEW_WAIT: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// [`REVIEW_WAIT`], except that a debug build takes `CONDUIT_DEV_WAIT_SECS`
+/// (at least 5) so a question or review running out can be tried by hand.
+pub fn review_wait() -> Duration {
+    #[cfg(debug_assertions)]
+    if let Some(secs) = std::env::var("CONDUIT_DEV_WAIT_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
+        return Duration::from_secs(secs.max(5));
+    }
+    REVIEW_WAIT
+}
 
 /// Limits on one run.
 #[derive(Debug, Clone, Copy)]
@@ -479,6 +493,23 @@ impl Resolution {
     }
 }
 
+/// Whether a step whose `after` has resolved runs, or is not taken.
+///
+/// A branch's sides gate: a step that names `<branch>.yes` or `.no` runs only
+/// when that branch went one of the ways it names (each branch it names, when
+/// it names several). Beyond that, it runs when it waits for nothing or at
+/// least one entry was taken, so a join after both sides of a branch runs on
+/// either. ("If yes" and another step means: on yes, once that step is done.)
+fn runs_after(deps: &[definition::Dependency], done: &[Option<Resolution>]) -> bool {
+    let satisfied = |d: &definition::Dependency| done[d.step].is_some_and(|r| r.satisfies(d));
+    let arms_hold = deps.iter().filter(|d| d.arm.is_some()).all(|d| {
+        deps.iter()
+            .filter(|other| other.step == d.step && other.arm.is_some())
+            .any(satisfied)
+    });
+    arms_hold && (deps.is_empty() || deps.iter().any(satisfied))
+}
+
 /// Most top-level steps running at once.
 const MAX_PARALLEL: usize = 4;
 
@@ -687,8 +718,9 @@ impl Exec<'_> {
     /// its `after` has resolved, up to [`MAX_PARALLEL`] at a time. `done`
     /// holds the steps already resolved (reused from an earlier run).
     ///
-    /// A ready step runs when it has no `after` or at least one entry was
-    /// taken; otherwise it is recorded as `not_taken` without any work. Each
+    /// A ready step runs as [`runs_after`] says (a branch's sides gate; else
+    /// no `after`, or at least one entry taken); otherwise it is recorded as
+    /// `not_taken` without any work. Each
     /// step renders from a snapshot of `ctx` taken as it starts, when all its
     /// ancestors are done. The first failure stops new steps from starting and
     /// cancels the running ones; the run ends with that failure.
@@ -726,10 +758,7 @@ impl Exec<'_> {
                     if !ready {
                         continue;
                     }
-                    let taken = deps[i].is_empty()
-                        || deps[i]
-                            .iter()
-                            .any(|d| done[d.step].is_some_and(|r| r.satisfies(d)));
+                    let taken = runs_after(&deps[i], &done);
                     started[i] = true;
                     progressed = true;
                     if !taken {
@@ -1302,7 +1331,7 @@ impl Exec<'_> {
             .runner
             .unattended
             .as_ref()
-            .map_or(REVIEW_WAIT, |u| u.wait);
+            .map_or_else(review_wait, |u| u.wait);
         let now = chrono::Utc::now();
         let expires = now + chrono::Duration::from_std(wait).unwrap_or_default();
         let pending = PendingQuestion {
@@ -3100,6 +3129,27 @@ pub fn search_backend(settings: &crate::state::AppSettings) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_branch_side_gates_a_step_that_also_waits_for_another() {
+        use definition::Dependency;
+        let ran = |arm| Some(Resolution { taken: true, arm });
+        // 0: a plain step, 1: a branch that went "no", 2: a step not taken.
+        let done = [ran(None), ran(Some(false)), Some(Resolution::not_taken())];
+        let dep = |step, arm| Dependency { step, arm };
+        // "If yes" and a finished step: the branch said no, so not taken.
+        assert!(!runs_after(&[dep(1, Some(true)), dep(0, None)], &done));
+        assert!(runs_after(&[dep(1, Some(false)), dep(0, None)], &done));
+        // Both sides of one branch: runs whichever way it went.
+        assert!(runs_after(
+            &[dep(1, Some(true)), dep(1, Some(false))],
+            &done
+        ));
+        // A plain join runs when any of what it waits for was taken.
+        assert!(runs_after(&[dep(0, None), dep(2, None)], &done));
+        assert!(!runs_after(&[dep(2, None)], &done));
+        assert!(runs_after(&[], &done));
+    }
 
     #[test]
     fn lookup_walks_objects_and_array_indexes() {

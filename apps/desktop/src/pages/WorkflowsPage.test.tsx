@@ -862,6 +862,27 @@ describe('WorkflowsPage', () => {
     });
   });
 
+  it('drops a question whose run has already ended (stopped while it waited)', async () => {
+    ipc.listWorkflowQuestions.mockResolvedValue([
+      {
+        runId: 'r7',
+        workflowId: 'w1',
+        workflowName: 'Morning briefing',
+        stepId: 'ask',
+        question: 'Anything to add?',
+        choices: [],
+        default: null,
+        requestedAt: '2026-09-29T06:00:00.000Z',
+        expiresAt: '2026-09-30T06:00:00.000Z',
+      },
+    ]);
+    ipc.listWorkflowRuns.mockResolvedValue([{ ...finishedRun.run, id: 'r7', status: 'stopped' as const, error: 'Stopped before it finished.' }]);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    expect(await screen.findByRole('heading', { name: 'Morning briefing' })).toBeInTheDocument();
+    await waitFor(() => expect(ipc.listWorkflowQuestions).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Waiting for you' })).not.toBeInTheDocument());
+  });
+
   it('keeps an over-long answer, and says why it was refused', async () => {
     const question = {
       runId: 'r7',
@@ -1005,6 +1026,14 @@ describe('WorkflowsPage', () => {
       expect(screen.queryByRole('region', { name: 'Recent runs' })).toBeNull();
       expect(screen.getByRole('tab', { name: 'Steps' })).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByRole('tabpanel')).toHaveTextContent('Fetch 2 pages');
+    });
+
+    it('shows the newest run as the latest when no run saved anything', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([saved('r1', { outputs: [] })]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const latest = await screen.findByRole('region', { name: 'Latest run' });
+      expect(latest).toHaveTextContent('Nothing was saved.');
+      expect(latest).not.toHaveTextContent('No runs yet.');
     });
 
     it('opens the result of any run from the Results tab', async () => {
@@ -1223,8 +1252,25 @@ describe('WorkflowsPage', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
       fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } });
       fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      // A change was made, so leaving asks first.
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }));
       expect(await screen.findByRole('heading', { name: 'Morning briefing' })).toBeInTheDocument();
       expect(ipc.updateWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('leaves at once when nothing changed, and stays when asked to keep editing', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Morning briefing'));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull();
+      expect(await screen.findByRole('heading', { name: 'Morning briefing' })).toBeInTheDocument();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+      fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
+      expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Renamed');
     });
 
     it('saves under the name typed in the bar, and disables Save for an empty name', async () => {

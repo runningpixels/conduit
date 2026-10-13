@@ -7,10 +7,14 @@
 
 import type { WorkflowRun, WorkflowRunDetail, WorkflowRunStep } from '../ipc/contracts';
 
-/// The condition step that stopped the run, if the steps show one.
+/// The condition step that stopped the run, if the steps show one. An "If…
+/// otherwise" also records `passed`, but going its "no" way doesn't stop
+/// anything, so only a condition counts.
 function stoppingCondition(steps: readonly WorkflowRunStep[]): string | null {
   for (const step of steps) {
     const out = step.output;
+    const input = step.input as Record<string, unknown> | null | undefined;
+    if (input && typeof input === 'object' && input.type === 'branch') continue;
     if (step.status === 'completed' && out && typeof out === 'object' && (out as Record<string, unknown>).passed === false) {
       return step.stepId;
     }

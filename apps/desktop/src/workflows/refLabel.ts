@@ -7,6 +7,7 @@ const FIELD_KEY: Record<string, string> = {
   pages: 'workspace.workflows.editor.field.pages',
   'pages.0.text': 'workspace.workflows.editor.field.firstPageText',
   'pages.0.title': 'workspace.workflows.editor.field.firstPageTitle',
+  'pages.0.url': 'workspace.workflows.editor.field.firstPageUrl',
   'pages.0.links': 'workspace.workflows.editor.field.firstPageLinks',
   results: 'workspace.workflows.editor.field.results',
   items: 'workspace.workflows.editor.field.items',

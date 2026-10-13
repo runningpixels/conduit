@@ -4,7 +4,7 @@
 import type { Translate } from '../i18n';
 import type { WorkflowStep } from '../ipc/contracts';
 import { STEP_TYPE_KEY } from './stepTypes';
-import { dependencies, parseEntry } from './stepGraph';
+import { parseEntry } from './stepGraph';
 
 /** A step as the list names it: "2. Fetch pages". */
 export function stepName(steps: readonly WorkflowStep[], id: string, t: Translate): string {
@@ -27,7 +27,9 @@ export function entryName(steps: readonly WorkflowStep[], entry: string, t: Tran
 export function runsAfterLine(steps: readonly WorkflowStep[], index: number, t: Translate): string | null {
   const step = steps[index];
   if (!step || step.after === undefined) return null;
-  const entries = dependencies(steps).get(step.id) ?? [];
+  // What the step says, even an entry that can't hold (a later or missing
+  // step): the problems list explains it, and this line mustn't hide it.
+  const entries = step.after;
   const previous = index > 0 ? [steps[index - 1].id] : [];
   if (entries.length === previous.length && entries.every((e, i) => e === previous[i])) return null;
   if (entries.length === 0) return t('workspace.workflows.editor.runsAfter.line', { steps: t('workspace.workflows.editor.runsAfter.start') });

@@ -6,10 +6,12 @@
 /// read-only; the chat opens it for questions and edits.
 
 import { useEffect, useState } from 'react';
+import { isHttpOrHttpsUrl } from '../artifacts/externalUrl';
 import { MarkdownRenderer } from '../artifacts/renderers';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
-import { getArtifact } from '../ipc/client';
+import { getArtifact, openExternalUrl } from '../ipc/client';
+import { OpenExternalLinkDialog } from '../workspace/OpenExternalLinkDialog';
 import type { Artifact, WorkflowRun, WorkflowRunOutput } from '../ipc/contracts';
 import { otherOutputs, outputKey, primaryOutput } from './results';
 
@@ -35,6 +37,20 @@ export function ResultView({
   const t = useT();
   const fmt = useFormatters();
   const [full, setFull] = useState(false);
+  // A link in the document opens in the browser, after asking, as it does in
+  // the document panel (the app's own window never navigates away).
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const openLink = (url: string) => {
+    if (isHttpOrHttpsUrl(url)) setPendingUrl(url);
+  };
+  const confirmLink = () => {
+    const url = pendingUrl;
+    setPendingUrl(null);
+    if (!url) return;
+    setLinkError(null);
+    openExternalUrl(url).catch((e: unknown) => setLinkError(e instanceof Error ? e.message : String(e)));
+  };
   const primary = primaryOutput(run);
   const others = otherOutputs(run);
   const artifactId = primary?.kind === 'document' ? (primary.artifactId ?? null) : null;
@@ -64,7 +80,9 @@ export function ResultView({
         : t('workspace.workflows.result.openInChat');
 
   if (!primary) {
-    const failed = run.status === 'failed' || run.error != null;
+    // A stopped run records why ("Stopped before it finished"), but it didn't fail.
+    const stopped = run.status === 'stopped';
+    const failed = !stopped && (run.status === 'failed' || run.error != null);
     return (
       <article className="wf-result">
         <p className="wf-result-eyebrow">{eyebrow}</p>
@@ -72,7 +90,7 @@ export function ResultView({
           {failed ? t('workspace.workflows.result.failedTitle', { name: workflowName }) : t('workspace.workflows.result.empty')}
         </h4>
         {run.error ? (
-          <p className="wf-error" role="status">
+          <p className={stopped ? 'wf-muted' : 'wf-error'} role="status">
             {run.error}
           </p>
         ) : null}
@@ -100,7 +118,7 @@ export function ResultView({
       {primary.kind === 'document' ? (
         <div className="wf-result-body">
           {readable && text ? (
-            <MarkdownRenderer source={text} />
+            <MarkdownRenderer source={text} onExternalLink={openLink} />
           ) : (
             <>
               {primary.preview ? <p className="wf-result-preview">{primary.preview}</p> : null}
@@ -148,6 +166,12 @@ export function ResultView({
           ))}
         </ul>
       ) : null}
+      {linkError ? (
+        <p className="wf-error" role="alert">
+          {linkError}
+        </p>
+      ) : null}
+      <OpenExternalLinkDialog url={pendingUrl} onConfirm={confirmLink} onCancel={() => setPendingUrl(null)} />
     </article>
   );
 }

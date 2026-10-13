@@ -10,6 +10,7 @@
 /// for now (the backend validates every save).
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ConfirmDialog } from '@conduit/ui';
 import { workflowRunStatus, type StatusState } from '../chat/statusTypes';
 import { useLocale, useT } from '../i18n';
 import { withInterfaceLanguage } from '../workflows/starterLanguage';
@@ -114,7 +115,28 @@ const NO_STEPS: WorkflowStep[] = [];
 type Mode =
   | { kind: 'view' }
   | { kind: 'new' }
-  | { kind: 'draft'; workflowId: string | null; draft: WorkflowDraft; json: string | null; notes?: string[] };
+  | {
+      kind: 'draft';
+      workflowId: string | null;
+      draft: WorkflowDraft;
+      json: string | null;
+      notes?: string[];
+      /** The draft as it opened (after the editor's first tidy-up), to tell whether leaving loses anything. */
+      start?: string;
+    };
+
+/// The draft as one string, to compare with how it opened.
+function snapshot(draft: WorkflowDraft): string {
+  return JSON.stringify([draft.name, draft.description, draft.definition]);
+}
+
+/// Whether leaving the editor now would lose something: the draft (or the
+/// JSON being typed) differs from how it opened.
+function draftChanged(mode: Mode): boolean {
+  if (mode.kind !== 'draft' || mode.start === undefined) return false;
+  if (mode.json != null && mode.json !== JSON.stringify(mode.draft.definition, null, 2)) return true;
+  return snapshot(mode.draft) !== mode.start;
+}
 
 /// A request from elsewhere in the app to draft a workflow: Home's "Automate"
 /// chip (a description) or a chat's "Save as workflow" (a conversation).
@@ -200,6 +222,14 @@ export function WorkflowsPage({
   openRunRef.current = openRun;
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<Mode>(startNew ? { kind: 'new' } : { kind: 'view' });
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  // Note how a draft opened, once the editor has had its first say (it may
+  // tidy the definition as it mounts), so Cancel can tell real changes.
+  const draftOpen = mode.kind === 'draft' && mode.start === undefined;
+  useEffect(() => {
+    if (!draftOpen) return;
+    setMode((m) => (m.kind === 'draft' && m.start === undefined ? { ...m, start: snapshot(m.draft) } : m));
+  }, [draftOpen]);
   /// The left column shows the workflows or the Results inbox. Component state only.
   const [view, setView] = useState<'workflows' | 'results'>(focus?.view === 'results' ? 'results' : 'workflows');
   const [results, setResults] = useState<WorkflowResult[]>([]);
@@ -462,6 +492,15 @@ export function WorkflowsPage({
       cancelled = true;
     };
   }, [refreshKey]);
+
+  // A run that ended (stopped, or finished while a question was open) takes
+  // its open questions and reviews with it: drop them as soon as the runs show it.
+  useEffect(() => {
+    const ended = new Set(runs.filter((r) => !isLive(r.status)).map((r) => r.id));
+    if (ended.size === 0) return;
+    setQuestions((current) => (current.some((q) => ended.has(q.runId)) ? current.filter((q) => !ended.has(q.runId)) : current));
+    setReviews((current) => (current.some((r) => ended.has(r.runId)) ? current.filter((r) => !ended.has(r.runId)) : current));
+  }, [runs]);
 
   function markAnswering(runId: string, on: boolean) {
     setAnswering((current) => {
@@ -733,7 +772,17 @@ export function WorkflowsPage({
     }
   }
 
+  /// Leave the editor; asks first when that would lose changes.
   function cancelEdit() {
+    if (draftChanged(mode)) {
+      setConfirmLeave(true);
+      return;
+    }
+    leaveEditor();
+  }
+
+  function leaveEditor() {
+    setConfirmLeave(false);
     setMode({ kind: 'view' });
     setEditError(null);
   }
@@ -1017,6 +1066,15 @@ export function WorkflowsPage({
             </label>
           </div>
         )}
+        <ConfirmDialog
+          open={confirmLeave}
+          title={t('workspace.workflows.edit.leaveTitle')}
+          description={t('workspace.workflows.edit.leaveBody')}
+          confirmLabel={t('workspace.workflows.edit.leaveConfirm')}
+          cancelLabel={t('workspace.workflows.edit.leaveKeep')}
+          onCancel={() => setConfirmLeave(false)}
+          onConfirm={leaveEditor}
+        />
       </section>
     );
   } else if (!record) {
@@ -1026,16 +1084,17 @@ export function WorkflowsPage({
     const workflowInputs = record.definition.inputs ?? [];
     const inputLabels = Object.fromEntries(workflowInputs.map((i) => [i.id, i.label]));
     const nextRunAt = summaries.find((w) => w.id === record.id)?.nextRunAt;
-    // The newest run that ended with something to show (or failed).
-    const latest = runs.find((r) => !isLive(r.status) && (primaryOutput(r) != null || r.status === 'failed')) ?? null;
+    // The newest run that ended with something to show (or failed), else the
+    // newest that ended at all: a workflow that saves nothing still has runs.
+    const latest =
+      runs.find((r) => !isLive(r.status) && (primaryOutput(r) != null || r.status === 'failed')) ?? runs.find((r) => !isLive(r.status)) ?? null;
     const recent = runs.slice(0, 3);
     const resultRun = wfResults.find((r) => r.id === resultSel) ?? wfResults[0] ?? null;
     const canvasRun = openRun && openRun.run.workflowId === record.id ? openRun : null;
-    const waitingStepId = openRun
-      ? (reviews.find((r) => r.runId === openRun.run.id)?.stepId ??
-        questions.find((q) => q.runId === openRun.run.id)?.stepId ??
-        null)
-      : null;
+    // Every step the open run waits at: steps side by side can each ask.
+    const waitingStepIds = openRun
+      ? [...reviews, ...questions].filter((w) => w.runId === openRun.run.id).map((w) => w.stepId)
+      : [];
     const branchy = record.definition.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'branch' || s.type === 'agent' || s.after !== undefined);
     const stepsView = stepsPref === 'auto' ? (branchy ? 'canvas' : 'list') : stepsPref;
     const chooseStepsView = (next: 'canvas' | 'list') => {
@@ -1068,11 +1127,16 @@ export function WorkflowsPage({
       </div>
     );
 
+    // Waits read in the order of their steps, as the canvas shows them (the
+    // backend lists them in whatever order they began).
+    const stepOrder = new Map(record.definition.steps.map((s, i) => [s.id, i]));
+    const byStep = (a: { stepId: string }, b: { stepId: string }) => (stepOrder.get(a.stepId) ?? 1e9) - (stepOrder.get(b.stepId) ?? 1e9);
     /// The permission reviews and "Ask me" questions this workflow is waiting on (one run's, when given).
     const waiting = (runId?: string) => (
       <>
         {reviews
           .filter((review) => review.workflowId === record.id && (!runId || review.runId === runId))
+          .sort(byStep)
           .map((review) => (
             <section
               key={waitKey(review)}
@@ -1123,6 +1187,7 @@ export function WorkflowsPage({
           ))}
         {questions
           .filter((question) => question.workflowId === record.id && (!runId || question.runId === runId))
+          .sort(byStep)
           .map((question) => (
             <QuestionPanel
               key={waitKey(question)}
@@ -1295,7 +1360,7 @@ export function WorkflowsPage({
                 labels={inputLabels}
                 connectorNames={stepNames}
                 run={canvasRun}
-                waitingStepId={waitingStepId}
+                waitingStepIds={waitingStepIds}
                 selectedId={selectedStep}
                 onSelect={setSelectedStep}
                 toolbar={stepsToggle}
@@ -1812,7 +1877,8 @@ function RunDetail({
             onOpenDeck={onOpenDeck}
             onOpenDraft={onOpenDraft}
             onRestoreDocument={onRestoreDocument}
-            onRerun={onRerunFrom && step.iteration == null ? () => onRerunFrom(step.stepId) : undefined}
+            // A step the run didn't take would just be skipped again: its branch is reused.
+            onRerun={onRerunFrom && step.iteration == null && step.status !== 'not_taken' ? () => onRerunFrom(step.stepId) : undefined}
             canRerun={canRerun}
           />
         ))}

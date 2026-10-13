@@ -921,18 +921,21 @@ function RunsAfterControl({
   const t = useT();
   if (index === 0) return null;
   const steps = def.steps;
-  const entries = dependencies(steps).get(step.id) ?? [];
+  // What the step says it waits for, including an entry that can't hold (a
+  // step moved below it): shown, and offered ticked so it can be unticked.
+  const entries = step.after ?? dependencies(steps).get(step.id) ?? [];
   const isDefault = entries.length === 1 && entries[0] === steps[index - 1].id;
   const now = isDefault
     ? t('workspace.workflows.editor.runsAfter.previous')
     : entries.length === 0
       ? t('workspace.workflows.editor.runsAfter.start')
       : entries.map((e) => entryName(steps, e, t)).join(', ');
-  const options = steps.slice(0, index).flatMap((earlier) =>
+  const earlierOptions = steps.slice(0, index).flatMap((earlier) =>
     earlier.type === 'branch'
       ? [entryFor(earlier.id, null), entryFor(earlier.id, 'yes'), entryFor(earlier.id, 'no')]
       : [entryFor(earlier.id, null)],
   );
+  const options = [...earlierOptions, ...entries.filter((entry) => !earlierOptions.includes(entry))];
   return (
     <details className="wfe-failure">
       <summary>
@@ -940,7 +943,8 @@ function RunsAfterControl({
         <span className="wfe-failure-now">{now}</span>
       </summary>
       <fieldset className="wfe-failure-body wf-tools">
-        <legend>{t('workspace.workflows.editor.runsAfter.title')}</legend>
+        {/* The summary above already shows the title; the legend names the group for screen readers. */}
+        <legend className="sr-only">{t('workspace.workflows.editor.runsAfter.title')}</legend>
         {options.map((entry) => (
           <label key={entry} className="wf-check">
             <input

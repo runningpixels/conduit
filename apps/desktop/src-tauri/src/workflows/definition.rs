@@ -1536,12 +1536,25 @@ fn check_graph(
                 continue;
             };
             let Some(at) = steps.iter().position(|s| s.id == id) else {
-                problems.push(format!(
-                    "Step \"{name}\" runs after \"{id}\", but there is no step with that id."
-                ));
+                // A step inside a repeated step can't be waited for on its own.
+                let holder = steps.iter().find(|s| match &s.action {
+                    StepAction::ForEach { steps: body, .. } => body.iter().any(|b| b.id == id),
+                    _ => false,
+                });
+                problems.push(match holder {
+                    Some(holder) => format!(
+                        "Step \"{name}\" runs after \"{id}\", which is inside the repeated step \"{}\". Wait for \"{}\" instead.",
+                        holder.id, holder.id
+                    ),
+                    None => format!(
+                        "Step \"{name}\" runs after \"{id}\", but there is no step with that id."
+                    ),
+                });
                 continue;
             };
-            if at >= i {
+            if at == i {
+                problems.push(format!("Step \"{name}\" can't run after itself."));
+            } else if at > i {
                 problems.push(format!(
                     "Step \"{name}\" runs after \"{id}\", which comes later in the list. A step can only run after one before it."
                 ));
@@ -2389,7 +2402,7 @@ mod tests {
         );
         assert_eq!(
             after(json!(["last"])),
-            vec!["Step \"last\" runs after \"last\", which comes later in the list. A step can only run after one before it."]
+            vec!["Step \"last\" can't run after itself."]
         );
         assert_eq!(
             after(json!(["a.yes"])),
@@ -2400,6 +2413,16 @@ mod tests {
             vec!["Step \"last\" runs after \"pick.maybe\", which isn't a step or a branch's way. Use a step's id, or a branch's id followed by .yes or .no."]
         );
         assert!(after(json!(["pick.no", "yes_path"])).is_empty());
+    }
+
+    #[test]
+    fn waiting_for_a_step_inside_a_loop_names_the_loop() {
+        let problems = problems_of(json!({ "steps": [
+            tpl("a", "x", None),
+            { "id": "each", "type": "for_each", "items": "steps.a.text", "steps": [tpl("inner", "y", None)] },
+            tpl("c", "z", Some(json!(["inner"]))),
+        ]}));
+        assert!(problems.contains(&"Step \"c\" runs after \"inner\", which is inside the repeated step \"each\". Wait for \"each\" instead.".to_string()), "{problems:?}");
     }
 
     #[test]

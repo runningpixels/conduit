@@ -91,8 +91,8 @@ export interface WorkflowCanvasProps {
   connectorNames?: Record<string, string>;
   /** A run to show statuses from (live while it is running). */
   run?: WorkflowRunDetail | null;
-  /** The step a paused run waits at. */
-  waitingStepId?: string | null;
+  /** The steps a paused run waits at (a review or an "Ask me" question each). */
+  waitingStepIds?: readonly string[];
   /** The checker's problems; steps they name are marked. */
   problems?: readonly string[];
   selectedId?: string | null;
@@ -164,6 +164,17 @@ const StepNode = memo(function StepNode({ id, data, selected }: NodeProps<Node<N
           <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={false} className="wfc-side-handle" />
           <Handle type="source" position={Position.Bottom} id="arm-yes" isConnectable={data.flowEditable} className="wfc-arm-handle wfc-arm-yes" />
           <Handle type="source" position={Position.Bottom} id="arm-no" isConnectable={data.flowEditable} className="wfc-arm-handle wfc-arm-no" />
+          {/* Which dot is which, while wires can be drawn from them. */}
+          {data.flowEditable ? (
+            <>
+              <span className="wfc-arm-tag wfc-arm-yes" aria-hidden="true">
+                {t('workspace.workflows.canvas.arm.yes')}
+              </span>
+              <span className="wfc-arm-tag wfc-arm-no" aria-hidden="true">
+                {t('workspace.workflows.canvas.arm.no')}
+              </span>
+            </>
+          ) : null}
         </>
       ) : (
         <Handle type="source" position={Position.Bottom} id="flow-bottom" isConnectable={data.flowEditable} className={data.flowEditable ? 'wfc-flow-out' : undefined} />
@@ -218,6 +229,9 @@ function startLines(t: Translate, def: WorkflowDefinition, labels: InputLabels):
 
 /** Least zoom the page layout fits to: below it text gets hard to read, so the canvas pans instead. */
 const READABLE_ZOOM = 0.85;
+/** How far the page layout shrinks a drawing to show its whole width (two or three lanes side by side). */
+const WIDE_ZOOM = 0.75;
+const NO_WAITS: readonly string[] = [];
 const FIT_PAD = 40;
 /** Room at the top for the toolbar drawn over the canvas (add a step, canvas or list, zoom). */
 const FIT_TOP = 72;
@@ -228,25 +242,31 @@ type Flow = ReturnType<typeof useReactFlow>;
  * Fits the drawing to the canvas. In the page layout the zoom stays between
  * READABLE_ZOOM and 1. A drawing that fits shrinks to fit; one too tall to fit
  * even at READABLE_ZOOM has to be panned anyway, so it shows at full size
- * (width allowing), starting at its top.
+ * (width allowing), starting at its top. Lanes side by side may shrink it to
+ * WIDE_ZOOM when that shows them all; wider still, it starts at its left edge,
+ * so what's cut off is only on the right, not half a lane on each side.
+ * Returns whether it is cut off that way.
  */
-function fitDrawing(flow: Flow, el: HTMLElement | null, fill: boolean) {
+function fitDrawing(flow: Flow, el: HTMLElement | null, fill: boolean): boolean {
   if (!fill || !el) {
     void flow.fitView({ padding: 0.15 });
-    return;
+    return false;
   }
   const nodes = flow.getNodes();
   const w = el.clientWidth;
   const h = el.clientHeight;
-  if (nodes.length === 0 || w === 0 || h === 0) return;
+  if (nodes.length === 0 || w === 0 || h === 0) return false;
   const b = flow.getNodesBounds(nodes);
-  if (b.width === 0 || b.height === 0) return;
+  if (b.width === 0 || b.height === 0) return false;
   const byWidth = Math.min(1, (w - FIT_PAD * 2) / b.width);
   const byHeight = (h - FIT_TOP - FIT_PAD) / b.height;
-  const zoom = Math.max(READABLE_ZOOM, byHeight >= READABLE_ZOOM ? Math.min(byWidth, byHeight) : byWidth);
-  const x = (w - b.width * zoom) / 2 - b.x * zoom;
+  const floor = byWidth >= WIDE_ZOOM ? Math.min(READABLE_ZOOM, byWidth) : READABLE_ZOOM;
+  const zoom = Math.max(floor, byHeight >= floor ? Math.min(byWidth, byHeight) : byWidth);
+  const fits = b.width * zoom <= w - FIT_PAD * 2 + 1;
+  const x = fits ? (w - b.width * zoom) / 2 - b.x * zoom : FIT_PAD - b.x * zoom;
   const y = b.height * zoom + FIT_TOP + FIT_PAD > h ? FIT_TOP - b.y * zoom : Math.max(FIT_TOP, (h - b.height * zoom) / 2) - b.y * zoom;
   void flow.setViewport({ x, y, zoom });
+  return !fits;
 }
 
 function CanvasControls({ expanded, onExpand, onFit }: { expanded: boolean; onExpand: () => void; onFit: () => void }) {
@@ -275,12 +295,23 @@ function CanvasControls({ expanded, onExpand, onFit }: { expanded: boolean; onEx
  * when the canvas gets a new size: it is often first drawn inside a closed
  * section, at zero size, and fitting then leaves it tiny in a corner.
  */
-function FitOnChange({ signature, box, fill }: { signature: string; box: React.RefObject<HTMLDivElement | null>; fill: boolean }) {
+function FitOnChange({
+  signature,
+  box,
+  fill,
+  onFit,
+}: {
+  signature: string;
+  box: React.RefObject<HTMLDivElement | null>;
+  fill: boolean;
+  /** Each fit says whether the drawing is wider than the canvas. */
+  onFit: (cutOff: boolean) => void;
+}) {
   const flow = useReactFlow();
   useEffect(() => {
-    const id = requestAnimationFrame(() => fitDrawing(flow, box.current, fill));
+    const id = requestAnimationFrame(() => onFit(fitDrawing(flow, box.current, fill)));
     return () => cancelAnimationFrame(id);
-  }, [flow, signature, box, fill]);
+  }, [flow, signature, box, fill, onFit]);
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -289,11 +320,39 @@ function FitOnChange({ signature, box, fill }: { signature: string; box: React.R
       const size = `${Math.round(el.clientWidth / 40)}x${Math.round(el.clientHeight / 40)}`;
       if (el.clientWidth === 0 || size === last) return;
       last = size;
-      fitDrawing(flow, el, fill);
+      onFit(fitDrawing(flow, el, fill));
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [flow, box, fill]);
+  }, [flow, box, fill, onFit]);
+  return null;
+}
+
+/**
+ * Brings the selected step into view when it is somewhere the canvas doesn't
+ * show, as a step just added at the end of a long drawing is. A step that is
+ * even partly in view stays put: it was clicked, or can be seen.
+ */
+function RevealSelected({ id, box }: { id: string | null; box: React.RefObject<HTMLDivElement | null> }) {
+  const flow = useReactFlow();
+  useEffect(() => {
+    if (!id) return;
+    // After the fit a new step also triggers, which runs in the same frame first.
+    const frame = requestAnimationFrame(() => {
+      const el = box.current;
+      const node = flow.getInternalNode(id);
+      if (!el || !node) return;
+      const at = node.internals.positionAbsolute;
+      const { x, y, zoom } = flow.getViewport();
+      const w = node.measured?.width ?? node.width ?? 0;
+      const h = node.measured?.height ?? node.height ?? 0;
+      const left = at.x * zoom + x;
+      const top = at.y * zoom + y;
+      const outside = left + w * zoom < 0 || top + h * zoom < 0 || left > el.clientWidth || top > el.clientHeight;
+      if (outside) void flow.setCenter(at.x + w / 2, at.y + h / 2, { zoom, duration: 200 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, id, box]);
   return null;
 }
 
@@ -307,7 +366,7 @@ function Canvas({
   labels = NO_LABELS,
   connectorNames = NO_NAMES,
   run = null,
-  waitingStepId = null,
+  waitingStepIds = NO_WAITS,
   problems = NO_PROBLEMS,
   selectedId: controlledId,
   onSelect,
@@ -331,7 +390,7 @@ function Canvas({
   );
 
   const graph = useMemo(() => buildCanvas(definition), [definition]);
-  const statuses = useMemo(() => runStatuses(definition, run, waitingStepId), [definition, run, waitingStepId]);
+  const statuses = useMemo(() => runStatuses(definition, run, waitingStepIds), [definition, run, waitingStepIds]);
   const { byStep: problemSteps } = useMemo(() => problemsByStep(problems, definition), [problems, definition]);
 
   const derived: Node<NodeData>[] = useMemo(
@@ -462,6 +521,8 @@ function Canvas({
   // Full screen: the canvas covers the window below the title bar until Esc or
   // the button. Esc is caught first so it doesn't also cancel the editor.
   const [expanded, setExpanded] = useState(false);
+  // Set by each fit: the drawing is wider than the canvas, so say where the rest is.
+  const [cutOff, setCutOff] = useState(false);
   useEffect(() => {
     if (!expanded) return;
     const onKey = (event: KeyboardEvent) => {
@@ -544,8 +605,14 @@ function Canvas({
           zoomOnScroll={false}
           zoomOnPinch
         >
-          <FitOnChange signature={signature} box={box} fill={fill} />
-          <CanvasControls expanded={expanded} onExpand={() => setExpanded((v) => !v)} onFit={() => fitDrawing(flowApi, box.current, fill)} />
+          <FitOnChange signature={signature} box={box} fill={fill} onFit={setCutOff} />
+          <RevealSelected id={selectedId} box={box} />
+          <CanvasControls expanded={expanded} onExpand={() => setExpanded((v) => !v)} onFit={() => setCutOff(fitDrawing(flowApi, box.current, fill))} />
+          {cutOff && !expanded ? (
+            <Panel position="bottom-left" className="wfc-wide-hint">
+              {t('workspace.workflows.canvas.wider')}
+            </Panel>
+          ) : null}
           {toolbar ? (
             <Panel position="top-left" className="wfc-toolbar">
               {toolbar}

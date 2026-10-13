@@ -121,7 +121,9 @@ export const STARTER_WORKFLOWS: readonly StarterWorkflow[] = [
           id: 'save',
           type: 'save_artifact',
           title: 'Page summary',
-          content: '{{steps.summary.text}}\n\nSource: {{inputs.url}}',
+          // The page actually read: the default is Wikipedia's random page,
+          // and the address typed in would open a different one.
+          content: '{{steps.summary.text}}\n\nSource: {{steps.fetch.pages.0.url}}',
           mode: 'create',
         },
       ],

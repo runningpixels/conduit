@@ -399,6 +399,7 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
         { field: 'text', list: false },
         { field: 'pages.0.text', list: false },
         { field: 'pages.0.title', list: false },
+        { field: 'pages.0.url', list: false },
         { field: 'pages', list: true },
         { field: 'pages.0.links', list: true },
       ];
@@ -467,9 +468,14 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       ];
     case 'ask':
       return [{ field: 'answer', list: false }];
+    case 'branch':
+      // "yes" or "no", and the sentence saying why.
+      return [
+        { field: 'text', list: false },
+        { field: 'reason', list: false },
+      ];
     case 'notify':
     case 'condition':
-    case 'branch':
       return [];
   }
 }

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { WorkflowRun, WorkflowRunOutput } from '../ipc/contracts';
 import { ResultView } from './ResultView';
 
-const ipc = vi.hoisted(() => ({ getArtifact: vi.fn() }));
+const ipc = vi.hoisted(() => ({ getArtifact: vi.fn(), openExternalUrl: vi.fn() }));
 vi.mock('../ipc/client', () => ipc);
 
 const doc: WorkflowRunOutput = {
@@ -88,5 +88,22 @@ describe('ResultView', () => {
     expect(screen.getByText('Timed out')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Run details' }));
     expect(onRunDetails).toHaveBeenCalled();
+  });
+
+  it('opens a link in the document in the browser, after asking', async () => {
+    ipc.getArtifact.mockResolvedValue({ id: 'a1', kind: 'markdown', contentText: 'Body\n\nSource: https://example.com/page' });
+    ipc.openExternalUrl.mockResolvedValue(undefined);
+    render(<ResultView run={run()} workflowName="Briefing" />);
+    fireEvent.click(await screen.findByRole('link', { name: 'https://example.com/page' }));
+    expect(ipc.openExternalUrl).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }));
+    await waitFor(() => expect(ipc.openExternalUrl).toHaveBeenCalledWith('https://example.com/page'));
+  });
+
+  it('does not call a stopped run failed', () => {
+    render(<ResultView run={run({ status: 'stopped', error: 'Stopped before it finished.', outputs: [] })} workflowName="Briefing" />);
+    expect(screen.queryByRole('heading', { name: 'Failed: Briefing' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Nothing was saved.' })).toBeInTheDocument();
+    expect(screen.getByText('Stopped before it finished.')).toHaveClass('wf-muted');
   });
 });

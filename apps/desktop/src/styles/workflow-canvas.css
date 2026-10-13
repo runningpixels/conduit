@@ -71,7 +71,10 @@
 .wfc-step[data-status="waiting"] { border-color: var(--warn); border-style: dashed; }
 .wfc-step[data-status="completed"] { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
 .wfc-step[data-status="failed"] { border-color: var(--err); }
-.wfc-step[data-status="not_taken"] { opacity: .5; border-style: dashed; }
+/* Not taken: dimmed colours on a solid card (see-through, wires drawn behind would show across it). */
+.wfc-step[data-status="not_taken"] { border-style: dashed; border-color: var(--line-hi); background: color-mix(in srgb, var(--card) 50%, var(--bg)); color: var(--ink-3); }
+.wfc-step[data-status="not_taken"] .wfc-line,
+.wfc-step[data-status="not_taken"] .wfc-status { color: var(--ink-3); }
 .wfc-step[data-status="skipped"],
 .wfc-step[data-status="stopped"] { opacity: .65; }
 /* A flagged step: the colour of the "Fix these" list and a label, so it never
@@ -106,6 +109,10 @@
 .wfc-arm-handle { opacity: 0; }
 .wfc-canvas .react-flow__handle.wfc-arm-yes { left: 28%; }
 .wfc-canvas .react-flow__handle.wfc-arm-no { left: 72%; }
+/* The side each dot draws, just above it inside the card. */
+.wfc-arm-tag { position: absolute; bottom: 10px; transform: translateX(-50%); font-size: var(--fs-xl); font-weight: 600; color: var(--ink-3); pointer-events: none; }
+.wfc-arm-tag.wfc-arm-yes { left: 28%; }
+.wfc-arm-tag.wfc-arm-no { left: 72%; }
 /* Editing: a "runs after" wire starts from the dot on a step's bottom edge. */
 .wfc.is-editing .wfc-flow-out,
 .wfc.is-editing .wfc-arm-handle { opacity: 1; width: 12px; height: 12px; background: var(--ink-3); border-color: var(--card); cursor: crosshair; }
@@ -161,6 +168,8 @@
   .wfc.is-editing { grid-template-columns: 1fr; }
   .wfc.is-editing .wfc-inspector { border-left: 0; border-top: 1px solid var(--line); }
 }
+/* The drawing is wider than the canvas: where the rest is. */
+.wfc-canvas .wfc-wide-hint { margin: var(--sp-3); padding: 6px 10px; border-radius: var(--r-sm); background: var(--card); border: 1px solid var(--line); color: var(--ink-2); font-size: var(--fs-xl); pointer-events: none; }
 .wfc-hint { position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 5; margin: 0; padding: 6px 10px; border-radius: var(--r-sm); background: var(--card); color: var(--ink-3); font-size: var(--fs-xl); pointer-events: none; }
 .wfc-empty { margin: 0; color: var(--ink-2); font-size: var(--fs-5xl); }
 .wfc-inspect { display: flex; flex-direction: column; gap: var(--sp-2); }

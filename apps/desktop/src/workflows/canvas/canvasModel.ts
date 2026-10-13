@@ -130,12 +130,15 @@ export function buildCanvas(def: WorkflowDefinition): CanvasGraph {
   g.setGraph({ rankdir: 'TB', nodesep: GAP_X, ranksep: GAP_Y, marginx: 0, marginy: 0 });
   g.setDefaultEdgeLabel(() => ({}));
   g.setNode(START_ID, { width: START_W, height: START_H });
-  def.steps.forEach((step) => g.setNode(step.id, sizeOf(step)));
+  // dagre lays out siblings in the reverse of the order it meets them, so
+  // they go in last first: steps side by side then read left to right in list order.
+  const backwards = [...def.steps].reverse();
+  backwards.forEach((step) => g.setNode(step.id, sizeOf(step)));
   // A branch's yes side sits left of its no side. (Only that: pinning other
   // siblings to list order made dagre cross wires it would otherwise not.)
   const yes = new Map<string, string>();
   const no = new Map<string, string>();
-  def.steps.forEach((step) => {
+  backwards.forEach((step) => {
     const entries = deps.get(step.id) ?? [];
     if (entries.length === 0) {
       // Heavy, so a step that starts with the run sits at the top, beside the
@@ -145,7 +148,10 @@ export function buildCanvas(def: WorkflowDefinition): CanvasGraph {
     for (const entry of entries) {
       const { id, arm } = parseEntry(entry);
       if (!g.hasNode(id)) continue;
-      g.setEdge(id, step.id);
+      // A branch's sides are heavy too: each sits right under the branch, so
+      // both share a row and the yes-left-of-no rule below can hold. A short
+      // side would otherwise slide down beside a long one's end and cross it.
+      g.setEdge(id, step.id, arm ? { weight: 8 } : {});
       if (arm === 'yes' && !yes.has(id)) yes.set(id, step.id);
       if (arm === 'no' && !no.has(id)) no.set(id, step.id);
     }
@@ -248,10 +254,10 @@ function outputItems(row: WorkflowRunStep | undefined): number | null {
 /**
  * Each node's status in `detail`: from its own record, or for a step inside a
  * loop, from its iterations (any running wins, then waiting, failed…). A step
- * with no record yet is `idle`. `waitingStepId` marks the step a paused run
- * waits at (a review or an "Ask me" question).
+ * with no record yet is `idle`. `waitingStepIds` mark the steps a paused run
+ * waits at (a review or an "Ask me" question each).
  */
-export function runStatuses(def: WorkflowDefinition, detail: WorkflowRunDetail | null, waitingStepId?: string | null): Map<string, NodeRun> {
+export function runStatuses(def: WorkflowDefinition, detail: WorkflowRunDetail | null, waitingStepIds: readonly string[] = []): Map<string, NodeRun> {
   const out = new Map<string, NodeRun>();
   if (!detail) return out;
   const byStep = new Map<string, WorkflowRunStep[]>();
@@ -270,7 +276,9 @@ export function runStatuses(def: WorkflowDefinition, detail: WorkflowRunDetail |
           break;
         }
       }
-      if (waitingStepId === step.id && detail.run.status === 'paused') status = 'waiting';
+      if (waitingStepIds.includes(step.id) && detail.run.status === 'paused') status = 'waiting';
+      // A loop the run didn't take never runs its steps: they weren't taken either.
+      if (status === 'idle' && loop && out.get(loop.id)?.status === 'not_taken') status = 'not_taken';
       const run: NodeRun = { status, rows };
       if (loop) {
         const reached = rows.reduce((max, r) => Math.max(max, (r.iteration ?? -1) + 1), 0);

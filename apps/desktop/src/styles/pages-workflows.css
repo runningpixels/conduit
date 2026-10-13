@@ -26,6 +26,9 @@
   font-size: var(--fs-3xl);
 }
 
+/* In a list row it may wrap: a block keeps its border around both lines. */
+.page-list-item-status .wf-flag { display: inline-block; margin-left: 0; }
+
 .wf-field { display: grid; gap: var(--sp-1); font-size: var(--fs-5xl); color: var(--ink-2); }
 .wf-json { font-family: var(--font-mono); font-size: var(--fs-3xl); min-height: 16rem; }
 .wf-error { margin: 0; color: var(--err); font-size: var(--fs-5xl); white-space: pre-wrap; }

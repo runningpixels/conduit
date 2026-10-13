@@ -102,6 +102,7 @@ describe('valuesAt', () => {
       'steps.each.items',
       'steps.fetch.pages.0.links',
       'steps.fetch.pages',
+      'steps.fetch.pages.0.url',
       'steps.fetch.pages.0.title',
       'steps.fetch.pages.0.text',
       'steps.fetch.text',
@@ -121,6 +122,7 @@ describe('valuesAt', () => {
       'steps.summary.text',
       'steps.fetch.pages.0.links',
       'steps.fetch.pages',
+      'steps.fetch.pages.0.url',
       'steps.fetch.pages.0.title',
       'steps.fetch.pages.0.text',
       'steps.fetch.text',
@@ -399,6 +401,15 @@ describe('valuesAt with a runs-after graph', () => {
       steps: [tpl('a'), tpl('side', ['a']), { id: 'each', type: 'for_each', items: 'steps.a.results', after: ['a'], steps: [tpl('x'), tpl('y')] }],
     };
     expect(stepIds(d, [2, 1]).sort()).toEqual(['a', 'x']);
+  });
+
+  it('offers a branch’s yes/no and reason to the steps after it', () => {
+    const d: WorkflowDefinition = {
+      steps: [{ id: 'pick', type: 'branch', value: 'x', is: 'not_empty' }, tpl('yes', ['pick.yes']), tpl('no', ['pick.no']), tpl('join', ['yes', 'no'])],
+    };
+    const paths = valuesAt(d, [3]).map((r) => r.path);
+    expect(paths).toEqual(expect.arrayContaining(['steps.pick.text', 'steps.pick.reason', 'steps.yes.text', 'steps.no.text']));
+    expect(stepIds(d, [1])).toEqual(['pick']);
   });
 
   it('offers every earlier step when no step says what it waits for', () => {

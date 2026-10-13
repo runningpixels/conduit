@@ -116,13 +116,25 @@ describe('runStatuses', () => {
     expect(s.get('card')?.status).toBe('idle');
   });
 
+  it('marks the steps of a loop the run did not take as not taken', () => {
+    const s = runStatuses(briefing, detail([row('read', 'not_taken')], 'completed'));
+    expect(s.get('read')?.status).toBe('not_taken');
+    expect(s.get('gist')?.status).toBe('not_taken');
+  });
+
   it('knows the loop total once the loop has finished', () => {
     const rows = [row('read', 'completed', null, { items: [{}, {}, {}] }), row('article', 'completed', 2)];
     expect(runStatuses(briefing, detail(rows, 'completed')).get('read')?.iterations).toEqual({ reached: 3, total: 3 });
   });
 
   it('marks the step a paused run waits at', () => {
-    const s = runStatuses(linear, detail([row('fetch', 'completed')], 'paused'), 'sum');
+    const s = runStatuses(linear, detail([row('fetch', 'completed')], 'paused'), ['sum']);
+    expect(s.get('sum')?.status).toBe('waiting');
+  });
+
+  it('marks every step a paused run waits at, not only the first', () => {
+    const s = runStatuses(linear, detail([row('fetch', 'running'), row('sum', 'running')], 'paused'), ['fetch', 'sum']);
+    expect(s.get('fetch')?.status).toBe('waiting');
     expect(s.get('sum')?.status).toBe('waiting');
   });
 });
@@ -166,6 +178,15 @@ describe('buildCanvas with steps that wait for others', () => {
     expect(flows(g)).toEqual(['__start>a', 'a>b', 'a>c', 'c>x', 'b>join', 'x>join']);
   });
 
+  it('reads steps side by side left to right in list order', () => {
+    const g = buildCanvas({ steps: [t('s0', []), t('s1', []), t('s2', []), t('s3', []), t('all', ['s0', 's1', 's2', 's3'])] });
+    const xs = ['s0', 's1', 's2', 's3'].map((id) => at(g, id).x);
+    expect(xs).toEqual([...xs].sort((a, b) => a - b));
+    const fan = buildCanvas({ steps: [t('a'), t('b', ['a']), t('c', ['a']), t('d', ['a'])] });
+    expect(at(fan, 'b').x).toBeLessThan(at(fan, 'c').x);
+    expect(at(fan, 'c').x).toBeLessThan(at(fan, 'd').x);
+  });
+
   it('hangs a step that waits for nothing off the start, beside the first step', () => {
     const g = buildCanvas({ steps: [t('a'), t('b', [])] });
     expect(at(g, 'a').y).toBe(at(g, 'b').y);
@@ -183,6 +204,14 @@ describe('buildCanvas with steps that wait for others', () => {
     expect(at(g, 'yes').y).toBe(at(g, 'no').y);
     expect(at(g, 'yes').x).toBeLessThan(at(g, 'no').x);
     expect(at(g, 'merge').y).toBe(at(g, 'yes').y + NODE_H + GAP_Y);
+  });
+
+  it('keeps a short yes side level with, and left of, a longer no side', () => {
+    const branch: WorkflowDefinition['steps'][number] = { id: 'if', type: 'branch', value: 'x', is: 'not_empty' };
+    const g = buildCanvas({ steps: [branch, t('yes', ['if.yes']), t('no', ['if.no']), t('more', ['no']), t('join', ['yes', 'more'])] });
+    expect(at(g, 'yes').y).toBe(at(g, 'no').y);
+    expect(at(g, 'yes').x).toBeLessThan(at(g, 'no').x);
+    expect(at(g, 'join').y).toBe(at(g, 'more').y + NODE_H + GAP_Y);
   });
 
   it('gives both arms of one branch their own wire into a step that waits for both', () => {

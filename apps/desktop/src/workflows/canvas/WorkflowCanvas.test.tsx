@@ -56,7 +56,7 @@ describe('WorkflowCanvas', () => {
 
   it('shows the step a paused run waits at', () => {
     const detail: WorkflowRunDetail = { run: { id: 'r', workflowId: 'w', status: 'paused' } as WorkflowRunDetail['run'], steps: [row('fetch', 'completed')] };
-    render(<WorkflowCanvas definition={briefing} run={detail} waitingStepId="pick" />);
+    render(<WorkflowCanvas definition={briefing} run={detail} waitingStepIds={['pick']} />);
     expect(within(node('pick')).getByText('Waiting for you')).toBeTruthy();
   });
 

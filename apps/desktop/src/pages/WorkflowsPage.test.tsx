@@ -418,7 +418,7 @@ describe('WorkflowsPage', () => {
     const steps = await screen.findByRole('tabpanel');
     expect(within(steps).getByRole('button', { name: 'Canvas' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(steps).getByRole('group', { name: 'Workflow canvas' })).toBeInTheDocument();
-    expect(steps.querySelector('.react-flow__node[data-id="read"]')).not.toBeNull();
+    await waitFor(() => expect(steps.querySelector('.react-flow__node[data-id="read"]')).not.toBeNull());
     fireEvent.click(within(steps).getByRole('button', { name: 'List' }));
     expect(within(steps).getByText('Fetch 2 pages: [First site], [Second site]')).toBeInTheDocument();
     expect(within(steps).queryByRole('group', { name: 'Workflow canvas' })).toBeNull();

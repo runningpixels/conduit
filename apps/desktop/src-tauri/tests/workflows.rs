@@ -4328,6 +4328,62 @@ mod drafting {
     }
 
     #[tokio::test]
+    async fn the_users_connectors_are_offered_and_a_draft_keeps_one_it_used() {
+        let reply = json!({
+            "name": "Post a note",
+            "description": "Post to a channel.",
+            "notes": [],
+            "definition": { "steps": [
+                { "id": "post", "type": "connector_tool", "connector": "echo",
+                  "tool": "post_message", "arguments": { "channel": "general", "text": "hi" } },
+                { "id": "tell", "type": "notify", "title": "Posted" }
+            ]}
+        })
+        .to_string();
+        let h = Harness::new(with_drafts(vec![reply])).await;
+        super::echo_connector(&h, "active", None).await;
+        let draft = author::draft(&h.state, &h.streams, ask("Post hi to general"))
+            .await
+            .unwrap();
+        assert!(draft.problems.is_empty(), "{:?}", draft.problems);
+        assert_eq!(draft.definition["steps"][0]["connector"], "echo");
+        assert_eq!(draft.definition["steps"][0]["tool"], "post_message");
+        let requests = h.model.requests.lock().unwrap().clone();
+        let system = requests[0].system_prompt.clone().unwrap();
+        assert!(system.contains("- \"echo\" (Echo)"), "{system}");
+    }
+
+    #[tokio::test]
+    async fn a_draft_with_a_branch_and_steps_side_by_side_is_valid() {
+        let reply = json!({
+            "name": "Status",
+            "description": "Check two pages.",
+            "notes": [],
+            "definition": {
+                "inputs": [{ "id": "page", "label": "Page", "default": "https://example.com" }],
+                "steps": [
+                    { "id": "one", "type": "fetch_page", "urls": ["{{inputs.page}}"] },
+                    { "id": "two", "type": "fetch_page", "urls": ["{{inputs.page}}/status"], "after": [] },
+                    { "id": "down", "type": "branch", "value": "{{steps.two.text}}", "is": "contains",
+                      "text": "down", "after": ["one", "two"] },
+                    { "id": "alert", "type": "notify", "title": "Down", "after": ["down.yes"] },
+                    { "id": "save", "type": "save_artifact", "title": "Fine",
+                      "content": "{{steps.one.text}}", "after": ["down.no"] }
+                ]
+            }
+        })
+        .to_string();
+        let h = Harness::new(with_drafts(vec![reply])).await;
+        let draft = author::draft(&h.state, &h.streams, ask("Check a page"))
+            .await
+            .unwrap();
+        assert_eq!(draft.attempts, 1);
+        assert!(draft.problems.is_empty(), "{:?}", draft.problems);
+        assert_eq!(draft.definition["steps"][2]["type"], "branch");
+        assert_eq!(draft.definition["steps"][3]["after"], json!(["down.yes"]));
+    }
+
+    #[tokio::test]
     async fn problems_are_sent_back_and_a_fixed_reply_is_used() {
         let h = Harness::new(with_drafts(vec![broken_reply(), valid_reply()])).await;
         let draft = author::draft(&h.state, &h.streams, ask("Do it"))

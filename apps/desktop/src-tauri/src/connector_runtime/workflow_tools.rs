@@ -1,12 +1,14 @@
 //! Connector tools as workflow steps (and the editor's tool picker).
 //!
-//! A workflow runs unattended, so it only calls tools that declare they just
-//! read (the same classification chat uses to decide what runs without
-//! asking). Everything here fails in plain words: a removed or switched-off
-//! connector, one that needs signing in again, a tool the connector no longer
-//! has, a missing required argument. Nothing in this path ever prompts: the
-//! call goes through the same execution path as chat, but a consent request
-//! (a tool that stopped reading since it was checked) is denied on the spot.
+//! A tool that just reads (the same classification chat uses to decide what
+//! runs without asking) is called as is. A tool that changes things is an
+//! outside action: the runner checks it with the user first
+//! (`workflows::actions`) and then calls it with `may_act`. Everything here
+//! fails in plain words: a removed or switched-off connector, one that needs
+//! signing in again, a tool the connector no longer has, a missing required
+//! argument. Nothing in this path prompts through chat: the call goes through
+//! the same execution path as chat, and its consent request is answered on the
+//! spot (yes when the runner cleared the action, else no).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -214,6 +216,29 @@ pub async fn list_tools(
     Ok(tools)
 }
 
+/// The tool called `tool_name` as `target` offers it now (its description,
+/// arguments and whether it only reads). Starts the connector when it isn't
+/// running.
+pub async fn tool_info(
+    state: &AppState,
+    mgr: &ConnectorRuntimeManager,
+    target: &Target,
+    tool_name: &str,
+) -> Result<McpTool, String> {
+    let active = ensure_running(state, mgr, target).await?;
+    live_tools(mgr, &active, target)
+        .await?
+        .into_iter()
+        .find(|t| t.name == tool_name)
+        .ok_or_else(|| {
+            format!(
+                "{} no longer has a tool called {}.",
+                target.definition.name,
+                quoted(tool_name)
+            )
+        })
+}
+
 /// The required arguments of `tool`'s schema that `arguments` lacks, in the
 /// schema's order.
 pub fn missing_required(tool: &McpTool, arguments: &Value) -> Vec<String> {
@@ -238,9 +263,11 @@ fn list_of(fields: &[String]) -> String {
 }
 
 /// Call `tool_name` on `target` with `arguments` (an object, already filled)
-/// and return what it said. Refuses, in plain words, a tool that can change
-/// things; the caller has already asked permission (when someone must be
-/// asked) and checked that `arguments` is an object.
+/// and return what it said. Without `may_act`, refuses in plain words a tool
+/// that can change things; with it, the caller has already checked the action
+/// with the user (or the workflow's rules allow it). The caller has also asked
+/// permission (when someone must be asked) and checked that `arguments` is an
+/// object.
 pub async fn call(
     state: &AppState,
     mgr: &ConnectorRuntimeManager,
@@ -248,6 +275,7 @@ pub async fn call(
     tool_name: &str,
     arguments: &Value,
     run_id: &str,
+    may_act: bool,
 ) -> Result<ToolResult, String> {
     let name = &target.definition.name;
     let active = ensure_running(state, mgr, target).await?;
@@ -257,7 +285,7 @@ pub async fn call(
         .iter()
         .find(|t| t.name == tool_name)
         .ok_or_else(gone)?;
-    if !is_read_only(tool) {
+    if !may_act && !is_read_only(tool) {
         return Err(not_read_only(name, tool_name));
     }
     let missing = missing_required(tool, arguments);
@@ -293,12 +321,18 @@ pub async fn call(
         arguments,
         conversation_id: None,
     };
-    // Nobody can answer a prompt here: if the tool stopped being read-only
-    // between the check above and the call, say no at once.
-    let refuser = mgr.clone();
+    // Chat's prompt isn't shown here: the runner already decided. Without
+    // `may_act`, a tool that stopped being read-only between the check above
+    // and the call is refused at once.
+    let decider = mgr.clone();
+    let decision = if may_act {
+        ConsentDecision::Approved
+    } else {
+        ConsentDecision::Denied
+    };
     let sink: EventSink = Arc::new(move |event| {
         if let ConnectorRuntimeEvent::ConsentRequested { prompt } = event {
-            let _ = refuser.resolve_consent(&prompt.tool_call_id, ConsentDecision::Denied);
+            let _ = decider.resolve_consent(&prompt.tool_call_id, decision);
         }
     });
     let outcome = execute_tool_call_timed(state, mgr, &request, &sink, None)
@@ -311,7 +345,7 @@ pub async fn call(
                 format!("{name}: {error}")
             }
         })?;
-    if outcome.record.status == ToolCallStatus::Cancelled {
+    if !may_act && outcome.record.status == ToolCallStatus::Cancelled {
         return Err(not_read_only(name, tool_name));
     }
     let output = outcome

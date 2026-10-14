@@ -30,6 +30,8 @@ const ipc = vi.hoisted(() => ({
   rerunWorkflowFrom: vi.fn(),
   revealExportedFile: vi.fn(),
   listWorkflowQuestions: vi.fn(),
+  listWorkflowActions: vi.fn(),
+  answerWorkflowAction: vi.fn(),
   answerWorkflowQuestion: vi.fn(),
   listProviderDescriptors: vi.fn(),
   draftWorkflow: vi.fn(),
@@ -126,6 +128,7 @@ describe('WorkflowsPage', () => {
     ipc.getWorkflowPermissions.mockResolvedValue({ required: [], missing: [], approvedAt: null });
     ipc.listWorkflowReviews.mockResolvedValue([]);
     ipc.listWorkflowQuestions.mockResolvedValue([]);
+    ipc.listWorkflowActions.mockResolvedValue([]);
     ipc.listWorkflows.mockResolvedValue([summary]);
     ipc.getWorkflow.mockResolvedValue(record);
     ipc.listWorkflowRuns.mockResolvedValue([]);
@@ -415,7 +418,7 @@ describe('WorkflowsPage', () => {
     const steps = await screen.findByRole('tabpanel');
     expect(within(steps).getByRole('button', { name: 'Canvas' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(steps).getByRole('group', { name: 'Workflow canvas' })).toBeInTheDocument();
-    expect(steps.querySelector('.react-flow__node[data-id="read"]')).not.toBeNull();
+    await waitFor(() => expect(steps.querySelector('.react-flow__node[data-id="read"]')).not.toBeNull());
     fireEvent.click(within(steps).getByRole('button', { name: 'List' }));
     expect(within(steps).getByText('Fetch 2 pages: [First site], [Second site]')).toBeInTheDocument();
     expect(within(steps).queryByRole('group', { name: 'Workflow canvas' })).toBeNull();
@@ -570,6 +573,32 @@ describe('WorkflowsPage', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Always allow' }));
     await waitFor(() => expect(ipc.answerWorkflowReview).toHaveBeenCalledWith('r9', 'alwaysAllow', 'fetch'));
     expect(screen.queryByRole('group', { name: 'Waiting for you' })).not.toBeInTheDocument();
+  });
+
+  it('shows an outside action waiting to be checked, and answers it', async () => {
+    const action = {
+      runId: 'r9',
+      workflowId: 'w1',
+      workflowName: 'Morning briefing',
+      stepId: 'fetch',
+      connectorId: 'slack',
+      connectorName: 'Slack',
+      tool: 'post_message',
+      description: 'Posts a message',
+      arguments: { channel: '#news', text: 'Hello' },
+      inputSchema: {},
+      sensitive: false,
+      requestedAt: '2026-09-29T06:00:00.000Z',
+      expiresAt: '2026-09-30T06:00:00.000Z',
+    };
+    ipc.listWorkflowActions.mockResolvedValueOnce([action]).mockResolvedValue([]);
+    ipc.answerWorkflowAction.mockResolvedValue(true);
+    render(<WorkflowsPage onStatus={vi.fn()} />);
+    const card = await screen.findByRole('group', { name: 'Check before it sends' });
+    expect(card).toHaveTextContent('“post_message” in Slack');
+    fireEvent.click(within(card).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r9', 'fetch', { send: true }));
+    expect(screen.queryByRole('group', { name: 'Check before it sends' })).not.toBeInTheDocument();
   });
 
   it('reruns an earlier run from a top-level step', async () => {

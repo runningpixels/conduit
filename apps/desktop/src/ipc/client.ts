@@ -101,6 +101,9 @@ import type {
   WorkflowPermissions,
   WorkflowReview,
   WorkflowReviewDecision,
+  WorkflowAction,
+  WorkflowActionAnswer,
+  WorkflowActionRules,
   WorkflowQuestion,
   ConversationFolder,
   KnowledgeCollection,
@@ -2104,6 +2107,26 @@ export async function listWorkflowQuestions(): Promise<WorkflowQuestion[]> {
 /** Answer a run waiting at an "Ask me" step; resolves `false` if it was no longer waiting. */
 export async function answerWorkflowQuestion(runId: string, answer: string, stepId?: string): Promise<boolean> {
   return invokeCommand<boolean>('answer_workflow_question', { runId, answer, stepId });
+}
+
+/** Outside actions waiting for the user to check them, oldest first. */
+export async function listWorkflowActions(): Promise<WorkflowAction[]> {
+  return invokeCommand<WorkflowAction[]>('list_workflow_actions');
+}
+
+/** Send (or don't) an outside action a run waits on; resolves `false` if it was no longer waiting. */
+export async function answerWorkflowAction(runId: string, stepId: string, answer: WorkflowActionAnswer): Promise<boolean> {
+  return invokeCommand<boolean>('answer_workflow_action', { runId, stepId, answer });
+}
+
+/** Which outside actions a workflow takes without asking. */
+export async function getWorkflowActionRules(id: string): Promise<WorkflowActionRules> {
+  return invokeCommand<WorkflowActionRules>('get_workflow_action_rules', { id });
+}
+
+/** Replace which outside actions a workflow takes without asking. */
+export async function setWorkflowActionRules(id: string, rules: WorkflowActionRules): Promise<WorkflowActionRules> {
+  return invokeCommand<WorkflowActionRules>('set_workflow_action_rules', { id, rules });
 }
 
 /** Ask a workflow's run in progress to stop; resolves `false` if it wasn't running. */

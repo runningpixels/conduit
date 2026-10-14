@@ -17,6 +17,7 @@ use crate::db::repository::workflows::{
 use crate::state::AppState;
 use crate::stream_manager::StreamManager;
 use crate::workflows::{
+    actions::{ActionAnswer, ActionRules, Actions, PendingAction},
     ask::{self, PendingQuestion, Questions},
     author::{self, DraftRequest, DraftResult},
     definition,
@@ -203,6 +204,7 @@ async fn run_manually(
     let streams = app.state::<StreamManager>();
     let running = app.state::<Arc<RunningWorkflows>>();
     let questions = app.state::<Questions>();
+    let actions = app.state::<Actions>();
     let documents = app.state::<crate::workflows::documents::DocumentChanges>();
     let connectors = app.state::<crate::connector_runtime::ConnectorRuntimeManager>();
     let guard = running
@@ -218,6 +220,7 @@ async fn run_manually(
         budget: RunBudget::default(),
         notify: Some(&notify),
         questions: Some(questions.inner()),
+        actions: Some(actions.inner()),
         connectors: Some(connectors.inner()),
         documents: Some(documents.inner()),
     };
@@ -629,4 +632,61 @@ pub fn answer_workflow_question(
     };
     let answer = ask::checked_answer(&pending, &answer)?;
     Ok(questions.answer(&run_id, Some(&pending.step_id), answer))
+}
+
+/// Outside actions waiting for the user to check them, oldest first.
+#[tauri::command]
+pub fn list_workflow_actions(actions: State<'_, Actions>) -> Vec<PendingAction> {
+    actions.list()
+}
+
+/// Answer an outside action a run waits on: send it (with changed arguments,
+/// and "don't ask again" when `remember`) or not. `Ok(false)` when it is no
+/// longer waiting; `Err` when the changed arguments won't do.
+#[tauri::command]
+pub fn answer_workflow_action(
+    actions: State<'_, Actions>,
+    run_id: String,
+    step_id: String,
+    answer: ActionAnswer,
+) -> Result<bool, String> {
+    if actions.get(&run_id, Some(&step_id)).is_none() {
+        return Ok(false);
+    }
+    let answer = ActionAnswer {
+        arguments: answer
+            .arguments
+            .map(crate::workflows::actions::checked_arguments)
+            .transpose()?,
+        ..answer
+    };
+    Ok(actions.answer(&run_id, Some(&step_id), answer))
+}
+
+/// Which outside actions `id` takes without asking.
+#[tauri::command]
+pub async fn get_workflow_action_rules(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<ActionRules, String> {
+    repo::get_action_rules(&state.db, &state.encryption, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Replace which outside actions `id` takes without asking.
+#[tauri::command]
+pub async fn set_workflow_action_rules(
+    state: State<'_, AppState>,
+    id: String,
+    rules: ActionRules,
+) -> Result<ActionRules, String> {
+    repo::get(&state.db, &state.encryption, &id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "That workflow no longer exists.".to_string())?;
+    repo::set_action_rules(&state.db, &state.encryption, &id, &rules)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rules)
 }

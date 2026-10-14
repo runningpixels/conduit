@@ -9,7 +9,7 @@ import {
   argsFromJson,
   argsToJson,
   connectorChoices,
-  isUsable,
+  toolMark,
   loadConnectorTools,
   missingRequired,
   parseNumber,
@@ -60,14 +60,14 @@ describe('read-only gating', () => {
     expect(readOnlyOf({ annotations: { readOnlyHint: false } })).toBe(false);
   });
 
-  it('is unknown without any of them, and unknown tools are not usable', () => {
+  it('is unknown without any of them, and unknown tools are marked as changing things', () => {
     expect(readOnlyOf({})).toBeNull();
     expect(readOnlyOf(null)).toBeNull();
     const tool = toolFromCapability(cap('list', {}, { type: 'object' }));
     expect(tool.readOnly).toBeNull();
-    expect(isUsable(tool)).toBe(false);
-    expect(isUsable(toolFromCapability(cap('list', { annotations: { readOnlyHint: true } })))).toBe(true);
-    expect(isUsable(toolFromCapability(cap('del', { permissionLevel: 'destructive' })))).toBe(false);
+    expect(toolMark(tool)).toBe('changes');
+    expect(toolMark(toolFromCapability(cap('list', { annotations: { readOnlyHint: true } })))).toBeNull();
+    expect(toolMark(toolFromCapability(cap('del', { permissionLevel: 'destructive' })))).toBe('changes');
   });
 
   it('reads tools and their read-only flag from the workflow tool list', async () => {
@@ -79,10 +79,10 @@ describe('read-only gating', () => {
     const tools = await loadConnectorTools('github');
     expect(ipc.listWorkflowConnectorTools).toHaveBeenCalledWith('github');
     expect(tools).toEqual([
-      { name: 'list', description: undefined, inputSchema: schema, readOnly: true },
-      { name: 'post', description: 'Posts', inputSchema: {}, readOnly: false },
+      { name: 'list', description: undefined, inputSchema: schema, readOnly: true, permissionLevel: 'readOnly' },
+      { name: 'post', description: 'Posts', inputSchema: {}, readOnly: false, permissionLevel: 'sideEffectful' },
     ]);
-    expect(tools.map(isUsable)).toEqual([true, false]);
+    expect(tools.map(toolMark)).toEqual([null, 'changes']);
   });
 });
 

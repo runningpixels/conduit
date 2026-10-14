@@ -72,9 +72,48 @@ export function withOnlyIfChanged(step: WorkflowStep, on: boolean): WorkflowStep
   return (on ? { ...rest, onlyIfChanged: true } : rest) as WorkflowStep;
 }
 
-/// Tools an agent step may use (the backend's `AGENT_TOOLS`): read-only, and
-/// none stops to ask for approval.
+/// Built-in tools an agent step may use (the backend's `AGENT_TOOLS`): read-only,
+/// and none stops to ask for approval.
 export const AGENT_TOOLS = ['web_search', 'web_fetch', 'current_time', 'calculator'] as const;
+
+/// Most connector tools one agent step may list (the backend's limit).
+export const MAX_AGENT_CONNECTOR_TOOLS = 10;
+
+/// An agent step's `tools` entry for a connector's tool ("gh/list_issues").
+export function connectorToolRef(connectorId: string, tool: string): string {
+  return `${connectorId}/${tool}`;
+}
+
+/// The connector and tool a `tools` entry names; `null` for a built-in.
+export function parseConnectorToolRef(entry: string): { connectorId: string; tool: string } | null {
+  const at = entry.indexOf('/');
+  return at > 0 && at < entry.length - 1 ? { connectorId: entry.slice(0, at), tool: entry.slice(at + 1) } : null;
+}
+
+/// Whether a step list can act outside the app: a connector step, or an agent
+/// that may call a connector tool (inside loops too).
+export function usesConnectorTools(steps: readonly WorkflowStep[]): boolean {
+  return steps.some(
+    (s) =>
+      s.type === 'connector_tool' ||
+      (s.type === 'agent' && (s.tools ?? []).some((x) => parseConnectorToolRef(x) !== null)) ||
+      (s.type === 'for_each' && usesConnectorTools(s.steps)),
+  );
+}
+
+/// `tools` with one built-in tool turned on or off; built-ins keep the
+/// catalog's order and connector entries keep theirs after them.
+export function withBuiltinTool(tools: readonly string[], tool: string, on: boolean): string[] {
+  const others = tools.filter((x) => x !== tool);
+  const next = on ? [...others, tool] : others;
+  return [...AGENT_TOOLS.filter((x) => next.includes(x)), ...next.filter((x) => !(AGENT_TOOLS as readonly string[]).includes(x))];
+}
+
+/// `tools` with one connector tool entry added or removed.
+export function withConnectorTool(tools: readonly string[], ref: string, on: boolean): string[] {
+  const others = tools.filter((x) => x !== ref);
+  return on ? [...others, ref] : others;
+}
 
 /// Most retries a step may ask for (the backend's `MAX_RETRIES`).
 export const MAX_RETRIES = 5;

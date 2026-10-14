@@ -4,6 +4,7 @@
 /// workflow may do when it runs on its own, and what a paused run asks for.
 
 import type { Translate } from '../i18n';
+import { parseConnectorToolRef } from './editorModel';
 import type { WorkflowPermissionView, WorkflowReview } from '../ipc/contracts';
 
 /// What each agent tool lets a step do (tool name → catalog key).
@@ -16,7 +17,10 @@ const AGENT_TOOL_KEY: Record<string, string> = {
 
 /// What one agent tool lets a step do ("search the web").
 export function agentToolText(tool: string, t: Translate): string {
-  return AGENT_TOOL_KEY[tool] ? t(AGENT_TOOL_KEY[tool]) : tool;
+  if (AGENT_TOOL_KEY[tool]) return t(AGENT_TOOL_KEY[tool]);
+  // "<connectorId>/<tool>": the tool's name reads better than the raw id.
+  const connectorTool = parseConnectorToolRef(tool);
+  return connectorTool ? `“${connectorTool.tool}”` : tool;
 }
 
 /// What an agent step's tools let it do, joined ("search the web, read any web page it chooses").

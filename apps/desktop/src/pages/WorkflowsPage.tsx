@@ -24,6 +24,9 @@ import { WorkflowCanvas } from '../workflows/canvas/WorkflowCanvas';
 import { START_ID } from '../workflows/canvas/canvasModel';
 import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../shell/uiPrefs';
 import { MoreMenu, SummaryChips, WorkflowTabs, tabPanelId, tabButtonId, type WorkflowTab } from '../workflows/WorkflowViewParts';
+import { ActionCard } from '../workflows/ActionCard';
+import { ReviewCard } from '../workflows/ReviewCard';
+import { useWorkflowActionEvents } from '../workflows/workflowRunEvents';
 import { WorkflowEditBar } from '../workflows/WorkflowEditBar';
 import {
   connectorStepSummary,
@@ -47,6 +50,7 @@ import {
   markWorkflowRunsSeen,
   answerWorkflowQuestion,
   answerWorkflowReview,
+  listWorkflowActions,
   listWorkflowQuestions,
   listWorkflowReviews,
   listProviderDescriptors,
@@ -65,6 +69,7 @@ import type {
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
+  WorkflowAction,
   WorkflowQuestion,
   WorkflowReview,
   WorkflowReviewDecision,
@@ -77,12 +82,13 @@ import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, type InputLabels } from '../workflows/describeStep';
 import { findStep, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
-import { reviewText } from '../workflows/permissionText';
 import { ResultView } from '../workflows/ResultView';
 import { runsAfterLine } from '../workflows/runsAfter';
 import { isUnread, primaryOutput } from '../workflows/results';
 import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
 import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
+import { ActionRulesSection } from '../workflows/ActionRulesSection';
+import { StepActions, stepActionsSummary } from '../workflows/StepActions';
 import { revealExportedFile, runTriggerLabel } from '../workflows/triggers';
 import { STARTER_WORKFLOWS, type StarterWorkflow } from '../workflows/starters';
 import { WorkflowEditor, type WorkflowDraft } from '../workflows/WorkflowEditor';
@@ -173,7 +179,7 @@ function durationMs(start: string, end: string | null): number | null {
 
 
 /** One open wait: a run can wait on several steps at once (parallel Ask me steps or reviews). */
-function waitKey(wait: { runId: string; stepId: string }): string {
+export function waitKey(wait: { runId: string; stepId: string }): string {
   return `${wait.runId}:${wait.stepId}`;
 }
 export function WorkflowsPage({
@@ -262,6 +268,8 @@ export function WorkflowsPage({
   const [reviews, setReviews] = useState<WorkflowReview[]>([]);
   /// Runs waiting at an "Ask me" step (any workflow).
   const [questions, setQuestions] = useState<WorkflowQuestion[]>([]);
+  /// Runs waiting to check an outside action (any workflow).
+  const [actions, setActions] = useState<WorkflowAction[]>([]);
 
   // Check the draft as it changes, so problems show before saving.
   const draftDefinition = mode.kind === 'draft' ? mode.draft.definition : null;
@@ -471,7 +479,7 @@ export function WorkflowsPage({
     const panels = Array.from(root.querySelectorAll<HTMLElement>('[data-run-id]'));
     const panel = panels.find((el) => el.dataset.runId === focus.runId) ?? panels[0];
     panel?.scrollIntoView?.({ block: 'center' });
-  }, [focus, record, reviews, questions]);
+  }, [focus, record, reviews, questions, actions]);
 
   // What scheduled runs are waiting for.
   useEffect(() => {
@@ -488,10 +496,23 @@ export function WorkflowsPage({
       },
       () => {},
     );
+    void Promise.resolve()
+      .then(() => listWorkflowActions())
+      .then(
+        (next) => {
+          if (!cancelled) setActions(Array.isArray(next) ? next : []);
+        },
+        () => {},
+      );
     return () => {
       cancelled = true;
     };
   }, [refreshKey]);
+
+  // A run stopped to check an outside action.
+  useWorkflowActionEvents((action) => {
+    setActions((current) => [...current.filter((a) => waitKey(a) !== waitKey(action)), action]);
+  });
 
   // A run that ended (stopped, or finished while a question was open) takes
   // its open questions and reviews with it: drop them as soon as the runs show it.
@@ -500,6 +521,7 @@ export function WorkflowsPage({
     if (ended.size === 0) return;
     setQuestions((current) => (current.some((q) => ended.has(q.runId)) ? current.filter((q) => !ended.has(q.runId)) : current));
     setReviews((current) => (current.some((r) => ended.has(r.runId)) ? current.filter((r) => !ended.has(r.runId)) : current));
+    setActions((current) => (current.some((a) => ended.has(a.runId)) ? current.filter((a) => !ended.has(a.runId)) : current));
   }, [runs]);
 
   function markAnswering(runId: string, on: boolean) {
@@ -533,6 +555,16 @@ export function WorkflowsPage({
     markAnswering(key, false);
     setReviews(await listWorkflowReviews().catch(() => []));
     if (selectedId) setRuns(await listWorkflowRuns(selectedId, 20).catch(() => runs));
+  }
+
+  /// The card handled the IPC call; drop it (and re-read, in case others changed).
+  function actionAnswered(action: WorkflowAction, taken: boolean) {
+    if (!taken) onStatus(t('workspace.workflows.review.gone'));
+    setActions((current) => current.filter((a) => waitKey(a) !== waitKey(action)));
+    void Promise.resolve()
+      .then(() => listWorkflowActions())
+      .then((next) => setActions(Array.isArray(next) ? next : []), () => {});
+    if (selectedId) void listWorkflowRuns(selectedId, 20).then(setRuns, () => {});
   }
 
   /// Resolves to why the answer was refused, or `null` once it was taken.
@@ -1084,16 +1116,21 @@ export function WorkflowsPage({
     const workflowInputs = record.definition.inputs ?? [];
     const inputLabels = Object.fromEntries(workflowInputs.map((i) => [i.id, i.label]));
     const nextRunAt = summaries.find((w) => w.id === record.id)?.nextRunAt;
-    // The newest run that ended with something to show (or failed), else the
-    // newest that ended at all: a workflow that saves nothing still has runs.
+    // The newest run that ended with something to show (or failed, or was
+    // stopped), else the newest that ended at all: a workflow that saves
+    // nothing still has runs.
     const latest =
-      runs.find((r) => !isLive(r.status) && (primaryOutput(r) != null || r.status === 'failed')) ?? runs.find((r) => !isLive(r.status)) ?? null;
+      runs.find(
+        (r) => !isLive(r.status) && (primaryOutput(r) != null || r.status === 'failed' || r.status === 'stopped'),
+      ) ??
+      runs.find((r) => !isLive(r.status)) ??
+      null;
     const recent = runs.slice(0, 3);
     const resultRun = wfResults.find((r) => r.id === resultSel) ?? wfResults[0] ?? null;
     const canvasRun = openRun && openRun.run.workflowId === record.id ? openRun : null;
     // Every step the open run waits at: steps side by side can each ask.
     const waitingStepIds = openRun
-      ? [...reviews, ...questions].filter((w) => w.runId === openRun.run.id).map((w) => w.stepId)
+      ? [...reviews, ...questions, ...actions].filter((w) => w.runId === openRun.run.id).map((w) => w.stepId)
       : [];
     const branchy = record.definition.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'branch' || s.type === 'agent' || s.after !== undefined);
     const stepsView = stepsPref === 'auto' ? (branchy ? 'canvas' : 'list') : stepsPref;
@@ -1131,59 +1168,21 @@ export function WorkflowsPage({
     // backend lists them in whatever order they began).
     const stepOrder = new Map(record.definition.steps.map((s, i) => [s.id, i]));
     const byStep = (a: { stepId: string }, b: { stepId: string }) => (stepOrder.get(a.stepId) ?? 1e9) - (stepOrder.get(b.stepId) ?? 1e9);
-    /// The permission reviews and "Ask me" questions this workflow is waiting on (one run's, when given).
+    /// The permission reviews, "Ask me" questions and outside actions this workflow is waiting on (one run's, when given).
     const waiting = (runId?: string) => (
       <>
         {reviews
           .filter((review) => review.workflowId === record.id && (!runId || review.runId === runId))
           .sort(byStep)
           .map((review) => (
-            <section
+            <ReviewCard
               key={waitKey(review)}
-              className="wf-offer wf-review"
-              role="group"
-              aria-label={t('workspace.workflows.review.title')}
-              data-run-id={review.runId}
-            >
-              <b>{t('workspace.workflows.review.title')}</b>
-              <p className="wf-review-what">{reviewText(review, t)}</p>
-              <p className="wf-muted">
-                {t('workspace.workflows.review.expires', {
-                  when: formatNextRun(review.expiresAt, fmt.locale),
-                })}
-              </p>
-              <div className="wf-offer-actions">
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={answering.has(waitKey(review))}
-                  onClick={() => void answer(review, 'allowOnce')}
-                >
-                  {t('workspace.workflows.review.allowOnce')}
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={answering.has(waitKey(review))}
-                  onClick={() => void answer(review, 'alwaysAllow')}
-                >
-                  {t('workspace.workflows.review.alwaysAllow')}
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  disabled={answering.has(waitKey(review))}
-                  onClick={() => void answer(review, 'deny')}
-                >
-                  {t('workspace.workflows.review.deny')}
-                </button>
-              </div>
-              {reviewErrors[waitKey(review)] ? (
-                <p className="wf-error" role="alert">
-                  {reviewErrors[waitKey(review)]}
-                </p>
-              ) : null}
-            </section>
+              review={review}
+              expires={formatNextRun(review.expiresAt, fmt.locale)}
+              busy={answering.has(waitKey(review))}
+              error={reviewErrors[waitKey(review)]}
+              onAnswer={(decision) => void answer(review, decision)}
+            />
           ))}
         {questions
           .filter((question) => question.workflowId === record.id && (!runId || question.runId === runId))
@@ -1195,6 +1194,12 @@ export function WorkflowsPage({
               expires={formatNextRun(question.expiresAt, fmt.locale)}
               onAnswer={(text) => reply(question, text)}
             />
+          ))}
+        {actions
+          .filter((action) => action.workflowId === record.id && (!runId || action.runId === runId))
+          .sort(byStep)
+          .map((action) => (
+            <ActionCard key={waitKey(action)} action={action} onAnswered={actionAnswered} />
           ))}
       </>
     );
@@ -1228,6 +1233,7 @@ export function WorkflowsPage({
                 ))}
               </section>
             ) : null}
+            <ActionRulesSection workflowId={record.id} steps={record.definition.steps} />
             <ScheduleSection
               workflowId={record.id}
               refreshKey={refreshKey}
@@ -1705,7 +1711,7 @@ export function savedDocuments(detail: WorkflowRunDetail): SavedDocument[] {
 
 /// A run waiting at an "Ask me" step: the question, and its choices or a box
 /// to type the answer in.
-function QuestionPanel({
+export function QuestionPanel({
   question,
   expires,
   onAnswer,
@@ -1945,10 +1951,14 @@ function RunStepRow({
           ) : null}
           {dataSummary ? <span className="wf-muted wf-step-reason">{dataSummary}</span> : null}
           {edit ? <span className="wf-muted wf-step-reason">{edit.text}</span> : null}
+          {stepActionsSummary(step.output, t) ? (
+            <span className="wf-muted wf-step-reason">{stepActionsSummary(step.output, t)}</span>
+          ) : null}
           {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
         </summary>
         {step.error ? <p className="wf-error">{step.error}</p> : null}
         <StepModelLine output={step.output} />
+        <StepActions output={step.output} />
         {onRerun ? (
           <button
             type="button"

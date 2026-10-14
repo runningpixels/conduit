@@ -13,6 +13,7 @@ import {
   listDrafts,
   listMemoryItems,
   listPrompts,
+  listWorkflowActions,
   listWorkflowQuestions,
   listWorkflowResults,
   listWorkflowReviews,
@@ -149,14 +150,16 @@ export function HomePage({
   });
 
   const loadNeeds = useCallback(async () => {
-    const [reviews, questions, pending] = await Promise.all([
+    const [reviews, questions, actions, pending] = await Promise.all([
       listOr(listWorkflowReviews),
       listOr(listWorkflowQuestions),
+      listOr(() => listWorkflowActions()),
       listOr(() => listMemoryItems('pending')),
     ]);
     return {
       reviews: (reviews ?? []).map((r) => ({ name: r.workflowName, workflowId: r.workflowId, runId: r.runId })),
       questions: (questions ?? []).map((q) => ({ name: q.workflowName, workflowId: q.workflowId, runId: q.runId })),
+      actions: (actions ?? []).map((a) => ({ name: a.workflowName, workflowId: a.workflowId, runId: a.runId })),
       memory: (pending ?? []).length,
     } satisfies NeedsYouState;
   }, []);

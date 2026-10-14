@@ -188,10 +188,9 @@ pub fn view(permission: Permission) -> PermissionView {
                 None,
             )
         }
-        Permission::Connector { name, tool, .. } => (
-            Some(format!("Use \u{201c}{tool}\u{201d} in {name} (reads only)")),
-            None,
-        ),
+        Permission::Connector { name, tool, .. } => {
+            (Some(format!("Use \u{201c}{tool}\u{201d} in {name}")), None)
+        }
         _ => (None, None),
     };
     PermissionView {

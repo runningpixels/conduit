@@ -8,6 +8,7 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use crate::workflows::actions::ActionRules;
 use crate::workflows::permissions::Permission;
 use crate::workflows::results::{self, RunOutput};
 use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
@@ -1014,6 +1015,54 @@ pub async fn set_permissions(
          approved_at = excluded.approved_at",
     )
     .bind(workflow_id)
+    .bind(encrypt_json(enc, &json)?)
+    .bind(now_iso8601())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Which outside actions a workflow takes without asking; the default (ask
+/// before each) when the user never changed it.
+pub async fn get_action_rules(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    workflow_id: &str,
+) -> Result<ActionRules, DbError> {
+    let row: Option<(i64, String)> = sqlx::query_as(
+        "SELECT allow_all, allowed FROM workflow_action_rules WHERE workflow_id = ?",
+    )
+    .bind(workflow_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((allow_all, allowed)) = row else {
+        return Ok(ActionRules::default());
+    };
+    let allowed = serde_json::from_value(decrypt_json(enc, &allowed)?)
+        .map_err(|e| DbError::Query(format!("stored workflow action rules can't be read: {e}")))?;
+    Ok(ActionRules {
+        allow_all: allow_all != 0,
+        allowed,
+    })
+}
+
+/// Replace which outside actions a workflow takes without asking.
+pub async fn set_action_rules(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    workflow_id: &str,
+    rules: &ActionRules,
+) -> Result<(), DbError> {
+    let json = serde_json::to_value(&rules.allowed)
+        .map_err(|e| DbError::Query(format!("workflow action rules can't be stored: {e}")))?;
+    sqlx::query(
+        "INSERT INTO workflow_action_rules (workflow_id, allow_all, allowed, updated_at) \
+         VALUES (?, ?, ?, ?) ON CONFLICT(workflow_id) DO UPDATE SET \
+         allow_all = excluded.allow_all, allowed = excluded.allowed, \
+         updated_at = excluded.updated_at",
+    )
+    .bind(workflow_id)
+    .bind(i64::from(rules.allow_all))
     .bind(encrypt_json(enc, &json)?)
     .bind(now_iso8601())
     .execute(pool)

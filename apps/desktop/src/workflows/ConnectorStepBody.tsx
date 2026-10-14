@@ -1,5 +1,5 @@
 /// The body of a "Use a connector" step card: pick an installed connector,
-/// pick one of its tools (only tools that just read can be chosen), then fill
+/// pick one of its tools (one that changes things stops to ask before it acts), then fill
 /// the tool's arguments from a form built from its input schema, or as one
 /// JSON object.
 ///
@@ -13,11 +13,12 @@ import {
   argFields,
   argsFromJson,
   argsToJson,
-  isUsable,
   loadConnectorChoices,
   loadConnectorTools,
   missingRequired,
   parseNumber,
+  toolLabel,
+  toolMark,
   withArg,
   type ArgField,
   type ConnectorChoice,
@@ -143,15 +144,8 @@ export function ConnectorStepBody({
             >
               <option value="">{t('workspace.workflows.editor.connector.toolPlaceholder')}</option>
               {(toolList ?? []).map((x) => (
-                <option key={x.name} value={x.name} disabled={!isUsable(x)}>
-                  {x.readOnly === true
-                    ? x.name
-                    : t(
-                        x.readOnly === false
-                          ? 'workspace.workflows.editor.connector.toolChanges'
-                          : 'workspace.workflows.editor.connector.toolUnknown',
-                        { tool: x.name },
-                      )}
+                <option key={x.name} value={x.name}>
+                  {toolLabel(x, t)}
                 </option>
               ))}
               {toolList && step.tool && !tool ? (
@@ -168,12 +162,12 @@ export function ConnectorStepBody({
           {toolList && toolList.length === 0 ? (
             <p className="wf-muted">{t('workspace.workflows.editor.connector.noTools', { name: choice.name })}</p>
           ) : null}
-          {tool && !isUsable(tool) ? (
-            <p className="wf-error">
+          {tool && toolMark(tool) ? (
+            <p className="wf-muted">
               {t(
-                tool.readOnly === false
-                  ? 'workspace.workflows.editor.connector.notReadOnly'
-                  : 'workspace.workflows.editor.connector.unknownReadOnly',
+                toolMark(tool) === 'sensitive'
+                  ? 'workspace.workflows.editor.connector.askSensitive'
+                  : 'workspace.workflows.editor.connector.askChanges',
                 { tool: tool.name, name: choice.name },
               )}
             </p>

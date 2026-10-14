@@ -10,6 +10,7 @@ import {
   listDrafts,
   listMemoryItems,
   listPrompts,
+  listWorkflowActions,
   listWorkflowQuestions,
   listWorkflowResults,
   listWorkflowReviews,
@@ -23,6 +24,7 @@ vi.mock('../ipc/client', () => ({
   listDrafts: vi.fn(),
   listMemoryItems: vi.fn(),
   listPrompts: vi.fn(),
+  listWorkflowActions: vi.fn(),
   listWorkflowQuestions: vi.fn(),
   listWorkflowResults: vi.fn(),
   listWorkflowReviews: vi.fn(),
@@ -241,6 +243,16 @@ describe('HomePage needs you', () => {
     ]);
     await renderHome();
     expect(await screen.findByText('2 workflows have questions for you')).toBeInTheDocument();
+  });
+
+  it('points an outside action at the Inbox', async () => {
+    vi.mocked(listWorkflowActions).mockResolvedValue([
+      { runId: 'ra', workflowId: 'wa', workflowName: 'Standup post' } as never,
+    ]);
+    const { p } = await renderHome();
+    expect(await screen.findByText('Standup post wants to send something')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+    expect(p.onAction).toHaveBeenCalledWith('open-inbox');
   });
 });
 

@@ -151,6 +151,16 @@ pub const MAX_RETRIES: u32 = 5;
 /// Tools an agent step may use: read-only built-ins that never stop to ask
 /// for approval, so a run nobody is watching can't hang on one.
 pub const AGENT_TOOLS: &[&str] = &["web_search", "web_fetch", "current_time", "calculator"];
+/// Most connector tools one agent step lists.
+pub const MAX_AGENT_CONNECTOR_TOOLS: usize = 10;
+
+/// An agent step's connector tool, `"<connector id>/<tool>"`, split; `None`
+/// for a built-in tool's name.
+pub fn connector_tool_entry(entry: &str) -> Option<(&str, &str)> {
+    let (connector, tool) = entry.split_once('/')?;
+    let fine = |part: &str| !part.is_empty() && part.trim() == part;
+    (fine(connector) && fine(tool)).then_some((connector, tool))
+}
 
 /// Most choices an "Ask me" step offers, and the longest one.
 pub const MAX_CHOICES: usize = 10;
@@ -1064,9 +1074,19 @@ fn check_steps(
                     problems.push(format!("Step \"{name}\" needs an instruction."));
                 }
                 for tool in tools {
-                    if !AGENT_TOOLS.contains(&tool.as_str()) {
+                    if !AGENT_TOOLS.contains(&tool.as_str()) && connector_tool_entry(tool).is_none()
+                    {
                         problems.push(format!("Step \"{name}\" can't use the tool \"{tool}\"."));
                     }
+                }
+                let connector_tools = tools
+                    .iter()
+                    .filter(|t| connector_tool_entry(t).is_some())
+                    .count();
+                if connector_tools > MAX_AGENT_CONNECTOR_TOOLS {
+                    problems.push(format!(
+                        "Step \"{name}\" lists more than {MAX_AGENT_CONNECTOR_TOOLS} connector tools."
+                    ));
                 }
                 let mut seen = HashSet::new();
                 if !tools.iter().all(|t| seen.insert(t)) {

@@ -612,11 +612,21 @@ async fn poll_and_run(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> 
         .unwrap_or_default();
     // Looking is something the user approved when they turned it on; a
     // changed address or folder needs approving again.
-    let allowed = match triggers::permission(&watched, def.folder.as_deref()) {
+    let names = super::permissions::connector_names(&state.db, &def).await;
+    let connector_name = match &watched {
+        super::definition::Trigger::Connector { connector, .. } => {
+            names.get(connector.trim()).cloned().unwrap_or_default()
+        }
+        _ => String::new(),
+    };
+    let allowed = match triggers::permission(&watched, def.folder.as_deref(), &connector_name) {
         Some(needed) if !approved.contains(&needed) => Err(match &needed {
             Permission::Host { host } => {
                 format!("Turn the trigger on again to allow reading {host}.")
             }
+            Permission::Connector { name, tool, .. } => format!(
+                "Turn the trigger on again to allow using \u{201c}{tool}\u{201d} in {name}."
+            ),
             _ => "Turn the trigger on again to allow reading the folder.".to_string(),
         }),
         _ => Ok(()),
@@ -627,6 +637,7 @@ async fn poll_and_run(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> 
         &watched,
         def.folder.as_deref(),
         fetch_policy,
+        connectors.map(|manager| triggers::Connectors { state, manager }),
         Utc::now(),
         allowed,
     )

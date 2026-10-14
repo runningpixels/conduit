@@ -190,6 +190,9 @@ export function withTrigger(def: WorkflowDefinition, trigger: WorkflowTrigger | 
 
 /// A new trigger of `kind`; a feed starts with no address and the default interval.
 export function newTrigger(kind: WorkflowTrigger['kind']): WorkflowTrigger {
+  if (kind === 'connector') {
+    return { kind, connector: '', tool: '', arguments: {}, everyMinutes: DEFAULT_FEED_MINUTES };
+  }
   return kind === 'feed' ? { kind, url: '', everyMinutes: DEFAULT_FEED_MINUTES } : { kind };
 }
 
@@ -207,6 +210,8 @@ export function triggerNeedsFolder(def: WorkflowDefinition): boolean {
 export const TRIGGER_FIELDS = {
   feed: ['title', 'link', 'summary', 'published', 'id'],
   folder: ['path', 'name', 'modified', 'bytes'],
+  /// A connector's items have whatever fields the tool lists: nothing fixed to offer.
+  connector: [],
 } as const;
 
 /// Most pages one fetch step may list (the backend's `MAX_URLS_PER_FETCH`).
@@ -382,7 +387,7 @@ export function moveStep(steps: readonly WorkflowStep[], path: StepPath, delta: 
 export interface ValueRef {
   path: string;
   /// Where it comes from: an input, the run, a step (by id), or the loop item.
-  source: { kind: 'input'; label: string } | { kind: 'run' } | { kind: 'trigger' } | { kind: 'step'; stepId: string } | { kind: 'item' };
+  source: { kind: 'input'; label: string } | { kind: 'run' } | { kind: 'trigger'; trigger?: string } | { kind: 'step'; stepId: string } | { kind: 'item' };
   /// What it is, e.g. `text`, `pages`, `title`, `date`.
   field: string;
   /// True when it is a list (usable as a loop's items).

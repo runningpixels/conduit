@@ -7601,3 +7601,156 @@ fn a_trigger_item_is_known_again_by_its_id() {
     assert_eq!(item_id("folder", &file).as_deref(), Some("in/a.txt"));
     assert_eq!(item_id("schedule", &post), None);
 }
+
+// ── Connector triggers ──────────────────────────────────────────────────────
+
+/// One scheduler tick that can reach connectors.
+async fn tick_with_connectors(
+    h: &Harness,
+    running: &Arc<RunningWorkflows>,
+    mgr: &conduit_desktop::connector_runtime::ConnectorRuntimeManager,
+    now: &str,
+) -> Vec<conduit_desktop::workflows::scheduler::RunFinished> {
+    let tz = FixedOffset::east_opt(2 * 3600).unwrap();
+    let questions = Questions::default();
+    let ctx = RunContext {
+        state: &h.state,
+        streams: &h.streams,
+        running,
+        reviews: &h.reviews,
+        questions: &questions,
+        actions: None,
+        documents: None,
+        connectors: Some(mgr),
+        fetch_policy: AddressPolicy { public_only: false },
+        notify: None,
+    };
+    let claimed = claim_due(&h.state, utc(now), &tz).await;
+    run_claimed(&ctx, claimed, &|_| {}).await
+}
+
+#[tokio::test]
+async fn a_connector_trigger_runs_for_new_items_from_its_tool() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let id = h
+        .save(json!({
+            "trigger": { "kind": "connector", "connector": "echo", "tool": "list_items",
+                         "arguments": { "repo": "a/b", "limit": 3 }, "everyMinutes": 15 },
+            "steps": [{ "id": "t", "type": "template", "template": "{{trigger.repo}} #{{trigger.n}}" }]
+        }))
+        .await;
+    let needed = Permission::Connector {
+        connector_id: "echo".into(),
+        name: "Echo".into(),
+        tool: "list_items".into(),
+    };
+    assert!(h.required(&id).await.contains(&needed));
+    h.schedule(
+        &id,
+        json!({ "kind": "trigger" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    // Turned on without approving what it looks at.
+    repo::set_permissions(&h.state.db, &h.state.encryption, &id, &[])
+        .await
+        .unwrap();
+    let running = Arc::new(RunningWorkflows::default());
+
+    // Not approved: the look fails and nothing runs.
+    assert!(
+        tick_with_connectors(&h, &running, &mgr, "2026-09-29T06:00:00Z")
+            .await
+            .is_empty()
+    );
+    let cursor = conduit_desktop::workflows::triggers::load_cursor(&h.state.paths.root, &id);
+    assert_eq!(
+        cursor.last_error.as_deref(),
+        Some("Turn the trigger on again to allow using \u{201c}list_items\u{201d} in Echo.")
+    );
+
+    // Approved: the first look only notes what is there.
+    repo::set_permissions(&h.state.db, &h.state.encryption, &id, &[needed])
+        .await
+        .unwrap();
+    assert!(
+        tick_with_connectors(&h, &running, &mgr, "2026-09-29T06:15:00Z")
+            .await
+            .is_empty()
+    );
+    let cursor = conduit_desktop::workflows::triggers::load_cursor(&h.state.paths.root, &id);
+    assert!(cursor.baselined);
+    assert_eq!(cursor.seen.len(), 3);
+
+    // Two of them become new again (as if the tool listed them for the first time).
+    let path = h
+        .state
+        .paths
+        .root
+        .join("workflow-triggers")
+        .join(format!("{id}.json"));
+    let mut saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let seen = saved["seen"].as_array().unwrap()[2..].to_vec();
+    saved["seen"] = Value::Array(seen);
+    std::fs::write(&path, saved.to_string()).unwrap();
+
+    let finished = tick_with_connectors(&h, &running, &mgr, "2026-09-29T06:30:00Z").await;
+    let texts: Vec<String> = finished
+        .iter()
+        .map(|e| {
+            assert_eq!(e.status, "completed", "{e:?}");
+            assert_eq!(e.trigger, "connector");
+            format!(
+                "{}/{}",
+                e.trigger_item.as_ref().unwrap()["repo"].as_str().unwrap(),
+                e.trigger_item.as_ref().unwrap()["n"]
+            )
+        })
+        .collect();
+    assert_eq!(texts, ["a/b/3", "a/b/2"]);
+    let run = repo::get_run(
+        &h.state.db,
+        &h.state.encryption,
+        finished[0].run_id.as_ref().unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        step(&run, "t", None).output.as_ref().unwrap()["text"],
+        "a/b #3"
+    );
+    // Seen now: nothing runs again.
+    assert!(
+        tick_with_connectors(&h, &running, &mgr, "2026-09-29T06:45:00Z")
+            .await
+            .is_empty()
+    );
+    mgr.shutdown_all().await;
+}
+
+#[test]
+fn a_connector_trigger_is_checked_when_saved() {
+    let check = |trigger: Value| {
+        conduit_desktop::workflows::definition::check_value(&json!({
+            "trigger": trigger,
+            "steps": [{ "id": "t", "type": "template", "template": "{{trigger.anything}}" }]
+        }))
+    };
+    assert!(check(json!({ "kind": "connector", "connector": "c", "tool": "list" })).is_ok());
+    let empty = check(json!({ "kind": "connector", "connector": " ", "tool": "" })).unwrap_err();
+    assert!(empty.contains("needs a connector to watch"), "{empty}");
+    assert!(
+        empty.contains("needs the tool that lists what's new"),
+        "{empty}"
+    );
+    let odd = check(json!({ "kind": "connector", "connector": "c", "tool": "t",
+                            "arguments": [1], "everyMinutes": 5, "url": "x" }))
+    .unwrap_err();
+    assert!(odd.contains("should be a set of named values"), "{odd}");
+    assert!(odd.contains("every 15 to 1440 minutes"), "{odd}");
+    assert!(odd.contains("Unknown setting \"url\""), "{odd}");
+}

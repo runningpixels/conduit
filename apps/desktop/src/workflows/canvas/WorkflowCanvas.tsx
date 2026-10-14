@@ -216,12 +216,17 @@ function iterationText(t: Translate, run: NodeRun | undefined): string | null {
 }
 
 function startLines(t: Translate, def: WorkflowDefinition, labels: InputLabels): string[] {
+  const trigger = def.trigger;
   const lines = [
-    def.trigger?.kind === 'feed'
+    trigger?.kind === 'feed'
       ? t('workspace.workflows.trigger.feed')
-      : def.trigger?.kind === 'folder'
+      : trigger?.kind === 'folder'
         ? t('workspace.workflows.trigger.folder')
-        : t('workspace.workflows.trigger.none'),
+        : trigger?.kind === 'connector'
+          ? trigger.tool
+            ? t('workspace.workflows.canvas.startsConnector', { tool: trigger.tool })
+            : t('workspace.workflows.trigger.connector')
+          : t('workspace.workflows.trigger.none'),
   ];
   const inputs = (def.inputs ?? []).map((i) => labels[i.id] ?? i.label).filter(Boolean);
   if (inputs.length > 0) lines.push(t('workspace.workflows.canvas.inputs', { names: inputs.join(', ') }));

@@ -51,11 +51,21 @@ pub async fn discover(
     let version_id = &version.id;
     let mut caps: Vec<ConnectorCapability> = Vec::new();
     for tool in tools {
+        // The tool's own description rides along as the schema's standard
+        // `description` when the schema has none, so what reads the cache
+        // without starting the connector (workflow drafting) can tell tools apart.
+        let mut schema = tool.input_schema.clone();
+        if let Some(object) = schema.as_object_mut() {
+            let about = tool.description.trim();
+            if !about.is_empty() && !object.contains_key("description") {
+                object.insert("description".to_string(), json!(about));
+            }
+        }
         caps.push(connectors::new_capability(
             version_id,
             "tool",
             &tool.name,
-            Some(tool.input_schema.clone()),
+            Some(schema),
         ));
     }
     for res in resources {

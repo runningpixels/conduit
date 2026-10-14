@@ -281,6 +281,10 @@ impl Runner<'_> {
                     watched,
                     def.folder.as_deref(),
                     self.fetch_policy,
+                    self.connectors.map(|manager| super::triggers::Connectors {
+                        state: self.state,
+                        manager,
+                    }),
                     &workflow.id,
                 )
                 .await?

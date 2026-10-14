@@ -440,10 +440,13 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
         "\nTRIGGERS: a workflow may have one optional \"trigger\" next to \"inputs\" and \"steps\", so it runs by itself once for each new item:\n\
 - {{\"kind\": \"feed\", \"url\": \"https://...\", \"everyMinutes\": 30}}: a new post in an RSS or Atom feed, looked at every {} to {} minutes (default {}). Inside the steps, {{{{trigger.title}}}}, {{{{trigger.link}}}}, {{{{trigger.summary}}}}, {{{{trigger.published}}}} and {{{{trigger.id}}}} are that post.\n\
 - {{\"kind\": \"folder\"}}: a new file in the workflow's folder (the user chooses it), looked at every minute. Inside the steps, {{{{trigger.path}}}} (the file's path inside the folder, so read_file can open it), {{{{trigger.name}}}}, {{{{trigger.modified}}}} and {{{{trigger.bytes}}}} are that file.\n\
+- {{\"kind\": \"connector\", \"connector\": \"<id from CONNECTORS>\", \"tool\": \"<a tool from CONNECTORS that lists things>\", \"arguments\": {{...}}, \"everyMinutes\": 30}}: something new in what a connector's tool lists (a new issue, message or event), looked at every {} to {} minutes. Only a tool that just reads works, and it must return a list (JSON): when several tools could fit, pick the one whose description says it lists items or returns JSON. Its arguments are used as written, never templates. Inside the steps, {{{{trigger.<field>}}}} is any field of that element, such as {{{{trigger.title}}}} or {{{{trigger.id}}}}.\n\
 - {{{{trigger.*}}}} can be read only when the workflow has a trigger. The first look only notes what is already there; after that each new item is one run.\n",
         definition::MIN_FEED_MINUTES,
         definition::MAX_FEED_MINUTES,
         definition::DEFAULT_FEED_MINUTES,
+        definition::MIN_FEED_MINUTES,
+        definition::MAX_FEED_MINUTES,
     ));
     out.push_str(
         "\nTEMPLATES: text settings marked \"template\" can contain references in double braces.\n\
@@ -465,7 +468,7 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
 - When a workflow sends, posts or changes something through a connector, the user checks each action before it goes, unless they allow it; add the note \"It asks you before each outside action; you can change that under Outside actions.\"\n\
 - Never choose a model (no \"model\" setting anywhere): the user's chosen model is used. If the user asked for a particular model or kind of model (\"a cheap fast one\", \"a local model\"), add the note \"Pick the model in the Model setting (for the whole workflow, or on one step).\" Never say a workflow cannot use its own model.\n\
 - Never add a schedule; the user decides that. If the user said when it should run (\"every Monday\", \"each weekday at 8\"), put that in \"notes\" as \"Turn on the schedule: <when>.\" Do not invent settings that are not listed above.\n\
-- Add a \"trigger\" only when the user wants it to start by itself on something new: a feed trigger only with a feed address the user gave you (never guess one), a folder trigger when they talk about files arriving in a folder (and then never write the \"folder\"; add the note \"Choose the folder to watch.\"). Without a trigger the workflow runs when the user starts it, so never add one otherwise. With a trigger, add the note \"Turn on Run automatically to start watching.\"\n\
+- Add a \"trigger\" only when the user wants it to start by itself on something new: a feed trigger only with a feed address the user gave you (never guess one), a folder trigger when they talk about files arriving in a folder (and then never write the \"folder\"; add the note \"Choose the folder to watch.\"), a connector trigger when they want it to start on something new in another service and CONNECTORS has a tool that lists it. Without a trigger the workflow runs when the user starts it, so never add one otherwise. With a trigger, add the note \"Turn on Run automatically to start watching.\"\n\
 - Finish with a step that leaves the user something: save_artifact for a document, notify for a short message. A workflow must end by saving or notifying, never with just a summarize or template step.\n\
 - Pick a short name (under 60 characters) and a one-sentence description in plain words.\n",
     );
@@ -533,7 +536,18 @@ impl KnownTool {
             .collect();
         format!("{}({})", self.name, listed.join(", "))
     }
+
+    /// What the tool does, from its schema's description, on one short line.
+    fn about(&self) -> Option<String> {
+        self.schema["description"]
+            .as_str()
+            .map(|d| clip(&one_line(d), MAX_TOOL_ABOUT_CHARS))
+            .filter(|d| !d.is_empty())
+    }
 }
+
+/// Longest tool description shown to the model.
+const MAX_TOOL_ABOUT_CHARS: usize = 140;
 
 /// Most connectors, and tools of each, listed for the model.
 const MAX_LISTED_CONNECTORS: usize = 20;
@@ -556,9 +570,11 @@ fn connectors_text(connectors: &[KnownConnector]) -> String {
                 .tools
                 .iter()
                 .take(MAX_LISTED_TOOLS)
-                .map(KnownTool::signature)
-                .collect::<Vec<_>>()
-                .join(", ")
+                .map(|tool| match tool.about() {
+                    Some(about) => format!("\n    {}: {about}", tool.signature()),
+                    None => format!("\n    {}", tool.signature()),
+                })
+                .collect::<String>()
         };
         out.push_str(&format!(
             "- \"{}\" ({}): {tools}\n",
@@ -956,6 +972,28 @@ fn clear_personal_choices(definition: &mut Value, connectors: &[KnownConnector])
         {
             found.watched_folder = true;
         }
+        if let Some(trigger) = object
+            .get_mut("trigger")
+            .and_then(Value::as_object_mut)
+            .filter(|t| t.get("kind").and_then(Value::as_str) == Some("connector"))
+        {
+            let text = |key: &str| {
+                trigger
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string()
+            };
+            let (connector, tool) = (text("connector"), text("tool"));
+            if !known_tool(connectors, &connector, &tool) {
+                found.connector = true;
+                if !connectors.iter().any(|c| c.id == connector) {
+                    trigger.insert("connector".to_string(), json!(""));
+                }
+                trigger.insert("tool".to_string(), json!(""));
+            }
+        }
         clear_steps(object.get_mut("steps"), connectors, &mut found);
     }
     let mut notes = Vec::new();
@@ -1169,6 +1207,8 @@ fn expected_blank(problem: &str) -> bool {
         || problem.contains(" needs a tool to call")
         || problem.contains("reads a file, so choose the workflow's folder first")
         || problem.contains("A folder trigger watches the workflow's folder")
+        || problem.contains("A connector trigger needs a connector to watch")
+        || problem.contains("A connector trigger needs the tool that lists")
 }
 
 fn finish(parsed: Parsed, description: &str, attempts: u32) -> DraftResult {
@@ -1634,6 +1674,7 @@ mod tests {
                         name: "add_note".into(),
                         schema: json!({
                             "type": "object",
+                            "description": "Save a note.",
                             "properties": { "text": { "type": "string" }, "title": { "type": "string" } },
                             "required": ["text"]
                         }),
@@ -1669,7 +1710,7 @@ mod tests {
     #[test]
     fn the_prompt_lists_the_users_connectors_and_their_tools() {
         let text = connectors_text(&notes_connector());
-        assert!(text.contains("- \"local:notes\" (Notes): list_notes(), add_note(text*, title)"));
+        assert!(text.contains("- \"local:notes\" (Notes): \n    list_notes()\n    add_note(text*, title): Save a note."));
         assert!(text.contains("- \"github\" (GitHub): tools not known yet"));
         let none = connectors_text(&[]);
         assert!(none.contains("the user has none"));
@@ -1728,6 +1769,34 @@ mod tests {
                 "Step \"inner\" calls \"add_note\" without text, which it needs.",
             ]
         );
+    }
+
+    #[test]
+    fn a_connector_trigger_keeps_a_listed_tool_and_clears_an_invented_one() {
+        let draft = |connector: &str, tool: &str| {
+            json!({
+                "name": "New notes",
+                "definition": {
+                    "trigger": { "kind": "connector", "connector": connector, "tool": tool,
+                                 "arguments": {}, "everyMinutes": 30 },
+                    "steps": [{ "id": "tell", "type": "notify", "title": "{{trigger.title}}" }]
+                }
+            })
+            .to_string()
+        };
+        let kept = parse_reply(&draft("local:notes", "list_notes"), &notes_connector()).unwrap();
+        assert_eq!(kept.definition["trigger"]["tool"], "list_notes");
+        assert!(kept.notes.is_empty());
+        assert!(problems_of(&kept.definition).is_empty());
+
+        let invented = parse_reply(&draft("gmail", "list_mail"), &notes_connector()).unwrap();
+        assert_eq!(invented.definition["trigger"]["connector"], "");
+        assert_eq!(invented.definition["trigger"]["tool"], "");
+        assert_eq!(invented.notes, vec!["Pick the connector and the tool."]);
+        let problems = problems_of(&invented.definition);
+        assert!(!problems.is_empty());
+        assert!(problems.iter().all(|p| expected_blank(p)), "{problems:?}");
+        assert!(catalog_text().contains("\"kind\": \"connector\""));
     }
 
     #[test]

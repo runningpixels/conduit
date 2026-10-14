@@ -79,7 +79,7 @@ import type {
   WorkflowSummary,
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
-import { describeStep, type InputLabels } from '../workflows/describeStep';
+import { describeStep, stepLabels, type InputLabels } from '../workflows/describeStep';
 import { findStep, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { ResultView } from '../workflows/ResultView';
@@ -1114,7 +1114,7 @@ export function WorkflowsPage({
   } else {
     viewing = true;
     const workflowInputs = record.definition.inputs ?? [];
-    const inputLabels = Object.fromEntries(workflowInputs.map((i) => [i.id, i.label]));
+    const inputLabels = stepLabels(record.definition);
     const nextRunAt = summaries.find((w) => w.id === record.id)?.nextRunAt;
     // The newest run that ended with something to show (or failed, or was
     // stopped), else the newest that ended at all: a workflow that saves

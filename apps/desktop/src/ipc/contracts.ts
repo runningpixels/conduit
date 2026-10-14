@@ -713,7 +713,7 @@ export interface WorkflowSchedule {
   lastRunAt: string | null;
   /** Only for a `{kind:'trigger'}` schedule: what is watched and how it is going. */
   watch?: {
-    kind: 'feed' | 'folder';
+    kind: 'feed' | 'folder' | 'connector';
     target: string;
     everyMinutes: number;
     pausedReason: string | null;
@@ -728,7 +728,7 @@ export interface WorkflowRunFinished {
   runId: string | null;
   status: 'completed' | 'failed' | 'stopped' | 'skipped' | 'running';
   error: string | null;
-  trigger: 'schedule' | 'catch_up' | 'feed' | 'folder';
+  trigger: 'schedule' | 'catch_up' | 'feed' | 'folder' | 'connector';
   documents: { artifactId: string; conversationId: string; title: string }[];
   /** `nothing_new` when a condition stopped the run. */
   outcome?: string | null;
@@ -743,7 +743,9 @@ export interface WorkflowModel {
 /** What starts a workflow on its own (Rust `workflows::definition::Trigger`). */
 export type WorkflowTrigger =
   | { kind: 'feed'; url: string; everyMinutes: number }
-  | { kind: 'folder' };
+  | { kind: 'folder' }
+  /** Calls a read-only connector tool every so often and runs once per new element of the list it returns. */
+  | { kind: 'connector'; connector: string; tool: string; arguments: Record<string, unknown>; everyMinutes: number };
 
 export interface WorkflowDefinition {
   /** The workflow's default model for steps that use one. */
@@ -849,7 +851,7 @@ export interface WorkflowRun {
   /** `schedule`, `catch_up`, `manual`, or `feed` / `folder` for a run a trigger started. */
   trigger: string;
   /** What a trigger run was started for: a feed item's `title` or a file's `name`. */
-  triggerItem?: { title?: string; name?: string } | null;
+  triggerItem?: { title?: string; name?: string; [field: string]: unknown } | null;
   status: WorkflowRunStatus;
   error: string | null;
   startedAt: string;

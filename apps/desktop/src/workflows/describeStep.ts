@@ -1,7 +1,7 @@
 /// One plain-English line per step, so a workflow reads as a list of what it
 /// does rather than as JSON.
 
-import type { ConditionTest, WorkflowStep } from '../ipc/contracts';
+import type { ConditionTest, WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import type { Translate } from '../i18n';
 import type { ValueRef } from './editorModel';
 import { refLabel } from './refLabel';
@@ -11,6 +11,17 @@ const MAX_QUOTE = 80;
 
 /// Input names by id, so `{{inputs.url}}` reads as `[Page]`.
 export type InputLabels = Record<string, string>;
+
+/// Where [`stepLabels`] keeps what starts the workflow, so `{{trigger.title}}`
+/// reads as that kind's field. Not a valid input id, so it can't clash.
+export const TRIGGER_KIND_LABEL = '$trigger';
+
+/// A workflow's input names by id, and what starts it (`TRIGGER_KIND_LABEL`).
+export function stepLabels(def: Pick<WorkflowDefinition, 'inputs' | 'trigger'>): InputLabels {
+  const labels: InputLabels = Object.fromEntries((def.inputs ?? []).map((i) => [i.id, i.label]));
+  if (def.trigger) labels[TRIGGER_KIND_LABEL] = def.trigger.kind;
+  return labels;
+}
 
 /// A `{{path}}` as the chip the editor shows for it, or `null` for a path it
 /// has no chip for.
@@ -24,7 +35,9 @@ function refFor(path: string, labels: InputLabels): ValueRef | null {
     case 'run':
       return { path, source: { kind: 'run' }, field: 'date', list: false };
     case 'trigger':
-      return second ? { path, source: { kind: 'trigger' }, field: second, list: false } : null;
+      return second
+        ? { path, source: { kind: 'trigger', trigger: labels[TRIGGER_KIND_LABEL] }, field: second, list: false }
+        : null;
     case 'steps':
       return second && rest.length > 0
         ? { path, source: { kind: 'step', stepId: second }, field: rest.join('.'), list: false }

@@ -279,7 +279,14 @@ pub fn required(def: &WorkflowDefinition, ctx: &Context) -> Vec<Permission> {
     // What starts a run on its own is looked at on the user's behalf: the
     // feed's site, or the folder.
     if let Some(trigger) = &def.trigger {
-        set.extend(super::triggers::permission(trigger, folder));
+        let name = match trigger {
+            super::definition::Trigger::Connector { connector, .. } => {
+                let none = |_: &str| None;
+                ctx.connector_name.unwrap_or(&none)(connector.trim()).unwrap_or_default()
+            }
+            _ => String::new(),
+        };
+        set.extend(super::triggers::permission(trigger, folder, &name));
     }
     collect(&def.steps, def.model.as_ref(), folder, ctx, &mut set);
     set.into_iter().collect()
@@ -432,6 +439,9 @@ pub async fn connector_names(
     }
     let mut wanted = BTreeSet::new();
     ids(&def.steps, &mut wanted);
+    if let Some(super::definition::Trigger::Connector { connector, .. }) = &def.trigger {
+        wanted.insert(connector.trim());
+    }
     let mut names = std::collections::HashMap::new();
     for id in wanted.into_iter().filter(|id| !id.is_empty()) {
         if let Ok(Some(connector)) = crate::db::repository::connectors::get(pool, id).await {

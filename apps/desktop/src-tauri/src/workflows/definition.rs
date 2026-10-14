@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use super::template;
 
@@ -69,10 +69,27 @@ pub enum Trigger {
     /// minute. `{{trigger.path}}` (inside the folder), `.name`, `.modified`
     /// and `.bytes`.
     Folder,
+    /// Something new in what a connector's read-only tool lists (an issue, a
+    /// message): each element of the list it returns is an item, and its
+    /// fields are `{{trigger.<field>}}`.
+    Connector {
+        connector: String,
+        tool: String,
+        /// The tool's arguments by name, used as written (no templates).
+        #[serde(default = "empty_arguments")]
+        arguments: Value,
+        /// Minutes between looks, [`MIN_FEED_MINUTES`] to [`MAX_FEED_MINUTES`].
+        #[serde(default = "default_feed_minutes")]
+        every_minutes: u32,
+    },
 }
 
 fn default_feed_minutes() -> u32 {
     DEFAULT_FEED_MINUTES
+}
+
+fn empty_arguments() -> Value {
+    Value::Object(Map::new())
 }
 
 /// What a `{{trigger.<field>}}` reads, for each kind.
@@ -80,26 +97,32 @@ pub const FEED_FIELDS: &[&str] = &["title", "link", "summary", "published", "id"
 pub const FOLDER_FIELDS: &[&str] = &["path", "name", "modified", "bytes"];
 
 impl Trigger {
-    /// `feed` or `folder`: also the `trigger` of the runs it starts.
+    /// `feed`, `folder` or `connector`: also the `trigger` of the runs it
+    /// starts.
     pub fn kind(&self) -> &'static str {
         match self {
             Trigger::Feed { .. } => "feed",
             Trigger::Folder => "folder",
+            Trigger::Connector { .. } => "connector",
         }
     }
 
-    /// The fields a template may read from the item that started a run.
+    /// The fields a template may read from the item that started a run;
+    /// empty when the tool decides (a connector's): any field is read.
     pub fn fields(&self) -> &'static [&'static str] {
         match self {
             Trigger::Feed { .. } => FEED_FIELDS,
             Trigger::Folder => FOLDER_FIELDS,
+            Trigger::Connector { .. } => &[],
         }
     }
 
     /// Minutes between looks.
     pub fn poll_minutes(&self) -> u32 {
         match self {
-            Trigger::Feed { every_minutes, .. } => *every_minutes,
+            Trigger::Feed { every_minutes, .. } | Trigger::Connector { every_minutes, .. } => {
+                *every_minutes
+            }
             Trigger::Folder => 1,
         }
     }
@@ -558,6 +581,7 @@ fn plain_parse_error(message: &str) -> String {
 
 const DEFINITION_KEYS: &[&str] = &["inputs", "model", "folder", "trigger", "steps"];
 const TRIGGER_KEYS: &[&str] = &["kind", "url", "everyMinutes"];
+const CONNECTOR_TRIGGER_KEYS: &[&str] = &["kind", "connector", "tool", "arguments", "everyMinutes"];
 const MODEL_KEYS: &[&str] = &["provider", "model"];
 const INPUT_KEYS: &[&str] = &["id", "label", "default"];
 const STEP_KEYS: &[&str] = &["id", "type", "onError", "retries", "after"];
@@ -669,6 +693,7 @@ pub fn unknown_settings(raw: &Value) -> Vec<String> {
         for key in trigger.keys() {
             let own = match trigger.get("kind").and_then(Value::as_str) {
                 Some("feed") => TRIGGER_KEYS,
+                Some("connector") => CONNECTOR_TRIGGER_KEYS,
                 _ => &TRIGGER_KEYS[..1],
             };
             if !own.contains(&key.as_str()) {
@@ -1409,6 +1434,29 @@ fn check_trigger(trigger: &Trigger, has_folder: bool, problems: &mut Vec<String>
                 );
             }
         }
+        Trigger::Connector {
+            connector,
+            tool,
+            arguments,
+            every_minutes,
+        } => {
+            if connector.trim().is_empty() {
+                problems.push("A connector trigger needs a connector to watch.".to_string());
+            }
+            if tool.trim().is_empty() {
+                problems
+                    .push("A connector trigger needs the tool that lists what's new.".to_string());
+            }
+            if !arguments.is_object() {
+                problems
+                    .push("The trigger's arguments should be a set of named values.".to_string());
+            }
+            if !(MIN_FEED_MINUTES..=MAX_FEED_MINUTES).contains(every_minutes) {
+                problems.push(format!(
+                    "Look for something new every {MIN_FEED_MINUTES} to {MAX_FEED_MINUTES} minutes."
+                ));
+            }
+        }
     }
 }
 
@@ -1438,11 +1486,19 @@ fn check_path(path: &str, scope: &Scope<'_>, step: &str, problems: &mut Vec<Stri
         "trigger" => match scope.trigger {
             Some((kind, fields)) => {
                 let field = parts.next();
-                if !field.is_some_and(|f| fields.contains(&f)) {
-                    problems.push(format!(
-                        "Step \"{step}\" reads {path}, but a {kind} trigger only has: {}.",
-                        fields.join(", ")
-                    ));
+                // A connector's items have the fields its tool gives them.
+                let known = |f: &str| fields.is_empty() || fields.contains(&f);
+                if !field.is_some_and(known) {
+                    problems.push(if fields.is_empty() {
+                        format!(
+                            "Step \"{step}\" reads {path}: name one of the item's fields, such as trigger.title."
+                        )
+                    } else {
+                        format!(
+                            "Step \"{step}\" reads {path}, but a {kind} trigger only has: {}.",
+                            fields.join(", ")
+                        )
+                    });
                 }
                 return;
             }

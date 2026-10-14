@@ -39,6 +39,9 @@ import {
   deleteConversationFolder,
   updateSettings,
   countUnreadWorkflowResults,
+  listWorkflowActions,
+  listWorkflowQuestions,
+  listWorkflowReviews,
 } from './ipc/client';
 import { ChatView, type ChatTranscript, type ChatViewHandle, type RunStatus } from './chat/ChatView';
 import {
@@ -87,8 +90,10 @@ import { MemoryPage } from './pages/MemoryPage';
 import { WorkflowsPage, type WorkflowDraftRequest, type WorkflowsFocus } from './pages/WorkflowsPage';
 import {
   notificationFor,
+  notificationForAction,
   notificationForQuestion,
   notificationForReview,
+  useWorkflowActionEvents,
   useWorkflowQuestionEvents,
   useWorkflowReviewEvents,
   useWorkflowRunEvents,
@@ -135,6 +140,7 @@ import { ConfirmDialog } from '@conduit/ui';
 import { AppsPage } from './pages/AppsPage';
 import { AppsHomePage } from './pages/AppsHomePage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
+import { InboxPage } from './pages/InboxPage';
 import type { AppSummary, StarterAppInfo } from './ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog';
 import {
@@ -2412,12 +2418,35 @@ export default function App() {
   // Scheduled workflow runs: a notification in the user's language, and a
   // refresh of the Workflows page if it is open.
   const [workflowRunsVersion, setWorkflowRunsVersion] = useState(0);
-  // A run waiting on the user (a review or an "Ask me" step) puts a dot on
-  // the rail's Workflows button until the page is opened.
-  const [workflowsNeedYou, setWorkflowsNeedYou] = useState(false);
+  // Runs waiting on the user (a review, an "Ask me" step or an outside action
+  // to check) put a dot on the rail's Inbox button while any is open.
+  const [waitingCount, setWaitingCount] = useState(0);
+  const refreshWaiting = useCallback(() => {
+    const count = (list: () => Promise<unknown[]>) =>
+      Promise.resolve()
+        .then(list)
+        .then((rows) => (Array.isArray(rows) ? rows.length : 0), () => 0);
+    void Promise.all([
+      count(() => listWorkflowReviews()),
+      count(() => listWorkflowQuestions()),
+      count(() => listWorkflowActions()),
+    ]).then(([reviews, questions, actions]) => setWaitingCount(reviews + questions + actions));
+  }, []);
   useEffect(() => {
-    if (destination === 'workflows') setWorkflowsNeedYou(false);
-  }, [destination]);
+    window.addEventListener('focus', refreshWaiting);
+    return () => window.removeEventListener('focus', refreshWaiting);
+  }, [refreshWaiting]);
+  // A run started, waited or ended, or a page was left (an answer was given there): count again.
+  useEffect(() => {
+    refreshWaiting();
+  }, [workflowRunsVersion, destination, refreshWaiting]);
+  // While something waits, look again now and then: it may be answered on a
+  // page, stopped, or run out of time without an event saying so here.
+  useEffect(() => {
+    if (waitingCount === 0) return;
+    const timer = window.setInterval(refreshWaiting, 3000);
+    return () => window.clearInterval(timer);
+  }, [waitingCount, refreshWaiting]);
   // Results nobody has opened yet put the same dot on the rail.
   const [workflowsUnread, setWorkflowsUnread] = useState(false);
   const refreshUnreadResults = useCallback(() => {
@@ -2468,16 +2497,20 @@ export default function App() {
   // A scheduled run paused to ask: say so, and show it on the Workflows page.
   useWorkflowReviewEvents((review) => {
     setWorkflowRunsVersion((v) => v + 1);
-    setWorkflowsNeedYou(true);
     const note = notificationForReview(review, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
   // A run stopped at an "Ask me" step: show it, and say so if nobody is looking.
   useWorkflowQuestionEvents((question) => {
     setWorkflowRunsVersion((v) => v + 1);
-    setWorkflowsNeedYou(true);
     if (document.hasFocus()) return;
     const note = notificationForQuestion(question, t);
+    void notifyWorkflowRun(note.title, note.body).catch(() => {});
+  });
+  // A run stopped to check an outside action: say so, and show it in the Inbox.
+  useWorkflowActionEvents((action) => {
+    setWorkflowRunsVersion((v) => v + 1);
+    const note = notificationForAction(action, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
   useTrayLabels(t);
@@ -3349,6 +3382,9 @@ export default function App() {
           setWorkflowsFocus(target ? { ...target, nonce: Date.now() } : null);
           setDestination('workflows');
           break;
+        case 'open-inbox':
+          setDestination('inbox');
+          break;
         case 'open-results':
           setWorkflowsFocus({ view: 'results', runId: target?.runId, nonce: Date.now() });
           setDestination('workflows');
@@ -3619,7 +3655,7 @@ export default function App() {
       <Rail
         destination={destination}
         onNavigate={navigateTo}
-        dots={{ workflows: (workflowsNeedYou || workflowsUnread) && destination !== 'workflows' }}
+        dots={{ workflows: workflowsUnread && destination !== 'workflows', inbox: waitingCount > 0 && destination !== 'inbox' }}
         effectiveTheme={effectiveTheme}
         onToggleTheme={handleToggleTheme}
         logoSrc={brandLogo ?? undefined}
@@ -3972,7 +4008,16 @@ export default function App() {
                 onManage={() => navigateTo('manage')}
               />
             )}
-            {destination === 'inbox' && <ComingSoonPage copy="shell.inbox" onAction={() => navigateTo('workflows')} />}
+            {destination === 'inbox' && (
+              <InboxPage
+                onStatus={setStatusMessage}
+                refreshKey={workflowRunsVersion}
+                onOpenWorkflow={(workflowId, runId) => {
+                  setWorkflowsFocus({ workflowId, runId, nonce: Date.now() });
+                  setDestination('workflows');
+                }}
+              />
+            )}
             {destination === 'agents' && <ComingSoonPage copy="shell.agents" onAction={() => navigateTo('workflows')} />}
             {destination === 'slides' && (
               <SlidesPage

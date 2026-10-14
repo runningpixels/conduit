@@ -192,6 +192,31 @@
 .wf-question-form { display: grid; gap: var(--sp-2); justify-items: start; }
 .wf-question-form .wf-field { justify-self: stretch; }
 .wf-review-what { margin: 0; color: var(--ink); font-size: var(--fs-5xl); overflow-wrap: anywhere; }
+.wf-action-args { margin: 0; display: grid; gap: var(--sp-2); }
+.wf-action-arg { display: grid; gap: 2px; }
+.wf-action-arg dt { color: var(--ink-2); font-size: var(--fs-5xl); }
+.wf-action-arg dd { margin: 0; }
+.wf-action-arg pre {
+  margin: 0;
+  padding: var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-5xl);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 14em;
+  overflow: auto;
+}
+.wf-action-form { display: grid; gap: var(--sp-2); }
+.wf-action-form .wf-field { justify-self: stretch; }
+.wf-action-json { font-family: var(--font-mono); }
+.wf-action-remember { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink); font-size: var(--fs-5xl); }
+.inbox-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-4); }
+.inbox-item { display: grid; gap: var(--sp-2); }
+.inbox-item-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.inbox-item-workflow { margin: 0; color: var(--ink-2); font-size: var(--fs-5xl); overflow-wrap: anywhere; }
 
 /* ── ADR-011: a workflow's steps on the activity line ─────────────────────
    Numbered nodes on a line that runs from the accent into the signal colour,
@@ -283,3 +308,11 @@
 .wf-view-btn.active { color: var(--ink); background: var(--card); box-shadow: var(--shadow-tab-active); }
 html[data-theme="dark"] .wf-view-btn.active { background: var(--card-hi); filter: brightness(1.25); }
 .wf-mark-all { justify-self: start; }
+.wf-actions { display: grid; gap: var(--sp-2); }
+.wf-actions-allowed, .wf-actions-taken { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); font-size: var(--fs-5xl); }
+.wf-actions-allowed li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); overflow-wrap: anywhere; }
+.wf-actions-taken { margin: var(--sp-2) 10px 0; }
+.wf-actions-taken details { margin-top: 2px; }
+.wf-connector-tools { display: grid; gap: var(--sp-1); }
+.wf-connector-name { margin-top: var(--sp-1); }
+.wf-gone-tool { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-5xl); }

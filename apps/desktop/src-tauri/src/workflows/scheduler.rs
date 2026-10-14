@@ -35,6 +35,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+use super::actions::Actions;
 use super::ask::Questions;
 use super::definition::WorkflowDefinition;
 use super::permissions::{Permission, Reviews};
@@ -54,6 +55,8 @@ pub const RUNS_CHANGED_EVENT: &str = "workflow-runs-changed";
 pub const RUN_PAUSED_EVENT: &str = "workflow-run-paused";
 /// Emitted with a `PendingQuestion` when a run stops at an "Ask me" step.
 pub const RUN_QUESTION_EVENT: &str = "workflow-run-question";
+/// Emitted with a `PendingAction` when a run stops to check an outside action.
+pub const RUN_ACTION_EVENT: &str = "workflow-run-action";
 /// Longest the loop sleeps without looking again.
 const HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 /// A due time further in the past than this is a catch-up run.
@@ -343,6 +346,9 @@ pub struct RunContext<'a> {
     pub running: &'a Arc<RunningWorkflows>,
     pub reviews: &'a Reviews,
     pub questions: &'a Questions,
+    /// Where outside actions wait to be checked; `None` in tests (an action
+    /// that would ask isn't sent).
+    pub actions: Option<&'a Actions>,
     /// Tells the page about decks and drafts a run changed; `None` in tests.
     pub documents: Option<&'a super::documents::DocumentChanges>,
     /// Runs agent steps' tool loops; `None` in tests without one.
@@ -397,6 +403,7 @@ async fn poll_and_run(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> 
         running,
         reviews,
         questions,
+        actions,
         documents,
         connectors,
         fetch_policy,
@@ -508,6 +515,7 @@ async fn poll_and_run(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> 
             budget: RunBudget::default(),
             notify,
             questions: Some(questions),
+            actions,
             connectors,
             documents,
         };
@@ -557,6 +565,7 @@ async fn run_timed(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         running,
         reviews,
         questions,
+        actions,
         documents,
         connectors,
         fetch_policy,
@@ -603,6 +612,7 @@ async fn run_timed(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         budget: RunBudget::default(),
         notify,
         questions: Some(questions),
+        actions,
         connectors,
         documents,
     };
@@ -640,6 +650,7 @@ pub async fn run_due<Tz: TimeZone>(
         running,
         reviews,
         questions: &questions,
+        actions: None,
         documents: None,
         connectors: None,
         fetch_policy,
@@ -696,6 +707,7 @@ pub async fn scheduler_loop(app: AppHandle) {
                     running: &app.state::<Arc<RunningWorkflows>>(),
                     reviews: &app.state::<Reviews>(),
                     questions: &app.state::<Questions>(),
+                    actions: Some(&app.state::<super::actions::Actions>()),
                     documents: Some(&app.state::<super::documents::DocumentChanges>()),
                     connectors: Some(
                         &app.state::<crate::connector_runtime::ConnectorRuntimeManager>(),

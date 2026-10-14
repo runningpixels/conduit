@@ -109,6 +109,7 @@ const SHAPES: Record<string, unknown> = {
   listWorkflows: [],
   listWorkflowReviews: [],
   listWorkflowQuestions: [],
+  listWorkflowActions: [],
   listPrompts: [],
   listApps: [],
   listStarterApps: [],
@@ -123,7 +124,7 @@ const IPC_EXPORTS = [
   'getAppPaths', 'getSettings', 'updateSettings', 'saveProviderCredential',
   'setTrayLabels', 'getStartAtLogin', 'setStartAtLogin', 'getRunningWorkflowCount', 'stopWorkflowRun',
   'getWorkflowPermissions', 'approveWorkflowPermissions', 'listWorkflowReviews', 'answerWorkflowReview',
-  'listWorkflowQuestions', 'answerWorkflowQuestion', 'rerunWorkflowFrom',
+  'listWorkflowQuestions', 'answerWorkflowQuestion', 'listWorkflowActions', 'answerWorkflowAction', 'rerunWorkflowFrom',
   'loadProviderCredentialReference', 'validateProviderCredentials',
   'listProviderDescriptors', 'listProviderModels', 'startChatStream',
   'cancelChatStream', 'steerChatStream', 'submitAskUser', 'getConversationMessages', 'getConversationCompaction', 'compactConversation', 'getRequestProviderEvents',
@@ -237,9 +238,9 @@ describe('App shell', { timeout: 20_000 }, () => {
     expect(await screen.findByText('No personal apps yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Manage apps' })).toHaveAttribute('aria-current', 'page');
 
-    // Inbox and Agents say what they will be.
+    // Inbox shows what waits; Agents says what it will be.
     fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
-    expect(await screen.findByText(/Approvals, questions, results and problems/)).toBeInTheDocument();
+    expect(await screen.findByText('Nothing is waiting for you')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
     expect(await screen.findByText(/asks before anything leaves your computer/)).toBeInTheDocument();
 

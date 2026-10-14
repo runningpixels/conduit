@@ -1,4 +1,4 @@
-/// A rail destination that is planned but not built yet (Inbox, Agents): the
+/// A rail destination that is planned but not built yet (Agents): the
 /// page says what it will be, and points to where that work lives today.
 
 import { useT } from '../i18n';
@@ -6,7 +6,7 @@ import { PageEmpty, PageFrame } from '../shell/PageFrame';
 
 export interface ComingSoonPageProps {
   /** Catalog prefix: `<prefix>.title`, `.subtitle`, `.body` and `.action`. */
-  copy: 'shell.inbox' | 'shell.agents';
+  copy: 'shell.agents';
   onAction: () => void;
 }
 

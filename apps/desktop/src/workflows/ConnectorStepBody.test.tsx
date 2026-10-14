@@ -61,12 +61,16 @@ function renderBody(initial: ConnectorStep) {
 const base: ConnectorStep = { id: 'c', type: 'connector_tool', connector: 'gh', tool: '', arguments: {} };
 
 describe('ConnectorStepBody', () => {
-  it('disables tools that change things or cannot be told apart', async () => {
-    renderBody(base);
+  it('marks tools that change things but lets them be chosen', async () => {
+    const latest = renderBody(base);
     const option = async (text: RegExp) => (await screen.findByRole('option', { name: text })) as HTMLOptionElement;
     expect((await option(/^list_issues$/)).disabled).toBe(false);
-    expect((await option(/close_issue/)).disabled).toBe(true);
-    expect((await option(/mystery/)).disabled).toBe(true);
+    const close = await option(/close_issue — changes things, asks you first/);
+    expect(close.disabled).toBe(false);
+    expect((await option(/mystery — always asks you first/)).disabled).toBe(false);
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'close_issue' } });
+    expect(latest.step.tool).toBe('close_issue');
+    expect(await screen.findByText(/shows you exactly what it will do/)).toBeTruthy();
   });
 
   it('says why the tools could not be loaded', async () => {

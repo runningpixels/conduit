@@ -16,14 +16,15 @@ use conduit_desktop::{
     tray::{self, TrayState},
     updater::*,
     webview_args,
+    workflows::actions::Actions,
     workflows::ask::Questions,
     workflows::documents::{
         DocumentChange, DocumentChanges, DECK_CHANGED_EVENT, DRAFT_CHANGED_EVENT,
     },
     workflows::permissions::Reviews,
     workflows::scheduler::{
-        scheduler_loop, RunningWorkflows, SchedulerWake, RUNS_CHANGED_EVENT, RUN_PAUSED_EVENT,
-        RUN_QUESTION_EVENT,
+        scheduler_loop, RunningWorkflows, SchedulerWake, RUNS_CHANGED_EVENT, RUN_ACTION_EVENT,
+        RUN_PAUSED_EVENT, RUN_QUESTION_EVENT,
     },
 };
 use tauri::{Emitter, Manager, RunEvent};
@@ -97,6 +98,7 @@ fn main() {
         .manage(Reviews::default())
         // Runs waiting at an "Ask me" step.
         .manage(Questions::default())
+        .manage(Actions::default())
         .manage(DocumentChanges::default())
         // Research runs planning or running, each with its stop token.
         .manage(ResearchRuns::default())
@@ -393,6 +395,10 @@ fn main() {
             answer_workflow_review,
             list_workflow_questions,
             answer_workflow_question,
+            list_workflow_actions,
+            answer_workflow_action,
+            get_workflow_action_rules,
+            set_workflow_action_rules,
             get_start_at_login,
             set_start_at_login,
             // Research: a planned, budgeted web research run with a cited report.
@@ -462,6 +468,10 @@ fn main() {
             let handle = app.handle().clone();
             app.state::<Questions>().set_listener(move |question| {
                 let _ = handle.emit(RUN_QUESTION_EVENT, question);
+            });
+            let handle = app.handle().clone();
+            app.state::<Actions>().set_listener(move |action| {
+                let _ = handle.emit(RUN_ACTION_EVENT, action);
             });
             // A workflow changed a saved deck or draft: an open view reloads it.
             let handle = app.handle().clone();

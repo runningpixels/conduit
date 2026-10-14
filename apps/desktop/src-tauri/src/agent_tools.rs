@@ -3240,7 +3240,7 @@ fn parse_args<T: for<'de> Deserialize<'de>>(tool_name: &str, args: &Value) -> Re
         .map_err(|e| format!("invalid arguments for {tool_name}: {e}"))
 }
 
-async fn finalize_tool_call(
+pub(crate) async fn finalize_tool_call(
     ctx: &AgentToolContext<'_>,
     tool_call_id: &str,
     request_id: &str,

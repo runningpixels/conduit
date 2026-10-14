@@ -6,6 +6,7 @@
 /// reads the capability cache the Connectors page uses; a command that returns
 /// tools with a read-only flag would replace only that function's body.
 
+import type { Translate } from '../i18n';
 import { getConnectorRuntimeStates, listWorkflowConnectorTools } from '../ipc/client';
 import type { ConnectorCapability, ConnectorRuntimeSnapshot } from '../ipc/contracts';
 import { connectorLabel, type ConnectorTone } from '../workspace/settings/connectors/useConnectors';
@@ -30,8 +31,10 @@ export interface ConnectorToolInfo {
   /// The tool's JSON input schema (an empty object when it has none).
   inputSchema: JsonObject;
   /// `true` when it only reads, `false` when it can change things, `null`
-  /// when nothing says which (treated as not allowed).
+  /// when nothing says which (treated as changing things).
   readOnly: boolean | null;
+  /// `sensitive` tools always ask, even when allowed; `null` when not reported.
+  permissionLevel: 'readOnly' | 'sideEffectful' | 'sensitive' | null;
 }
 
 function isObject(v: unknown): v is JsonObject {
@@ -85,6 +88,7 @@ export function toolFromCapability(cap: ConnectorCapability & Record<string, unk
     description,
     inputSchema: isObject(cap.inputSchema) ? cap.inputSchema : schema,
     readOnly: readOnlyOf(cap) ?? readOnlyOf(schema),
+    permissionLevel: null,
   };
 }
 
@@ -97,12 +101,24 @@ export async function loadConnectorTools(connectorId: string): Promise<Connector
     description: t.description ?? undefined,
     inputSchema: isObject(t.inputSchema) ? t.inputSchema : {},
     readOnly: t.readOnly,
+    permissionLevel: t.permissionLevel ?? null,
   }));
 }
 
-/// A tool a workflow may use: it is known to only read.
-export function isUsable(tool: ConnectorToolInfo): boolean {
-  return tool.readOnly === true;
+/// How a tool is marked in a picker: `sensitive` always asks, `changes`
+/// stops to ask before it acts (also when nothing says it only reads), and a
+/// tool that only reads has no mark.
+export function toolMark(tool: ConnectorToolInfo): 'sensitive' | 'changes' | null {
+  if (tool.permissionLevel === 'sensitive') return 'sensitive';
+  return tool.readOnly === true ? null : 'changes';
+}
+
+/// The picker line for a tool: its name plus its mark.
+export function toolLabel(tool: ConnectorToolInfo, t: Translate): string {
+  const mark = toolMark(tool);
+  if (mark === 'sensitive') return t('workspace.workflows.editor.connector.toolSensitive', { tool: tool.name });
+  if (mark === 'changes') return t('workspace.workflows.editor.connector.toolChanges', { tool: tool.name });
+  return tool.name;
 }
 
 // ---- arguments form ------------------------------------------------------

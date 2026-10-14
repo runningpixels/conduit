@@ -22,16 +22,6 @@ describe('ContextTabs', () => {
 });
 
 describe('ComingSoonPage', () => {
-  it('says what Inbox will be and points to Workflows meanwhile', () => {
-    const onAction = vi.fn();
-    render(<ComingSoonPage copy="shell.inbox" onAction={onAction} />);
-    expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy();
-    expect(screen.getByText('Coming soon')).toBeTruthy();
-    expect(screen.getByText(/Approvals, questions, results and problems/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Workflows' }));
-    expect(onAction).toHaveBeenCalledOnce();
-  });
-
   it('says what Agents will be', () => {
     render(<ComingSoonPage copy="shell.agents" onAction={() => {}} />);
     expect(screen.getByRole('heading', { name: 'Agents' })).toBeTruthy();

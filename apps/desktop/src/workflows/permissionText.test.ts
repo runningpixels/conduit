@@ -28,6 +28,15 @@ describe('agent tools', () => {
       permissionText({ kind: 'agentTools', stepId: 'think', tools: ['web_fetch', 'web_search'], label: null, local: null }, t),
     ).toBe('agentTools {"step":"think","tools":"webFetch, webSearch"}');
   });
+
+  it('reads a connector tool by its name, not its id', () => {
+    expect(
+      permissionText(
+        { kind: 'agentTools', stepId: 'think', tools: ['web_search', 'slack/post_message'], label: null, local: null },
+        t,
+      ),
+    ).toBe('agentTools {"step":"think","tools":"webSearch, “post_message”"}');
+  });
 });
 
 describe('reviewText', () => {

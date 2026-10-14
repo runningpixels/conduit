@@ -1065,8 +1065,29 @@ impl TurnOwner {
     }
 }
 
+/// Tools a workflow step gives its agent turn besides the built-in ones (its
+/// connector tools). The runner decides whether each call goes ahead (it may
+/// stop to check an outside action with the user), not chat's consent prompt.
+pub trait StepTools: Send + Sync {
+    /// Whether `name`, as the model sees it, is one of these tools.
+    fn offers(&self, name: &str) -> bool;
+    /// Run the call: what the model gets back (`Err` for an error) and how
+    /// long it waited for the user, which the turn's time limit leaves out.
+    fn call<'a>(&'a self, name: &'a str, arguments: &'a serde_json::Value) -> StepToolCall<'a>;
+}
+
+/// A [`StepTools`] call in progress: the result for the model, and the time
+/// spent waiting for the user.
+pub type StepToolCall<'a> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = (Result<serde_json::Value, String>, std::time::Duration)>
+            + Send
+            + 'a,
+    >,
+>;
+
 /// How an agent turn differs from a chat message.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct TurnOptions<'a> {
     /// Nobody is watching: deck and draft tools ignore `release_pinned`, so a
     /// model can't be talked into changing the user's own text.
@@ -1076,6 +1097,10 @@ pub struct TurnOptions<'a> {
     /// keeps the guard). When `None`, the turn takes it and fails if the
     /// conversation is busy.
     pub held: Option<&'a TurnGuard>,
+    /// A workflow step's own tools. When set, the turn calls no connector
+    /// tool except these (others are refused), and chat's remembered approvals
+    /// don't apply.
+    pub step_tools: Option<&'a dyn StepTools>,
 }
 
 impl StreamManager {
@@ -1814,6 +1839,7 @@ impl StreamManager {
         cancel: &CancellationToken,
         user_wait_ms: &std::sync::atomic::AtomicU64,
         headless: bool,
+        step_tools: Option<&dyn StepTools>,
     ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
@@ -1981,6 +2007,58 @@ impl StreamManager {
                     }
                 }
                 continue;
+            }
+
+            if let Some(step_tools) = step_tools {
+                let offered = step_tools.offers(&tool_name);
+                if offered || !agent_tools::is_builtin_tool_name(&tool_name) {
+                    let (output, is_error) = if offered {
+                        let (result, waited) = step_tools.call(&tool_name, &call.arguments).await;
+                        user_wait_ms.fetch_add(
+                            waited.as_millis() as u64,
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                        match result {
+                            Ok(output) => (output, false),
+                            Err(error) => {
+                                (serde_json::json!({ "ok": false, "error": error }), true)
+                            }
+                        }
+                    } else {
+                        (
+                            serde_json::json!({ "ok": false, "error": "This step can't use that tool." }),
+                            true,
+                        )
+                    };
+                    let recorded = agent_tools::finalize_tool_call(
+                        &ctx,
+                        &call.tool_call_id,
+                        request_id,
+                        &tool_name,
+                        &call.arguments,
+                        output,
+                        is_error,
+                    )
+                    .await;
+                    if let Err(error) = &recorded {
+                        warn!(
+                            request_id = %request_id,
+                            tool_call_id = %call.tool_call_id,
+                            error = %error,
+                            "failed to record a step tool's result"
+                        );
+                    }
+                    if let Some(ch) = provider_channel {
+                        let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                            request_id: request_id.to_string(),
+                            tool_call_id: call.tool_call_id.clone(),
+                            tool_name: tool_name.clone(),
+                            is_error,
+                            error: recorded.ok().and_then(|exec| exec.record.error),
+                        });
+                    }
+                    continue;
+                }
             }
 
             if agent_tools::is_builtin_tool_name(&tool_name) {
@@ -3563,6 +3641,7 @@ impl StreamManager {
                 &tools_cancel,
                 &user_wait_ms,
                 options.headless,
+                options.step_tools,
             );
             let mut steered_during_tools: Option<String> = None;
             let tally = tokio::select! {

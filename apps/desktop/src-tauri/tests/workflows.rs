@@ -16,6 +16,7 @@ use conduit_desktop::{
     paths::AppPaths,
     state::AppState,
     stream_manager::StreamManager,
+    workflows::actions::{ActionAnswer, ActionRules, Actions, AllowedAction, PendingAction},
     workflows::ask::Questions,
     workflows::definition::WorkflowDefinition,
     workflows::permissions::{self, Decision, Permission, Reviews},
@@ -501,6 +502,7 @@ impl Harness {
             budget: RunBudget::default(),
             notify: None,
             questions: None,
+            actions: None,
             connectors: None,
             documents: None,
         };
@@ -706,6 +708,7 @@ async fn an_invalid_definition_does_not_start_a_run() {
         budget: RunBudget::default(),
         notify: None,
         questions: None,
+        actions: None,
         connectors: None,
         documents: None,
     };
@@ -970,6 +973,7 @@ impl Harness {
             budget: RunBudget::default(),
             notify: None,
             questions: None,
+            actions: None,
             connectors: None,
             documents: None,
         };
@@ -1142,6 +1146,7 @@ impl Harness {
             budget: RunBudget::default(),
             notify: None,
             questions: None,
+            actions: None,
             connectors: None,
             documents: None,
         }
@@ -1372,6 +1377,7 @@ async fn going_over_the_time_budget_fails_the_run_even_when_the_step_may_fail() 
         },
         notify: None,
         questions: None,
+        actions: None,
         connectors: None,
         documents: None,
     };
@@ -1420,6 +1426,7 @@ async fn going_over_the_token_budget_fails_the_run() {
         },
         notify: None,
         questions: None,
+        actions: None,
         connectors: None,
         documents: None,
     };
@@ -1484,6 +1491,7 @@ async fn a_run_waiting_for_an_answer_holds_up_no_other_scheduled_run() {
         running: &running,
         reviews: &h.reviews,
         questions: &questions,
+        actions: None,
         connectors: None,
         documents: None,
         fetch_policy: AddressPolicy { public_only: false },
@@ -1655,6 +1663,7 @@ async fn a_notify_step_shows_its_filled_in_text() {
         budget: RunBudget::default(),
         notify: Some(&notify),
         questions: None,
+        actions: None,
         connectors: None,
         documents: None,
     };
@@ -1689,6 +1698,7 @@ impl Harness {
             budget: RunBudget::default(),
             notify: None,
             questions: None,
+            actions: None,
             connectors: None,
             documents: None,
         }
@@ -2065,6 +2075,7 @@ impl Harness {
     ) -> Runner<'a> {
         Runner {
             questions: Some(questions),
+            actions: None,
             connectors: None,
             documents: None,
             stop,
@@ -3079,6 +3090,7 @@ async fn read_file_refusals_fail_the_step_in_plain_words() {
         budget: RunBudget::default(),
         notify: None,
         questions: None,
+        actions: None,
         connectors: None,
         documents: None,
     };
@@ -4862,6 +4874,7 @@ async fn the_run_time_limit_stops_research_cleanly() {
         },
         notify: None,
         questions: None,
+        actions: None,
         connectors: None,
         documents: None,
     };
@@ -5126,6 +5139,7 @@ async fn a_documents_step_returns_cited_passages_and_honours_top_k() {
         budget: RunBudget::default(),
         notify: None,
         questions: None,
+        actions: None,
         connectors: None,
         documents: None,
     };
@@ -5173,6 +5187,7 @@ async fn a_documents_step_reports_a_deleted_collection_and_an_empty_query() {
         budget: RunBudget::default(),
         notify: None,
         questions: None,
+        actions: None,
         connectors: None,
         documents: None,
     };
@@ -5401,7 +5416,7 @@ async fn structured_content_becomes_data_and_plain_text_leaves_it_null() {
 }
 
 #[tokio::test]
-async fn a_tool_that_can_change_things_is_refused_without_asking() {
+async fn an_outside_action_is_not_sent_where_nobody_could_check_it() {
     let h = Harness::new(EchoModel::default()).await;
     echo_connector(&h, "active", None).await;
     let mgr = connector_manager();
@@ -5416,13 +5431,420 @@ async fn a_tool_that_can_change_things_is_refused_without_asking() {
         let error = step(&run, "call", None).error.clone().unwrap();
         assert_eq!(
             error,
-            format!(
-                "\u{201c}{tool}\u{201d} can change things in Echo, and workflows can only use tools that just read, for now."
-            )
+            "Nobody could check this action here, so it wasn't sent."
         );
     }
     assert!(h.reviews.list().is_empty());
     mgr.shutdown_all().await;
+}
+
+// ── Outside actions ──────────────────────────────────────────────────────────
+
+async fn next_action(actions: &Actions) -> PendingAction {
+    for _ in 0..500 {
+        if let Some(a) = actions.list().into_iter().next() {
+            return a;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("no run stopped to check an action");
+}
+
+fn send(arguments: Option<Value>, remember: bool) -> ActionAnswer {
+    ActionAnswer {
+        send: true,
+        arguments,
+        remember,
+    }
+}
+
+#[tokio::test]
+async fn an_outside_action_waits_and_goes_out_with_the_changed_arguments() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(connector_workflow(
+            "echo",
+            "post_message",
+            json!({ "channel": "general", "text": "about {{inputs.repo}}" }),
+        ))
+        .await;
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        assert_eq!(action.connector_name, "Echo");
+        assert_eq!(action.tool, "post_message");
+        assert_eq!(action.step_id, "call");
+        assert!(!action.sensitive);
+        assert_eq!(
+            action.arguments,
+            json!({ "channel": "general", "text": "about acme/app" })
+        );
+        assert_eq!(action.input_schema["required"], json!(["channel", "text"]));
+        let run = repo::get_run(&h.state.db, &h.state.encryption, &action.run_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.run.status, "paused");
+        let changed = json!({ "channel": "team", "text": "edited" });
+        assert!(actions.answer(&action.run_id, Some("call"), send(Some(changed), false)));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = step(&detail, "call", None).output.clone().unwrap();
+    assert_eq!(out["text"], "posted to team: edited");
+    assert_eq!(out["action"]["outcome"], "sent");
+    assert_eq!(
+        out["action"]["arguments"],
+        json!({ "channel": "team", "text": "edited" })
+    );
+    // Asking alone changes nothing: the next run asks again.
+    let rules = repo::get_action_rules(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap();
+    assert_eq!(rules, ActionRules::default());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn dont_send_stops_the_run_and_sends_nothing() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(connector_workflow(
+            "echo",
+            "post_message",
+            json!({ "channel": "general", "text": "hi" }),
+        ))
+        .await;
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        let no = ActionAnswer {
+            send: false,
+            arguments: None,
+            remember: true,
+        };
+        assert!(actions.answer(&action.run_id, Some("call"), no));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    // The user chose this: the run stops, it doesn't fail.
+    assert_eq!(detail.run.status, "stopped");
+    assert_eq!(
+        detail.run.error.as_deref(),
+        Some("You didn't send \u{201c}post_message\u{201d}, so the run stopped.")
+    );
+    assert_eq!(
+        step(&detail, "call", None).error.as_deref(),
+        Some("You didn't send this.")
+    );
+    // "Don't ask again" means nothing without sending.
+    let rules = repo::get_action_rules(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap();
+    assert!(rules.allowed.is_empty());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn dont_ask_again_lets_the_next_run_act_without_asking() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(connector_workflow(
+            "echo",
+            "post_message",
+            json!({ "channel": "general", "text": "hi" }),
+        ))
+        .await;
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        assert!(actions.answer(&action.run_id, Some("call"), send(None, true)));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
+    let rules = repo::get_action_rules(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap();
+    assert_eq!(
+        rules.allowed,
+        vec![AllowedAction {
+            connector_id: "echo".into(),
+            connector_name: "Echo".into(),
+            tool: "post_message".into(),
+        }]
+    );
+    // The next run sends at once, and says so.
+    let detail = runner.run(&id, &no_inputs, "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = step(&detail, "call", None).output.clone().unwrap();
+    assert_eq!(out["action"]["outcome"], "sentWithoutAsking");
+    assert!(actions.list().is_empty());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn allow_all_acts_without_asking_even_unattended() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(connector_workflow(
+            "echo",
+            "post_message",
+            json!({ "channel": "general", "text": "hi" }),
+        ))
+        .await;
+    repo::set_action_rules(
+        &h.state.db,
+        &h.state.encryption,
+        &id,
+        &ActionRules {
+            allow_all: true,
+            allowed: vec![],
+        },
+    )
+    .await
+    .unwrap();
+    // The connector was approved when the schedule was turned on; the action
+    // rules decide the rest.
+    let approved = Permission::Connector {
+        connector_id: "echo".into(),
+        name: "Echo".into(),
+        tool: "post_message".into(),
+    };
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        ..h.unattended_runner(vec![approved], CancellationToken::new())
+    };
+    let detail = runner.run(&id, &HashMap::new(), "schedule").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = step(&detail, "call", None).output.clone().unwrap();
+    assert_eq!(out["text"], "posted to general: hi");
+    assert_eq!(out["action"]["outcome"], "sentWithoutAsking");
+    assert!(h.reviews.list().is_empty());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn an_unanswered_action_is_not_sent() {
+    let h = Harness::new(EchoModel::default()).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(connector_workflow(
+            "echo",
+            "post_message",
+            json!({ "channel": "general", "text": "hi" }),
+        ))
+        .await;
+    let approved = Permission::Connector {
+        connector_id: "echo".into(),
+        name: "Echo".into(),
+        tool: "post_message".into(),
+    };
+    let mut unattended = Unattended::new(&h.reviews, [approved]);
+    unattended.wait = std::time::Duration::from_millis(100);
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        unattended: Some(unattended),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "schedule").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        step(&detail, "call", None).error.as_deref(),
+        Some("Nobody answered within a day, so this wasn't sent.")
+    );
+    assert!(actions.list().is_empty());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn an_agent_step_acts_through_its_connector_tool_after_a_check() {
+    let model = EchoModel {
+        tool_call: Some((
+            "Echo__post_message",
+            json!({ "channel": "general", "text": "from the agent" }),
+        )),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "act", "type": "agent", "prompt": "Post it",
+              "tools": ["echo/post_message", "echo/list_items"] },
+        ]}))
+        .await;
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        assert_eq!(action.step_id, "act");
+        assert_eq!(action.tool, "post_message");
+        assert_eq!(
+            action.arguments,
+            json!({ "channel": "general", "text": "from the agent" })
+        );
+        assert!(actions.answer(&action.run_id, Some("act"), send(None, false)));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = detail.steps[0].output.clone().unwrap();
+    assert_eq!(out["toolCalls"], json!(["Echo__post_message"]));
+    assert_eq!(out["actions"][0]["outcome"], "sent");
+    assert_eq!(out["actions"][0]["tool"], "post_message");
+    let requests = h.model.requests.lock().unwrap().clone();
+    let offered: Vec<&str> = requests[0]
+        .tool_definitions
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    assert_eq!(offered, vec!["Echo__post_message", "Echo__list_items"]);
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn an_agent_hears_when_an_action_was_not_sent() {
+    let model = EchoModel {
+        tool_call: Some((
+            "Echo__post_message",
+            json!({ "channel": "general", "text": "x" }),
+        )),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "act", "type": "agent", "prompt": "Post it", "tools": ["echo/post_message"] },
+        ]}))
+        .await;
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        let no = ActionAnswer {
+            send: false,
+            arguments: None,
+            remember: false,
+        };
+        assert!(actions.answer(&action.run_id, Some("act"), no));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    // The agent carries on: a refused action is its tool's error, not the run's.
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = detail.steps[0].output.clone().unwrap();
+    assert_eq!(out["actions"].as_array().unwrap().len(), 1);
+    assert_eq!(out["actions"][0]["outcome"], "notSent");
+    assert_eq!(out["actions"][0]["error"], "You didn't send this.");
+    // What the model was told.
+    let requests = h.model.requests.lock().unwrap().clone();
+    let last = format!("{:?}", requests.last().unwrap().messages);
+    assert!(last.contains("Not sent: You didn't send this."), "{last}");
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn an_agent_step_cant_call_a_connector_tool_it_doesnt_list() {
+    let model = EchoModel {
+        tool_call: Some(("Echo__unmarked", json!({}))),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "act", "type": "agent", "prompt": "Go", "tools": ["echo/list_items"] },
+        ]}))
+        .await;
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    // The turn drops a call to a tool it wasn't offered (here the round then
+    // has nothing to say, so the step fails); the tool never runs.
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert!(detail.steps[0]
+        .output
+        .as_ref()
+        .is_none_or(|out| out.get("actions").is_none()));
+    assert!(actions.list().is_empty());
+    let requests = h.model.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 1, "no round with a tool result");
+    mgr.shutdown_all().await;
+}
+
+#[test]
+fn agent_steps_may_list_connector_tools_but_not_too_many() {
+    let def = |tools: Vec<String>| {
+        conduit_desktop::workflows::definition::validate(
+            &serde_json::from_value::<WorkflowDefinition>(json!({ "steps": [
+                { "id": "a", "type": "agent", "prompt": "Go", "tools": tools },
+            ]}))
+            .unwrap(),
+        )
+    };
+    assert!(def(vec!["web_search".into(), "echo/post_message".into()]).is_ok());
+    let problems = def(vec!["/post".into(), "echo/".into(), "e cho/x".into()]).unwrap_err();
+    assert_eq!(problems.len(), 2, "{problems:?}");
+    let many: Vec<String> = (0..11).map(|n| format!("echo/t{n}")).collect();
+    let problems = def(many).unwrap_err();
+    assert!(
+        problems[0].contains("more than 10 connector tools"),
+        "{problems:?}"
+    );
 }
 
 #[tokio::test]
@@ -5574,7 +5996,7 @@ async fn a_scheduled_connector_step_is_reviewed_by_connector_name_and_tool() {
         assert_eq!(review.permission.permission, expected);
         assert_eq!(
             review.permission.label.as_deref(),
-            Some("Use \u{201c}echo\u{201d} in Echo (reads only)")
+            Some("Use \u{201c}echo\u{201d} in Echo")
         );
         // Nothing has run, and the connector hasn't been started, yet.
         assert!(mgr.active_version_ids().is_empty());
@@ -5776,6 +6198,7 @@ async fn tick_notifying(
         running,
         reviews: &h.reviews,
         questions: &questions,
+        actions: None,
         documents: None,
         connectors: None,
         fetch_policy: AddressPolicy { public_only: false },

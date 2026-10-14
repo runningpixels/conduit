@@ -19,11 +19,14 @@ import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../s
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { AddStepMenu, ViewToggle } from './AddStepMenu';
 import { StartPanel } from './StartPanel';
+import { AgentConnectorTools } from './AgentConnectorTools';
 import { ChipField, type ChipFieldHandle } from './ChipField';
 import { useT } from '../i18n';
 import type { DataFormat, WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import {
   AGENT_TOOLS,
+  withBuiltinTool,
+  withConnectorTool,
   allStepIds,
   CONDITION_TESTS,
   conditionNeedsText,
@@ -606,19 +609,22 @@ function StepCard({
                   type="checkbox"
                   checked={(step.tools ?? []).includes(tool)}
                   onChange={(e) =>
-                    update((s) => {
-                      if (s.type !== 'agent') return s;
-                      const others = (s.tools ?? []).filter((x) => x !== tool);
-                      // Kept in the catalog's order, so the stored list is stable.
-                      const next = e.target.checked ? [...others, tool] : others;
-                      return { ...s, tools: AGENT_TOOLS.filter((x) => next.includes(x)) };
-                    })
+                    // Kept in the catalog's order, so the stored list is stable.
+                    update((s) =>
+                      s.type === 'agent' ? { ...s, tools: withBuiltinTool(s.tools ?? [], tool, e.target.checked) } : s,
+                    )
                   }
                 />
                 {agentToolText(tool, t)}
               </label>
             ))}
           </fieldset>
+          <AgentConnectorTools
+            tools={step.tools ?? []}
+            onToggle={(ref, on) =>
+              update((s) => (s.type === 'agent' ? { ...s, tools: withConnectorTool(s.tools ?? [], ref, on) } : s))
+            }
+          />
           <p className="wf-muted">{t('workspace.workflows.editor.agent.hint')}</p>
           <WorkflowModelRow
             kind="step"

@@ -965,6 +965,65 @@ export interface WorkflowQuestion {
   expiresAt: string;
 }
 
+/**
+ * A run waiting for the user to check an outside action: a connector tool that
+ * changes things (Rust `workflows::actions::PendingAction`).
+ */
+export interface WorkflowAction {
+  runId: string;
+  workflowId: string;
+  workflowName: string;
+  stepId: string;
+  connectorId: string;
+  connectorName: string;
+  tool: string;
+  /** What the connector says the tool does. */
+  description: string | null;
+  /** The call's arguments, exactly as they would be sent. */
+  arguments: Record<string, unknown>;
+  /** The tool's JSON Schema for its arguments (the Edit form). */
+  inputSchema: Record<string, unknown>;
+  /** Always asks; "Don't ask again" isn't offered. */
+  sensitive: boolean;
+  requestedAt: string;
+  expiresAt: string;
+}
+
+/** The answer to a `WorkflowAction`. */
+export interface WorkflowActionAnswer {
+  send: boolean;
+  /** The changed arguments; leave out to send them as they were. */
+  arguments?: Record<string, unknown>;
+  /** Don't ask again for this tool in this workflow (ignored for a sensitive tool). */
+  remember?: boolean;
+}
+
+/** An outside action a workflow takes without asking. */
+export interface WorkflowAllowedAction {
+  connectorId: string;
+  /** The connector's name when it was allowed. */
+  connectorName: string;
+  tool: string;
+}
+
+/** Which of a workflow's outside actions go ahead without asking. */
+export interface WorkflowActionRules {
+  /** Every action goes ahead without asking (except sensitive ones). */
+  allowAll: boolean;
+  allowed: WorkflowAllowedAction[];
+}
+
+/** How an outside action ended, in a step's output (`action` or `actions[]`). */
+export type WorkflowActionOutcome = 'sent' | 'sentWithoutAsking' | 'notSent' | 'failed';
+
+export interface WorkflowActionRecord {
+  connector: { id: string; name: string };
+  tool: string;
+  arguments: Record<string, unknown>;
+  outcome: WorkflowActionOutcome;
+  error?: string;
+}
+
 // Research: the brief, the live run and its sources (ts-rs-generated).
 export type {
   ResearchBrief,

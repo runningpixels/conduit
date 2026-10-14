@@ -23,14 +23,16 @@ export interface NeedsYouState {
   reviews: WaitingRun[];
   /// One per pending question.
   questions: WaitingRun[];
+  /// One per outside action waiting to be checked.
+  actions: WaitingRun[];
   /// Memory suggestions waiting to be accepted.
   memory: number;
 }
 
-export const NO_NEEDS: NeedsYouState = { reviews: [], questions: [], memory: 0 };
+export const NO_NEEDS: NeedsYouState = { reviews: [], questions: [], actions: [], memory: 0 };
 
 export function hasNeeds(n: NeedsYouState): boolean {
-  return n.reviews.length > 0 || n.questions.length > 0 || n.memory > 0;
+  return n.reviews.length > 0 || n.questions.length > 0 || n.actions.length > 0 || n.memory > 0;
 }
 
 function targetOf(run: WaitingRun): WorkflowTarget {
@@ -73,6 +75,17 @@ export function NeedsYou({ needs, onAction }: { needs: NeedsYouState; onAction: 
       button: t('home.needs.question.button'),
       action: 'open-reviews',
       target: targetOf(needs.questions[0]),
+    });
+  }
+  if (needs.actions.length > 0) {
+    lines.push({
+      id: 'actions',
+      text:
+        needs.actions.length === 1
+          ? t('home.needs.action.one', { name: needs.actions[0].name })
+          : t('home.needs.action.many', { count: needs.actions.length }),
+      button: t('home.needs.action.button'),
+      action: 'open-inbox',
     });
   }
   if (needs.memory > 0) {

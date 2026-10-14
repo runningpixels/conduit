@@ -33,6 +33,7 @@ export type HomeAction =
   | 'browse-apps'
   | 'review-memory'
   | 'open-reviews'
+  | 'open-inbox'
   | 'open-results';
 
 /// What a button on Home does: open an area, or run an action.

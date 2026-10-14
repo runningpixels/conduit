@@ -8,6 +8,7 @@
 /// to reorder, wires that insert references, and the step form in the
 /// inspector.
 
+import { StepActions } from '../StepActions';
 import '@xyflow/react/dist/style.css';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -666,6 +667,7 @@ function RunRow({ row, t }: { row: WorkflowRunStep; t: Translate }) {
         {ms != null && ms >= 0 ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
       </summary>
       {row.error ? <p className="wf-error">{row.error}</p> : null}
+      <StepActions output={row.output} />
       <p className="wf-io-label">{t('workspace.workflows.runDetail.input')}</p>
       <pre className="wf-io">{JSON.stringify(row.input, null, 2)}</pre>
       {row.output != null ? (

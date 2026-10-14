@@ -325,23 +325,7 @@ impl Runner<'_> {
         if let Some(item) = item {
             ctx["trigger"] = item;
         }
-        let exec = Exec {
-            runner: self,
-            run_id: &run.id,
-            workflow_id: &workflow.id,
-            workflow_name: &workflow.name,
-            conversation_id: &conversation_id,
-            workflow_model: def.model.as_ref(),
-            folder: def.folder.as_deref(),
-            started: Instant::now(),
-            stop: self.stop.child_token(),
-            waits: Mutex::new(Waits::default()),
-            wait_gate: tokio::sync::Mutex::new(()),
-            agent_gate: tokio::sync::Mutex::new(()),
-            tokens: Mutex::new(0),
-            over_budget: Mutex::new(None),
-            declined: Mutex::new(None),
-        };
+        let exec = self.exec(&run.id, &workflow, &conversation_id, &def);
         // What the earlier run left standing in for the steps that don't run
         // again, recorded before anything else starts.
         let mut done: Vec<Option<Resolution>> = vec![None; def.steps.len()];
@@ -364,13 +348,170 @@ impl Runner<'_> {
             set_step_output(&mut ctx, &step_id, output);
         }
         let result = exec.graph(&def.steps, &mut ctx, done).await;
+        self.finish(&exec, result).await
+    }
+
+    /// Carry on with `run_id`, which was waiting for the user when the app
+    /// closed (see `repo::waiting_runs`), in place: what finished stays (the
+    /// steps and the `for_each` rounds), the rest runs again, and a step that
+    /// was waiting asks again with the times it asked first. The run ends
+    /// failed instead when its workflow is gone or was changed meanwhile.
+    pub async fn continue_run(&self, run_id: &str) -> Result<WorkflowRunDetail, String> {
+        let pool = &self.state.db;
+        let enc = &self.state.encryption;
+        let earlier = repo::get_run(pool, enc, run_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "The run record is missing.".to_string())?;
+        let found = repo::get(pool, enc, &earlier.run.workflow_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let ready = match found {
+            None => Err("That workflow no longer exists.".to_string()),
+            Some(workflow) if workflow.version != earlier.run.version => Err(
+                "The workflow changed while this run waited, so it didn't carry on.".to_string(),
+            ),
+            Some(workflow) => serde_json::from_value::<definition::WorkflowDefinition>(
+                workflow.definition.clone(),
+            )
+            .map_err(|e| definition::unreadable(&e))
+            .and_then(|def| {
+                definition::validate(&def).map_err(|problems| problems.join(" "))?;
+                Ok((workflow, def))
+            }),
+        };
+        let (workflow, def) = match ready {
+            Ok(ready) => ready,
+            Err(error) => {
+                repo::fail_steps_left_running(pool, run_id, &error)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                repo::finish_run(pool, run_id, "failed", Some(&error))
+                    .await
+                    .map_err(|e| e.to_string())?;
+                return repo::get_run(pool, enc, run_id)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "The run record is missing.".to_string());
+            }
+        };
+        let conversation_id = self.conversation_for(&workflow).await?;
+
+        let stored = repo::get_run_inputs(pool, enc, run_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .unwrap_or_else(|| json!({}));
+        let mut input_values = Map::new();
+        for input in &def.inputs {
+            let value = stored
+                .get(&input.id)
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| input.default.clone())
+                .unwrap_or_default();
+            input_values.insert(input.id.clone(), Value::String(value));
+        }
+        // The day the run began, as it was then.
+        let began = chrono::DateTime::parse_from_rfc3339(&earlier.run.started_at)
+            .map(|at| at.with_timezone(&chrono::Local))
+            .unwrap_or_else(|_| chrono::Local::now());
+        let mut ctx = json!({
+            "inputs": input_values,
+            "steps": {},
+            "run": {
+                "id": run_id,
+                "date": began.format("%Y-%m-%d").to_string(),
+                "time": began.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+            },
+        });
+        if let Some(item) = stored.get(repo::TRIGGER_ITEM_KEY) {
+            ctx["trigger"] = item.clone();
+        }
+
+        let exec = self.exec(run_id, &workflow, &conversation_id, &def);
+        let kept = kept_rows(&def.steps, &earlier.steps);
+        let mut done: Vec<Option<Resolution>> = vec![None; def.steps.len()];
+        for (index, output) in kept.steps {
+            set_step_output(&mut ctx, &def.steps[index].id, output.clone());
+            done[index] = Some(Resolution::of(&def.steps[index], &output));
+        }
+        if let Ok(mut rounds) = exec.rounds.lock() {
+            *rounds = kept.rounds;
+        }
+        let waiting = repo::waiting_steps(pool, run_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Ok(mut restored) = exec.restored.lock() {
+            restored.extend(
+                waiting
+                    .into_iter()
+                    .map(|(step, since, until)| (step, (since, until))),
+            );
+        }
+        let sent = repo::get_sent(pool, enc, run_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Ok(mut earlier) = exec.sent_earlier.lock() {
+            earlier.clone_from(&sent);
+        }
+        *exec.sent.lock().await = sent;
+        repo::delete_steps(pool, &kept.redo)
+            .await
+            .map_err(|e| e.to_string())?;
+        repo::set_run_status(pool, run_id, "running")
+            .await
+            .map_err(|e| e.to_string())?;
+        let result = exec.graph(&def.steps, &mut ctx, done).await;
+        self.finish(&exec, result).await
+    }
+
+    /// How a run is carried out: see [`Exec`].
+    fn exec<'e>(
+        &'e self,
+        run_id: &'e str,
+        workflow: &'e WorkflowRecord,
+        conversation_id: &'e str,
+        def: &'e definition::WorkflowDefinition,
+    ) -> Exec<'e> {
+        Exec {
+            runner: self,
+            run_id,
+            workflow_id: &workflow.id,
+            workflow_name: &workflow.name,
+            conversation_id,
+            workflow_model: def.model.as_ref(),
+            folder: def.folder.as_deref(),
+            started: Instant::now(),
+            stop: self.stop.child_token(),
+            waits: Mutex::new(Waits::default()),
+            wait_gate: tokio::sync::Mutex::new(()),
+            agent_gate: tokio::sync::Mutex::new(()),
+            tokens: Mutex::new(0),
+            over_budget: Mutex::new(None),
+            declined: Mutex::new(None),
+            restored: Mutex::new(HashMap::new()),
+            rounds: Mutex::new(HashMap::new()),
+            sent_earlier: Mutex::new(Vec::new()),
+            sent: tokio::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Record how the run ended, and return it.
+    async fn finish(
+        &self,
+        exec: &Exec<'_>,
+        result: Result<Flow, String>,
+    ) -> Result<WorkflowRunDetail, String> {
+        let pool = &self.state.db;
+        let enc = &self.state.encryption;
+        let run_id = exec.run_id;
         let over_budget = exec.over_budget();
         if let Ok(Flow::Stop(step_id)) = &result {
-            repo::finish_run_with_outcome(pool, &run.id, repo::NOTHING_NEW, step_id)
+            repo::finish_run_with_outcome(pool, run_id, repo::NOTHING_NEW, step_id)
                 .await
                 .map_err(|e| e.to_string())?;
-            keep_outputs(pool, enc, &run.id).await;
-            return repo::get_run(pool, enc, &run.id)
+            keep_outputs(pool, enc, run_id).await;
+            return repo::get_run(pool, enc, run_id)
                 .await
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "The run record is missing.".to_string());
@@ -383,11 +524,11 @@ impl Runner<'_> {
             (Err(_), Some(reason)) => ("failed", Some(reason.as_str())),
             (Err(e), None) => ("failed", Some(e.as_str())),
         };
-        repo::finish_run(pool, &run.id, status, error)
+        repo::finish_run(pool, run_id, status, error)
             .await
             .map_err(|e| e.to_string())?;
-        keep_outputs(pool, enc, &run.id).await;
-        repo::get_run(pool, enc, &run.id)
+        keep_outputs(pool, enc, run_id).await;
+        repo::get_run(pool, enc, run_id)
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "The run record is missing.".to_string())
@@ -552,6 +693,14 @@ impl ConnectorTools<'_, '_> {
                 Duration::ZERO,
             );
         }
+        // Sent before the app restarted, and asked for again the same way:
+        // not sent twice.
+        if let Some(earlier) = exec.sent_before(self.step_id, &connector.id, tool, arguments) {
+            if let Ok(mut done) = self.actions.lock() {
+                done.push(earlier["action"].clone());
+            }
+            return (Ok(earlier["result"].clone()), Duration::ZERO);
+        }
         let started = Instant::now();
         let checked = exec
             .check_action(
@@ -590,18 +739,33 @@ impl ConnectorTools<'_, '_> {
                     waited,
                 )
             }
-            Ok(Checked::Send { arguments, asked }) => {
-                let result = call(arguments.clone(), true).await;
+            Ok(Checked::Send {
+                arguments: sent,
+                asked,
+            }) => {
+                let result = call(sent.clone(), true).await;
                 let outcome = match (&result, asked) {
                     (Err(_), _) => Outcome::Failed,
                     (Ok(_), true) => Outcome::Sent,
                     (Ok(_), false) => Outcome::SentWithoutAsking,
                 };
-                record(
-                    &arguments,
-                    outcome,
-                    result.as_ref().err().map(String::as_str),
-                );
+                record(&sent, outcome, result.as_ref().err().map(String::as_str));
+                if let Ok(output) = &result {
+                    exec.keep_sent(json!({
+                        "stepId": self.step_id,
+                        "proposed": arguments,
+                        "action": actions::record(
+                            &connector.id,
+                            &connector.name,
+                            tool,
+                            &sent,
+                            outcome,
+                            None,
+                        ),
+                        "result": output,
+                    }))
+                    .await;
+                }
                 (result, waited)
             }
         }
@@ -647,6 +811,18 @@ struct Exec<'a> {
     /// Set when the user said Don't send to a step's outside action: a run
     /// that ends there stops, with this reason, rather than failing.
     declined: Mutex<Option<String>>,
+    /// A run carried on after a restart: the waits that were open, by step
+    /// (began, runs out). A step's first wait keeps those times.
+    restored: Mutex<HashMap<String, (String, String)>>,
+    /// A run carried on after a restart: what the `for_each` rounds that
+    /// finished left, by body step and round, so they don't run again.
+    rounds: Mutex<HashMap<(String, i64), Value>>,
+    /// A run carried on after a restart: the outside actions it had sent.
+    /// One a step asks for again, the same way, is answered from here
+    /// rather than sent twice (each entry once).
+    sent_earlier: Mutex<Vec<Value>>,
+    /// Every outside action this run sent, kept on the run (see migration 0039).
+    sent: tokio::sync::Mutex<Vec<Value>>,
 }
 
 /// How many waits for the user are open at once, and for how long the run has
@@ -658,6 +834,14 @@ struct Waits {
     since: Option<Instant>,
     /// The time of the waits that have all ended.
     waited: Duration,
+}
+
+/// When a wait for the user began and runs out (as sent to the page), and
+/// how long is left of it.
+struct WaitWindow {
+    since: String,
+    until: String,
+    left: Duration,
 }
 
 /// How a top-level step ended, as the steps after it see it.
@@ -1041,6 +1225,18 @@ impl Exec<'_> {
         ctx: &mut Value,
         iteration: Option<i64>,
     ) -> Result<Flow, String> {
+        if let Some(round) = iteration {
+            // A round that finished before a restart keeps what it did.
+            let kept = self
+                .rounds
+                .lock()
+                .ok()
+                .and_then(|mut rounds| rounds.remove(&(step.id.clone(), round)));
+            if let Some(output) = kept {
+                set_step_output(ctx, &step.id, output);
+                return Ok(Flow::Continue);
+            }
+        }
         let pool = &self.runner.state.db;
         let enc = &self.runner.state.encryption;
         let filled = fill(&step.action, ctx);
@@ -1491,13 +1687,13 @@ impl Exec<'_> {
                 "Nobody could check this action here, so it wasn't sent.".to_string(),
             ));
         };
-        let wait = self
-            .runner
-            .unattended
-            .as_ref()
-            .map_or_else(review_wait, |u| u.wait);
-        let now = chrono::Utc::now();
-        let expires = now + chrono::Duration::from_std(wait).unwrap_or_default();
+        let window = self.wait_window(
+            step_id,
+            self.runner
+                .unattended
+                .as_ref()
+                .map_or_else(review_wait, |u| u.wait),
+        );
         let pending = PendingAction {
             run_id: self.run_id.to_string(),
             workflow_id: self.workflow_id.to_string(),
@@ -1510,18 +1706,18 @@ impl Exec<'_> {
             arguments: arguments.clone(),
             input_schema: tool.input_schema.clone(),
             sensitive,
-            requested_at: super::scheduler::to_iso(now),
-            expires_at: super::scheduler::to_iso(expires),
+            requested_at: window.since.clone(),
+            expires_at: window.until.clone(),
         };
-        self.begin_wait().await?;
+        self.begin_wait(step_id, &window).await?;
         let reply = waiting.ask(pending);
         let answer = tokio::select! {
             answer = reply => answer.ok(),
             _ = self.stop.cancelled() => None,
-            _ = tokio::time::sleep(wait) => None,
+            _ = tokio::time::sleep(window.left) => None,
         };
         waiting.clear(self.run_id, step_id);
-        self.end_wait().await?;
+        self.end_wait(step_id).await?;
         if self.stop.is_cancelled() {
             return Err(STOPPED.to_string());
         }
@@ -1578,8 +1774,7 @@ impl Exec<'_> {
             return Ok(());
         }
         let pool = &self.runner.state.db;
-        let now = chrono::Utc::now();
-        let expires = now + chrono::Duration::from_std(unattended.wait).unwrap_or_default();
+        let window = self.wait_window(step_id, unattended.wait);
         let review = PendingReview {
             run_id: self.run_id.to_string(),
             workflow_id: self.workflow_id.to_string(),
@@ -1587,18 +1782,18 @@ impl Exec<'_> {
             step_id: step_id.to_string(),
             permission: permissions::view(permission.clone()),
             url: url.map(str::to_string),
-            requested_at: super::scheduler::to_iso(now),
-            expires_at: super::scheduler::to_iso(expires),
+            requested_at: window.since.clone(),
+            expires_at: window.until.clone(),
         };
-        self.begin_wait().await?;
+        self.begin_wait(step_id, &window).await?;
         let answer = unattended.reviews.ask(review);
         let decision = tokio::select! {
             decision = answer => decision.ok(),
             _ = self.stop.cancelled() => None,
-            _ = tokio::time::sleep(unattended.wait) => None,
+            _ = tokio::time::sleep(window.left) => None,
         };
         unattended.reviews.clear(self.run_id, step_id);
-        self.end_wait().await?;
+        self.end_wait(step_id).await?;
         if self.stop.is_cancelled() {
             return Err(STOPPED.to_string());
         }
@@ -1640,13 +1835,13 @@ impl Exec<'_> {
             .runner
             .questions
             .ok_or("Questions can't be asked here.")?;
-        let wait = self
-            .runner
-            .unattended
-            .as_ref()
-            .map_or_else(review_wait, |u| u.wait);
-        let now = chrono::Utc::now();
-        let expires = now + chrono::Duration::from_std(wait).unwrap_or_default();
+        let window = self.wait_window(
+            step_id,
+            self.runner
+                .unattended
+                .as_ref()
+                .map_or_else(review_wait, |u| u.wait),
+        );
         let pending = PendingQuestion {
             run_id: self.run_id.to_string(),
             workflow_id: self.workflow_id.to_string(),
@@ -1655,18 +1850,18 @@ impl Exec<'_> {
             question: question.to_string(),
             choices: choices.to_vec(),
             default: default.map(str::to_string),
-            requested_at: super::scheduler::to_iso(now),
-            expires_at: super::scheduler::to_iso(expires),
+            requested_at: window.since.clone(),
+            expires_at: window.until.clone(),
         };
-        self.begin_wait().await?;
+        self.begin_wait(step_id, &window).await?;
         let answer = questions.ask(pending);
         let answer = tokio::select! {
             answer = answer => answer.ok(),
             _ = self.stop.cancelled() => None,
-            _ = tokio::time::sleep(wait) => None,
+            _ = tokio::time::sleep(window.left) => None,
         };
         questions.clear(self.run_id, step_id);
-        self.end_wait().await?;
+        self.end_wait(step_id).await?;
         if self.stop.is_cancelled() {
             return Err(STOPPED.to_string());
         }
@@ -1702,10 +1897,76 @@ impl Exec<'_> {
             .unwrap_or_default()
     }
 
-    /// A wait for the user begins. The run shows as `paused` from the first
+    /// An outside action `step_id` sent before the app restarted, asked for
+    /// again the same way (connector, tool, arguments): what was recorded
+    /// (`action`, `result`). Each one answers once.
+    fn sent_before(
+        &self,
+        step_id: &str,
+        connector_id: &str,
+        tool: &str,
+        arguments: &Value,
+    ) -> Option<Value> {
+        let mut earlier = self.sent_earlier.lock().ok()?;
+        let at = earlier.iter().position(|e| {
+            e["stepId"] == step_id
+                && e["action"]["connector"]["id"] == connector_id
+                && e["action"]["tool"] == tool
+                && e["proposed"] == *arguments
+        })?;
+        Some(earlier.remove(at))
+    }
+
+    /// Keep an outside action this run sent on the run, so it isn't sent
+    /// again if the run carries on after a restart.
+    async fn keep_sent(&self, entry: Value) {
+        let mut sent = self.sent.lock().await;
+        sent.push(entry);
+        let state = self.runner.state;
+        if let Err(e) = repo::set_sent(&state.db, &state.encryption, self.run_id, &sent).await {
+            tracing::warn!(run = %self.run_id, error = %e, "could not keep what a run sent");
+        }
+    }
+
+    /// When a wait for the user by `step_id` begins and runs out: now and
+    /// `wait` from now, or, for the first wait of a step that was waiting
+    /// when the app closed, the times it had then.
+    fn wait_window(&self, step_id: &str, wait: Duration) -> WaitWindow {
+        let now = chrono::Utc::now();
+        let restored = self
+            .restored
+            .lock()
+            .ok()
+            .and_then(|mut restored| restored.remove(step_id));
+        if let Some((since, until)) = restored {
+            if let Ok(end) = chrono::DateTime::parse_from_rfc3339(&until) {
+                let left = (end.with_timezone(&chrono::Utc) - now)
+                    .to_std()
+                    .unwrap_or_default();
+                return WaitWindow { since, until, left };
+            }
+        }
+        let expires = now + chrono::Duration::from_std(wait).unwrap_or_default();
+        WaitWindow {
+            since: super::scheduler::to_iso(now),
+            until: super::scheduler::to_iso(expires),
+            left: wait,
+        }
+    }
+
+    /// A wait for the user by `step_id` begins, and is recorded on its row so
+    /// it carries on after a restart. The run shows as `paused` from the first
     /// open wait until the last one ends.
-    async fn begin_wait(&self) -> Result<(), String> {
+    async fn begin_wait(&self, step_id: &str, window: &WaitWindow) -> Result<(), String> {
         let _order = self.wait_gate.lock().await;
+        repo::set_step_waiting(
+            &self.runner.state.db,
+            self.run_id,
+            step_id,
+            Some((&window.since, &window.until)),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
         let first = {
             let mut waits = self
                 .waits
@@ -1725,9 +1986,13 @@ impl Exec<'_> {
         Ok(())
     }
 
-    /// A wait for the user ends; the run is `running` again when none is open.
-    async fn end_wait(&self) -> Result<(), String> {
+    /// `step_id`'s wait for the user ends; the run is `running` again when
+    /// none is open.
+    async fn end_wait(&self, step_id: &str) -> Result<(), String> {
         let _order = self.wait_gate.lock().await;
+        repo::set_step_waiting(&self.runner.state.db, self.run_id, step_id, None)
+            .await
+            .map_err(|e| e.to_string())?;
         let last = {
             let mut waits = self
                 .waits
@@ -3524,6 +3789,75 @@ fn reusable(steps: &[Step], resume: &Resume) -> Result<Vec<Reused>, String> {
 }
 
 /// Retries for `step`: what it says, or its kind's default.
+/// What a run carried on after a restart keeps of what it had done.
+#[derive(Default)]
+struct Kept {
+    /// The top-level steps that finished: index and output.
+    steps: Vec<(usize, Value)>,
+    /// The rounds of an unfinished top-level `for_each` that finished, by
+    /// body step and round.
+    rounds: HashMap<(String, i64), Value>,
+    /// The rows of everything that runs again, to forget.
+    redo: Vec<String>,
+}
+
+/// Sort a run's rows into what it keeps and what it does again. Only the
+/// rounds of a top-level loop are kept one by one; a loop inside a loop is
+/// done again with the round it belongs to.
+fn kept_rows(steps: &[Step], rows: &[WorkflowRunStep]) -> Kept {
+    /// Each nested step's top-level step, and whether it is directly in
+    /// that step's `for_each` body.
+    fn nested<'s>(
+        body: &'s [Step],
+        index: usize,
+        direct: bool,
+        top: &mut HashMap<&'s str, (usize, bool)>,
+    ) {
+        for step in body {
+            top.insert(&step.id, (index, direct));
+            if let StepAction::ForEach { steps: inner, .. } = &step.action {
+                nested(inner, index, false, top);
+            }
+        }
+    }
+    let mut top: HashMap<&str, (usize, bool)> = HashMap::new();
+    for (index, step) in steps.iter().enumerate() {
+        top.insert(&step.id, (index, false));
+        if let StepAction::ForEach { steps: body, .. } = &step.action {
+            nested(body, index, true, &mut top);
+        }
+    }
+    let finished = |row: &WorkflowRunStep| match row.status.as_str() {
+        "completed" | "reused" => row.output.clone(),
+        "not_taken" => Some(repo::not_taken_output()),
+        "skipped" => Some(skipped_output(row.error.as_deref().unwrap_or_default())),
+        _ => None,
+    };
+    let mut kept = Kept::default();
+    let mut done = vec![false; steps.len()];
+    for row in rows.iter().filter(|r| r.iteration.is_none()) {
+        match (top.get(row.step_id.as_str()), finished(row)) {
+            (Some(&(index, _)), Some(output)) if steps[index].id == row.step_id => {
+                done[index] = true;
+                kept.steps.push((index, output));
+            }
+            _ => kept.redo.push(row.id.clone()),
+        }
+    }
+    for row in rows.iter().filter(|r| r.iteration.is_some()) {
+        let place = top.get(row.step_id.as_str()).copied();
+        match (place, finished(row), row.iteration) {
+            // A round of a loop that finished: its record stays as it is.
+            (Some((index, _)), _, _) if done[index] => {}
+            (Some((_, true)), Some(output), Some(round)) => {
+                kept.rounds.insert((row.step_id.clone(), round), output);
+            }
+            _ => kept.redo.push(row.id.clone()),
+        }
+    }
+    kept
+}
+
 fn retries_of(step: &Step) -> u32 {
     step.retries
         .unwrap_or_else(|| step.action.default_retries())

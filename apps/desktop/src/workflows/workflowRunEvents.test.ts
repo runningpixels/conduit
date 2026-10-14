@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowRunFinished } from '../ipc/contracts';
-import { notificationFor, notificationForQuestion, notificationForReview } from './workflowRunEvents';
+import { askedBefore, notificationFor, notificationForQuestion, notificationForReview } from './workflowRunEvents';
 
 /// A stand-in `t` that shows which message and values were chosen.
 const t = (id: string, values?: Record<string, unknown>) =>
@@ -85,5 +85,14 @@ describe('notificationForQuestion', () => {
       t,
     );
     expect(note).toEqual({ title: 'questionTitle {"name":"Morning briefing"}', body: 'Which topic today?' });
+  });
+});
+
+describe('askedBefore', () => {
+  const now = Date.parse('2026-10-13T12:00:00.000Z');
+  it('is a wait asked again after a restart, not one that just opened', () => {
+    expect(askedBefore('2026-10-13T11:59:30.000Z', now)).toBe(false);
+    expect(askedBefore('2026-10-13T09:00:00.000Z', now)).toBe(true);
+    expect(askedBefore('not a time', now)).toBe(false);
   });
 });

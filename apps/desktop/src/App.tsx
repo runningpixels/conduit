@@ -89,6 +89,7 @@ import { ConnectorsPage } from './pages/ConnectorsPage';
 import { MemoryPage } from './pages/MemoryPage';
 import { WorkflowsPage, type WorkflowDraftRequest, type WorkflowsFocus } from './pages/WorkflowsPage';
 import {
+  askedBefore,
   notificationFor,
   notificationForAction,
   notificationForQuestion,
@@ -2497,19 +2498,21 @@ export default function App() {
   // A scheduled run paused to ask: say so, and show it on the Workflows page.
   useWorkflowReviewEvents((review) => {
     setWorkflowRunsVersion((v) => v + 1);
+    if (askedBefore(review.requestedAt)) return;
     const note = notificationForReview(review, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
   // A run stopped at an "Ask me" step: show it, and say so if nobody is looking.
   useWorkflowQuestionEvents((question) => {
     setWorkflowRunsVersion((v) => v + 1);
-    if (document.hasFocus()) return;
+    if (document.hasFocus() || askedBefore(question.requestedAt)) return;
     const note = notificationForQuestion(question, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });
   // A run stopped to check an outside action: say so, and show it in the Inbox.
   useWorkflowActionEvents((action) => {
     setWorkflowRunsVersion((v) => v + 1);
+    if (askedBefore(action.requestedAt)) return;
     const note = notificationForAction(action, t);
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
   });

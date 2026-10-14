@@ -8,7 +8,8 @@
 //!
 //! While workflows run, the menu says how many and offers "Stop all", and
 //! quitting (from the tray, or closing the window with the tray off) asks
-//! first, then stops them so no run is left half-recorded.
+//! first, then stops them so no run is left half-recorded. A run waiting for
+//! the user is left as it is: it carries on at the next launch.
 //!
 //! The text is the renderer's translation (`set_tray_labels`), since Rust has
 //! no locale. The counted strings arrive formatted for one count; when the
@@ -229,11 +230,34 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 /// Quit, asking first while workflows are running. Confirmed, the runs are
 /// stopped and given a moment to record it before the app exits.
 pub fn request_quit<R: Runtime>(app: &AppHandle<R>) {
-    let count = running_count(app);
-    if count == 0 {
-        app.exit(0);
-        return;
-    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // A run waiting for the user isn't stopped: it carries on at the next
+        // launch, so it doesn't count here.
+        let waiting = waiting_workflows(&app).await;
+        let count = app
+            .try_state::<Arc<RunningWorkflows>>()
+            .map(|r| r.count_except(&waiting))
+            .unwrap_or(0);
+        if count == 0 {
+            app.exit(0);
+            return;
+        }
+        confirm_quit(&app, count, waiting);
+    });
+}
+
+/// The workflows with a run waiting for the user.
+async fn waiting_workflows<R: Runtime>(app: &AppHandle<R>) -> Vec<String> {
+    let Some(state) = app.try_state::<crate::state::AppState>() else {
+        return Vec::new();
+    };
+    crate::db::repository::workflows::paused_workflows(&state.db)
+        .await
+        .unwrap_or_default()
+}
+
+fn confirm_quit<R: Runtime>(app: &AppHandle<R>, count: usize, waiting: Vec<String>) {
     let labels = labels(app);
     let handle = app.clone();
     let mut dialog = app
@@ -252,17 +276,19 @@ pub fn request_quit<R: Runtime>(app: &AppHandle<R>) {
     }
     dialog.show(move |confirmed| {
         if confirmed {
-            stop_all_and_exit(handle);
+            stop_all_and_exit(handle, waiting);
         }
     });
 }
 
-fn stop_all_and_exit<R: Runtime>(app: AppHandle<R>) {
+/// Stop every run but those of the `waiting` workflows, give them a moment
+/// to record it, and quit.
+fn stop_all_and_exit<R: Runtime>(app: AppHandle<R>, waiting: Vec<String>) {
     tauri::async_runtime::spawn(async move {
         if let Some(running) = app.try_state::<Arc<RunningWorkflows>>() {
-            running.stop_all();
+            running.stop_all_except(&waiting);
             let deadline = Instant::now() + STOP_GRACE;
-            while running.count() > 0 && Instant::now() < deadline {
+            while running.count_except(&waiting) > 0 && Instant::now() < deadline {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }

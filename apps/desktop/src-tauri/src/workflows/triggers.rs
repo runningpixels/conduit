@@ -399,6 +399,17 @@ async fn look_at_feed(
     Ok(fresh)
 }
 
+/// What "seen" remembers an item by ([`Item::id`]), read back from the value
+/// a run of `kind` (`feed` or `folder`) kept.
+pub fn item_id(kind: &str, value: &Value) -> Option<String> {
+    let id = match kind {
+        "feed" => value["id"].as_str(),
+        "folder" => value["path"].as_str(),
+        _ => None,
+    };
+    id.filter(|id| !id.is_empty()).map(str::to_string)
+}
+
 /// Record that the item `id` has had its run, so later looks skip it. Called
 /// after each run (whatever its outcome), not when the item is found: a batch
 /// that is cut short leaves the rest to the next look.

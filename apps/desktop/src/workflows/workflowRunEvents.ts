@@ -21,6 +21,14 @@ export const RUN_QUESTION_EVENT = 'workflow-run-question';
 /// Emitted with a `WorkflowAction` when a run stops to check an outside action.
 export const RUN_ACTION_EVENT = 'workflow-run-action';
 
+/// Whether a wait that just opened was asked before: a run carried on after
+/// the app restarted asks again with the time it first asked, and the user
+/// was told then.
+export function askedBefore(requestedAt: string, now = Date.now()): boolean {
+  const asked = Date.parse(requestedAt);
+  return Number.isFinite(asked) && now - asked > 60_000;
+}
+
 /// The notification for a run waiting to check an outside action.
 export function notificationForAction(action: WorkflowAction, t: Translate): { title: string; body: string } {
   const name = action.workflowName || t('workspace.workflows.notify.unnamed');

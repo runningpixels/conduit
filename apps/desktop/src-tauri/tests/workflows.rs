@@ -21,7 +21,10 @@ use conduit_desktop::{
     workflows::definition::WorkflowDefinition,
     workflows::permissions::{self, Decision, Permission, Reviews},
     workflows::runner::{Resume, RunBudget, Runner, Unattended},
-    workflows::scheduler::{claim_due, run_claimed, run_due, to_iso, RunContext, RunningWorkflows},
+    workflows::scheduler::{
+        claim_due, claim_waiting, run_claimed, run_due, run_waiting, to_iso, RunContext,
+        RunningWorkflows,
+    },
 };
 use futures::stream::Stream;
 use provider_core::schema::{
@@ -1518,7 +1521,7 @@ async fn a_run_waiting_for_an_answer_holds_up_no_other_scheduled_run() {
 }
 
 #[tokio::test]
-async fn a_run_left_waiting_by_a_quit_is_marked_failed_at_launch() {
+async fn a_paused_run_with_no_step_waiting_is_marked_failed_at_launch() {
     let h = Harness::new(EchoModel::default()).await;
     let id = h.save(saving_workflow()).await;
     let run = repo::start_run(&h.state.db, &id, 1, "schedule")
@@ -7151,4 +7154,394 @@ async fn agent_steps_side_by_side_take_turns_in_the_workflow_conversation() {
     assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
     assert_eq!(status_of(&run, "a"), "completed");
     assert_eq!(status_of(&run, "b"), "completed");
+}
+
+// ── Carrying on after a restart ─────────────────────────────────────────────
+
+/// A workflow that does something, asks, and carries on with the answer.
+fn work_then_ask() -> Value {
+    json!({ "steps": [
+        { "id": "before", "type": "template", "template": "Done first" },
+        { "id": "ask", "type": "ask", "question": "Which topic?", "choices": ["Rust", "Go"] },
+        { "id": "doc", "type": "template", "template": "{{steps.before.text}}, then {{steps.ask.answer}}" }
+    ]})
+}
+
+/// Run `run` until `questions` has one, then drop it there, as if the app
+/// closed while the run waited.
+async fn closed_while_asking<F: std::future::Future>(
+    run: F,
+    questions: &Questions,
+) -> conduit_desktop::workflows::ask::PendingQuestion {
+    tokio::select! {
+        _ = run => panic!("the run finished instead of waiting"),
+        q = next_question(questions) => q,
+    }
+}
+
+#[tokio::test]
+async fn a_run_waiting_when_the_app_closes_carries_on_at_launch() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(work_then_ask()).await;
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let asked = closed_while_asking(runner.run(&id, &no_inputs, "manual"), &questions).await;
+    let before = repo::get_run(&h.state.db, &h.state.encryption, &asked.run_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(before.run.status, "paused");
+
+    // At launch: it isn't failed; it carries on.
+    assert_eq!(repo::fail_interrupted_runs(&h.state.db).await.unwrap(), 0);
+    let waiting = repo::waiting_runs(&h.state.db).await.unwrap();
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(waiting[0].id, asked.run_id);
+
+    // A new app: nothing waits in memory until the run asks again.
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let run = runner.continue_run(&asked.run_id);
+    let answer = async {
+        let again = next_question(&questions).await;
+        assert_eq!(again.run_id, asked.run_id);
+        assert_eq!(again.question, "Which topic?");
+        // Asked when it first asked, and runs out when it would have.
+        assert_eq!(again.requested_at, asked.requested_at);
+        assert_eq!(again.expires_at, asked.expires_at);
+        assert!(questions.answer(&again.run_id, Some("ask"), "Go".into()));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.id, asked.run_id);
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    // The step that finished kept its record; the rest ran once each.
+    let rows: Vec<(&str, &str)> = detail
+        .steps
+        .iter()
+        .map(|s| (s.step_id.as_str(), s.status.as_str()))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("before", "completed"),
+            ("ask", "completed"),
+            ("doc", "completed")
+        ]
+    );
+    assert_eq!(detail.steps[0].id, before.steps[0].id);
+    assert_eq!(
+        step(&detail, "doc", None).output.as_ref().unwrap()["text"],
+        "Done first, then Go"
+    );
+    assert!(repo::waiting_runs(&h.state.db).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_wait_that_ran_out_while_closed_ends_as_it_would_have() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(work_then_ask()).await;
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let asked = closed_while_asking(runner.run(&id, &no_inputs, "manual"), &questions).await;
+    // The day went by while the app was closed.
+    let past = to_iso(chrono::Utc::now() - chrono::Duration::hours(1));
+    repo::set_step_waiting(
+        &h.state.db,
+        &asked.run_id,
+        "ask",
+        Some((&asked.requested_at, &past)),
+    )
+    .await
+    .unwrap();
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let detail = runner.continue_run(&asked.run_id).await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        step(&detail, "ask", None).error.as_deref(),
+        Some("Nobody answered in time.")
+    );
+    assert!(questions.list().is_empty());
+}
+
+#[tokio::test]
+async fn a_waiting_run_whose_workflow_changed_meanwhile_does_not_carry_on() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(work_then_ask()).await;
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let asked = closed_while_asking(runner.run(&id, &no_inputs, "manual"), &questions).await;
+    let mut changed = work_then_ask();
+    changed["steps"][0]["template"] = json!("Something else");
+    repo::update(
+        &h.state.db,
+        &h.state.encryption,
+        &id,
+        "Morning briefing",
+        None,
+        &changed,
+    )
+    .await
+    .unwrap();
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let detail = runner.continue_run(&asked.run_id).await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert_eq!(
+        detail.run.error.as_deref(),
+        Some("The workflow changed while this run waited, so it didn't carry on.")
+    );
+    assert_eq!(step(&detail, "ask", None).status, "failed");
+    assert!(questions.list().is_empty());
+}
+
+#[tokio::test]
+async fn the_rounds_a_loop_finished_before_a_restart_are_not_done_again() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "d", "type": "parse_data", "input": "n\na\nb", "format": "csv" },
+            { "id": "each", "type": "for_each", "items": "steps.d.rows", "steps": [
+                { "id": "pick", "type": "ask", "question": "Pick for {{item.n}}", "choices": ["x", "y"] }
+            ]}
+        ]}))
+        .await;
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let first_then_close = async {
+        let first = next_question(&questions).await;
+        assert_eq!(first.question, "Pick for a");
+        assert!(questions.answer(&first.run_id, Some("pick"), "x".into()));
+        loop {
+            if let Some(q) = questions
+                .list()
+                .into_iter()
+                .find(|q| q.question == "Pick for b")
+            {
+                return q;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    };
+    let second = tokio::select! {
+        _ = run => panic!("the run finished instead of waiting"),
+        q = first_then_close => q,
+    };
+
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let run = runner.continue_run(&second.run_id);
+    let answer = async {
+        // Only the round that didn't finish asks again.
+        let again = next_question(&questions).await;
+        assert_eq!(again.question, "Pick for b");
+        assert!(questions.answer(&again.run_id, Some("pick"), "y".into()));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = step(&detail, "each", None).output.clone().unwrap();
+    assert_eq!(out["items"][0]["pick"]["answer"], "x");
+    assert_eq!(out["items"][1]["pick"]["answer"], "y");
+    let picks: Vec<Option<i64>> = detail
+        .steps
+        .iter()
+        .filter(|s| s.step_id == "pick")
+        .map(|s| s.iteration)
+        .collect();
+    assert_eq!(picks, vec![Some(0), Some(1)]);
+}
+
+#[tokio::test]
+async fn an_action_sent_before_a_restart_is_not_sent_again() {
+    let model = EchoModel {
+        tool_call: Some((
+            "Echo__post_message",
+            json!({ "channel": "general", "text": "from the agent" }),
+        )),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "act", "type": "agent", "prompt": "Post it", "tools": ["echo/post_message"] },
+        ]}))
+        .await;
+    // The app closed while "act" waited for something else, after it had
+    // sent this.
+    let (pool, enc) = (&h.state.db, &h.state.encryption);
+    let run = repo::start_run(pool, &id, 1, "manual").await.unwrap();
+    repo::start_step(pool, enc, &run.id, "act", None, &json!({ "type": "agent" }))
+        .await
+        .unwrap();
+    let now = chrono::Utc::now();
+    let (since, until) = (to_iso(now), to_iso(now + chrono::Duration::hours(1)));
+    repo::set_step_waiting(pool, &run.id, "act", Some((&since, &until)))
+        .await
+        .unwrap();
+    repo::set_run_status(pool, &run.id, "paused").await.unwrap();
+    let arguments = json!({ "channel": "general", "text": "from the agent" });
+    repo::set_sent(
+        pool,
+        enc,
+        &run.id,
+        &[json!({
+            "stepId": "act",
+            "proposed": arguments,
+            "action": conduit_desktop::workflows::actions::record(
+                "echo",
+                "Echo",
+                "post_message",
+                &arguments,
+                conduit_desktop::workflows::actions::Outcome::Sent,
+                None,
+            ),
+            "result": { "text": "posted earlier", "data": null },
+        })],
+    )
+    .await
+    .unwrap();
+
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let detail = runner.continue_run(&run.id).await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    // Not asked about, not sent: the model hears what it got the first time.
+    assert!(actions.list().is_empty());
+    let out = step(&detail, "act", None).output.clone().unwrap();
+    assert_eq!(out["actions"].as_array().unwrap().len(), 1);
+    assert_eq!(out["actions"][0]["outcome"], "sent");
+    let requests = h.model.requests.lock().unwrap().clone();
+    let last = format!("{:?}", requests.last().unwrap().messages);
+    assert!(last.contains("posted earlier"), "{last}");
+    assert!(!last.contains("posted to general"), "{last}");
+    // What it sent is kept only while the run goes on.
+    assert!(repo::get_sent(pool, enc, &run.id).await.unwrap().is_empty());
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn an_action_sent_is_kept_on_the_run_while_it_goes_on() {
+    let model = EchoModel {
+        tool_call: Some((
+            "Echo__post_message",
+            json!({ "channel": "general", "text": "from the agent" }),
+        )),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    echo_connector(&h, "active", None).await;
+    let mgr = connector_manager();
+    let actions = Actions::default();
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "act", "type": "agent", "prompt": "Post it", "tools": ["echo/post_message"] },
+            { "id": "ask", "type": "ask", "question": "Done?" },
+        ]}))
+        .await;
+    let questions = Questions::default();
+    let runner = Runner {
+        connectors: Some(&mgr),
+        actions: Some(&actions),
+        questions: Some(&questions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let send_then_close = async {
+        let action = next_action(&actions).await;
+        assert!(actions.answer(&action.run_id, Some("act"), send(None, false)));
+        next_question(&questions).await
+    };
+    let asked = tokio::select! {
+        _ = run => panic!("the run finished instead of waiting"),
+        q = send_then_close => q,
+    };
+    let sent = repo::get_sent(&h.state.db, &h.state.encryption, &asked.run_id)
+        .await
+        .unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0]["stepId"], "act");
+    assert_eq!(sent[0]["action"]["outcome"], "sent");
+    assert_eq!(
+        sent[0]["result"]["text"],
+        "posted to general: from the agent"
+    );
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn launch_claims_the_waiting_runs_and_carries_them_on() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(work_then_ask()).await;
+    let questions = Questions::default();
+    let runner = h.asking_runner(&questions, CancellationToken::new());
+    let no_inputs = HashMap::new();
+    let asked = closed_while_asking(runner.run(&id, &no_inputs, "schedule"), &questions).await;
+
+    let running = Arc::new(RunningWorkflows::default());
+    let claimed = claim_waiting(&h.state, &running).await;
+    assert_eq!(claimed.len(), 1);
+    // Its workflow counts as running, so nothing else starts it meanwhile.
+    assert_eq!(running.count(), 1);
+    assert!(running.try_start(&id).is_none());
+
+    let questions = Questions::default();
+    let ctx = RunContext {
+        state: &h.state,
+        streams: &h.streams,
+        running: &running,
+        reviews: &h.reviews,
+        questions: &questions,
+        actions: None,
+        connectors: None,
+        documents: None,
+        fetch_policy: AddressPolicy { public_only: false },
+        notify: None,
+    };
+    let runs = run_waiting(&ctx, claimed, &|_| {});
+    let answer = async {
+        let again = next_question(&questions).await;
+        assert!(questions.answer(&again.run_id, Some("ask"), "Rust".into()));
+    };
+    let (finished, ()) = tokio::join!(runs, answer);
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].run_id.as_deref(), Some(asked.run_id.as_str()));
+    assert_eq!(finished[0].status, "completed");
+    assert_eq!(finished[0].trigger, "schedule");
+    assert_eq!(running.count(), 0);
+}
+
+#[test]
+fn quitting_leaves_the_waiting_workflows_running() {
+    let running = Arc::new(RunningWorkflows::default());
+    let waiting = running.try_start("waits").unwrap();
+    let busy = running.try_start("busy").unwrap();
+    let kept = vec!["waits".to_string()];
+    assert_eq!(running.count_except(&kept), 1);
+    assert_eq!(running.stop_all_except(&kept), 1);
+    assert!(busy.stop_token().is_cancelled());
+    assert!(!waiting.stop_token().is_cancelled());
+}
+
+#[test]
+fn a_trigger_item_is_known_again_by_its_id() {
+    use conduit_desktop::workflows::triggers::item_id;
+    let post = json!({ "title": "T", "link": "https://e.com/1", "id": "post-1" });
+    assert_eq!(item_id("feed", &post).as_deref(), Some("post-1"));
+    let file = json!({ "path": "in/a.txt", "name": "a.txt" });
+    assert_eq!(item_id("folder", &file).as_deref(), Some("in/a.txt"));
+    assert_eq!(item_id("schedule", &post), None);
 }

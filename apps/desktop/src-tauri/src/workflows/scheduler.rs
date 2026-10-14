@@ -20,7 +20,9 @@
 //! - Every run can be stopped: [`RunningWorkflows`] holds each run's stop
 //!   token ("Stop", "Stop all workflows" in the tray, quitting mid-run).
 //! - A run still marked running at launch was cut off when Conduit closed; the
-//!   loop marks it failed before anything else runs.
+//!   loop marks it failed before anything else runs. One that was waiting for
+//!   the user carries on instead ([`claim_waiting`]): it asks again, with the
+//!   times it first asked.
 //! - Scheduled runs are unattended: they may do what the user approved and
 //!   pause to ask about anything else (`permissions`). Due runs are claimed in
 //!   the loop and run in the background, so a run waiting for an answer
@@ -114,11 +116,29 @@ impl RunningWorkflows {
 
     /// Ask every run to stop; returns how many were asked.
     pub fn stop_all(&self) -> usize {
+        self.stop_all_except(&[])
+    }
+
+    /// Ask every run but those of the `kept` workflows to stop; returns how
+    /// many were asked.
+    pub fn stop_all_except(&self, kept: &[String]) -> usize {
         let Ok(runs) = self.runs.lock() else { return 0 };
-        for token in runs.values() {
-            token.cancel();
+        let mut asked = 0;
+        for (workflow_id, token) in runs.iter() {
+            if !kept.contains(workflow_id) {
+                token.cancel();
+                asked += 1;
+            }
         }
-        runs.len()
+        asked
+    }
+
+    /// How many runs are in progress, those of the `kept` workflows aside.
+    pub fn count_except(&self, kept: &[String]) -> usize {
+        self.runs
+            .lock()
+            .map(|r| r.keys().filter(|id| !kept.contains(id)).count())
+            .unwrap_or(0)
     }
 
     /// Called with the new count whenever a run starts or ends (the tray).
@@ -357,6 +377,143 @@ pub struct RunContext<'a> {
     pub fetch_policy: AddressPolicy,
     /// Shows `notify` steps; `None` in tests.
     pub notify: Option<&'a Notifier<'a>>,
+}
+
+/// A run that was waiting for the user when the app closed, claimed to carry
+/// on ([`claim_waiting`]).
+pub struct WaitingRun {
+    run: repo::WorkflowRun,
+    workflow_name: String,
+    guard: RunGuard,
+}
+
+/// Claim the runs that were waiting for the user when the app closed (see
+/// `repo::waiting_runs`), before anything else can start their workflows.
+/// A run a trigger started has its item marked seen, so the next look
+/// doesn't run it again.
+pub async fn claim_waiting(state: &AppState, running: &Arc<RunningWorkflows>) -> Vec<WaitingRun> {
+    let runs = match repo::waiting_runs(&state.db).await {
+        Ok(runs) => runs,
+        Err(e) => {
+            tracing::warn!(error = %e, "could not find the workflow runs left waiting");
+            return Vec::new();
+        }
+    };
+    let mut claimed = Vec::new();
+    for run in runs {
+        let Some(guard) = running.try_start(&run.workflow_id) else {
+            // One run per workflow: a second one left waiting can't carry on.
+            let error = "Another run of this workflow was going on.";
+            let _ = repo::fail_steps_left_running(&state.db, &run.id, error).await;
+            let _ = repo::finish_run(&state.db, &run.id, "failed", Some(error)).await;
+            continue;
+        };
+        let item = repo::get_run_inputs(&state.db, &state.encryption, &run.id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|inputs| inputs.get(repo::TRIGGER_ITEM_KEY).cloned());
+        if let Some(id) = item.and_then(|item| triggers::item_id(&run.trigger, &item)) {
+            if let Err(e) = triggers::mark_seen(&state.paths.root, &run.workflow_id, &id) {
+                tracing::warn!(error = %e, "could not record a workflow trigger's progress");
+            }
+        }
+        let workflow_name = repo::get(&state.db, &state.encryption, &run.workflow_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|w| w.name)
+            .unwrap_or_default();
+        claimed.push(WaitingRun {
+            run,
+            workflow_name,
+            guard,
+        });
+    }
+    claimed
+}
+
+/// Carry on with the runs [`claim_waiting`] claimed, all at once;
+/// `on_finished` hears each as it ends. Returns them in the order they
+/// finished.
+pub async fn run_waiting(
+    ctx: &RunContext<'_>,
+    claimed: Vec<WaitingRun>,
+    on_finished: &(dyn Fn(&RunFinished) + Sync),
+) -> Vec<RunFinished> {
+    let finished = Mutex::new(Vec::new());
+    let runs = claimed.into_iter().map(|waiting| async {
+        let event = continue_one(ctx, waiting).await;
+        on_finished(&event);
+        if let Ok(mut finished) = finished.lock() {
+            finished.push(event);
+        }
+    });
+    futures::future::join_all(runs).await;
+    finished.into_inner().unwrap_or_default()
+}
+
+/// Carry on with one run, as it was started: "Run now" and reruns aren't
+/// gated; the rest may do what the user approved and ask about the rest.
+async fn continue_one(ctx: &RunContext<'_>, waiting: WaitingRun) -> RunFinished {
+    let WaitingRun {
+        run,
+        workflow_name,
+        guard,
+    } = waiting;
+    let unattended = match run.trigger.as_str() {
+        "manual" | "rerun" => None,
+        _ => {
+            let approved =
+                repo::get_permissions(&ctx.state.db, &ctx.state.encryption, &run.workflow_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|(approved, _)| approved)
+                    .unwrap_or_default();
+            Some(Unattended::new(ctx.reviews, approved))
+        }
+    };
+    let runner = Runner {
+        state: ctx.state,
+        streams: ctx.streams,
+        fetch_policy: ctx.fetch_policy,
+        stop: guard.stop_token(),
+        unattended,
+        budget: RunBudget::default(),
+        notify: ctx.notify,
+        questions: Some(ctx.questions),
+        actions: ctx.actions,
+        connectors: ctx.connectors,
+        documents: ctx.documents,
+    };
+    let outcome = runner.continue_run(&run.id).await;
+    drop(guard);
+    let base = RunFinished {
+        workflow_id: run.workflow_id.clone(),
+        workflow_name,
+        run_id: Some(run.id.clone()),
+        status: "failed".into(),
+        error: None,
+        outcome: None,
+        trigger: run.trigger.clone(),
+        trigger_item: None,
+        documents: Vec::new(),
+    };
+    match outcome {
+        Ok(detail) => RunFinished {
+            status: detail.run.status.clone(),
+            error: detail.run.error.clone(),
+            outcome: detail.run.outcome.clone(),
+            trigger_item: detail.run.trigger_item.clone(),
+            documents: saved_documents(&detail),
+            ..base
+        },
+        Err(error) => RunFinished {
+            error: Some(error),
+            ..base
+        },
+    }
 }
 
 /// Run what was claimed, all at once, so a run waiting for the user holds up
@@ -674,6 +831,51 @@ async fn sleep_for(state: &AppState) -> std::time::Duration {
         .clamp(std::time::Duration::from_secs(1), HEARTBEAT)
 }
 
+/// Runs the scheduler starts.
+enum Batch {
+    Due(Vec<Claimed>),
+    Waiting(Vec<WaitingRun>),
+}
+
+/// Run `batch` in the background: one waiting a day for an answer must not
+/// stop the loop from starting the next schedule on time.
+fn in_background(app: &AppHandle, batch: Batch) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let announce = |event: &RunFinished| {
+            // A run with nothing new is silent: the renderer turns this event
+            // into the "finished" notification.
+            if event.outcome.as_deref() == Some(repo::NOTHING_NEW) {
+                return;
+            }
+            if let Err(e) = app.emit(RUN_FINISHED_EVENT, event) {
+                tracing::warn!(error = %e, "could not announce a finished workflow run");
+            }
+        };
+        let notify = |title: &str, body: &str| show_notification(&app, title, body);
+        let ctx = RunContext {
+            state: &app.state::<AppState>(),
+            streams: &app.state::<StreamManager>(),
+            running: &app.state::<Arc<RunningWorkflows>>(),
+            reviews: &app.state::<Reviews>(),
+            questions: &app.state::<Questions>(),
+            actions: Some(&app.state::<super::actions::Actions>()),
+            documents: Some(&app.state::<super::documents::DocumentChanges>()),
+            connectors: Some(&app.state::<crate::connector_runtime::ConnectorRuntimeManager>()),
+            fetch_policy: AddressPolicy::APP,
+            notify: Some(&notify),
+        };
+        match batch {
+            Batch::Due(claimed) => {
+                run_claimed(&ctx, claimed, &announce).await;
+            }
+            Batch::Waiting(waiting) => {
+                run_waiting(&ctx, waiting, &announce).await;
+            }
+        }
+    });
+}
+
 /// The scheduler, for the life of the app. Started from `main`'s setup.
 pub async fn scheduler_loop(app: AppHandle) {
     let wake = app.state::<SchedulerWake>().inner().clone();
@@ -682,41 +884,25 @@ pub async fn scheduler_loop(app: AppHandle) {
         Ok(n) => tracing::info!(runs = n, "marked workflow runs cut off by a quit as failed"),
         Err(e) => tracing::warn!(error = %e, "could not tidy workflow runs left running"),
     }
+    // Claimed before the first look at what is due, so nothing else starts
+    // their workflows first.
+    let waiting = claim_waiting(
+        &app.state::<AppState>(),
+        &app.state::<Arc<RunningWorkflows>>(),
+    )
+    .await;
+    if !waiting.is_empty() {
+        tracing::info!(
+            runs = waiting.len(),
+            "carrying on with workflow runs left waiting"
+        );
+        in_background(&app, Batch::Waiting(waiting));
+    }
     loop {
         let state = app.state::<AppState>();
         let claimed = claim_due(&state, Utc::now(), &Local).await;
-        // The runs go on in the background: one waiting a day for an answer
-        // must not stop the loop from starting the next schedule on time.
         if !claimed.is_empty() {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let announce = |event: &RunFinished| {
-                    // A run with nothing new is silent: the renderer turns
-                    // this event into the "finished" notification.
-                    if event.outcome.as_deref() == Some(repo::NOTHING_NEW) {
-                        return;
-                    }
-                    if let Err(e) = app.emit(RUN_FINISHED_EVENT, event) {
-                        tracing::warn!(error = %e, "could not announce a finished workflow run");
-                    }
-                };
-                let notify = |title: &str, body: &str| show_notification(&app, title, body);
-                let ctx = RunContext {
-                    state: &app.state::<AppState>(),
-                    streams: &app.state::<StreamManager>(),
-                    running: &app.state::<Arc<RunningWorkflows>>(),
-                    reviews: &app.state::<Reviews>(),
-                    questions: &app.state::<Questions>(),
-                    actions: Some(&app.state::<super::actions::Actions>()),
-                    documents: Some(&app.state::<super::documents::DocumentChanges>()),
-                    connectors: Some(
-                        &app.state::<crate::connector_runtime::ConnectorRuntimeManager>(),
-                    ),
-                    fetch_policy: AddressPolicy::APP,
-                    notify: Some(&notify),
-                };
-                run_claimed(&ctx, claimed, &announce).await;
-            });
+            in_background(&app, Batch::Due(claimed));
         }
         let wait = sleep_for(&state).await;
         tokio::select! {

@@ -4,8 +4,8 @@
 //! The waiting run holds the receiving end; the page lists what's waiting and
 //! answers through the registry. A run can wait on several steps at once (steps
 //! that run side by side), so a wait is keyed by the run and the step. The wait
-//! is in memory: quitting while a run waits ends it, and it's marked failed at
-//! the next launch.
+//! is in memory; the step's row records that it waits, so after a restart the
+//! run carries on and the step asks again (`Runner::continue_run`).
 
 use std::collections::HashMap;
 use std::sync::Mutex;

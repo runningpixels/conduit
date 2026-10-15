@@ -36,9 +36,23 @@ export function feedHost(url: string): string {
 
 /// "Watching blog.rust-lang.org every 30 min" / "Watching <folder>".
 export function watchingText(trigger: WorkflowTrigger, folder: string | undefined, t: Translate): string {
+  if (trigger.kind === 'connector') {
+    return t('workspace.workflows.trigger.watchingConnector', { tool: trigger.tool, count: trigger.everyMinutes });
+  }
   return trigger.kind === 'feed'
     ? t('workspace.workflows.trigger.watchingFeed', { host: feedHost(trigger.url), count: trigger.everyMinutes })
     : t('workspace.workflows.trigger.watchingFolder', { folder: folder ?? '' });
+}
+
+/// The first of title / name / subject / summary / id / key an item has, as text.
+function connectorItemLabel(item: WorkflowRun['triggerItem']): string | null {
+  if (!item) return null;
+  for (const key of ['title', 'name', 'subject', 'summary', 'id', 'key']) {
+    const v = item[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  }
+  return null;
 }
 
 /// What started a run that a trigger began: "New post: Title", "New file: name".
@@ -52,6 +66,12 @@ export function runTriggerLabel(run: Pick<WorkflowRun, 'trigger' | 'triggerItem'
   if (run.trigger === 'folder') {
     const name = run.triggerItem?.name?.trim();
     return name ? t('workspace.workflows.trigger.runFolder', { name }) : t('workspace.workflows.trigger.runFolderPlain');
+  }
+  if (run.trigger === 'connector') {
+    const item = connectorItemLabel(run.triggerItem);
+    return item
+      ? t('workspace.workflows.trigger.runConnector', { item })
+      : t('workspace.workflows.trigger.runConnectorPlain');
   }
   if (run.trigger === 'manual') {
     // "Run now" on a triggered workflow uses the newest item: say it was a test.

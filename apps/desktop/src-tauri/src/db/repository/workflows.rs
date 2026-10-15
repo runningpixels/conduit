@@ -340,13 +340,16 @@ pub async fn finish_run(
     status: &str,
     error: Option<&str>,
 ) -> Result<(), DbError> {
-    sqlx::query("UPDATE workflow_runs SET status = ?, error = ?, finished_at = ? WHERE id = ?")
-        .bind(status)
-        .bind(error)
-        .bind(now_iso8601())
-        .bind(run_id)
-        .execute(pool)
-        .await?;
+    // What it sent was kept only in case it had to carry on after a restart.
+    sqlx::query(
+        "UPDATE workflow_runs SET status = ?, error = ?, finished_at = ?, sent = NULL WHERE id = ?",
+    )
+    .bind(status)
+    .bind(error)
+    .bind(now_iso8601())
+    .bind(run_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -392,27 +395,158 @@ pub async fn last_completed_output(
 
 /// Mark runs (and their steps) still `running` or `paused` as failed: at
 /// launch nothing is running, so they were cut off when Conduit closed.
+/// Runs that were waiting for the user are left to carry on ([`waiting_runs`]).
 /// Returns how many runs.
 pub async fn fail_interrupted_runs(pool: &SqlitePool) -> Result<u64, DbError> {
     let now = now_iso8601();
     let error = interrupted();
-    sqlx::query(
+    sqlx::query(&format!(
         "UPDATE workflow_run_steps SET status = 'failed', error = ?, finished_at = ? \
-         WHERE status = 'running'",
-    )
+         WHERE status = 'running' AND run_id NOT IN ({WAITING_RUNS})"
+    ))
     .bind(&error)
     .bind(&now)
     .execute(pool)
     .await?;
-    let runs = sqlx::query(
+    let runs = sqlx::query(&format!(
         "UPDATE workflow_runs SET status = 'failed', error = ?, finished_at = ? \
-         WHERE status IN ('running', 'paused')",
-    )
+         WHERE status IN ('running', 'paused') AND id NOT IN ({WAITING_RUNS})"
+    ))
     .bind(&error)
     .bind(&now)
     .execute(pool)
     .await?;
+    fail_interrupted_agent_calls(pool).await?;
     Ok(runs.rows_affected())
+}
+
+/// Runs cut off while a step waited for the user: they carry on at the next
+/// launch rather than fail (see `Runner::continue_run`).
+const WAITING_RUNS: &str = "SELECT s.run_id FROM workflow_run_steps s \
+     JOIN workflow_runs r ON r.id = s.run_id \
+     WHERE s.status = 'running' AND s.waiting_until IS NOT NULL \
+     AND r.status IN ('running', 'paused')";
+
+/// The runs [`fail_interrupted_runs`] leaves to carry on, oldest first.
+pub async fn waiting_runs(pool: &SqlitePool) -> Result<Vec<WorkflowRun>, DbError> {
+    let rows: Vec<RunRow> = sqlx::query_as(&format!(
+        "SELECT {RUN_COLUMNS} FROM workflow_runs WHERE id IN ({WAITING_RUNS}) ORDER BY started_at"
+    ))
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(run_from).collect())
+}
+
+/// The workflows that have a run waiting for the user right now.
+pub async fn paused_workflows(pool: &SqlitePool) -> Result<Vec<String>, DbError> {
+    Ok(
+        sqlx::query_scalar(
+            "SELECT DISTINCT workflow_id FROM workflow_runs WHERE status = 'paused'",
+        )
+        .fetch_all(pool)
+        .await?,
+    )
+}
+
+/// Record that `step_id`'s running row waits for the user from `since` until
+/// `until` (`None`: no longer waiting).
+pub async fn set_step_waiting(
+    pool: &SqlitePool,
+    run_id: &str,
+    step_id: &str,
+    window: Option<(&str, &str)>,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE workflow_run_steps SET waiting_since = ?, waiting_until = ? \
+         WHERE run_id = ? AND step_id = ? AND status = 'running'",
+    )
+    .bind(window.map(|w| w.0))
+    .bind(window.map(|w| w.1))
+    .bind(run_id)
+    .bind(step_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// The steps of `run_id` that were waiting for the user: step id, when the
+/// wait began and when it runs out.
+pub async fn waiting_steps(
+    pool: &SqlitePool,
+    run_id: &str,
+) -> Result<Vec<(String, String, String)>, DbError> {
+    Ok(sqlx::query_as(
+        "SELECT step_id, waiting_since, waiting_until FROM workflow_run_steps \
+         WHERE run_id = ? AND status = 'running' AND waiting_since IS NOT NULL \
+         AND waiting_until IS NOT NULL",
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?)
+}
+
+/// End `run_id`'s steps still `running` as failed with `error` (a run that
+/// can't carry on after a restart).
+pub async fn fail_steps_left_running(
+    pool: &SqlitePool,
+    run_id: &str,
+    error: &str,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE workflow_run_steps SET status = 'failed', error = ?, finished_at = ?, \
+         waiting_since = NULL, waiting_until = NULL WHERE run_id = ? AND status = 'running'",
+    )
+    .bind(error)
+    .bind(now_iso8601())
+    .bind(run_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Forget step rows (by id) a continued run does again.
+pub async fn delete_steps(pool: &SqlitePool, ids: &[String]) -> Result<(), DbError> {
+    for id in ids {
+        sqlx::query("DELETE FROM workflow_run_steps WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+/// The outside actions `run_id` has sent so far (see migration 0039).
+pub async fn get_sent(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_id: &str,
+) -> Result<Vec<Value>, DbError> {
+    let stored: Option<Option<String>> =
+        sqlx::query_scalar("SELECT sent FROM workflow_runs WHERE id = ?")
+            .bind(run_id)
+            .fetch_optional(pool)
+            .await?;
+    match stored.flatten() {
+        Some(text) => match decrypt_json(enc, &text)? {
+            Value::Array(sent) => Ok(sent),
+            _ => Ok(Vec::new()),
+        },
+        None => Ok(Vec::new()),
+    }
+}
+
+pub async fn set_sent(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_id: &str,
+    sent: &[Value],
+) -> Result<(), DbError> {
+    sqlx::query("UPDATE workflow_runs SET sent = ? WHERE id = ?")
+        .bind(encrypt_json(enc, &Value::Array(sent.to_vec()))?)
+        .bind(run_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 fn interrupted() -> String {
@@ -1100,4 +1234,153 @@ pub async fn get_run_inputs(
         .flatten()
         .map(|text| decrypt_json(enc, &text))
         .transpose()
+}
+
+/// Who an [`start_agent_call`] row is about.
+pub struct AgentCallStart<'a> {
+    pub run_id: &'a str,
+    pub workflow_id: &'a str,
+    pub step_id: &'a str,
+    /// `step` (an agent step) or `helper`.
+    pub kind: &'a str,
+    pub agent_id: &'a str,
+    /// The row of the agent that handed this one its task.
+    pub parent_id: Option<&'a str>,
+    pub task: &'a str,
+}
+
+/// Record that an agent started on a task (migration 0040); returns the row
+/// id to finish it with.
+pub async fn start_agent_call(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    call: &AgentCallStart<'_>,
+) -> Result<String, DbError> {
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO workflow_agent_calls (id, run_id, workflow_id, step_id, kind, agent_id, \
+         parent_id, task, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)",
+    )
+    .bind(&id)
+    .bind(call.run_id)
+    .bind(call.workflow_id)
+    .bind(call.step_id)
+    .bind(call.kind)
+    .bind(call.agent_id)
+    .bind(call.parent_id)
+    .bind(enc.encrypt(call.task)?)
+    .bind(now_iso8601())
+    .execute(pool)
+    .await?;
+    Ok(id)
+}
+
+/// Record how an agent's task ended: `error` is `None` when it answered.
+pub async fn finish_agent_call(
+    pool: &SqlitePool,
+    id: &str,
+    tokens: u64,
+    error: Option<&str>,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE workflow_agent_calls SET status = ?, error = ?, tokens = ?, finished_at = ? \
+         WHERE id = ?",
+    )
+    .bind(if error.is_some() { "failed" } else { "done" })
+    .bind(error)
+    .bind(i64::try_from(tokens).unwrap_or(i64::MAX))
+    .bind(now_iso8601())
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Agent tasks left running when the app last closed: none of them is still
+/// going (a run that carries on starts its step again).
+async fn fail_interrupted_agent_calls(pool: &SqlitePool) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE workflow_agent_calls SET status = 'failed', error = ?, finished_at = ? \
+         WHERE status = 'running'",
+    )
+    .bind(interrupted())
+    .bind(now_iso8601())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// What one agent (an agent step or a helper of a workflow) has been doing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentActivity {
+    pub workflow_id: String,
+    pub kind: String,
+    pub agent_id: String,
+    /// The task it is working on now, when it is.
+    pub current_task: Option<String>,
+    pub current_run_id: Option<String>,
+    pub last_active: Option<String>,
+    /// Tasks and tokens since the `since` asked for.
+    pub tasks: i64,
+    pub failed: i64,
+    pub tokens: i64,
+}
+
+/// Every agent's activity: totals since `since` (an ISO time), when it last
+/// worked, and what it is working on now.
+pub async fn agent_activity(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    since: &str,
+) -> Result<Vec<AgentActivity>, DbError> {
+    type Row = (String, String, String, Option<String>, i64, i64, i64);
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT workflow_id, kind, agent_id, MAX(started_at), \
+         SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END), \
+         SUM(CASE WHEN started_at >= ? AND status = 'failed' THEN 1 ELSE 0 END), \
+         SUM(CASE WHEN started_at >= ? THEN tokens ELSE 0 END) \
+         FROM workflow_agent_calls GROUP BY workflow_id, kind, agent_id",
+    )
+    .bind(since)
+    .bind(since)
+    .bind(since)
+    .fetch_all(pool)
+    .await?;
+    let running: Vec<(String, String, String, Option<String>, String)> = sqlx::query_as(
+        "SELECT workflow_id, kind, agent_id, task, run_id FROM workflow_agent_calls \
+         WHERE status = 'running' ORDER BY started_at",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut out: Vec<AgentActivity> = rows
+        .into_iter()
+        .map(
+            |(workflow_id, kind, agent_id, last_active, tasks, failed, tokens)| AgentActivity {
+                workflow_id,
+                kind,
+                agent_id,
+                current_task: None,
+                current_run_id: None,
+                last_active,
+                tasks,
+                failed,
+                tokens,
+            },
+        )
+        .collect();
+    // The latest task each running agent took on.
+    for (workflow_id, kind, agent_id, task, run_id) in running {
+        if let Some(row) = out
+            .iter_mut()
+            .find(|a| a.workflow_id == workflow_id && a.kind == kind && a.agent_id == agent_id)
+        {
+            row.current_task = Some(match task {
+                Some(stored) => enc.decrypt(&stored)?,
+                None => String::new(),
+            });
+            row.current_run_id = Some(run_id);
+        }
+    }
+    Ok(out)
 }

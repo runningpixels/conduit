@@ -8,6 +8,7 @@ import { useT } from '../i18n';
 import { pickWorkspaceFolder } from '../ipc/client';
 import type { WorkflowDefinition, WorkflowInput } from '../ipc/contracts';
 import { newInput, withFolder, withWorkflowModel } from './editorModel';
+import { HelpersSection } from './HelpersSection';
 import { TriggerSection } from './TriggerSection';
 import { WorkflowModelRow } from './WorkflowModelRow';
 import type { WorkflowDraft } from './WorkflowEditor';
@@ -94,6 +95,8 @@ export function StartPanel({
           {t('workspace.workflows.editor.inputs.add')}
         </button>
       </section>
+
+      <HelpersSection def={def} onChange={setDefinition} />
 
       <section className="wfe-section wfe-settings" aria-labelledby="wfe-settings-title">
         <h3 className="wfe-h" id="wfe-settings-title">

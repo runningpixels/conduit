@@ -29,7 +29,8 @@ import {
 import { useT, type Translate } from '../../i18n';
 import { useFormatters } from '../../i18n/formatters';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowStep } from '../../ipc/contracts';
-import { describeStep, type InputLabels } from '../describeStep';
+import { describeStep, handsToText, type InputLabels } from '../describeStep';
+import { helperNames } from '../editorModel';
 import { STEP_TYPE_KEY } from '../stepTypes';
 import { START_ID, buildCanvas, problemsByStep, runStatuses, type CanvasEdge, type CanvasNode, type NodeRun, type NodeStatus } from './canvasModel';
 
@@ -216,12 +217,17 @@ function iterationText(t: Translate, run: NodeRun | undefined): string | null {
 }
 
 function startLines(t: Translate, def: WorkflowDefinition, labels: InputLabels): string[] {
+  const trigger = def.trigger;
   const lines = [
-    def.trigger?.kind === 'feed'
+    trigger?.kind === 'feed'
       ? t('workspace.workflows.trigger.feed')
-      : def.trigger?.kind === 'folder'
+      : trigger?.kind === 'folder'
         ? t('workspace.workflows.trigger.folder')
-        : t('workspace.workflows.trigger.none'),
+        : trigger?.kind === 'connector'
+          ? trigger.tool
+            ? t('workspace.workflows.canvas.startsConnector', { tool: trigger.tool })
+            : t('workspace.workflows.trigger.connector')
+          : t('workspace.workflows.trigger.none'),
   ];
   const inputs = (def.inputs ?? []).map((i) => labels[i.id] ?? i.label).filter(Boolean);
   if (inputs.length > 0) lines.push(t('workspace.workflows.canvas.inputs', { names: inputs.join(', ') }));
@@ -407,7 +413,10 @@ function Canvas({
               status,
               statusText: status === 'idle' ? null : t(STATUS_KEY[status]),
               iterations: iterationText(t, nodeRun),
-              flags: step.onError === 'skip' ? [t('workspace.workflows.step.continuesOnError')] : [],
+              flags: [
+                handsToText(step, t, helperNames(definition)),
+                step.onError === 'skip' ? t('workspace.workflows.step.continuesOnError') : null,
+              ].filter((flag): flag is string => flag !== null),
               problem: problemSteps.has(n.id),
               flowEditable: Boolean(editor?.onConnectFlow) && n.parent === null,
               branch: step.type === 'branch',
@@ -709,7 +718,7 @@ function RunInspector({
   return (
     <div className="wfc-inspect">
       <span className="wfc-kind">{t(STEP_TYPE_KEY[step.type])}</span>
-      <p className="wfc-inspect-line">{describeStep(step, t, labels, connectorNames, definition.steps)}</p>
+      <p className="wfc-inspect-line">{describeStep(step, t, labels, connectorNames, definition.steps, helperNames(definition))}</p>
       <span className="wf-muted wfc-inspect-id">{node.id}</span>
       {problems.map((p) => (
         <p key={p} className="wf-error">

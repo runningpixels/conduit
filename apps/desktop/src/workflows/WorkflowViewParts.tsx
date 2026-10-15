@@ -63,7 +63,9 @@ export function SummaryChips({
       ? t('workspace.workflows.view.startsFeed')
       : trigger?.kind === 'folder'
         ? t('workspace.workflows.view.startsFolder')
-        : (next ?? t('workspace.workflows.view.startsManual'));
+        : trigger?.kind === 'connector'
+          ? t('workspace.workflows.view.startsConnector')
+          : (next ?? t('workspace.workflows.view.startsManual'));
   const startsValue = trigger && next ? `${starts} · ${next}` : starts;
   const inputs = (definition.inputs ?? []).map((i) => i.label).filter(Boolean);
   return (

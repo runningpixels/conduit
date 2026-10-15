@@ -42,6 +42,7 @@
 
 /* Workflows page: saved routines, their steps and runs */
 @import './styles/pages-workflows.css';
+@import './styles/pages-agents.css';
 @import './styles/workflow-canvas.css';
 @import './styles/workflow-editor.css';
 @import './styles/workflows-view.css';

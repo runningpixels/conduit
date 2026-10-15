@@ -14,11 +14,11 @@ import { useT } from '../../i18n';
 import type { WorkflowDefinition } from '../../ipc/contracts';
 import { refLabel } from '../refLabel';
 import { STEP_TYPE_KEY } from '../stepTypes';
-import { type StepPath, type StepType } from '../editorModel';
+import { helperNames, type StepPath, type StepType } from '../editorModel';
 import { START_ID, buildCanvas, type CanvasNode } from './canvasModel';
 import { addPlace, addStep, connectFlow, connectReference, deleteStep, disconnectFlow, dropPlace, flowChoices, moveStepTo, pathOf, wireChoices, type TemplateField } from './canvasEdit';
 import { WorkflowCanvas, type CanvasEditor } from './WorkflowCanvas';
-import { describeStep, type InputLabels } from '../describeStep';
+import { describeStep, stepLabels, type InputLabels } from '../describeStep';
 import { useConnectorNames } from '../useConnectorNames';
 import { AddStepMenu, ViewToggle } from '../AddStepMenu';
 import type { ValueRef } from '../editorModel';
@@ -52,8 +52,8 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
   const graph = useMemo(() => buildCanvas(definition), [definition]);
   // Inputs by their names, so a step reads "Fetch 1 page: [Page]", not the template.
   const inputLabels = useMemo(
-    () => labels ?? Object.fromEntries((definition.inputs ?? []).map((i) => [i.id, i.label])),
-    [labels, definition.inputs],
+    () => labels ?? stepLabels(definition),
+    [labels, definition],
   );
 
   // A selection that no longer exists (deleted, or undone in the list view) is dropped.
@@ -65,7 +65,7 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
   const selectedStep = selected ? flat.find((s) => s.id === selected) : undefined;
   const summary = (id: string) => {
     const step = flat.find((s) => s.id === id);
-    return step ? describeStep(step, t, inputLabels, connectorNames, definition.steps) : id;
+    return step ? describeStep(step, t, inputLabels, connectorNames, definition.steps, helperNames(definition)) : id;
   };
 
   const add = useCallback(

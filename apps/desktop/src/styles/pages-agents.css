@@ -1,0 +1,49 @@
+/* The Agents page, and the helper editor / hand-off display that go with it. */
+.agents-groups { display: grid; gap: var(--sp-5); max-width: 56rem; }
+.agents-group { display: grid; gap: var(--sp-3); }
+.agents-group-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.agents-group-title { margin: 0; color: var(--ink); font-size: var(--fs-8xl); font-weight: 600; overflow-wrap: anywhere; }
+.agents-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
+.agent-card {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--bg-side);
+  min-width: 0;
+}
+.agent-card.is-busy { border-color: var(--accent-line); }
+.agent-card-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.agent-card-head .wf-flag { margin-left: 0; flex: none; }
+.agent-name { color: var(--ink); font-size: var(--fs-5xl); overflow-wrap: anywhere; }
+.agent-status { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-5xl); }
+.agent-status-busy { color: var(--ink); }
+.agent-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent-line);
+  animation: agent-pulse 1.4s ease-in-out infinite;
+}
+@keyframes agent-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .agent-pulse { animation: none; } }
+
+.wfe-helper {
+  display: grid;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  min-width: 0;
+}
+.wfe-helper-head { display: flex; gap: var(--sp-2); }
+.wfe-helper-head .mem-input { flex: 1; min-width: 0; }
+
+.wf-handoffs { display: grid; gap: var(--sp-1); margin: var(--sp-2) 10px; }
+.wf-handoff-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
+.wf-handoff { display: grid; gap: 2px; padding-left: var(--sp-2); border-left: 2px solid var(--line-soft); font-size: var(--fs-5xl); }
+.wf-handoff p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.wf-handoff-head { display: flex; gap: var(--sp-2); align-items: baseline; }
+.wf-handoff-fold summary { cursor: pointer; }

@@ -3,7 +3,7 @@
 
 import { useT } from '../i18n';
 import type { WorkflowReview } from '../ipc/contracts';
-import { reviewText } from './permissionText';
+import { reviewText, type HelperNames } from './permissionText';
 
 export function ReviewCard({
   review,
@@ -11,6 +11,7 @@ export function ReviewCard({
   busy,
   error,
   onAnswer,
+  helperNames,
 }: {
   review: WorkflowReview;
   /// When the step stops waiting, already formatted.
@@ -18,6 +19,8 @@ export function ReviewCard({
   busy: boolean;
   error?: string;
   onAnswer: (decision: 'allowOnce' | 'alwaysAllow' | 'deny') => void;
+  /// The workflow's helper names by id, when a permission names a helper.
+  helperNames?: HelperNames;
 }) {
   const t = useT();
   return (
@@ -28,7 +31,7 @@ export function ReviewCard({
       data-run-id={review.runId}
     >
       <b>{t('workspace.workflows.review.title')}</b>
-      <p className="wf-review-what">{reviewText(review, t)}</p>
+      <p className="wf-review-what">{reviewText(review, t, helperNames)}</p>
       <p className="wf-muted">{t('workspace.workflows.review.expires', { when: expires })}</p>
       <div className="wf-offer-actions">
         <button type="button" className="btn primary" disabled={busy} onClick={() => onAnswer('allowOnce')}>

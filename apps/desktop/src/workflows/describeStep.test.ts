@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeStep } from './describeStep';
+import { describeStep, stepLabels } from './describeStep';
 import type { WorkflowStep } from '../ipc/contracts';
 
 const KEYS: Record<string, string> = {
@@ -59,5 +59,17 @@ describe('describeStep branch', () => {
       'contains {"value":"plain","text":"urgent"}',
     );
     expect(describeStep({ id: 'b', type: 'branch', value: 'x', is: 'empty' }, (id) => id)).toBe('workspace.workflows.step.branch.empty');
+  });
+});
+
+describe('a connector trigger in a step line', () => {
+  it('reads the new item field by name, not as a post', () => {
+    const t = (id: string, values?: Record<string, unknown>) =>
+      id.endsWith('trigger.itemField') ? `New item · ${String(values?.field)}` : id.endsWith('trigger.title') ? 'Post title' : `${id} ${JSON.stringify(values ?? {})}`;
+    const step = { id: 'tell', type: 'notify', title: 'New: {{trigger.title}}' } as WorkflowStep;
+    const connector = stepLabels({ trigger: { kind: 'connector', connector: 'c', tool: 'list', arguments: {}, everyMinutes: 30 } });
+    expect(describeStep(step, t, connector)).toContain('[New item · title]');
+    const feed = stepLabels({ trigger: { kind: 'feed', url: 'https://e.com/feed', everyMinutes: 30 } });
+    expect(describeStep(step, t, feed)).toContain('[Post title]');
   });
 });

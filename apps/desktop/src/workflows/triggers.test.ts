@@ -13,6 +13,9 @@ describe('triggers', () => {
     expect(watchingText({ kind: 'feed', url: 'https://a.example/f.xml', everyMinutes: 30 }, undefined, t)).toBe(
       'watchingFeed {"host":"a.example","count":30}',
     );
+    expect(
+      watchingText({ kind: 'connector', connector: 'gh', tool: 'list_issues', arguments: {}, everyMinutes: 60 }, undefined, t),
+    ).toBe('watchingConnector {"tool":"list_issues","count":60}');
     expect(watchingText({ kind: 'folder' }, 'E:\\inbox', t)).toBe('watchingFolder {"folder":"E:\\\\inbox"}');
   });
 
@@ -21,6 +24,11 @@ describe('triggers', () => {
     expect(runTriggerLabel({ trigger: 'feed' }, t)).toBe('runFeedPlain undefined');
     expect(runTriggerLabel({ trigger: 'folder', triggerItem: { name: 'a.pdf' } }, t)).toBe('runFolder {"name":"a.pdf"}');
     expect(runTriggerLabel({ trigger: 'folder', triggerItem: { name: ' ' } }, t)).toBe('runFolderPlain undefined');
+    expect(runTriggerLabel({ trigger: 'connector', triggerItem: { id: 7, title: ' Bug ' } }, t)).toBe('runConnector {"item":"Bug"}');
+    expect(runTriggerLabel({ trigger: 'connector', triggerItem: { id: 7 } }, t)).toBe('runConnector {"item":"7"}');
+    expect(runTriggerLabel({ trigger: 'connector', triggerItem: { subject: 'Hi', key: 'k' } }, t)).toBe('runConnector {"item":"Hi"}');
+    expect(runTriggerLabel({ trigger: 'connector', triggerItem: { other: 1 } }, t)).toBe('runConnectorPlain undefined');
+    expect(runTriggerLabel({ trigger: 'connector' }, t)).toBe('runConnectorPlain undefined');
     expect(runTriggerLabel({ trigger: 'manual', triggerItem: { title: 'Rust 1.90' } }, t)).toBe('runTest {"item":"Rust 1.90"}');
     expect(runTriggerLabel({ trigger: 'manual', triggerItem: { name: 'a.pdf' } }, t)).toBe('runTest {"item":"a.pdf"}');
     expect(runTriggerLabel({ trigger: 'manual', triggerItem: null }, t)).toBeNull();

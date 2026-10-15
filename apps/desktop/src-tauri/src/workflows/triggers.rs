@@ -1,5 +1,6 @@
 //! What starts a workflow on its own besides a time: a new post in an RSS or
-//! Atom feed, or a new file in the workflow's folder.
+//! Atom feed, a new file in the workflow's folder, or something new in what a
+//! connector's read-only tool lists (an issue, a message).
 //!
 //! A trigger workflow is "polled" by the scheduler (a `workflow_schedules`
 //! row whose spec is `{"kind":"trigger"}`; its `next_run_at` is the next
@@ -18,6 +19,10 @@
 //!   (public https addresses only). A folder's files count once they have
 //!   stopped changing for [`SETTLE_SECS`] seconds; hidden and temporary files
 //!   never count.
+//! - A connector's tool is called the way a workflow step calls it, and only
+//!   if it just reads. The list it returns (the result itself, or its first
+//!   list) gives the items, each known by its `id` (or `key`, `uuid`, `url`,
+//!   `link`, `number`), else by a hash of the whole element.
 //! - A look that fails is simply tried again at the next poll. The third
 //!   failure in a row pauses the workflow's trigger *in name*: the reason is
 //!   kept for the page to show and the caller is told once; the polling goes
@@ -33,9 +38,21 @@ use quick_xml::reader::Reader;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use sha2::{Digest, Sha256};
+
 use super::definition::Trigger;
 use super::permissions::{self, Permission};
 use crate::artifact_network::{self, AddressPolicy, ArtifactFetchRequest};
+use crate::connector_runtime::{workflow_tools, ConnectorRuntimeManager};
+use crate::state::AppState;
+
+/// What a connector trigger needs to call its tool; `None` where connectors
+/// can't run (a look then fails plainly).
+#[derive(Clone, Copy)]
+pub struct Connectors<'a> {
+    pub state: &'a AppState,
+    pub manager: &'a ConnectorRuntimeManager,
+}
 
 /// Most runs one poll starts; the rest wait for the next poll.
 pub const MAX_RUNS_PER_POLL: usize = 5;
@@ -153,11 +170,23 @@ fn source_of(trigger: &Trigger, folder: Option<&str>) -> String {
     match trigger {
         Trigger::Feed { url, .. } => url.trim().to_string(),
         Trigger::Folder => folder.unwrap_or_default().trim().to_string(),
+        Trigger::Connector {
+            connector,
+            tool,
+            arguments,
+            ..
+        } => format!("connector:{}/{}:{arguments}", connector.trim(), tool.trim()),
     }
 }
 
-/// The permission a poll needs: reading the feed's site, or the folder.
-pub fn permission(trigger: &Trigger, folder: Option<&str>) -> Option<Permission> {
+/// The permission a poll needs: reading the feed's site, the folder, or using
+/// the connector's tool (`connector_name` is its name, as a step's permission
+/// has it).
+pub fn permission(
+    trigger: &Trigger,
+    folder: Option<&str>,
+    connector_name: &str,
+) -> Option<Permission> {
     match trigger {
         Trigger::Feed { url, .. } => {
             permissions::host_of(url.trim()).map(|host| Permission::Host { host })
@@ -165,6 +194,10 @@ pub fn permission(trigger: &Trigger, folder: Option<&str>) -> Option<Permission>
         Trigger::Folder => folder
             .filter(|f| !f.trim().is_empty())
             .map(permissions::read_folder),
+        Trigger::Connector {
+            connector, tool, ..
+        } => (!connector.trim().is_empty() && !tool.trim().is_empty())
+            .then(|| permissions::connector_tool(connector, connector_name, tool)),
     }
 }
 
@@ -184,6 +217,7 @@ pub fn watch_status(
             permissions::host_of(url.trim()).unwrap_or_else(|| url.trim().to_string())
         }
         Trigger::Folder => source,
+        Trigger::Connector { tool, .. } => tool.trim().to_string(),
     };
     WatchStatus {
         kind: trigger.kind().to_string(),
@@ -199,12 +233,14 @@ pub fn watch_status(
 /// Look for new items. `allowed` is `Err(why)` when the user hasn't approved
 /// this look; that counts as a failed one. `Err` only when the cursor can't
 /// be saved; a look that fails is `Ok(Polled::Failed)`, counted in the cursor.
+#[allow(clippy::too_many_arguments)]
 pub async fn poll(
     root: &Path,
     workflow_id: &str,
     trigger: &Trigger,
     folder: Option<&str>,
     policy: AddressPolicy,
+    connectors: Option<Connectors<'_>>,
     now: DateTime<Utc>,
     allowed: Result<(), String>,
 ) -> Result<Polled, String> {
@@ -224,6 +260,25 @@ pub async fn poll(
             look_at_feed(&mut working, url.trim(), policy, workflow_id).await
         }
         (Ok(()), Trigger::Folder) => look_in_folder(&mut working, folder.unwrap_or_default(), now),
+        (
+            Ok(()),
+            Trigger::Connector {
+                connector,
+                tool,
+                arguments,
+                ..
+            },
+        ) => {
+            look_at_connector(
+                &mut working,
+                connectors,
+                connector,
+                tool,
+                arguments,
+                workflow_id,
+            )
+            .await
+        }
     };
     let polled = match looked {
         Ok(items) => {
@@ -256,6 +311,7 @@ pub async fn latest(
     trigger: &Trigger,
     folder: Option<&str>,
     policy: AddressPolicy,
+    connectors: Option<Connectors<'_>>,
     workflow_id: &str,
 ) -> Result<Item, String> {
     match trigger {
@@ -276,7 +332,158 @@ pub async fn latest(
                     "The folder has no files yet, so there is nothing to try.".to_string()
                 })
         }
+        Trigger::Connector {
+            connector,
+            tool,
+            arguments,
+            ..
+        } => {
+            let items =
+                list_from_connector(connectors, connector, tool, arguments, workflow_id).await?;
+            let newest = if items.iter().all(|i| i.when.is_some()) {
+                items.iter().max_by_key(|i| i.when)
+            } else {
+                items.first()
+            };
+            newest.cloned().ok_or_else(|| {
+                format!(
+                    "\u{201c}{}\u{201d} lists nothing yet, so there is nothing to try.",
+                    tool.trim()
+                )
+            })
+        }
     }
+}
+
+// ── Connectors ───────────────────────────────────────────────────────────────
+
+/// Fields that name an element, tried in order, for what "seen" remembers.
+const ID_FIELDS: &[&str] = &["id", "key", "uuid", "url", "link", "number"];
+/// Fields that date an element, tried in order, for running oldest first.
+const DATE_FIELDS: &[&str] = &[
+    "created_at",
+    "createdAt",
+    "published",
+    "date",
+    "updated_at",
+    "updatedAt",
+    "timestamp",
+];
+/// Lists a tool's result usually keeps its elements in, tried first.
+const LIST_FIELDS: &[&str] = &[
+    "items", "results", "data", "entries", "records", "issues", "messages", "events",
+];
+
+/// What "seen" remembers a connector's element by: its id-like field, else a
+/// hash of the whole element.
+fn connector_item_id(value: &Value) -> String {
+    for field in ID_FIELDS {
+        match &value[*field] {
+            Value::String(s) if !s.trim().is_empty() => return format!("{field}:{}", s.trim()),
+            Value::Number(n) => return format!("{field}:{n}"),
+            _ => {}
+        }
+    }
+    let digest = Sha256::digest(value.to_string().as_bytes());
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    format!("hash:{hex}")
+}
+
+/// The list in a tool's result: the result itself, or the first list in it.
+fn list_in(data: &Value) -> Option<&Vec<Value>> {
+    match data {
+        Value::Array(list) => Some(list),
+        Value::Object(fields) => LIST_FIELDS
+            .iter()
+            .filter_map(|k| fields.get(*k).and_then(Value::as_array))
+            .next()
+            .or_else(|| fields.values().find_map(Value::as_array)),
+        _ => None,
+    }
+}
+
+/// The elements of a tool's result as items, in the order it listed them.
+pub fn connector_items(data: Option<&Value>, tool: &str) -> Result<Vec<Item>, String> {
+    let list = data.and_then(list_in).ok_or_else(|| {
+        format!(
+            "\u{201c}{}\u{201d} didn't return a list, so there is nothing to watch.",
+            tool.trim()
+        )
+    })?;
+    Ok(list
+        .iter()
+        .map(|element| {
+            let value = if element.is_object() {
+                element.clone()
+            } else {
+                json!({ "value": element })
+            };
+            let when = DATE_FIELDS
+                .iter()
+                .filter_map(|f| value[*f].as_str())
+                .find_map(|d| DateTime::parse_from_rfc3339(d).ok())
+                .map(|d| d.timestamp());
+            Item {
+                id: connector_item_id(&value),
+                value,
+                when,
+            }
+        })
+        .collect())
+}
+
+/// Call the trigger's tool (only if it just reads) and read its list.
+async fn list_from_connector(
+    connectors: Option<Connectors<'_>>,
+    connector: &str,
+    tool: &str,
+    arguments: &Value,
+    workflow_id: &str,
+) -> Result<Vec<Item>, String> {
+    let Connectors { state, manager } = connectors.ok_or("Connectors can't be reached here.")?;
+    let target = workflow_tools::resolve(state, connector).await?;
+    let result = workflow_tools::call(
+        state,
+        manager,
+        &target,
+        tool.trim(),
+        arguments,
+        &format!("trigger:{workflow_id}"),
+        false,
+    )
+    .await?;
+    connector_items(result.data.as_ref(), tool)
+}
+
+async fn look_at_connector(
+    cursor: &mut Cursor,
+    connectors: Option<Connectors<'_>>,
+    connector: &str,
+    tool: &str,
+    arguments: &Value,
+    workflow_id: &str,
+) -> Result<Vec<Item>, String> {
+    let items = list_from_connector(connectors, connector, tool, arguments, workflow_id).await?;
+    let mut fresh: Vec<Item> = Vec::new();
+    if cursor.baselined {
+        let seen: HashSet<&str> = cursor.seen.iter().map(String::as_str).collect();
+        let mut taken = HashSet::new();
+        // Lists usually come newest first; runs go oldest first.
+        for item in items.iter().rev() {
+            if !seen.contains(item.id.as_str()) && taken.insert(item.id.clone()) {
+                fresh.push(item.clone());
+            }
+        }
+        if fresh.iter().all(|i| i.when.is_some()) {
+            fresh.sort_by_key(|i| i.when);
+        }
+    } else {
+        cursor.baselined = true;
+        let ids: Vec<String> = items.iter().rev().map(|i| i.id.clone()).collect();
+        remember(cursor, ids);
+    }
+    fresh.truncate(MAX_RUNS_PER_POLL);
+    Ok(fresh)
 }
 
 // ── Feeds ────────────────────────────────────────────────────────────────────
@@ -397,6 +604,18 @@ async fn look_at_feed(
         cursor.last_modified = None;
     }
     Ok(fresh)
+}
+
+/// What "seen" remembers an item by ([`Item::id`]), read back from the value
+/// a run of `kind` (`feed` or `folder`) kept.
+pub fn item_id(kind: &str, value: &Value) -> Option<String> {
+    let id = match kind {
+        "feed" => value["id"].as_str(),
+        "folder" => value["path"].as_str(),
+        "connector" => return Some(connector_item_id(value)),
+        _ => None,
+    };
+    id.filter(|id| !id.is_empty()).map(str::to_string)
 }
 
 /// Record that the item `id` has had its run, so later looks skip it. Called
@@ -782,6 +1001,7 @@ mod tests {
                 &Trigger::Folder,
                 Some(dir.as_str()),
                 policy,
+                None,
                 later(),
                 Ok(()),
             )
@@ -915,5 +1135,36 @@ mod tests {
         );
         assert_eq!(cursor.seen.len(), SEEN_CAP);
         assert_eq!(cursor.seen[0], "5");
+    }
+
+    #[test]
+    fn a_tools_list_gives_the_items_known_by_their_id() {
+        let list =
+            json!([{ "id": 7, "title": "A" }, { "key": "k1" }, { "title": "no id" }, "plain"]);
+        let items = connector_items(Some(&list), "list").unwrap();
+        let ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(&ids[..2], ["id:7", "key:k1"]);
+        assert!(ids[2].starts_with("hash:") && ids[3].starts_with("hash:"));
+        assert_ne!(ids[2], ids[3]);
+        assert_eq!(items[3].value, json!({ "value": "plain" }));
+        assert_eq!(
+            item_id("connector", &items[0].value).as_deref(),
+            Some("id:7")
+        );
+
+        let wrapped =
+            json!({ "total": 2, "issues": [{ "id": "a", "created_at": "2026-10-02T00:00:00Z" }] });
+        let items = connector_items(Some(&wrapped), "list").unwrap();
+        assert_eq!(items[0].id, "id:a");
+        assert!(items[0].when.is_some());
+        let named = json!({ "page": 1, "rows": [{ "id": 1 }] });
+        assert_eq!(connector_items(Some(&named), "list").unwrap().len(), 1);
+
+        let none = connector_items(Some(&json!({ "count": 3 })), "list_issues").unwrap_err();
+        assert_eq!(
+            none,
+            "\u{201c}list_issues\u{201d} didn't return a list, so there is nothing to watch."
+        );
+        assert!(connector_items(None, "list").is_err());
     }
 }

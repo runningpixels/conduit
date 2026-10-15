@@ -93,3 +93,12 @@ describe('editDocument', () => {
     expect(reviewText(review(draft), t)).toBe('editDraft {"title":"Monthly report"}');
   });
 });
+
+describe('permissionText for a helper', () => {
+  it('names the helper, or falls back to its id', () => {
+    const p = { kind: 'agentTools' as const, stepId: 'helper:researcher', tools: ['calculator'], label: null, local: null };
+    expect(permissionText(p, t, { researcher: 'Researcher' })).toContain('helperTools {"helper":"Researcher"');
+    expect(permissionText(p, t)).toContain('helperTools {"helper":"researcher"');
+    expect(permissionText({ ...p, stepId: 'agent' }, t)).toContain('agentTools {"step":"agent"');
+  });
+});

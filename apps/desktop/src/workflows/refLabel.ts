@@ -59,6 +59,8 @@ export function refLabel(ref: ValueRef, t: Translate): string {
     case 'run':
       return field('date');
     case 'trigger':
+      // A connector's items have whatever fields its tool gives them.
+      if (ref.source.trigger === 'connector') return t('workspace.workflows.editor.trigger.itemField', { field: ref.field });
       return TRIGGER_FIELD_KEY[ref.field] ? t(TRIGGER_FIELD_KEY[ref.field]) : ref.field;
     case 'item': {
       // `summary.text` inside an earlier loop's items: step, then field.

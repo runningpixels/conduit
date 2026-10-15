@@ -107,6 +107,7 @@ const SHAPES: Record<string, unknown> = {
   listDecks: [],
   listDrafts: [],
   listWorkflows: [],
+  listAgents: [],
   listWorkflowReviews: [],
   listWorkflowQuestions: [],
   listWorkflowActions: [],
@@ -168,7 +169,7 @@ const IPC_EXPORTS = [
   // Ideas (App.tsx reads the collection count for "Ask your documents").
   'listKnowledgeCollections',
   // Home: its lists and the apps App.tsx keeps for it.
-  'listWorkflows', 'listApps', 'listStarterApps',
+  'listWorkflows', 'listAgents', 'listApps', 'listStarterApps',
   // Slides: App.tsx asks whether the open chat is bound to a deck.
   'getDeckForConversation', 'listDecks', 'openDeck', 'undoStartDeck', 'listDeckSnapshots', 'listSlideThemes',
   'editSlideWords', 'setSlotPinned', 'replaceInDeck', 'insertBullet', 'removeBullet',
@@ -238,11 +239,11 @@ describe('App shell', { timeout: 20_000 }, () => {
     expect(await screen.findByText('No personal apps yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Manage apps' })).toHaveAttribute('aria-current', 'page');
 
-    // Inbox shows what waits; Agents says what it will be.
+    // Inbox shows what waits; Agents lists the agents your workflows use.
     fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
     expect(await screen.findByText('Nothing is waiting for you')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
-    expect(await screen.findByText(/asks before anything leaves your computer/)).toBeInTheDocument();
+    expect(await screen.findByText('No agents yet')).toBeInTheDocument();
 
     // Context opens on Documents, with its tabs; the rail marks Context.
     fireEvent.click(screen.getByRole('button', { name: 'Context' }));

@@ -31,7 +31,7 @@ type ConnectorStep = Extract<WorkflowStep, { type: 'connector_tool' }>;
 type Loaded<T> = { state: 'loading' } | { state: 'error'; reason?: string } | { state: 'ready'; value: T };
 
 /// The plain reason a command gave ("Files is turned off…"), when it gave one.
-function reasonOf(error: unknown): string | undefined {
+export function reasonOf(error: unknown): string | undefined {
   if (typeof error === 'string' && error.trim()) return error.trim();
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   return undefined;
@@ -210,7 +210,7 @@ export function ConnectorStepBody({
 
 /// One argument: a template field for text, a number box, a menu for an enum or
 /// a yes/no, or a small JSON box for anything else.
-function ArgumentField({
+export function ArgumentField({
   field,
   value,
   onChange,
@@ -324,7 +324,7 @@ function JsonValue({ label, value, onChange }: { label: string; value: unknown; 
 }
 
 /// The whole arguments object as JSON, for tools without a form (or when asked).
-function JsonArguments({ args, onChange }: { args: JsonObject; onChange: (args: JsonObject) => void }) {
+export function JsonArguments({ args, onChange }: { args: JsonObject; onChange: (args: JsonObject) => void }) {
   const t = useT();
   const id = useId();
   const [text, setText] = useState(() => argsToJson(args));

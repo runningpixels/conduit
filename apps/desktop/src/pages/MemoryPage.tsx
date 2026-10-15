@@ -183,6 +183,7 @@ export function MemoryPage({
 
   return (
     <PageFrame
+      destination="memory"
       title={t('shell.settingsSheet.memory.heading')}
       subtitle={t('settings.memory.page.subtitle')}
       actions={

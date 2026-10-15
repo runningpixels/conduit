@@ -1556,6 +1556,7 @@ export function WorkflowsPage({
 
   return (
     <PageFrame
+      destination="workflows"
       className={editing ? 'wf-page is-editing' : viewing ? 'wf-page is-viewing' : 'wf-page'}
       title={t('workspace.workflows.page.title')}
       subtitle={t('workspace.workflows.page.subtitle')}

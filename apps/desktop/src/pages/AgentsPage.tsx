@@ -106,7 +106,7 @@ export function AgentsPage({
   };
 
   return (
-    <PageFrame title={t('shell.agents.title')} subtitle={t('shell.agents.subtitle')} className="agents-page">
+    <PageFrame destination="agents" title={t('shell.agents.title')} subtitle={t('shell.agents.subtitle')} className="agents-page">
       {entries === null ? (
         <p className="wf-muted">{failed ? t('shell.agents.loadFailed') : t('shell.agents.loading')}</p>
       ) : entries.length === 0 ? (

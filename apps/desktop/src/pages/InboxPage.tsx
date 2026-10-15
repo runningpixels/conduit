@@ -140,7 +140,7 @@ export function InboxPage({
   }
 
   return (
-    <PageFrame title={t('shell.inbox.title')} subtitle={t('shell.inbox.subtitle')} className="inbox-page">
+    <PageFrame destination="inbox" title={t('shell.inbox.title')} subtitle={t('shell.inbox.subtitle')} className="inbox-page">
       {items.length === 0 ? (
         loaded ? (
           <PageEmpty title={t('shell.inbox.empty.title')} body={t('shell.inbox.empty.body')} />

@@ -1263,7 +1263,24 @@ html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
 }
 .page-head-text { min-width: 0; }
 /* ADR-011: page titles carry the hierarchy the rail no longer has to. */
-.page-title { margin: 0; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -.03em; line-height: var(--leading-tight); }
+.page-title { margin: 0; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -.03em; line-height: var(--leading-tight); display: flex; align-items: center; gap: var(--sp-3); }
+/* The page's rail icon leads its title, in the area's colour where it has
+ * one, so the page and its rail button read as the same place. */
+.page-title-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r);
+  color: var(--page-area, var(--ink-2));
+  background: color-mix(in srgb, var(--page-area, var(--ink-3)) 15%, transparent);
+}
+.page-title-icon svg { width: 24px; height: 24px; }
+.page-title-icon[data-area="slides"] { --page-area: var(--area-slides); }
+.page-title-icon[data-area="writing"] { --page-area: var(--area-writing); }
+.page-title-icon[data-area="apps"] { --page-area: var(--area-apps); }
+.page-title-icon[data-area="workflows"] { --page-area: var(--area-workflows); }
 .page-subtitle { margin: 6px 0 0; font-size: var(--fs-5xl); color: var(--ink-2); font-weight: var(--muted-weight); line-height: 1.5; max-width: 72ch; }
 .page-head-actions { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 .page-about {

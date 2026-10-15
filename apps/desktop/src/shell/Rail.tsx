@@ -118,6 +118,11 @@ const ICONS: Record<Destination, ReactNode> = {
   settings: <SettingsIcon />,
 };
 
+/** A destination's outline icon, as the rail shows it (the page header repeats it). */
+export function destinationIcon(d: Destination): ReactNode {
+  return ICONS[d];
+}
+
 /** The solid icon each rail button shows while it is where you are. */
 const SOLID_ICONS: Partial<Record<Destination, ReactNode>> = {
   home: <HomeSolidIcon />,

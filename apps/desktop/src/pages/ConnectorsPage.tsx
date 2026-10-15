@@ -137,6 +137,7 @@ export function ConnectorsPage({ onStatus }: { onStatus: (message: string) => vo
 
   return (
     <PageFrame
+      destination="connectors"
       title={t('shell.settingsSheet.connectors.heading')}
       subtitle={t('settings.connectors.page.subtitle')}
       actions={addButton}

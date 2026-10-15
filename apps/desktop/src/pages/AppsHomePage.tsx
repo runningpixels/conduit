@@ -40,6 +40,7 @@ export function AppsHomePage({ apps, onOpen, onNewApp, onManage }: AppsHomePageP
 
   return (
     <PageFrame
+      destination="apps"
       title={t('apps.launcher.title')}
       subtitle={t('apps.launcher.subtitle')}
       about={t('apps.launcher.about')}

@@ -9,7 +9,8 @@
   --home-w: 1040px;
   max-width: var(--home-w);
   margin: 0 auto;
-  padding: calc(var(--sp-6) * 1.5) var(--sp-6) calc(var(--sp-6) * 2.5);
+  /* The greeting starts where every other page's title does (.page-head). */
+  padding: var(--sp-6) var(--sp-6) calc(var(--sp-6) * 2.5);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -116,7 +117,6 @@
 }
 
 /* ── Greeting and the ask box ─────────────────────────────────────────── */
-.home-hero { padding-top: var(--sp-5); }
 .home-greeting { margin: 0; color: var(--ink-3); font-size: var(--fs-8xl); }
 .home-title {
   margin: var(--sp-1) 0 var(--sp-5);

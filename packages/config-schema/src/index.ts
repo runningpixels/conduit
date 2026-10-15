@@ -168,6 +168,7 @@ export type { Theme } from './generated/theme';
 export type { LanguageSetting } from './generated/language_setting';
 export type { ProviderEndpointConfig } from './generated/provider_endpoint_config';
 export type { AgentGuardrails } from './generated/agent_guardrails';
+export type { WorkflowComputerSettings } from './generated/workflow_computer_settings';
 export type { AppSettings } from './generated/app_settings';
 export type { AccentOverride } from './generated/accent_override';
 // The shape every command's `Err` arrives in (D9): a catalog key plus an

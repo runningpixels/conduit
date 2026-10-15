@@ -28,6 +28,7 @@ export const PREFIX_SECTIONS: readonly (readonly [string, SettingsSection])[] = 
   ['settings.webSearch.', 'web-search'],
   ['shell.settingsSheet.workspace.', 'workspace'],
   ['settings.workspaceTools.', 'workspace'],
+  ['settings.computer.', 'workspace'],
   ['shell.settingsSheet.connectors.', 'connectors'],
   ['settings.connectors.', 'connectors'],
   ['shell.settingsSheet.prompts.', 'prompts'],

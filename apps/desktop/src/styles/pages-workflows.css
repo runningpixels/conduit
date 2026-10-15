@@ -316,3 +316,39 @@ html[data-theme="dark"] .wf-view-btn.active { background: var(--card-hi); filter
 .wf-connector-tools { display: grid; gap: var(--sp-1); }
 .wf-connector-name { margin-top: var(--sp-1); }
 .wf-gone-tool { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-5xl); }
+
+/* Agents that use the computer: the approval card, the diff, the rules and the run details. */
+.wf-computer-reason { font-weight: 600; }
+.wf-computer-read {
+  margin: 0;
+  padding: var(--sp-2);
+  border-left: 3px solid var(--warn);
+  color: var(--ink);
+  font-size: var(--fs-5xl);
+}
+.wf-computer-command, .wf-computer-file {
+  margin: 0;
+  padding: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-5xl);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 14em;
+  overflow: auto;
+}
+.wf-computer-remember { display: grid; gap: var(--sp-2); }
+.wf-diff { font-family: var(--font-mono); font-size: var(--fs-5xl); max-height: 18em; overflow: auto; }
+.wf-diff-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+.wf-diff-line.add { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.wf-diff-line.del { background: color-mix(in srgb, var(--err) 18%, transparent); }
+.wf-diff-line.skip { color: var(--ink-3); font-style: italic; }
+.wf-cmdrules { display: grid; gap: var(--sp-1); margin-top: var(--sp-2); }
+.wf-cmdrules-add { display: flex; gap: var(--sp-2); }
+.wf-cmdrules-add .mem-input { flex: 1; font-family: var(--font-mono); }
+.wf-commands { display: grid; gap: var(--sp-2); }
+.wf-computer-taken { margin: var(--sp-2) 10px 0; }
+.wf-computer-record { display: grid; gap: 2px; }
+.wf-computer-meta { font-size: var(--fs-5xl); }
+.wf-computer-output { max-height: 12em; overflow: auto; }
+.wf-cmdrules-preview { display: grid; gap: 2px; }
+.wf-computer-option { display: grid; gap: var(--sp-1); }

@@ -7,9 +7,10 @@ import { useState } from 'react';
 import { useT } from '../i18n';
 import { pickWorkspaceFolder } from '../ipc/client';
 import type { WorkflowDefinition, WorkflowInput } from '../ipc/contracts';
-import { newInput, withFolder, withWorkflowModel } from './editorModel';
+import { newInput, usesComputer, withFolder, withWorkflowModel } from './editorModel';
 import { HelpersSection } from './HelpersSection';
 import { TriggerSection } from './TriggerSection';
+import { WorkflowComputerSection } from './WorkflowComputerSection';
 import { WorkflowModelRow } from './WorkflowModelRow';
 import type { WorkflowDraft } from './WorkflowEditor';
 
@@ -121,6 +122,8 @@ export function StartPanel({
         </div>
         <FolderRow folder={def.folder} onChange={(folder) => setDefinition(withFolder(def, folder))} />
       </section>
+
+      {usesComputer(def) ? <WorkflowComputerSection def={def} onChange={setDefinition} /> : null}
     </div>
   );
 }

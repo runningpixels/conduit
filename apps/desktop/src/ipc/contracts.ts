@@ -753,11 +753,27 @@ export interface WorkflowDefinition {
   inputs?: WorkflowInput[];
   /** Absolute directory that `read_file` steps read from (relative paths only). */
   folder?: string;
+  /** How agents that use the computer behave; only read when an agent has the `computer` tool. */
+  computer?: WorkflowComputer;
   /** Starts a run for each new feed item or new file in `folder`; absent means manual and timed runs only. */
   trigger?: WorkflowTrigger;
   /** Helpers: agents that agent steps (and other helpers) may hand work to. */
   agents?: AgentDef[];
   steps: WorkflowStep[];
+}
+
+/** Settings for agents that use the computer (Rust `workflows::definition`). */
+export interface WorkflowComputer {
+  /** 'ask' (default) asks before changing a file; 'free' changes files in the folder without asking. */
+  editMode?: 'ask' | 'free';
+  /** What a question does when nobody answers: wait (default) or skip it. */
+  whenNobodyAnswers?: 'wait' | 'skip';
+  /** 1..1800; 120 when absent. */
+  timeoutSecs?: number;
+  /** Environment variable names passed to programs. */
+  passEnv?: string[];
+  /** On Windows commands are kept inside the folder (writes only there, almost no network); true turns that off. Left out when false. */
+  allowOutside?: boolean;
 }
 
 /** A helper (Rust `workflows::definition::AgentDef`). */
@@ -967,6 +983,8 @@ export type WorkflowPermission =
   | { kind: 'saveDocuments' }
   | { kind: 'readFolder'; path: string }
   | { kind: 'agentTools'; stepId: string; tools: string[] }
+  /** Run commands and change files in the workflow's folder (each still asks unless a rule allows it). */
+  | { kind: 'computer'; path: string }
   /** Research on the web (Rust `Permission::Research`). */
   | { kind: 'research' }
   /** Search these Documents collections (Rust `Permission::Documents`). */
@@ -1016,6 +1034,30 @@ export interface WorkflowQuestion {
   expiresAt: string;
 }
 
+/** A command or file change an agent wants to make on this computer. */
+export interface ComputerRequest {
+  kind: 'run_command' | 'write_file' | 'edit_file';
+  /** The workflow folder. */
+  folder: string;
+  /** run_command: the program's full path as found on this computer. */
+  program?: string;
+  args?: string[];
+  /** run_command: where it runs inside the folder ('.' = the folder); files: the file, relative. */
+  path: string;
+  /** Files: the new content (capped). */
+  content?: string;
+  /** Files: the old content, when the file exists. */
+  previous?: string;
+  /** What the agent said it is for. */
+  why?: string;
+  /** Why this asks, in plain English. */
+  reason: string;
+  /** What outside content it read first, e.g. "2 web pages and a web search". */
+  readBefore?: string;
+  /** The rule "Allow from now on" would add; absent = not offered. */
+  suggestedRule?: string;
+}
+
 /**
  * A run waiting for the user to check an outside action: a connector tool that
  * changes things (Rust `workflows::actions::PendingAction`).
@@ -1036,6 +1078,8 @@ export interface WorkflowAction {
   inputSchema: Record<string, unknown>;
   /** Always asks; "Don't ask again" isn't offered. */
   sensitive: boolean;
+  /** Present when this is a command or file change on this computer, not a connector call. */
+  computer?: ComputerRequest;
   requestedAt: string;
   expiresAt: string;
 }
@@ -1047,6 +1091,8 @@ export interface WorkflowActionAnswer {
   arguments?: Record<string, unknown>;
   /** Don't ask again for this tool in this workflow (ignored for a sensitive tool). */
   remember?: boolean;
+  /** The rule to remember (computer commands); used only with `remember: true`. */
+  rule?: string;
 }
 
 /** An outside action a workflow takes without asking. */
@@ -1062,7 +1108,41 @@ export interface WorkflowActionRules {
   /** Every action goes ahead without asking (except sensitive ones). */
   allowAll: boolean;
   allowed: WorkflowAllowedAction[];
+  /** Command rules; when left out on save, the stored ones are kept. */
+  commands?: WorkflowCommandRules;
 }
+
+/** Command rules: a program plus leading arguments, optionally ending in ` *`. */
+export interface WorkflowCommandRules {
+  allow: string[];
+  deny: string[];
+}
+
+/** What a command rule matches (`preview_command_rule`). */
+export interface CommandRulePreview {
+  error: string | null;
+  covers: string[];
+  doesNotCover: string[];
+}
+
+export type ComputerOutcome = 'ran' | 'timedOut' | 'failed' | 'notRun' | 'declined' | 'skipped' | 'changed';
+
+/** One thing an agent did on the computer, in a step's output (`computer[]`). */
+export type ComputerRecord =
+  | {
+      kind: 'command';
+      program: string;
+      args: string[];
+      cwd: string;
+      approvedBy: string;
+      outcome: ComputerOutcome;
+      exitCode?: number;
+      durationMs?: number;
+      output?: string;
+      reason?: string;
+      error?: string;
+    }
+  | { kind: 'write' | 'edit'; path: string; approvedBy: string; outcome: ComputerOutcome };
 
 /** How an outside action ended, in a step's output (`action` or `actions[]`). */
 export type WorkflowActionOutcome = 'sent' | 'sentWithoutAsking' | 'notSent' | 'failed';

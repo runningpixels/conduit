@@ -20,7 +20,7 @@ use crate::workflows::{
     actions::{ActionAnswer, ActionRules, Actions, PendingAction},
     ask::{self, PendingQuestion, Questions},
     author::{self, DraftRequest, DraftResult},
-    definition,
+    computer, definition,
     permissions::{self, Decision, PendingReview, PermissionView, Reviews},
     runner::{search_backend, Resume, RunBudget, Runner},
     schedule::ScheduleSpec,
@@ -653,6 +653,14 @@ pub fn answer_workflow_action(
     if actions.get(&run_id, Some(&step_id)).is_none() {
         return Ok(false);
     }
+    // A command rule to remember must be one, so the card can say what's wrong.
+    if let Some(rule) = answer
+        .rule
+        .as_deref()
+        .filter(|_| answer.remember && answer.send)
+    {
+        computer::parse_rule(rule).map_err(|e| format!("\u{201c}{rule}\u{201d}: {e}"))?;
+    }
     let answer = ActionAnswer {
         arguments: answer
             .arguments
@@ -679,16 +687,62 @@ pub async fn get_workflow_action_rules(
 pub async fn set_workflow_action_rules(
     state: State<'_, AppState>,
     id: String,
-    rules: ActionRules,
+    rules: Value,
 ) -> Result<ActionRules, String> {
     repo::get(&state.db, &state.encryption, &id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "That workflow no longer exists.".to_string())?;
-    repo::set_action_rules(&state.db, &state.encryption, &id, &rules)
+    let mut parsed: ActionRules = serde_json::from_value(rules.clone())
+        .map_err(|e| format!("The rules can't be read: {e}"))?;
+    // A caller that only changes the outside-action rules leaves the command
+    // rules as they are.
+    if rules.get("commands").is_none() {
+        parsed.commands = repo::get_action_rules(&state.db, &state.encryption, &id)
+            .await
+            .map_err(|e| e.to_string())?
+            .commands;
+    }
+    for list in [&mut parsed.commands.allow, &mut parsed.commands.deny] {
+        *list = list
+            .iter()
+            .map(|r| r.trim().to_string())
+            .filter(|r| !r.is_empty())
+            .collect();
+        for rule in list.iter() {
+            computer::parse_rule(rule).map_err(|e| format!("\u{201c}{rule}\u{201d}: {e}"))?;
+        }
+    }
+    repo::set_action_rules(&state.db, &state.encryption, &id, &parsed)
         .await
         .map_err(|e| e.to_string())?;
-    Ok(rules)
+    Ok(parsed)
+}
+
+/// What a command rule covers, for the editor: example commands it would and
+/// wouldn't match, or why it isn't a rule.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandRulePreview {
+    pub error: Option<String>,
+    pub covers: Vec<String>,
+    pub does_not_cover: Vec<String>,
+}
+
+#[tauri::command]
+pub fn preview_command_rule(rule: String) -> CommandRulePreview {
+    match computer::rule_examples(&rule) {
+        Ok((covers, does_not_cover)) => CommandRulePreview {
+            error: None,
+            covers,
+            does_not_cover,
+        },
+        Err(error) => CommandRulePreview {
+            error: Some(error),
+            covers: Vec::new(),
+            does_not_cover: Vec::new(),
+        },
+    }
 }
 
 /// Days of work the Agents page totals.

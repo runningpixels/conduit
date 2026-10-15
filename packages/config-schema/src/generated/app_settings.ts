@@ -10,6 +10,7 @@ import type { RolloutChannel } from "./rollout_channel";
 import type { Theme } from "./theme";
 import type { UpdatePolicy } from "./update_policy";
 import type { WebSearchDefaults } from "./web_search_defaults";
+import type { WorkflowComputerSettings } from "./workflow_computer_settings";
 
 export type AppSettings = { activeProvider: string, activeModel: string, localOnly: boolean, diagnosticsEnabled: boolean, theme: Theme, 
 /**
@@ -54,6 +55,11 @@ artifactNetworkEnabled: boolean,
  * no effect while pages can't connect (local-only, or the switch above).
  */
 artifactFullWebAccess?: boolean, 
+/**
+ * Workflow agents using this computer: off unless set (see
+ * [`WorkflowComputerSettings`]).
+ */
+workflowComputer?: WorkflowComputerSettings, 
 /**
  * Keep running in the tray when the main window is closed, so scheduled
  * workflows still run. Off by default: closing the window quits, as it

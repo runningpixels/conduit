@@ -26,6 +26,7 @@ import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../s
 import { MoreMenu, SummaryChips, WorkflowTabs, tabPanelId, tabButtonId, type WorkflowTab } from '../workflows/WorkflowViewParts';
 import { ActionCard } from '../workflows/ActionCard';
 import { AgentHandoffs } from '../workflows/AgentHandoffs';
+import { StepComputer } from '../workflows/StepComputer';
 import { ReviewCard } from '../workflows/ReviewCard';
 import { useWorkflowActionEvents } from '../workflows/workflowRunEvents';
 import { WorkflowEditBar } from '../workflows/WorkflowEditBar';
@@ -81,7 +82,7 @@ import type {
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, stepLabels, type InputLabels } from '../workflows/describeStep';
-import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
+import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder, usesComputer } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { ResultView } from '../workflows/ResultView';
 import { runsAfterLine } from '../workflows/runsAfter';
@@ -1235,7 +1236,11 @@ export function WorkflowsPage({
                 ))}
               </section>
             ) : null}
-            <ActionRulesSection workflowId={record.id} steps={record.definition.steps} />
+            <ActionRulesSection
+              workflowId={record.id}
+              steps={record.definition.steps}
+              usesComputer={usesComputer(record.definition)}
+            />
             <ScheduleSection
               workflowId={record.id}
               refreshKey={refreshKey}
@@ -1968,6 +1973,7 @@ function RunStepRow({
         {step.error ? <p className="wf-error">{step.error}</p> : null}
         <StepModelLine output={step.output} />
         <StepActions output={step.output} />
+        <StepComputer output={step.output} />
         <AgentHandoffs output={step.output} />
         {onRerun ? (
           <button

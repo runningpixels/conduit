@@ -20,6 +20,7 @@ import { useId, useRef, useState, type ReactNode } from 'react';
 import { AddStepMenu, ViewToggle } from './AddStepMenu';
 import { StartPanel } from './StartPanel';
 import { AgentConnectorTools } from './AgentConnectorTools';
+import { ComputerToolOption } from './ComputerToolOption';
 import { ChipField, type ChipFieldHandle } from './ChipField';
 import { useT } from '../i18n';
 import type { DataFormat, WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
@@ -622,6 +623,11 @@ function StepCard({
               </label>
             ))}
           </fieldset>
+          <ComputerToolOption
+            tools={step.tools ?? []}
+            hasFolder={Boolean(def.folder?.trim())}
+            onChange={(tools) => update((s) => (s.type === 'agent' ? { ...s, tools } : s))}
+          />
           <AgentConnectorTools
             tools={step.tools ?? []}
             onToggle={(ref, on) =>

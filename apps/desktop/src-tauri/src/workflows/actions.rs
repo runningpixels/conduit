@@ -36,6 +36,43 @@ pub struct PendingAction {
     pub sensitive: bool,
     pub requested_at: String,
     pub expires_at: String,
+    /// Set when the action is the agent using the computer (a command or a
+    /// file change) rather than a connector tool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computer: Option<ComputerRequest>,
+}
+
+/// A command or file change waiting for the user, as the card shows it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComputerRequest {
+    /// `run_command`, `write_file` or `edit_file`.
+    pub kind: String,
+    /// The workflow's folder.
+    pub folder: String,
+    /// A command: the program as found on this computer, and its arguments.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub program: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+    /// Where a command runs, or the file a change is to, inside the folder.
+    pub path: String,
+    /// A file change: the new content, and the old one when the file exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous: Option<String>,
+    /// What the agent said it's for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+    /// Why this asks rather than going ahead.
+    pub reason: String,
+    /// What the agent read from outside before this, when it did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_before: Option<String>,
+    /// The rule "Allow from now on" would add; `None` when it isn't offered.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggested_rule: Option<String>,
 }
 
 impl Pending for PendingAction {
@@ -62,6 +99,10 @@ pub struct ActionAnswer {
     /// sensitive tool, and when not sending).
     #[serde(default)]
     pub remember: bool,
+    /// For a command: the rule to remember (the suggested one, perhaps
+    /// edited); ignored unless `remember`.
+    #[serde(default)]
+    pub rule: Option<String>,
 }
 
 /// Runs waiting for the user to check an outside action, by run id and step id.
@@ -81,9 +122,14 @@ pub struct AllowedAction {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionRules {
-    /// Every action goes ahead without asking (except sensitive ones).
+    /// Every action goes ahead without asking (except sensitive ones). Never
+    /// covers commands: only `commands` does.
     pub allow_all: bool,
     pub allowed: Vec<AllowedAction>,
+    /// Which commands the workflow's agents run without asking, and which
+    /// always ask.
+    #[serde(default)]
+    pub commands: super::computer::CommandRules,
 }
 
 impl ActionRules {
@@ -190,7 +236,8 @@ mod tests {
             ActionAnswer {
                 send: true,
                 arguments: None,
-                remember: false
+                remember: false,
+                rule: None,
             }
         );
         assert!(checked_arguments(json!({ "text": "hi" })).is_ok());

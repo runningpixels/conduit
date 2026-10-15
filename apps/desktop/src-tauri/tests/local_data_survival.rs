@@ -171,6 +171,7 @@ async fn settings_and_db_survive_in_place_reopen() {
         artifact_styled_preview: None,
         artifact_network_enabled: None,
         artifact_full_web_access: None,
+        workflow_computer: None,
         close_to_tray: None,
         close_to_tray_offered: None,
         update_channel: None,

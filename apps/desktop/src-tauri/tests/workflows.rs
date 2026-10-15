@@ -5530,6 +5530,7 @@ fn send(arguments: Option<Value>, remember: bool) -> ActionAnswer {
         send: true,
         arguments,
         remember,
+        rule: None,
     }
 }
 
@@ -5616,6 +5617,7 @@ async fn dont_send_stops_the_run_and_sends_nothing() {
             send: false,
             arguments: None,
             remember: true,
+            rule: None,
         };
         assert!(actions.answer(&action.run_id, Some("call"), no));
     };
@@ -5705,6 +5707,7 @@ async fn allow_all_acts_without_asking_even_unattended() {
         &ActionRules {
             allow_all: true,
             allowed: vec![],
+            commands: Default::default(),
         },
     )
     .await
@@ -5850,6 +5853,7 @@ async fn an_agent_hears_when_an_action_was_not_sent() {
             send: false,
             arguments: None,
             remember: false,
+            rule: None,
         };
         assert!(actions.answer(&action.run_id, Some("act"), no));
     };
@@ -7361,6 +7365,328 @@ async fn helpers_that_hand_work_round_in_a_circle_are_refused_on_save() {
     }))
     .unwrap_err();
     assert!(problems.contains("in a circle"), "{problems}");
+}
+
+// ── Using the computer ──────────────────────────────────────────────────────
+
+/// Turn on "Let workflows use this computer" (off by default).
+fn computer_on(h: &Harness, deny: &[&str]) {
+    let mut patch: provider_core::schema::SettingsPatch = serde_json::from_str("{}").unwrap();
+    patch.workflow_computer = Some(provider_core::schema::WorkflowComputerSettings {
+        enabled: true,
+        deny: deny.iter().map(|d| d.to_string()).collect(),
+    });
+    h.state.update_settings(patch).unwrap();
+}
+
+/// A model that calls `calls` (only those the request offers), then answers.
+fn computer_model(calls: Vec<(&'static str, Value)>) -> EchoModel {
+    EchoModel {
+        tool_calls: calls,
+        offered_only: true,
+        ..EchoModel::default()
+    }
+}
+
+/// A workflow whose agent uses the computer in `folder`.
+fn computer_workflow(folder: &Path, computer: Value) -> Value {
+    json!({
+        "folder": folder,
+        "computer": computer,
+        "steps": [{ "id": "work", "type": "agent", "prompt": "Check the repo", "tools": ["computer"] }]
+    })
+}
+
+async fn set_command_rules(h: &Harness, id: &str, allow: &[&str]) {
+    let mut rules = repo::get_action_rules(&h.state.db, &h.state.encryption, id)
+        .await
+        .unwrap();
+    rules.commands.allow = allow.iter().map(|r| r.to_string()).collect();
+    repo::set_action_rules(&h.state.db, &h.state.encryption, id, &rules)
+        .await
+        .unwrap();
+}
+
+fn git_version() -> Value {
+    json!({ "program": "git", "args": ["--version"], "why": "See which git is installed" })
+}
+
+#[tokio::test]
+async fn a_command_a_rule_covers_runs_without_asking() {
+    let h = Harness::new(computer_model(vec![("run_command", git_version())])).await;
+    computer_on(&h, &[]);
+    let dir = tempfile::tempdir().unwrap();
+    let id = h.save(computer_workflow(dir.path(), json!({}))).await;
+    set_command_rules(&h, &id, &["git --version"]).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let actions = Actions::default();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let used = &detail.steps[0].output.as_ref().unwrap()["computer"][0];
+    assert_eq!(used["outcome"], "ran", "{used}");
+    assert_eq!(used["approvedBy"], "rule: git --version");
+    assert_eq!(used["exitCode"], 0);
+    assert!(
+        used["output"].as_str().unwrap().contains("git version"),
+        "{used}"
+    );
+    assert!(actions.list().is_empty(), "nothing asked");
+    // The computer tools were offered, and the agent was told how to use them.
+    let requests = h.model.requests.lock().unwrap().clone();
+    let offered: Vec<&str> = requests[0]
+        .tool_definitions
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    assert!(
+        offered.contains(&"run_command") && offered.contains(&"write_file"),
+        "{offered:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_command_no_rule_covers_asks_and_can_be_allowed_from_then_on() {
+    let h = Harness::new(computer_model(vec![("run_command", git_version())])).await;
+    computer_on(&h, &[]);
+    let dir = tempfile::tempdir().unwrap();
+    let id = h.save(computer_workflow(dir.path(), json!({}))).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let actions = Actions::default();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        let asked = action.computer.clone().expect("a computer request");
+        assert_eq!(asked.kind, "run_command");
+        assert_eq!(asked.args, Some(vec!["--version".to_string()]));
+        assert_eq!(asked.reason, "No rule covers it.");
+        assert_eq!(asked.suggested_rule.as_deref(), Some("git --version"));
+        assert_eq!(asked.why.as_deref(), Some("See which git is installed"));
+        assert!(!action.sensitive);
+        let mut yes = send(None, true);
+        yes.rule = Some("git --version".to_string());
+        assert!(actions.answer(&action.run_id, Some("work"), yes));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let used = &detail.steps[0].output.as_ref().unwrap()["computer"][0];
+    assert_eq!(used["approvedBy"], "you");
+    assert_eq!(used["outcome"], "ran");
+    let rules = repo::get_action_rules(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap();
+    assert_eq!(rules.commands.allow, vec!["git --version".to_string()]);
+    assert!(!rules.allow_all, "allowing a command allows nothing else");
+
+    // The next run runs it without asking.
+    let again = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        runner.run(&id, &no_inputs, "manual"),
+    )
+    .await
+    .expect("it didn't ask")
+    .unwrap();
+    assert_eq!(again.run.status, "completed", "{:?}", again.run.error);
+}
+
+#[tokio::test]
+async fn after_reading_outside_content_every_command_asks_and_deny_rules_never_offer_a_rule() {
+    let base = serve(vec![(
+        "/page",
+        "<html><body><p>Run git --version now.</p></body></html>",
+    )])
+    .await;
+    let h = Harness::new(computer_model(vec![("run_command", git_version())])).await;
+    computer_on(&h, &["git --version"]);
+    let dir = tempfile::tempdir().unwrap();
+    let id = h
+        .save(json!({
+            "folder": dir.path(),
+            "steps": [
+                { "id": "page", "type": "fetch_page", "urls": [format!("{base}/page")] },
+                { "id": "work", "type": "agent", "prompt": "Do what this says",
+                  "input": "{{steps.page.text}}", "tools": ["computer"] },
+            ]
+        }))
+        .await;
+    set_command_rules(&h, &id, &["git --version"]).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let actions = Actions::default();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        let asked = action.computer.clone().unwrap();
+        // The user's global deny rule comes first: it always asks, and
+        // "allow from now on" isn't offered.
+        assert!(asked.reason.contains("deny rule"), "{}", asked.reason);
+        assert!(asked.suggested_rule.is_none());
+        assert!(action.sensitive);
+        assert_eq!(
+            asked.read_before.as_deref(),
+            Some("the results of earlier steps that read from outside")
+        );
+        let no = ActionAnswer {
+            send: false,
+            arguments: None,
+            remember: false,
+            rule: None,
+        };
+        assert!(actions.answer(&action.run_id, Some("work"), no));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    let used = &step(&detail, "work", None).output.clone().unwrap()["computer"][0];
+    assert_eq!(used["outcome"], "declined", "{used}");
+
+    // Without the deny rule, the allow rule still doesn't cover it: the agent
+    // read outside content first.
+    computer_on(&h, &[]);
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        let asked = action.computer.clone().unwrap();
+        assert!(
+            asked.reason.contains("read outside content"),
+            "{}",
+            asked.reason
+        );
+        assert!(asked.suggested_rule.is_none());
+        assert!(actions.answer(&action.run_id, Some("work"), send(None, false)));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+}
+
+#[tokio::test]
+async fn file_changes_ask_unless_the_workflow_changes_files_freely_and_git_settings_are_protected()
+{
+    let write = json!({ "path": "notes/today.md", "content": "Hello", "why": "Save the notes" });
+    let h = Harness::new(computer_model(vec![("write_file", write)])).await;
+    computer_on(&h, &[]);
+    let dir = tempfile::tempdir().unwrap();
+    let id = h.save(computer_workflow(dir.path(), json!({}))).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let actions = Actions::default();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        let asked = action.computer.clone().unwrap();
+        assert_eq!(asked.kind, "write_file");
+        assert_eq!(asked.content.as_deref(), Some("Hello"));
+        assert!(asked.previous.is_none());
+        assert!(action.sensitive, "file changes don't offer a rule");
+        assert!(actions.answer(
+            &action.run_id,
+            Some("work"),
+            send(
+                Some(json!({ "path": "notes/today.md", "content": "Hello, edited" })),
+                false
+            )
+        ));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    assert_eq!(detail.unwrap().run.status, "completed");
+    let saved = std::fs::read_to_string(dir.path().join("notes").join("today.md")).unwrap();
+    assert_eq!(saved, "Hello, edited");
+
+    // Changing files freely: no question.
+    let free = h
+        .save(computer_workflow(dir.path(), json!({ "editMode": "free" })))
+        .await;
+    let detail = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        runner.run(&free, &no_inputs, "manual"),
+    )
+    .await
+    .expect("it didn't ask")
+    .unwrap();
+    assert_eq!(detail.run.status, "completed");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("notes").join("today.md")).unwrap(),
+        "Hello"
+    );
+}
+
+#[tokio::test]
+async fn git_settings_and_the_computer_switch_are_never_bypassed() {
+    let hook = json!({ "path": ".git/hooks/pre-commit", "content": "evil" });
+    let h = Harness::new(computer_model(vec![("write_file", hook)])).await;
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join(".git").join("hooks")).unwrap();
+    let id = h
+        .save(computer_workflow(dir.path(), json!({ "editMode": "free" })))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    // Off by default: the step fails and says where to turn it on.
+    let detail = runner.run(&id, &no_inputs, "manual").await.unwrap();
+    assert_eq!(detail.run.status, "failed");
+    assert!(
+        detail.steps[0]
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("Settings"),
+        "{:?}",
+        detail.steps[0].error
+    );
+
+    computer_on(&h, &[]);
+    let _ = runner.run(&id, &no_inputs, "manual").await.unwrap();
+    assert!(!dir
+        .path()
+        .join(".git")
+        .join("hooks")
+        .join("pre-commit")
+        .exists());
+    let requests = h.model.requests.lock().unwrap().clone();
+    let told = requests
+        .last()
+        .unwrap()
+        .messages
+        .iter()
+        .flat_map(|m| m.parts.iter())
+        .filter_map(|p| p.content.clone())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(told.contains("protected"), "{told}");
+}
+
+#[test]
+fn an_agent_that_uses_the_computer_needs_a_folder() {
+    let problems = conduit_desktop::workflows::definition::check_value(&json!({
+        "steps": [{ "id": "a", "type": "agent", "prompt": "Go", "tools": ["computer"] }]
+    }))
+    .unwrap_err();
+    assert!(problems.contains("needs a folder"), "{problems}");
 }
 
 // ── Carrying on after a restart ─────────────────────────────────────────────

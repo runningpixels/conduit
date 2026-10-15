@@ -111,6 +111,11 @@ export function handsToText(
   return t('workspace.workflows.step.handsTo', { names: step.agents.map((id) => helperNames[id] || id).join(', ') });
 }
 
+/// "Uses the computer" for an agent step that may run programs and change files in the folder; `null` otherwise.
+export function computerText(step: WorkflowStep, t: Translate): string | null {
+  return step.type === 'agent' && (step.tools ?? []).includes('computer') ? t('workspace.workflows.step.usesComputer') : null;
+}
+
 /// The step's line, with a brief mention of its own model when it has one.
 /// `scope` is the workflow's top-level steps, so a loop can say which step it reads.
 /// `helperNames` lets an agent step say which helpers it hands work to;
@@ -124,7 +129,9 @@ export function describeStep(
   helperNames?: Record<string, string>,
 ): string {
   const handsTo = helperNames ? handsToText(step, t, helperNames) : null;
-  const line = describeKind(step, t, labels, connectorNames, scope) + (handsTo ? ` · ${handsTo}` : '');
+  const computer = helperNames ? computerText(step, t) : null;
+  const line =
+    describeKind(step, t, labels, connectorNames, scope) + (handsTo ? ` · ${handsTo}` : '') + (computer ? ` · ${computer}` : '');
   const only =
     (step.type === 'notify' || step.type === 'save_artifact') && step.onlyIfChanged
       ? `${line} (${t('workspace.workflows.step.onlyIfChanged')})`

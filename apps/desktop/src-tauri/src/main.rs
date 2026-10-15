@@ -379,6 +379,7 @@ fn main() {
             cancel_workflow_draft,
             list_workflows,
             list_agents,
+            preview_command_rule,
             get_workflow,
             create_workflow,
             update_workflow,

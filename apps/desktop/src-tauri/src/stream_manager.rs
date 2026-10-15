@@ -1074,6 +1074,9 @@ pub trait StepTools: Send + Sync {
     /// Run the call: what the model gets back (`Err` for an error) and how
     /// long it waited for the user, which the turn's time limit leaves out.
     fn call<'a>(&'a self, name: &'a str, arguments: &'a serde_json::Value) -> StepToolCall<'a>;
+    /// Every tool the turn calls, its own or a built-in one, as the call
+    /// begins (a workflow notes what outside content its agent read).
+    fn observe(&self, _name: &str) {}
 }
 
 /// A [`StepTools`] call in progress: the result for the model, and the time
@@ -1946,6 +1949,9 @@ impl StreamManager {
                     tool_call_id: call.tool_call_id.clone(),
                     tool_name: tool_name.clone(),
                 });
+            }
+            if let Some(step_tools) = step_tools {
+                step_tools.observe(&tool_name);
             }
 
             let other_reject = rejected

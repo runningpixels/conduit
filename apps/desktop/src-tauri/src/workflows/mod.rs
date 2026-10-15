@@ -17,10 +17,14 @@
 //! - `permissions`: what a scheduled run may do, and asking when it wants more
 //! - `schedule` / `scheduler`: running workflows automatically
 //! - `triggers`: starting a workflow on a new feed post or a new file
+//! - `computer`: agents running commands and changing files in the workflow's folder
 
 pub mod actions;
 pub mod ask;
 pub mod author;
+pub mod computer;
+#[cfg(windows)]
+pub mod confine;
 pub mod data;
 pub mod definition;
 pub mod documents;

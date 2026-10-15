@@ -48,6 +48,9 @@ pub enum Permission {
     AgentTools { step_id: String, tools: Vec<String> },
     /// Read files inside this folder (the workflow's own folder).
     ReadFolder { path: String },
+    /// Let agents run commands and change files in this folder (each still
+    /// asks unless a rule covers it).
+    Computer { path: String },
     /// Change this saved deck or draft (`document_kind` is `deck` or
     /// `draft`). Its title is part of the permission so the question can name
     /// the document; a document renamed since it was allowed asks again.
@@ -289,6 +292,12 @@ pub fn required(def: &WorkflowDefinition, ctx: &Context) -> Vec<Permission> {
         set.extend(super::triggers::permission(trigger, folder, &name));
     }
     collect(&def.steps, def.model.as_ref(), folder, ctx, &mut set);
+    if let Some(folder) = folder.filter(|_| super::definition::uses_computer(def)) {
+        let Permission::ReadFolder { path } = read_folder(folder) else {
+            unreachable!("read_folder makes a ReadFolder")
+        };
+        set.insert(Permission::Computer { path });
+    }
     // A helper an agent step can hand work to sends its task to its own
     // model and may use its own tools.
     for helper in reachable_helpers(def) {

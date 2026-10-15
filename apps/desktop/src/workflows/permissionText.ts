@@ -13,6 +13,7 @@ const AGENT_TOOL_KEY: Record<string, string> = {
   web_fetch: 'workspace.workflows.agentTool.webFetch',
   current_time: 'workspace.workflows.agentTool.currentTime',
   calculator: 'workspace.workflows.agentTool.calculator',
+  computer: 'workspace.workflows.agentTool.computer',
 };
 
 /// What one agent tool lets a step do ("search the web").
@@ -67,6 +68,8 @@ export function permissionText(p: WorkflowPermissionView, t: Translate, helpers:
         ? t('workspace.workflows.permissions.helperTools', { helper, tools: agentToolsText(p.tools, t) })
         : t('workspace.workflows.permissions.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
     }
+    case 'computer':
+      return t('workspace.workflows.permissions.computer', { path: p.path });
     case 'research':
       return t('workspace.workflows.permissions.research');
     case 'documents':
@@ -106,6 +109,8 @@ export function reviewText(review: WorkflowReview, t: Translate, helpers: Helper
         ? t('workspace.workflows.review.helperTools', { helper, tools: agentToolsText(p.tools, t) })
         : t('workspace.workflows.review.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
     }
+    case 'computer':
+      return t('workspace.workflows.review.computer', { path: p.path });
     case 'research':
       return t('workspace.workflows.review.research');
     case 'documents':

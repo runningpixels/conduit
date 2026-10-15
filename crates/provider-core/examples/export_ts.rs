@@ -36,7 +36,7 @@ use provider_core::schema::{
     SlideSlot, SlideTheme, SlotEdit, StarterAppInfo, StorylineItem, SupportState, TenantConfig,
     TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind,
     Transport, UpdatePolicy, UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode,
-    WebSearchRequest,
+    WebSearchRequest, WorkflowComputerSettings,
 };
 use ts_rs::TS;
 
@@ -212,6 +212,7 @@ fn main() {
     UpdatePolicy::export().expect("export UpdatePolicy");
     ProviderEndpointConfig::export().expect("export ProviderEndpointConfig");
     AgentGuardrails::export().expect("export AgentGuardrails");
+    WorkflowComputerSettings::export().expect("export WorkflowComputerSettings");
     AccentOverride::export().expect("export AccentOverride");
     AppError::export()
         .and_then(|_| AppSettings::export())

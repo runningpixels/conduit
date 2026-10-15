@@ -380,6 +380,7 @@ fn main() {
             list_workflows,
             list_agents,
             preview_command_rule,
+            suggest_command_rules,
             get_workflow,
             create_workflow,
             update_workflow,

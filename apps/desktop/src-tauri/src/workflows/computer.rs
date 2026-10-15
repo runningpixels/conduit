@@ -112,9 +112,47 @@ pub struct CommandRules {
     pub allow: Vec<String>,
     #[serde(default)]
     pub deny: Vec<String>,
+    /// How often each allow rule let a command run, for the rules list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uses: Vec<RuleUse>,
+}
+
+/// One allow rule's use: how many commands it let run, and when last.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleUse {
+    pub rule: String,
+    pub count: u32,
+    pub last_used_at: String,
 }
 
 impl CommandRules {
+    /// Count a command `rule` let run, at `now`.
+    pub fn note_use(&mut self, rule: &str, now: &str) {
+        match self.uses.iter_mut().find(|u| u.rule == rule) {
+            Some(used) => {
+                used.count = used.count.saturating_add(1);
+                used.last_used_at = now.to_string();
+            }
+            None => self.uses.push(RuleUse {
+                rule: rule.to_string(),
+                count: 1,
+                last_used_at: now.to_string(),
+            }),
+        }
+    }
+
+    /// Keep what `stored` counted for the allow rules still here (the UI
+    /// sends the rules without their counts).
+    pub fn keep_uses(&mut self, stored: &CommandRules) {
+        self.uses = stored
+            .uses
+            .iter()
+            .filter(|u| self.allow.contains(&u.rule))
+            .cloned()
+            .collect();
+    }
+
     /// Allow `rule` from now on; `false` when it already was.
     pub fn allow(&mut self, rule: &str) -> bool {
         let rule = rule.trim().to_string();
@@ -318,8 +356,14 @@ pub enum Verdict {
     /// Run without asking: this allow rule covers it.
     Run { rule: String },
     /// Ask first, for this reason; `remember` when "allow from now on" may be
-    /// offered (never for a deny-listed or runner command).
-    Ask { reason: String, remember: bool },
+    /// offered (never for a deny-listed or runner command); `risky` when it
+    /// matched an always-ask rule or the built-in list (deleting files,
+    /// throwing work away), so the card can warn.
+    Ask {
+        reason: String,
+        remember: bool,
+        risky: bool,
+    },
 }
 
 /// The rules that apply to a command, and whether the agent read outside
@@ -334,7 +378,16 @@ pub struct Judging<'a> {
 /// Decide whether `program args` runs without asking (see the module docs).
 pub fn judge(program: &str, args: &[String], rules: &Judging<'_>) -> Verdict {
     let name = program_name(program);
-    let ask = |reason: String, remember: bool| Verdict::Ask { reason, remember };
+    let ask = |reason: String, remember: bool| Verdict::Ask {
+        reason,
+        remember,
+        risky: false,
+    };
+    let risky = |reason: String| Verdict::Ask {
+        reason,
+        remember: false,
+        risky: true,
+    };
     if let Some(reason) = odd_reason(program, args) {
         return ask(reason.to_string(), false);
     }
@@ -343,14 +396,13 @@ pub fn judge(program: &str, args: &[String], rules: &Judging<'_>) -> Verdict {
             .iter()
             .find(|r| parse_rule(r).is_ok_and(|r| r.matches(program, args)))
         {
-            return ask(
-                format!("It matches {whose} deny rule \u{201c}{rule}\u{201d}."),
-                false,
-            );
+            return risky(format!(
+                "It matches {whose} always-ask rule \u{201c}{rule}\u{201d}."
+            ));
         }
     }
     if let Some(reason) = built_in_reason(&name, args) {
-        return ask(format!("{reason} Commands like this always ask."), false);
+        return risky(format!("{reason} Commands like this always ask."));
     }
     if is_runner(&name) {
         return ask(
@@ -962,6 +1014,70 @@ pub fn mentions_outside(text: &str, outside: &std::collections::HashSet<String>)
         })
 }
 
+/// A rule worth offering on the workflow page: commands the user approved
+/// one by one, which this rule would have covered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleSuggestion {
+    pub rule: String,
+    /// How many approved commands it would have covered.
+    pub times: u32,
+    /// One of them, as the user saw it (`git log --oneline`).
+    pub example: String,
+}
+
+/// The rules to suggest from the computer records of recent runs (newest
+/// first): commands the user approved by hand, whose card offered a rule the
+/// workflow doesn't have yet. A rule already allowed or matching an
+/// always-ask rule is left out.
+pub fn suggestions<'v>(
+    records: impl IntoIterator<Item = &'v Value>,
+    rules: &CommandRules,
+) -> Vec<RuleSuggestion> {
+    let mut found: Vec<RuleSuggestion> = Vec::new();
+    for record in records {
+        let text = |key: &str| record.get(key).and_then(Value::as_str).unwrap_or_default();
+        if text("kind") != "command" || text("approvedBy") != "you" || text("outcome") != "ran" {
+            continue;
+        }
+        let rule = text("suggestedRule").trim();
+        if rule.is_empty() || parse_rule(rule).is_err() || rules.allow.iter().any(|r| r == rule) {
+            continue;
+        }
+        let args: Vec<String> = record
+            .get("args")
+            .and_then(Value::as_array)
+            .map(|list| {
+                list.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let program = text("program");
+        if rules
+            .deny
+            .iter()
+            .any(|d| parse_rule(d).is_ok_and(|d| d.matches(program, &args)))
+        {
+            continue;
+        }
+        match found.iter_mut().find(|s| s.rule == rule) {
+            Some(seen) => seen.times += 1,
+            None => found.push(RuleSuggestion {
+                rule: rule.to_string(),
+                times: 1,
+                example: std::iter::once(program_name(program))
+                    .chain(args)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            }),
+        }
+    }
+    found.sort_by_key(|s| std::cmp::Reverse(s.times));
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1012,7 +1128,8 @@ mod tests {
             judged("git", &["status"], &[]),
             Verdict::Ask {
                 reason: "No rule covers it.".to_string(),
-                remember: true
+                remember: true,
+                risky: false,
             }
         );
     }
@@ -1132,10 +1249,88 @@ mod tests {
             ..rules
         };
         match judge("git", &args(&["status"]), &tainted) {
-            Verdict::Ask { reason, remember } => {
+            Verdict::Ask {
+                reason, remember, ..
+            } => {
                 assert!(reason.contains("outside content"));
                 assert!(!remember);
             }
+            v => panic!("{v:?}"),
+        }
+    }
+
+    #[test]
+    fn suggestions_come_from_commands_approved_by_hand() {
+        let ran = |args: &[&str], by: &str, rule: Option<&str>| {
+            let mut r = serde_json::json!({
+                "kind": "command", "program": "C:\\Git\\git.exe", "args": args,
+                "approvedBy": by, "outcome": "ran",
+            });
+            if let Some(rule) = rule {
+                r["suggestedRule"] = Value::String(rule.into());
+            }
+            r
+        };
+        let records = [
+            ran(&["diff"], "you", Some("git diff *")),
+            ran(&["diff", "--stat"], "you", Some("git diff *")),
+            ran(&["log"], "you", Some("git log *")),
+            ran(&["status"], "rule: git status *", None),
+            ran(&["push"], "you", Some("git push *")),
+        ];
+        let rules = CommandRules {
+            allow: vec!["git log *".into()],
+            deny: vec!["git push *".into()],
+            uses: Vec::new(),
+        };
+        let found = suggestions(&records, &rules);
+        assert_eq!(
+            found,
+            vec![RuleSuggestion {
+                rule: "git diff *".into(),
+                times: 2,
+                example: "git diff".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn rule_uses_are_counted_and_kept_for_rules_still_there() {
+        let mut stored = CommandRules {
+            allow: vec!["git log *".into(), "npm test *".into()],
+            ..Default::default()
+        };
+        stored.note_use("git log *", "2026-10-15T10:00:00Z");
+        stored.note_use("git log *", "2026-10-15T11:00:00Z");
+        stored.note_use("npm test *", "2026-10-15T09:00:00Z");
+        assert_eq!(stored.uses[0].count, 2);
+        assert_eq!(stored.uses[0].last_used_at, "2026-10-15T11:00:00Z");
+        let mut sent = CommandRules {
+            allow: vec!["git log *".into()],
+            ..Default::default()
+        };
+        sent.keep_uses(&stored);
+        assert_eq!(sent.uses.len(), 1);
+        assert_eq!(sent.uses[0].rule, "git log *");
+    }
+
+    #[test]
+    fn always_ask_rules_and_built_ins_are_risky() {
+        let deny = vec!["git push *".to_string()];
+        let rules = Judging {
+            allow: &[],
+            deny: &deny,
+            global_deny: &[],
+            tainted: None,
+        };
+        for (program, list) in [("git", &["push"][..]), ("git", &["reset", "--hard"][..])] {
+            match judge(program, &args(list), &rules) {
+                Verdict::Ask { risky, .. } => assert!(risky, "{list:?}"),
+                v => panic!("{v:?}"),
+            }
+        }
+        match judge("git", &args(&["log"]), &rules) {
+            Verdict::Ask { risky, .. } => assert!(!risky),
             v => panic!("{v:?}"),
         }
     }

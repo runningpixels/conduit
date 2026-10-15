@@ -61,19 +61,51 @@ async function flush() {
 }
 
 describe('AgentsPage', () => {
-  it('shows a working helper, an unused step and the last 30 days', async () => {
-    ipc.listAgents.mockResolvedValue([helper, step]);
+  it('shows a working helper, a step named by its workflow and the last 30 days', async () => {
+    ipc.listAgents.mockResolvedValue([step, helper]);
     render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
     await flush();
-    expect(screen.getByText('Weekly report')).toBeTruthy();
-    expect(screen.getByText('Researcher')).toBeTruthy();
-    expect(screen.getByText('Helper')).toBeTruthy();
+    const cards = screen.getAllByRole('button', { name: /Researcher|Weekly report/ });
+    // Working agents come first.
+    expect(cards[0].getAttribute('aria-label')).toBe('Researcher');
+    expect(screen.getByText('Helper · Weekly report')).toBeTruthy();
+    // The workflow's only agent step goes by the workflow's name, its prompt below.
+    expect(screen.getByRole('button', { name: 'Weekly report' })).toBeTruthy();
     expect(screen.getByText('Agent step')).toBeTruthy();
     expect(screen.getByText('Write the report')).toBeTruthy();
     expect(screen.getByText('Working on: Look up the launch date')).toBeTruthy();
     expect(screen.getByText('Not used yet')).toBeTruthy();
-    expect(screen.getByText(/glm-flash · 2 tools · Hands work to Writer/)).toBeTruthy();
-    expect(screen.getByText('Last 30 days: 1,234 tasks, 2 failed, 56,789 tokens')).toBeTruthy();
+    expect(screen.getByText('glm-flash')).toBeTruthy();
+    expect(screen.getByText("Workflow's model")).toBeTruthy();
+    expect(screen.getByText('2 tools')).toBeTruthy();
+    expect(screen.getByText('Hands work to Writer')).toBeTruthy();
+    expect(screen.getByText('1,234')).toBeTruthy();
+    expect(screen.getByText('57K')).toBeTruthy();
+  });
+
+  it('names steps by their prompt when a workflow has several, and shows computer use', async () => {
+    ipc.listAgents.mockResolvedValue([
+      { ...step, tools: ['computer', 'web_search'] },
+      { ...step, agentId: 'agent2', about: 'Check the numbers\nthen more' },
+    ]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    expect(screen.getByRole('button', { name: 'Check the numbers' })).toBeTruthy();
+    expect(screen.getAllByText('Agent step · Weekly report')).toHaveLength(2);
+    expect(screen.getByText('Uses your computer')).toBeTruthy();
+    expect(screen.getByText('1 tool')).toBeTruthy();
+  });
+
+  it('filters by search and by working or helper', async () => {
+    ipc.listAgents.mockResolvedValue([helper, step]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: /^Working/ }));
+    expect(screen.queryByRole('button', { name: 'Weekly report' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Researcher' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search agents' }), { target: { value: 'nothing like it' } });
+    expect(screen.getByText('No agents match “nothing like it”.')).toBeTruthy();
   });
 
   it('shows idle with the last-active time', async () => {
@@ -88,7 +120,7 @@ describe('AgentsPage', () => {
     const open = vi.fn();
     render(<AgentsPage onOpenWorkflow={open} onOpenWorkflows={() => {}} />);
     await flush();
-    fireEvent.click(screen.getByRole('button', { name: 'Open workflow' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Researcher' }));
     expect(open).toHaveBeenCalledWith('w1');
   });
 

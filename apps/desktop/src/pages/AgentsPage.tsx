@@ -1,6 +1,8 @@
-/// The Agents page: every agent step and helper across the workflows, grouped by
-/// workflow, with what each is doing now and how busy it was in the last 30 days.
-/// It reads `list_agents` when it opens and again every few seconds while shown.
+/// The Agents page: every agent step and helper across the workflows as cards,
+/// the way Apps shows apps: what each is doing now, what it may use, and how
+/// busy it was in the last 30 days. Working agents come first; the whole card
+/// opens its workflow. It reads `list_agents` when it opens and again every few
+/// seconds while shown.
 
 import { useEffect, useMemo, useState } from 'react';
 import { useT } from '../i18n';
@@ -8,6 +10,8 @@ import { useFormatters } from '../i18n/formatters';
 import { listAgents } from '../ipc/client';
 import type { AgentEntry } from '../ipc/contracts';
 import { PageEmpty, PageFrame } from '../shell/PageFrame';
+import { destinationIcon } from '../shell/Rail';
+import { COMPUTER_TOOL } from '../workflows/editorModel';
 
 /// Longest step name: an agent step is named by its instruction's first line.
 const STEP_NAME_CHARS = 80;
@@ -21,20 +25,11 @@ export function stepName(instruction: string): string {
 /// How often the list is read while the page is shown.
 export const AGENTS_REFRESH_MS = 3000;
 
-interface Group {
-  workflowId: string;
-  workflowName: string;
-  agents: AgentEntry[];
-}
+type Filter = 'all' | 'working' | 'helpers';
 
-function groupByWorkflow(entries: readonly AgentEntry[]): Group[] {
-  const groups = new Map<string, Group>();
-  for (const entry of entries) {
-    const group = groups.get(entry.workflowId) ?? { workflowId: entry.workflowId, workflowName: entry.workflowName, agents: [] };
-    group.agents.push(entry);
-    groups.set(entry.workflowId, group);
-  }
-  return [...groups.values()];
+/// Working agents first; otherwise the order `list_agents` gives.
+function busyFirst(entries: readonly AgentEntry[]): AgentEntry[] {
+  return [...entries].sort((a, b) => Number(b.currentTask !== null) - Number(a.currentTask !== null));
 }
 
 export function AgentsPage({
@@ -50,6 +45,8 @@ export function AgentsPage({
   const fmt = useFormatters();
   const [entries, setEntries] = useState<AgentEntry[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
   useEffect(() => {
     let cancelled = false;
     const read = () => {
@@ -72,38 +69,105 @@ export function AgentsPage({
     };
   }, []);
 
-  const groups = useMemo(() => groupByWorkflow(entries ?? []), [entries]);
+  /// Agent steps per workflow: a workflow's only step goes by the workflow's name.
+  const stepsIn = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of entries ?? []) if (e.kind === 'step') counts.set(e.workflowId, (counts.get(e.workflowId) ?? 0) + 1);
+    return counts;
+  }, [entries]);
 
-  const nameOf = (entry: AgentEntry): string =>
-    entry.kind === 'helper' ? entry.name || entry.agentId : stepName(entry.about) || t('shell.agents.kindStep');
+  /// The card's name, and whether that name is the workflow's (then the prompt shows below it).
+  const nameOf = (entry: AgentEntry): { name: string; named: boolean } => {
+    if (entry.kind === 'helper') return { name: entry.name || entry.agentId, named: true };
+    if (stepsIn.get(entry.workflowId) === 1) return { name: entry.workflowName, named: true };
+    return { name: stepName(entry.about) || t('shell.agents.kindStep'), named: false };
+  };
 
-  /// Its model, tools and who it hands work to; empty when it has none of them.
-  const meta = (entry: AgentEntry): string =>
-    [
-      entry.model ? entry.model.model : null,
-      entry.tools.length > 0 ? t('shell.agents.tools', { count: entry.tools.length }) : null,
-      entry.handsTo.length > 0 ? t('shell.agents.handsTo', { names: entry.handsTo.join(', ') }) : null,
-    ]
-      .filter((x): x is string => x !== null)
-      .join(' · ');
+  const all = useMemo(() => busyFirst(entries ?? []), [entries]);
+  const counts = {
+    all: all.length,
+    working: all.filter((e) => e.currentTask !== null).length,
+    helpers: all.filter((e) => e.kind === 'helper').length,
+  };
+  const q = query.trim().toLocaleLowerCase();
+  const shown = all.filter((e) => {
+    if (filter === 'working' && e.currentTask === null) return false;
+    if (filter === 'helpers' && e.kind !== 'helper') return false;
+    if (!q) return true;
+    return [nameOf(e).name, e.workflowName, e.about].some((s) => s.toLocaleLowerCase().includes(q));
+  });
 
-  const status = (entry: AgentEntry) => {
-    if (entry.currentTask !== null) {
-      return (
-        <span className="agent-status agent-status-busy" role="status">
-          <span className="agent-pulse" aria-hidden="true" />
-          {t('shell.agents.working', { task: entry.currentTask })}
-        </span>
-      );
-    }
+  const card = (entry: AgentEntry) => {
+    const { name, named } = nameOf(entry);
+    const busy = entry.currentTask !== null;
+    const kind = entry.kind === 'helper' ? t('shell.agents.kindHelper') : t('shell.agents.kindStep');
+    const others = entry.tools.filter((x) => x !== COMPUTER_TOOL).length;
     return (
-      <span className="agent-status wf-muted">
-        {entry.lastActive
-          ? t('shell.agents.idleSince', { when: fmt.timeAgo(entry.lastActive) })
-          : t('shell.agents.notUsed')}
-      </span>
+      <li key={`${entry.workflowId}:${entry.kind}:${entry.agentId}`}>
+        <button
+          type="button"
+          className={busy ? 'agent-card is-busy' : 'agent-card'}
+          data-agent-id={entry.agentId}
+          aria-label={name}
+          onClick={() => onOpenWorkflow(entry.workflowId)}
+        >
+          <span className="agent-card-top">
+            <span className="agent-tile" aria-hidden="true">
+              {destinationIcon('agents')}
+            </span>
+            <span className="agent-card-title">
+              <span className="agent-name">{name}</span>
+              <span className="agent-sub">{name === entry.workflowName ? kind : `${kind} · ${entry.workflowName}`}</span>
+            </span>
+          </span>
+          {busy ? (
+            <span className="agent-status is-busy" role="status">
+              {t('shell.agents.working', { task: entry.currentTask ?? '' })}
+            </span>
+          ) : (
+            <span className="agent-status">
+              {entry.lastActive ? t('shell.agents.idleSince', { when: fmt.timeAgo(entry.lastActive) }) : t('shell.agents.notUsed')}
+            </span>
+          )}
+          {named && entry.about.trim() ? <span className="agent-about">{entry.about.trim()}</span> : null}
+          <span className="agent-traits">
+            <span className="apps-home-trait" data-tone="ai">
+              {entry.model ? entry.model.model : t('shell.agents.workflowModel')}
+            </span>
+            {entry.tools.includes(COMPUTER_TOOL) ? (
+              <span className="apps-home-trait" data-tone="net">
+                {t('shell.agents.usesComputer')}
+              </span>
+            ) : null}
+            {others > 0 ? <span className="apps-home-trait">{t('shell.agents.tools', { count: others })}</span> : null}
+            {entry.handsTo.length > 0 ? (
+              <span className="apps-home-trait">{t('shell.agents.handsTo', { names: entry.handsTo.join(', ') })}</span>
+            ) : null}
+          </span>
+          <span className="agent-stats" title={t('shell.agents.statsLabel')}>
+            <span className="agent-stat">
+              <b>{fmt.count(entry.tasks)}</b>
+              <span>{t('shell.agents.statTasks', { count: entry.tasks })}</span>
+            </span>
+            <span className={entry.failed > 0 ? 'agent-stat is-bad' : 'agent-stat'}>
+              <b>{fmt.count(entry.failed)}</b>
+              <span>{t('shell.agents.statFailed')}</span>
+            </span>
+            <span className="agent-stat">
+              <b>{fmt.compact(entry.tokens)}</b>
+              <span>{t('shell.agents.statTokens')}</span>
+            </span>
+          </span>
+        </button>
+      </li>
     );
   };
+
+  const FILTERS: [Filter, string][] = [
+    ['all', t('shell.agents.filterAll')],
+    ['working', t('shell.agents.filterWorking')],
+    ['helpers', t('shell.agents.filterHelpers')],
+  ];
 
   return (
     <PageFrame destination="agents" title={t('shell.agents.title')} subtitle={t('shell.agents.subtitle')} className="agents-page">
@@ -120,44 +184,42 @@ export function AgentsPage({
           }
         />
       ) : (
-        <div className="agents-groups">
+        <>
           {failed ? <p className="wf-error">{t('shell.agents.loadFailed')}</p> : null}
-          {groups.map((group) => (
-            <section key={group.workflowId} className="agents-group" aria-label={group.workflowName}>
-              <header className="agents-group-head">
-                <h3 className="agents-group-title">{group.workflowName}</h3>
-                <button type="button" className="btn ghost" onClick={() => onOpenWorkflow(group.workflowId)}>
-                  {t('shell.agents.openWorkflow')}
+          <div className="agents-bar">
+            <input
+              className="apps-home-search"
+              type="search"
+              value={query}
+              placeholder={t('shell.agents.search')}
+              aria-label={t('shell.agents.search')}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <div className="agents-filters" role="group" aria-label={t('shell.agents.filterLabel')}>
+              {FILTERS.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="agents-filter"
+                  aria-pressed={filter === key}
+                  onClick={() => setFilter(key)}
+                >
+                  {label}
+                  <b>{fmt.count(counts[key])}</b>
                 </button>
-              </header>
-              <ul className="agents-list">
-                {group.agents.map((entry) => (
-                  <li
-                    key={`${entry.kind}:${entry.agentId}`}
-                    className={entry.currentTask !== null ? 'agent-card is-busy' : 'agent-card'}
-                    data-agent-id={entry.agentId}
-                  >
-                    <div className="agent-card-head">
-                      <b className="agent-name">{nameOf(entry)}</b>
-                      <span className="wf-flag">
-                        {entry.kind === 'helper' ? t('shell.agents.kindHelper') : t('shell.agents.kindStep')}
-                      </span>
-                    </div>
-                    {status(entry)}
-                    {meta(entry) ? <p className="wf-muted agent-meta">{meta(entry)}</p> : null}
-                    <p className="wf-muted agent-stats">
-                      {t('shell.agents.stats', {
-                        tasks: entry.tasks,
-                        failed: fmt.count(entry.failed),
-                        tokens: fmt.count(entry.tokens),
-                      })}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+              ))}
+            </div>
+          </div>
+          {shown.length === 0 ? (
+            <p className="apps-home-nomatch">
+              {q ? t('shell.agents.noMatch', { query: query.trim() }) : t('shell.agents.noneShown')}
+            </p>
+          ) : (
+            <ul className="agents-grid" aria-label={t('shell.agents.gridLabel')}>
+              {shown.map(card)}
+            </ul>
+          )}
+        </>
       )}
     </PageFrame>
   );

@@ -1,33 +1,115 @@
 /* The Agents page, and the helper editor / hand-off display that go with it. */
-.agents-groups { display: grid; gap: var(--sp-5); max-width: 56rem; }
-.agents-group { display: grid; gap: var(--sp-3); }
-.agents-group-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-.agents-group-title { margin: 0; color: var(--ink); font-size: var(--fs-8xl); font-weight: 600; overflow-wrap: anywhere; }
-.agents-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
-.agent-card {
-  display: grid;
-  gap: var(--sp-1);
-  padding: var(--sp-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-md);
-  background: var(--bg-side);
-  min-width: 0;
-}
-.agent-card.is-busy { border-color: var(--accent-line); }
-.agent-card-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.agent-card-head .wf-flag { margin-left: 0; flex: none; }
-.agent-name { color: var(--ink); font-size: var(--fs-5xl); overflow-wrap: anywhere; }
-.agent-status { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-5xl); }
-.agent-status-busy { padding: 1px 8px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--signal) 14%, transparent); color: var(--signal-text); font-weight: 600; }
-.agent-pulse {
-  width: 8px;
-  height: 8px;
+/* Cards like Apps: a tile and name, what it is doing, what it may use, and
+ * the last 30 days as three numbers. The whole card opens its workflow. */
+.agents-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin: 0 0 var(--sp-5); }
+.agents-bar .apps-home-search { margin: 0; }
+.agents-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.agents-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: var(--accent-line);
-  animation: agent-pulse 1.4s ease-in-out infinite;
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
 }
+.agents-filter b { color: var(--ink-3); font-weight: 600; font-variant-numeric: tabular-nums; }
+.agents-filter:hover { border-color: var(--line-hi); }
+.agents-filter[aria-pressed="true"] { border-color: var(--accent-line); background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.agents-filter:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agents-grid > li { display: flex; min-width: 0; }
+.agent-card {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color var(--tap), background var(--tap);
+}
+.agent-card:hover { border-color: var(--line-hi); background: var(--card-hi); }
+.agent-card.is-busy { border-color: var(--accent-line); outline: 1px solid var(--accent-line); outline-offset: -2px; }
+.agent-card:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.agent-card-top { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.agent-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.agent-tile svg { width: 26px; height: 26px; }
+.agent-card.is-busy .agent-tile { background: var(--accent); color: var(--bg); }
+.agent-card-title { display: grid; gap: 3px; min-width: 0; }
+.agent-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+  font-size: var(--fs-8xl);
+  font-weight: 700;
+}
+.agent-sub { color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-2xl); overflow-wrap: anywhere; }
+.agent-status {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--card-hi);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+  overflow-wrap: anywhere;
+}
+.agent-status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--ink-3); }
+.agent-status.is-busy { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.agent-status.is-busy::before { background: var(--accent); animation: agent-pulse 1.4s ease-in-out infinite; }
 @keyframes agent-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .agent-pulse { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .agent-status.is-busy::before { animation: none; } }
+.agent-about {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+  font-size: var(--fs-4xl);
+  line-height: 1.45;
+}
+.agent-traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.agent-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: auto;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+}
+.agent-stat { display: grid; gap: 1px; }
+.agent-stat b { font-size: var(--fs-9xl); font-weight: 700; font-variant-numeric: tabular-nums; }
+.agent-stat span { color: var(--ink-3); font-size: var(--fs-lg); }
+.agent-stat.is-bad b { color: var(--err); }
 
 .wfe-helper {
   display: grid;

@@ -17,7 +17,7 @@ use std::pin::Pin;
 use tokio_util::sync::CancellationToken;
 
 const OPENROUTER_HEADERS: &[(&str, &str)] = &[
-    ("HTTP-Referer", "https://conduit.app"),
+    ("HTTP-Referer", "https://conduitllm.com"),
     ("X-Title", "Conduit"),
 ];
 

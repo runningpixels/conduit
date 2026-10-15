@@ -126,7 +126,7 @@ export function ResultView({
             </>
           )}
         </div>
-      ) : primary.kind === 'file' ? (
+      ) : primary.kind === 'file' && primary.path && primary.path !== primary.title ? (
         <p className="wf-result-file">
           <span className="wf-muted">{t('workspace.workflows.result.savedTo')}</span>{' '}
           <span className="wf-result-path">{primary.path ?? primary.title}</span>

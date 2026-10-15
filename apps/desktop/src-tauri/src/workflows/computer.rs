@@ -191,8 +191,15 @@ impl Rule {
 fn is_interpreter(name: &str) -> bool {
     matches!(
         name,
-        "python" | "python3" | "py" | "node" | "deno" | "bun" | "ruby" | "perl" | "php" | "Rscript"
+        "python" | "python3" | "py" | "node" | "deno" | "bun" | "ruby" | "perl" | "php" | "rscript"
     )
+}
+
+/// An interpreter's arguments start with a script to run (`test.js`), not a
+/// flag (`-e`, `-c`) or nothing (a prompt).
+fn names_script(args: &[String]) -> bool {
+    args.first()
+        .is_some_and(|a| !a.starts_with('-') && !a.contains(char::is_whitespace))
 }
 
 /// Programs that are shells or run another program they're given: always ask.
@@ -360,16 +367,17 @@ pub fn judge(program: &str, args: &[String], rules: &Judging<'_>) -> Verdict {
         })
     });
     if is_interpreter(&name) && allowed.is_none() {
+        // A rule naming the script may be offered; one for the bare
+        // interpreter or a flag (`node -e`) never is.
         return ask(
             "It runs code, so it asks unless a rule names the script.".to_string(),
-            false,
+            names_script(args),
         );
     }
     match (allowed, rules.tainted) {
-        (Some(_), Some(read)) => ask(
-            format!(
-                "Asking because this agent read outside content first ({read}), and that can't choose commands on its own."
-            ),
+        (Some(_), Some(_)) => ask(
+            "This agent read outside content first, and that can't choose commands on its own."
+                .to_string(),
             false,
         ),
         (Some(rule), None) => Verdict::Run { rule: rule.clone() },
@@ -381,6 +389,14 @@ pub fn judge(program: &str, args: &[String], rules: &Judging<'_>) -> Verdict {
 /// first argument when that's a word (`git log *`), else the program alone.
 pub fn suggested_rule(program: &str, args: &[String]) -> String {
     let name = program_name(program);
+    if is_interpreter(&name) && names_script(args) {
+        // The script itself, so the rule never covers other code.
+        return match args {
+            [script] => format!("{name} {script}"),
+            [script, ..] => format!("{name} {script} *"),
+            [] => name,
+        };
+    }
     match args {
         [first, ..] if !first.starts_with('-') && !first.contains(['/', '\\']) => {
             format!("{name} {first} *")
@@ -1056,6 +1072,29 @@ mod tests {
             &["python report.py *"]
         )));
         assert!(!runs(&judged("node", &["-e", "1"], &["node -e *"])));
+        // A rule for the script is offered, never one for code in a flag.
+        assert!(matches!(
+            judged("node", &["test.js"], &[]),
+            Verdict::Ask { remember: true, .. }
+        ));
+        assert!(matches!(
+            judged("node", &["-e", "1"], &[]),
+            Verdict::Ask {
+                remember: false,
+                ..
+            }
+        ));
+        assert_eq!(suggested_rule("node", &args(&["test.js"])), "node test.js");
+        assert_eq!(
+            suggested_rule(
+                "C:\\Python\\python.exe",
+                &args(&["tools/report.py", "--week"])
+            ),
+            "python tools/report.py *"
+        );
+        let offered = suggested_rule("node", &args(&["test.js"]));
+        assert!(runs(&judged("node", &["test.js"], &[offered.as_str()])));
+        assert!(!runs(&judged("node", &["other.js"], &[offered.as_str()])));
     }
 
     #[test]
@@ -1094,7 +1133,7 @@ mod tests {
         };
         match judge("git", &args(&["status"]), &tainted) {
             Verdict::Ask { reason, remember } => {
-                assert!(reason.contains("2 web pages"));
+                assert!(reason.contains("outside content"));
                 assert!(!remember);
             }
             v => panic!("{v:?}"),

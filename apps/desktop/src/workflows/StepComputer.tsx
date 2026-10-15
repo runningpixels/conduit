@@ -64,15 +64,7 @@ export function StepComputer({ output }: { output: unknown }) {
         {records.map((r, i) => {
           const bad = r.outcome === 'failed' || r.outcome === 'timedOut';
           const approved = approvedText(r.approvedBy, t);
-          const what =
-            r.kind === 'command'
-              ? [baseName(r.program), ...r.args].join(' ')
-              : t(
-                  r.kind === 'write'
-                    ? 'workspace.workflows.runDetail.computer.write'
-                    : 'workspace.workflows.runDetail.computer.edit',
-                  { path: r.path },
-                );
+          const what = r.kind === 'command' ? [baseName(r.program), ...r.args].join(' ') : r.path;
           const output = r.kind === 'command' ? (r.output ?? '').trim() : '';
           const inline = output.length <= INLINE_CHARS && output.split('\n').length <= INLINE_LINES;
           return (
@@ -89,7 +81,7 @@ export function StepComputer({ output }: { output: unknown }) {
                     : null,
                   r.kind === 'command' && r.durationMs !== undefined ? fmt.duration(r.durationMs) : null,
                 ]
-                  .filter((x): x is string => x !== null)
+                  .filter((x): x is string => Boolean(x))
                   .join(' · ')}
               </span>
               {r.kind === 'command' && r.reason ? <span className="wf-muted">{r.reason}</span> : null}

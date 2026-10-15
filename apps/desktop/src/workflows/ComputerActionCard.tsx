@@ -160,7 +160,8 @@ export function ComputerActionCard({
         {t('workspace.workflows.review.expires', { when: formatNextRun(action.expiresAt, fmt.locale) })}
       </p>
       {action.sensitive ? (
-        <p className="wf-muted">{t('workspace.workflows.computer.alwaysAsks')}</p>
+        // A file change says why it asks above; outside content asks only this time.
+        command && !request.readBefore ? <p className="wf-muted">{t('workspace.workflows.computer.alwaysAsks')}</p> : null
       ) : offered ? (
         <div className="wf-computer-remember">
           <label className="wf-action-remember">

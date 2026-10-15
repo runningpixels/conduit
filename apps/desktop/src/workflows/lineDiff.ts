@@ -52,12 +52,13 @@ export function lineDiff(previous: string, next: string): DiffRow[] {
         rows.push({ kind: 'same', text: midA[i] });
         i += 1;
         j += 1;
-      } else if (j < midB.length && (i === midA.length || table[i * w + j + 1] >= table[(i + 1) * w + j])) {
-        rows.push({ kind: 'add', text: midB[j] });
-        j += 1;
-      } else {
+      } else if (i < midA.length && (j === midB.length || table[(i + 1) * w + j] >= table[i * w + j + 1])) {
+        // Taken-out lines first, then what replaces them.
         rows.push({ kind: 'del', text: midA[i] });
         i += 1;
+      } else {
+        rows.push({ kind: 'add', text: midB[j] });
+        j += 1;
       }
     }
   }

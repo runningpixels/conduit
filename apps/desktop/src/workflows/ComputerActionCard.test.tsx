@@ -136,10 +136,16 @@ describe('ActionCard for a command', () => {
   });
 
   it('offers no rule when it must always ask or none is suggested', () => {
-    const { unmount } = render(<ActionCard action={action(command, { sensitive: true })} onAnswered={vi.fn()} />);
+    const { unmount } = render(
+      <ActionCard action={action({ ...command, readBefore: undefined }, { sensitive: true })} onAnswered={vi.fn()} />,
+    );
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.getByText('This one always asks first.')).toBeInTheDocument();
     unmount();
+    // Asking because of outside content is for this time only, not always.
+    const tainted = render(<ActionCard action={action(command, { sensitive: true })} onAnswered={vi.fn()} />);
+    expect(screen.queryByText('This one always asks first.')).toBeNull();
+    tainted.unmount();
     render(<ActionCard action={action({ ...command, suggestedRule: undefined })} onAnswered={vi.fn()} />);
     expect(screen.queryByRole('checkbox')).toBeNull();
   });
@@ -201,6 +207,15 @@ describe('lineDiff', () => {
     expect(rows.filter((r) => r.kind === 'skip')).toEqual([
       { kind: 'skip', count: 4 },
       { kind: 'skip', count: 3 },
+    ]);
+  });
+
+  it('shows the taken-out line before the one replacing it', () => {
+    expect(lineDiff('a\nold\nb', 'a\nnew\nb')).toEqual([
+      { kind: 'same', text: 'a' },
+      { kind: 'del', text: 'old' },
+      { kind: 'add', text: 'new' },
+      { kind: 'same', text: 'b' },
     ]);
   });
 

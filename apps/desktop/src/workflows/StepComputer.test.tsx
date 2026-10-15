@@ -48,9 +48,9 @@ describe('StepComputer', () => {
     expect(items[1]).toHaveTextContent('Exited with 1');
     expect(items[2]).toHaveTextContent('Declined rm -rf x');
     expect(items[2]).toHaveTextContent('Always asks');
-    expect(items[3]).toHaveTextContent('Changed Write out.txt');
+    expect(items[3]).toHaveTextContent('Changed out.txt');
     expect(items[3]).toHaveTextContent('Allowed by the workflow’s edit mode');
-    expect(items[4]).toHaveTextContent('Declined Edit notes.txt');
+    expect(items[4]).toHaveTextContent('Declined notes.txt');
   });
 
   it('folds long output and keeps short output in view', () => {

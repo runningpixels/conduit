@@ -52,15 +52,18 @@ pub fn collect(steps: &[WorkflowRunStep], conversation_id: Option<&str>) -> Vec<
         let (Some(out), input) = (step.output.as_ref(), step.input.as_ref()) else {
             continue;
         };
-        let Some(output) = from_step(&step.step_id, out, input, conversation_id) else {
-            continue;
-        };
-        // A loop that saves into the same document each time is one output:
-        // keep the last save (its preview is what the document now holds).
-        if let Some(same) = outputs.iter_mut().find(|o| o.same_target(&output)) {
-            *same = output;
-        } else {
-            outputs.push(output);
+        let saved = from_step(&step.step_id, out, input, conversation_id);
+        for output in saved
+            .into_iter()
+            .chain(computer_changes(&step.step_id, out))
+        {
+            // A loop that saves into the same document each time is one output:
+            // keep the last save (its preview is what the document now holds).
+            if let Some(same) = outputs.iter_mut().find(|o| o.same_target(&output)) {
+                *same = output;
+            } else {
+                outputs.push(output);
+            }
         }
     }
     outputs
@@ -146,6 +149,27 @@ fn from_step(
         }
     }
     None
+}
+
+/// The files an agent wrote or changed in the workflow's folder (its
+/// `computer` record), by their path in the folder.
+fn computer_changes(step_id: &str, out: &Value) -> Vec<RunOutput> {
+    let Some(records) = out.get("computer").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    records
+        .iter()
+        .filter(|r| {
+            matches!(text(r, "kind"), Some("write" | "edit"))
+                && text(r, "outcome") == Some("changed")
+        })
+        .filter_map(|r| text(r, "path"))
+        .map(|path| {
+            let mut output = RunOutput::new("file", path.to_string(), step_id);
+            output.path = Some(path.to_string());
+            output
+        })
+        .collect()
 }
 
 /// The start of `content` as one line of plain text: Markdown headings,
@@ -313,6 +337,25 @@ mod tests {
         assert_eq!(outputs[1].deck_id.as_deref(), Some("d1"));
         assert_eq!(outputs[1].preview.as_deref(), Some("Updated the chart."));
         assert_eq!(outputs[2].path.as_deref(), Some("C:/x/out.csv"));
+    }
+
+    #[test]
+    fn files_an_agent_changed_are_outputs_once_each() {
+        let steps = vec![step(
+            "fix",
+            "completed",
+            json!({"type": "agent"}),
+            json!({"text": "Fixed it.", "computer": [
+                {"kind": "command", "program": "node", "args": ["test.js"], "outcome": "ran"},
+                {"kind": "edit", "path": "price.js", "outcome": "changed"},
+                {"kind": "edit", "path": "price.js", "outcome": "changed"},
+                {"kind": "write", "path": "NOTES.md", "outcome": "declined"},
+            ]}),
+        )];
+        let outputs = collect(&steps, None);
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].kind, "file");
+        assert_eq!(outputs[0].path.as_deref(), Some("price.js"));
     }
 
     #[test]

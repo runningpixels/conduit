@@ -86,19 +86,17 @@ html[data-sidebar="closed"] .head-nav { display: flex; }
   display: flex;
   justify-content: flex-end;
   align-items: stretch;
-  /* A bar of its own, a shade off the page with a hairline under it, so the
-   * caption row reads as the window's top edge rather than empty space above
-   * the content. The rail's column runs up through it, so the rail reads as
-   * one strip to the top of the window (it is ink-blue in light mode). */
-  /* The rail's 1px edge (.rail's border) continues up through it too. */
-  background:
-    linear-gradient(
-      to right,
-      var(--bg-rail) calc(var(--rail-w) - 1px),
-      color-mix(in srgb, var(--rail-ink) 10%, var(--bg-rail)) calc(var(--rail-w) - 1px) var(--rail-w),
-      transparent var(--rail-w)
-    ),
-    linear-gradient(to top, var(--line-soft) 1px, var(--bg-side) 1px);
+  /* A shade off the page, the same as a page's header band (.page-head), so
+   * the caption row and the header read as one block at the top rather than
+   * empty space above the content. The rail's column, and its 1px edge, run
+   * up through it, so the rail reads as one strip to the top of the window
+   * (it is ink-blue in light mode). */
+  background: linear-gradient(
+    to right,
+    var(--bg-rail) calc(var(--rail-w) - 1px),
+    color-mix(in srgb, var(--rail-ink) 10%, var(--bg-rail)) calc(var(--rail-w) - 1px) var(--rail-w),
+    var(--bg-side) var(--rail-w)
+  );
 }
 
 /* Windows 11 metrics: 46x32 hit targets, no gap, close tints red on hover.
@@ -1059,6 +1057,8 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   align-items: center;
   gap: 2px;
   padding: var(--sp-3) var(--sp-6) 0;
+  /* Part of the header band (.page-head) below it. */
+  background: var(--bg-side);
 }
 .context-tabs-label {
   margin-right: var(--sp-2);
@@ -1256,6 +1256,10 @@ html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
   justify-content: space-between;
   gap: var(--sp-4);
   padding: var(--sp-6) var(--sp-6) var(--sp-5);
+  /* A band under the caption row, the same shade, with a line where the
+   * content starts. */
+  background: var(--bg-side);
+  border-bottom: 1px solid var(--line);
 }
 .page-head-text { min-width: 0; }
 /* ADR-011: page titles carry the hierarchy the rail no longer has to. */
@@ -1276,7 +1280,8 @@ html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
 .page-body-single { overflow: auto; }
 .page-content {
   max-width: var(--page-max-w);
-  margin: 0 auto;
+  /* Starts where the title does, not centred under a left-aligned header. */
+  margin: 0;
   padding: var(--sp-5) var(--sp-6) calc(var(--sp-6) * 1.5);
   box-sizing: border-box;
 }

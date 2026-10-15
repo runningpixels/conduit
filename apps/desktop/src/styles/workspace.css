@@ -286,6 +286,9 @@ html[data-resizing] * { cursor: col-resize !important; user-select: none; }
    the rail, so this column names what it lists. */
 .sb-title {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   margin: 0;
   font-size: var(--fs-10xl);
   font-weight: 700;
@@ -1277,6 +1280,10 @@ html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
   background: color-mix(in srgb, var(--page-area, var(--ink-3)) 15%, transparent);
 }
 .page-title-icon svg { width: 24px; height: 24px; }
+/* A column header's (Chats) smaller version. */
+.page-title-icon.small { width: 32px; height: 32px; border-radius: var(--r-sm); }
+.page-title-icon.small svg { width: 18px; height: 18px; }
+.page-title-icon[data-area="chats"] { --page-area: var(--area-chats); }
 .page-title-icon[data-area="slides"] { --page-area: var(--area-slides); }
 .page-title-icon[data-area="writing"] { --page-area: var(--area-writing); }
 .page-title-icon[data-area="apps"] { --page-area: var(--area-apps); }

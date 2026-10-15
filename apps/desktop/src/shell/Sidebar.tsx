@@ -22,6 +22,7 @@ import { modShortcutHint } from '../lib/shortcuts';
 import { useRichT, useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { Menu } from '../workspace/Menu';
+import { destinationIcon } from './Rail';
 import {
   ArchiveIcon,
   ConnectorsIcon,
@@ -376,7 +377,12 @@ export function Sidebar({
       <div className="sb-head sidebar-inner">
         {/* The product mark lives in the rail (ADR-011 shell); this column is
             the Chats destination's own list, so it says so. */}
-        <h2 className="sb-title">{t('shell.rail.chats')}</h2>
+        <h2 className="sb-title">
+          <span className="page-title-icon small" data-area="chats" aria-hidden="true">
+            {destinationIcon('chats')}
+          </span>
+          {t('shell.rail.chats')}
+        </h2>
         <button
           className="sb-collapse"
           type="button"

@@ -9,6 +9,7 @@
 /// inspector.
 
 import { StepActions } from '../StepActions';
+import { StepComputer } from '../StepComputer';
 import '@xyflow/react/dist/style.css';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -29,7 +30,7 @@ import {
 import { useT, type Translate } from '../../i18n';
 import { useFormatters } from '../../i18n/formatters';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowStep } from '../../ipc/contracts';
-import { describeStep, handsToText, type InputLabels } from '../describeStep';
+import { computerText, describeStep, handsToText, type InputLabels } from '../describeStep';
 import { helperNames } from '../editorModel';
 import { STEP_TYPE_KEY } from '../stepTypes';
 import { START_ID, buildCanvas, problemsByStep, runStatuses, type CanvasEdge, type CanvasNode, type NodeRun, type NodeStatus } from './canvasModel';
@@ -415,6 +416,7 @@ function Canvas({
               iterations: iterationText(t, nodeRun),
               flags: [
                 handsToText(step, t, helperNames(definition)),
+                computerText(step, t),
                 step.onError === 'skip' ? t('workspace.workflows.step.continuesOnError') : null,
               ].filter((flag): flag is string => flag !== null),
               problem: problemSteps.has(n.id),
@@ -677,6 +679,7 @@ function RunRow({ row, t }: { row: WorkflowRunStep; t: Translate }) {
       </summary>
       {row.error ? <p className="wf-error">{row.error}</p> : null}
       <StepActions output={row.output} />
+      <StepComputer output={row.output} />
       <p className="wf-io-label">{t('workspace.workflows.runDetail.input')}</p>
       <pre className="wf-io">{JSON.stringify(row.input, null, 2)}</pre>
       {row.output != null ? (

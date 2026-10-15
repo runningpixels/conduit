@@ -476,6 +476,19 @@ impl AppState {
         if let Some(value) = patch.artifact_full_web_access {
             settings.artifact_full_web_access = Some(value);
         }
+        if let Some(mut value) = patch.workflow_computer {
+            value.deny = value
+                .deny
+                .iter()
+                .map(|rule| rule.trim().to_string())
+                .filter(|rule| !rule.is_empty())
+                .collect();
+            for rule in &value.deny {
+                crate::workflows::computer::parse_rule(rule)
+                    .map_err(|e| format!("\u{201c}{rule}\u{201d}: {e}"))?;
+            }
+            settings.workflow_computer = Some(value);
+        }
         if let Some(value) = patch.close_to_tray {
             settings.close_to_tray = value;
         }

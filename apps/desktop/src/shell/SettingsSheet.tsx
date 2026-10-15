@@ -28,6 +28,7 @@ import { DiagnosticsSection } from '../workspace/settings/DiagnosticsSection';
 import { AboutSection } from '../workspace/settings/AboutSection';
 import { WebSearchSection } from '../workspace/settings/WebSearchSection';
 import { WorkspaceToolsSection } from '../workspace/settings/WorkspaceToolsSection';
+import { ComputerSection } from '../workspace/settings/ComputerSection';
 import { AgentSection } from '../workspace/settings/AgentSection';
 import { GenerationControlsSection } from '../workspace/settings/GenerationControlsSection';
 import { PromptsSection } from '../workspace/settings/PromptsSection';
@@ -577,6 +578,7 @@ export function SettingsSheet({
                 {t('shell.settingsSheet.workspace.intro')}
               </p>
               <WorkspaceToolsSection settings={settings} onUpdate={save} onStatus={onStatus} />
+              <ComputerSection settings={settings} onUpdate={onSettingsChange} />
             </>
           )}
 

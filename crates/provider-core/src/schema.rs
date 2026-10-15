@@ -513,6 +513,23 @@ pub struct WebSearchRequest {
     pub include_sources: Option<bool>,
 }
 
+/// Whether workflow agents may use this computer (run commands and change
+/// files in a workflow's folder), and the commands that always ask in every
+/// workflow. Stored on `AppSettings`; absent means off.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/workflow_computer_settings.ts"
+)]
+pub struct WorkflowComputerSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Deny rules (`git push *`) every workflow's commands are checked against.
+    #[serde(default)]
+    pub deny: Vec<String>,
+}
+
 /// Agent loop guardrails stored on `AppSettings`. Enforced by
 /// `run_agent_turn` in the desktop stream manager.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -3084,6 +3101,11 @@ pub struct AppSettings {
     #[serde(default)]
     #[ts(optional)]
     pub artifact_full_web_access: Option<bool>,
+    /// Workflow agents using this computer: off unless set (see
+    /// [`WorkflowComputerSettings`]).
+    #[serde(default)]
+    #[ts(optional)]
+    pub workflow_computer: Option<WorkflowComputerSettings>,
     /// Keep running in the tray when the main window is closed, so scheduled
     /// workflows still run. Off by default: closing the window quits, as it
     /// always did. Offered once, the first time a schedule is switched on.
@@ -3277,6 +3299,7 @@ impl Default for AppSettings {
             artifact_styled_preview: true,
             artifact_network_enabled: true,
             artifact_full_web_access: None,
+            workflow_computer: None,
             close_to_tray: false,
             close_to_tray_offered: false,
             update_channel: RolloutChannel::Stable,
@@ -3354,6 +3377,9 @@ pub struct SettingsPatch {
     pub artifact_network_enabled: Option<bool>,
     #[ts(optional)]
     pub artifact_full_web_access: Option<bool>,
+    /// Replace the workflow computer settings. Every deny rule must parse.
+    #[ts(optional)]
+    pub workflow_computer: Option<WorkflowComputerSettings>,
     #[ts(optional)]
     pub close_to_tray: Option<bool>,
     #[ts(optional)]

@@ -7,6 +7,7 @@ import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { answerWorkflowAction } from '../ipc/client';
 import type { WorkflowAction } from '../ipc/contracts';
+import { ComputerActionCard } from './ComputerActionCard';
 import { formatNextRun } from './ScheduleSection';
 
 type FieldKind = 'text' | 'number' | 'boolean' | 'json';
@@ -60,6 +61,21 @@ export function ActionCard({
 }: {
   action: WorkflowAction;
   /// The backend took the answer (`taken`), or the run was no longer waiting.
+  onAnswered: (action: WorkflowAction, taken: boolean) => void;
+}) {
+  // A command or file change on this computer has its own card.
+  return action.computer ? (
+    <ComputerActionCard action={action} request={action.computer} onAnswered={onAnswered} />
+  ) : (
+    <ConnectorActionCard action={action} onAnswered={onAnswered} />
+  );
+}
+
+function ConnectorActionCard({
+  action,
+  onAnswered,
+}: {
+  action: WorkflowAction;
   onAnswered: (action: WorkflowAction, taken: boolean) => void;
 }) {
   const t = useT();

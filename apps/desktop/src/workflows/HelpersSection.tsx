@@ -25,6 +25,7 @@ import {
   withHelpers,
 } from './editorModel';
 import { agentToolText } from './permissionText';
+import { ComputerToolOption } from './ComputerToolOption';
 import { WorkflowModelRow } from './WorkflowModelRow';
 
 export function HelpersSection({
@@ -98,6 +99,11 @@ export function HelpersSection({
                 </label>
               ))}
             </fieldset>
+            <ComputerToolOption
+              tools={helper.tools ?? []}
+              hasFolder={Boolean(def.folder?.trim())}
+              onChange={(tools) => set(helper.id, (h) => ({ ...h, tools }))}
+            />
             <AgentConnectorTools
               tools={helper.tools ?? []}
               onToggle={(ref, on) => set(helper.id, (h) => ({ ...h, tools: withConnectorTool(h.tools ?? [], ref, on) }))}

@@ -11,13 +11,23 @@ import { useEffect, useState } from 'react';
 import { useT } from '../i18n';
 import { getWorkflowActionRules, setWorkflowActionRules } from '../ipc/client';
 import type { WorkflowActionRules, WorkflowStep } from '../ipc/contracts';
+import { CommandRuleList, rejectionText } from './CommandRuleList';
 import { usesConnectorTools } from './editorModel';
 
 function isDefault(rules: WorkflowActionRules): boolean {
-  return !rules.allowAll && rules.allowed.length === 0;
+  return !rules.allowAll && rules.allowed.length === 0 && !rules.commands?.allow.length && !rules.commands?.deny.length;
 }
 
-export function ActionRulesSection({ workflowId, steps }: { workflowId: string; steps: readonly WorkflowStep[] }) {
+export function ActionRulesSection({
+  workflowId,
+  steps,
+  usesComputer = false,
+}: {
+  workflowId: string;
+  steps: readonly WorkflowStep[];
+  /// An agent or helper of this workflow uses the computer, so command rules matter.
+  usesComputer?: boolean;
+}) {
   const t = useT();
   const [rules, setRules] = useState<WorkflowActionRules | null>(null);
   const [saving, setSaving] = useState(false);
@@ -44,19 +54,25 @@ export function ActionRulesSection({ workflowId, steps }: { workflowId: string; 
   }, [workflowId]);
 
   if (!rules) return null;
-  if (!usesConnectorTools(steps) && isDefault(rules)) return null;
+  const connectors = usesConnectorTools(steps);
+  if (!connectors && !usesComputer && isDefault(rules)) return null;
+  const commands = rules.commands ?? { allow: [], deny: [] };
+  const showCommands = usesComputer || commands.allow.length > 0 || commands.deny.length > 0;
 
-  const save = async (next: WorkflowActionRules) => {
+  const save = async (next: WorkflowActionRules): Promise<boolean> => {
     setSaving(true);
     setError(null);
     try {
       setRules(await setWorkflowActionRules(workflowId, next));
+      return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : typeof e === 'string' ? e : t('workspace.workflows.outside.saveFailed'));
+      setError(rejectionText(e) || t('workspace.workflows.outside.saveFailed'));
+      return false;
     } finally {
       setSaving(false);
     }
   };
+  const saveCommands = (next: { allow: string[]; deny: string[] }) => save({ ...rules, commands: next });
 
   return (
     <section className="grp wf-actions" aria-label={t('workspace.workflows.outside.title')}>
@@ -99,6 +115,29 @@ export function ActionRulesSection({ workflowId, steps }: { workflowId: string; 
           </ul>
         </>
       )}
+      {showCommands ? (
+        <div className="wf-commands">
+          <p className="wf-muted">{t('workspace.workflows.commands.intro')}</p>
+          <CommandRuleList
+            label={t('workspace.workflows.commands.allowLabel')}
+            hint={t('workspace.workflows.commands.allowHint')}
+            rules={commands.allow}
+            busy={saving}
+            error={null}
+            onAdd={(rule) => saveCommands({ ...commands, allow: [...commands.allow, rule] })}
+            onRemove={(rule) => void saveCommands({ ...commands, allow: commands.allow.filter((r) => r !== rule) })}
+          />
+          <CommandRuleList
+            label={t('workspace.workflows.commands.denyLabel')}
+            hint={t('workspace.workflows.commands.denyHint')}
+            rules={commands.deny}
+            busy={saving}
+            error={null}
+            onAdd={(rule) => saveCommands({ ...commands, deny: [...commands.deny, rule] })}
+            onRemove={(rule) => void saveCommands({ ...commands, deny: commands.deny.filter((r) => r !== rule) })}
+          />
+        </div>
+      ) : null}
       {error ? (
         <p className="wf-error" role="alert">
           {error}

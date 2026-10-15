@@ -104,6 +104,7 @@ import type {
   WorkflowAction,
   WorkflowActionAnswer,
   WorkflowActionRules,
+  CommandRulePreview,
   WorkflowQuestion,
   ConversationFolder,
   KnowledgeCollection,
@@ -2133,6 +2134,11 @@ export async function getWorkflowActionRules(id: string): Promise<WorkflowAction
 /** Replace which outside actions a workflow takes without asking. */
 export async function setWorkflowActionRules(id: string, rules: WorkflowActionRules): Promise<WorkflowActionRules> {
   return invokeCommand<WorkflowActionRules>('set_workflow_action_rules', { id, rules });
+}
+
+/** What a command rule would match, for showing while the user types it. */
+export async function previewCommandRule(rule: string): Promise<CommandRulePreview> {
+  return invokeCommand<CommandRulePreview>('preview_command_rule', { rule });
 }
 
 /** Ask a workflow's run in progress to stop; resolves `false` if it wasn't running. */

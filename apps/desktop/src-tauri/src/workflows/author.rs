@@ -417,6 +417,7 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
 - condition tests (\"is\"): {}. contains, not_contains and equals need \"text\"; the others must not have it.\n\
 - parse_data formats: {}.\n\
 - agent tools: {}; and connector tools from CONNECTORS as \"<connector id>/<tool>\", at most {} of them.\n\
+- \"computer\" in an agent's (or helper's) tools lets it list, read and change files and run programs in the workflow's folder; each command or change may wait for the user to allow it. Use it only when the user asks for work on their own files or programs, and never write a \"folder\": the user chooses it.\n\
 - fetch_page takes at most {} addresses. for_each goes over at most {MAX_ITEMS} elements.\n\
 - research depths: {}. A research step is slow and costly: use at most one per workflow.\n\
 - search_documents keeps 1 to {} passages (default {}).\n\
@@ -1020,6 +1021,7 @@ fn clear_personal_choices(definition: &mut Value, connectors: &[KnownConnector])
             helper.remove("model");
             helper.remove("maxTokens");
             found.agent_tools |= keep_known_tools(helper, connectors);
+            found.folder |= uses_computer(helper);
         }
     }
     let mut notes = Vec::new();
@@ -1098,6 +1100,15 @@ fn known_tool(connectors: &[KnownConnector], connector: &str, tool: &str) -> boo
     })
 }
 
+/// Whether an agent step or helper lists the computer tool (it then needs
+/// the folder the user chooses).
+fn uses_computer(agent: &Map<String, Value>) -> bool {
+    agent
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| tools.iter().any(|t| t == super::computer::COMPUTER_TOOL))
+}
+
 /// Drop the connector tools an agent step or helper lists that the user
 /// doesn't have; whether any were dropped.
 fn keep_known_tools(agent: &mut Map<String, Value>, connectors: &[KnownConnector]) -> bool {
@@ -1157,6 +1168,9 @@ fn clear_steps(steps: Option<&mut Value>, connectors: &[KnownConnector], found: 
             }
             Some("agent") => {
                 found.agent_tools |= keep_known_tools(step, connectors);
+                if uses_computer(step) {
+                    found.folder = true;
+                }
             }
             _ => {}
         }
@@ -1828,6 +1842,23 @@ mod tests {
         assert!(!problems.is_empty());
         assert!(problems.iter().all(|p| expected_blank(p)), "{problems:?}");
         assert!(catalog_text().contains("\"kind\": \"connector\""));
+    }
+
+    #[test]
+    fn an_agent_that_uses_the_computer_asks_for_the_folder() {
+        let reply = json!({
+            "name": "Tidy",
+            "definition": {
+                "folder": "C:\\invented",
+                "steps": [{ "id": "a", "type": "agent", "prompt": "Run the tests",
+                            "tools": ["computer"] }]
+            }
+        })
+        .to_string();
+        let parsed = parse_reply(&reply, &notes_connector()).unwrap();
+        assert!(parsed.definition.get("folder").is_none());
+        assert_eq!(parsed.definition["steps"][0]["tools"], json!(["computer"]));
+        assert!(parsed.notes.iter().any(|n| n.contains("Choose the folder")));
     }
 
     #[test]

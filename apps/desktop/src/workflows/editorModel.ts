@@ -10,7 +10,7 @@
 /// item's fields. It mirrors the backend's validation (`workflows::definition`),
 /// so anything offered here is accepted on save.
 
-import type { AgentDef, WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep, WorkflowTrigger } from '../ipc/contracts';
+import type { AgentDef, WorkflowComputer, WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep, WorkflowTrigger } from '../ipc/contracts';
 import { ancestorsOf, dependencies, removeTopLevel } from './stepGraph';
 
 export type StepType = WorkflowStep['type'];
@@ -100,6 +100,44 @@ export function usesConnectorTools(steps: readonly WorkflowStep[]): boolean {
       (s.type === 'for_each' && usesConnectorTools(s.steps)),
   );
 }
+
+/// The `tools` entry that lets an agent use the computer: files and programs in the workflow's folder.
+export const COMPUTER_TOOL = 'computer';
+
+/// Whether an agent step or a helper may use the computer (inside loops too).
+export function usesComputer(def: Pick<WorkflowDefinition, 'steps' | 'agents'>): boolean {
+  const inSteps = (steps: readonly WorkflowStep[]): boolean =>
+    steps.some(
+      (s) =>
+        (s.type === 'agent' && (s.tools ?? []).includes(COMPUTER_TOOL)) || (s.type === 'for_each' && inSteps(s.steps)),
+    );
+  return inSteps(def.steps) || (def.agents ?? []).some((a) => (a.tools ?? []).includes(COMPUTER_TOOL));
+}
+
+/// `tools` with the computer turned on or off; it sits after the built-ins and before connector entries.
+export function withComputerTool(tools: readonly string[], on: boolean): string[] {
+  const others = tools.filter((x) => x !== COMPUTER_TOOL);
+  if (!on) return others;
+  const builtins = others.filter((x) => (AGENT_TOOLS as readonly string[]).includes(x));
+  return [...builtins, COMPUTER_TOOL, ...others.filter((x) => !builtins.includes(x))];
+}
+
+/// `def` with its computer settings replaced; `null` or settings with nothing set remove the key.
+export function withComputer(def: WorkflowDefinition, computer: WorkflowComputer | null): WorkflowDefinition {
+  const { computer: _drop, ...rest } = def;
+  if (!computer) return rest;
+  const clean: WorkflowComputer = {};
+  if (computer.editMode && computer.editMode !== 'ask') clean.editMode = computer.editMode;
+  if (computer.whenNobodyAnswers && computer.whenNobodyAnswers !== 'wait') clean.whenNobodyAnswers = computer.whenNobodyAnswers;
+  if (computer.timeoutSecs !== undefined) clean.timeoutSecs = computer.timeoutSecs;
+  if (computer.passEnv && computer.passEnv.length > 0) clean.passEnv = computer.passEnv;
+  if (computer.allowOutside) clean.allowOutside = true;
+  return Object.keys(clean).length > 0 ? { ...rest, computer: clean } : rest;
+}
+
+/// Longest a command may run before it is stopped, and the default (the backend's own).
+export const MAX_COMPUTER_TIMEOUT_SECS = 1800;
+export const DEFAULT_COMPUTER_TIMEOUT_SECS = 120;
 
 /// `tools` with one built-in tool turned on or off; built-ins keep the
 /// catalog's order and connector entries keep theirs after them.

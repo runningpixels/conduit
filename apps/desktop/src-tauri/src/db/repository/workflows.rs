@@ -1163,20 +1163,27 @@ pub async fn get_action_rules(
     enc: &Encryption,
     workflow_id: &str,
 ) -> Result<ActionRules, DbError> {
-    let row: Option<(i64, String)> = sqlx::query_as(
-        "SELECT allow_all, allowed FROM workflow_action_rules WHERE workflow_id = ?",
+    let row: Option<(i64, String, Option<String>)> = sqlx::query_as(
+        "SELECT allow_all, allowed, commands FROM workflow_action_rules WHERE workflow_id = ?",
     )
     .bind(workflow_id)
     .fetch_optional(pool)
     .await?;
-    let Some((allow_all, allowed)) = row else {
+    let Some((allow_all, allowed, commands)) = row else {
         return Ok(ActionRules::default());
     };
     let allowed = serde_json::from_value(decrypt_json(enc, &allowed)?)
         .map_err(|e| DbError::Query(format!("stored workflow action rules can't be read: {e}")))?;
+    let commands = match commands {
+        Some(stored) => serde_json::from_value(decrypt_json(enc, &stored)?).map_err(|e| {
+            DbError::Query(format!("stored workflow command rules can't be read: {e}"))
+        })?,
+        None => Default::default(),
+    };
     Ok(ActionRules {
         allow_all: allow_all != 0,
         allowed,
+        commands,
     })
 }
 
@@ -1189,15 +1196,18 @@ pub async fn set_action_rules(
 ) -> Result<(), DbError> {
     let json = serde_json::to_value(&rules.allowed)
         .map_err(|e| DbError::Query(format!("workflow action rules can't be stored: {e}")))?;
+    let commands = serde_json::to_value(&rules.commands)
+        .map_err(|e| DbError::Query(format!("workflow command rules can't be stored: {e}")))?;
     sqlx::query(
-        "INSERT INTO workflow_action_rules (workflow_id, allow_all, allowed, updated_at) \
-         VALUES (?, ?, ?, ?) ON CONFLICT(workflow_id) DO UPDATE SET \
+        "INSERT INTO workflow_action_rules (workflow_id, allow_all, allowed, commands, updated_at) \
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT(workflow_id) DO UPDATE SET \
          allow_all = excluded.allow_all, allowed = excluded.allowed, \
-         updated_at = excluded.updated_at",
+         commands = excluded.commands, updated_at = excluded.updated_at",
     )
     .bind(workflow_id)
     .bind(i64::from(rules.allow_all))
     .bind(encrypt_json(enc, &json)?)
+    .bind(encrypt_json(enc, &commands)?)
     .bind(now_iso8601())
     .execute(pool)
     .await?;

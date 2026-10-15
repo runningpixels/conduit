@@ -223,6 +223,11 @@ const PINNED: &[(i64, &str, &str)] = &[
         "0c47c4e0d46b843646e1b7ea675b626c7e97859c52afc20157747a37220069c33925ecea9bfb1c51126e7b4f86d0fa3f",
         "workflow agent calls",
     ),
+    (
+        41,
+        "3158589c2d3a34f1e10ebf5bbc5081423acb9e071592038df1a45cdcbbc3af6048837507ae2370a6b766789b39867fba",
+        "workflow command rules",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

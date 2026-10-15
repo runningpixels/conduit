@@ -45,6 +45,10 @@ pub struct WorkflowDefinition {
     /// its work to. Each runs only when an agent asks it to.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agents: Vec<AgentDef>,
+    /// How agents that list the `computer` tool may use this computer:
+    /// commands and file changes in the workflow's `folder`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub computer: Option<super::computer::ComputerConfig>,
     pub steps: Vec<Step>,
 }
 
@@ -635,7 +639,16 @@ fn plain_parse_error(message: &str) -> String {
     message.to_string()
 }
 
-const DEFINITION_KEYS: &[&str] = &["inputs", "model", "folder", "trigger", "agents", "steps"];
+const DEFINITION_KEYS: &[&str] = &[
+    "inputs", "model", "folder", "trigger", "agents", "computer", "steps",
+];
+const COMPUTER_KEYS: &[&str] = &[
+    "editMode",
+    "whenNobodyAnswers",
+    "timeoutSecs",
+    "passEnv",
+    "allowOutside",
+];
 const HELPER_KEYS: &[&str] = &[
     "id",
     "name",
@@ -770,6 +783,16 @@ pub fn unknown_settings(raw: &Value) -> Vec<String> {
         }
     }
     unknown_model_settings(def.get("model"), "the workflow's model", &mut problems);
+    if let Some(computer) = def.get("computer").and_then(Value::as_object) {
+        for key in computer.keys() {
+            if !COMPUTER_KEYS.contains(&key.as_str()) {
+                problems.push(format!(
+                    "Unknown setting \"{key}\" in the computer settings{}",
+                    suggestion(key, COMPUTER_KEYS)
+                ));
+            }
+        }
+    }
     for helper in def
         .get("agents")
         .and_then(Value::as_array)
@@ -937,6 +960,7 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
     };
     check_steps(&def.steps, scope, &mut all_ids, &mut count, &mut problems);
     check_helpers(def, &mut problems);
+    check_computer(def, folder.is_some(), &mut problems);
     if count > MAX_STEPS {
         problems.push(format!(
             "A workflow can have at most {MAX_STEPS} steps; this one has {count}."
@@ -1541,7 +1565,10 @@ fn check_trigger(trigger: &Trigger, has_folder: bool, problems: &mut Vec<String>
 /// "Helper \"x\"").
 fn check_agent_tools(who: &str, tools: &[String], problems: &mut Vec<String>) {
     for tool in tools {
-        if !AGENT_TOOLS.contains(&tool.as_str()) && connector_tool_entry(tool).is_none() {
+        if !AGENT_TOOLS.contains(&tool.as_str())
+            && tool != super::computer::COMPUTER_TOOL
+            && connector_tool_entry(tool).is_none()
+        {
             problems.push(format!("{who} can't use the tool \"{tool}\"."));
         }
     }
@@ -1557,6 +1584,43 @@ fn check_agent_tools(who: &str, tools: &[String], problems: &mut Vec<String>) {
     let mut seen = HashSet::new();
     if !tools.iter().all(|t| seen.insert(t)) {
         problems.push(format!("{who} lists a tool twice."));
+    }
+}
+
+/// Whether any agent step or helper may use the computer.
+pub fn uses_computer(def: &WorkflowDefinition) -> bool {
+    fn in_steps(steps: &[Step]) -> bool {
+        steps.iter().any(|step| match &step.action {
+            StepAction::Agent { tools, .. } => {
+                tools.iter().any(|t| t == super::computer::COMPUTER_TOOL)
+            }
+            StepAction::ForEach { steps, .. } => in_steps(steps),
+            _ => false,
+        })
+    }
+    in_steps(&def.steps)
+        || def
+            .agents
+            .iter()
+            .any(|h| h.tools.iter().any(|t| t == super::computer::COMPUTER_TOOL))
+}
+
+/// An agent that uses the computer works in the workflow's folder, so there
+/// must be one; and the computer settings must be in range.
+fn check_computer(def: &WorkflowDefinition, has_folder: bool, problems: &mut Vec<String>) {
+    if uses_computer(def) && !has_folder {
+        problems.push(
+            "An agent here uses the computer, so the workflow needs a folder for it to work in."
+                .to_string(),
+        );
+    }
+    if let Some(timeout) = def.computer.as_ref().and_then(|c| c.timeout_secs) {
+        if !(1..=super::computer::MAX_TIMEOUT_SECS).contains(&timeout) {
+            problems.push(format!(
+                "A command can run for 1 to {} seconds.",
+                super::computer::MAX_TIMEOUT_SECS
+            ));
+        }
     }
 }
 

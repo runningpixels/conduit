@@ -9,6 +9,7 @@
 /// lays itself out again. The step form and the Start panel are the editor's
 /// own, passed in, so both views edit the same way.
 
+import { folderName } from '../WorkflowViewParts';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useT } from '../../i18n';
 import type { WorkflowDefinition } from '../../ipc/contracts';
@@ -23,6 +24,7 @@ import { useConnectorNames } from '../useConnectorNames';
 import { AddStepMenu, ViewToggle } from '../AddStepMenu';
 import type { ValueRef } from '../editorModel';
 import type { Arm } from '../stepGraph';
+import { EditorNavContext, scrollToComputerSettings, useEditorNav } from '../EditorNav';
 
 type Wire =
   | { source: string; target: string; ok: true; outputs: ValueRef[]; fields: TemplateField[]; output: string; field: string }
@@ -169,7 +171,21 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
     setFlow(null);
   };
 
+  // "Computer settings" on a step: select the Start node, whose panel holds them.
+  const parentNav = useEditorNav();
+  const nav = useMemo(
+    () => ({
+      ...parentNav,
+      openComputerSettings: () => {
+        setSelectedId(START_ID);
+        scrollToComputerSettings();
+      },
+    }),
+    [parentNav],
+  );
+
   return (
+    <EditorNavContext.Provider value={nav}>
     <div className="wfc-editor wfe-canvas-host">
       <WorkflowCanvas
         definition={definition}
@@ -180,6 +196,7 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
         panel={panel}
         toolbar={toolbar}
         editor={editor}
+        computerFolder={folderName(definition.folder)}
       />
       {flow ? (
         <div
@@ -292,5 +309,6 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
         </div>
       ) : null}
     </div>
+    </EditorNavContext.Provider>
   );
 }

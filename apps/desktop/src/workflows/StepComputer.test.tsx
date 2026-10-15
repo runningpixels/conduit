@@ -69,3 +69,33 @@ describe('StepComputer', () => {
     expect(stepComputer(null)).toEqual([]);
   });
 });
+
+describe('StepComputer details', () => {
+  it('expands a file change into its diff', () => {
+    const { container } = render(
+      <StepComputer
+        output={{
+          computer: [
+            { kind: 'edit', path: 'notes.txt', approvedBy: 'you', outcome: 'changed', previous: 'a\nold', content: 'a\nnew' },
+          ],
+        }}
+      />,
+    );
+    const details = container.querySelector('details') as HTMLElement;
+    expect(within(details).getByText('Show changes')).toBeInTheDocument();
+    expect(details.querySelector('[data-diff="del"]')).toHaveTextContent('old');
+    expect(details.querySelector('[data-diff="add"]')).toHaveTextContent('new');
+  });
+
+  it('marks a non-zero exit code in the error color, and a zero one not', () => {
+    const { container } = render(<StepComputer output={output} />);
+    const items = container.querySelectorAll('li');
+    expect(items[0].querySelector('.cc-exit')).toBeNull();
+    expect(items[1].querySelector('.cc-exit')).toHaveTextContent('exit code 1');
+    expect(items[1].querySelector('.wf-error')).toHaveTextContent('Failed npm test');
+    const ranBad = render(
+      <StepComputer output={{ computer: [{ kind: 'command', program: 'x', args: [], cwd: '.', approvedBy: 'you', outcome: 'ran', exitCode: 2 }] }} />,
+    );
+    expect(ranBad.container.querySelector('.wf-error')).toHaveTextContent('Ran x');
+  });
+});

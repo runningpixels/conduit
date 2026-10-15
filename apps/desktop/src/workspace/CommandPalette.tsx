@@ -282,6 +282,7 @@ export function CommandPalette({
       { id: 'cmd-chat-defaults', group, kind: 'cmd', label: t('workspace.commandPalette.command.chatDefaults'), run: () => { onOpenSettings('chat'); close(); } },
       { id: 'cmd-web-search', group, kind: 'cmd', label: t('workspace.commandPalette.command.webSearchSettings'), run: () => { onOpenSettings('web-search'); close(); } },
       { id: 'cmd-workspace', group, kind: 'cmd', label: t('workspace.commandPalette.command.workspaceDefaults'), run: () => { onOpenSettings('workspace'); close(); } },
+      { id: 'cmd-computer', group, kind: 'cmd', label: t('workspace.commandPalette.command.computerSettings'), run: () => { onOpenSettings('computer'); close(); } },
       { id: 'cmd-connectors', group, kind: 'cmd', label: t('workspace.commandPalette.command.connectService'), run: () => { onOpenSettings('connectors'); close(); } },
       { id: 'cmd-prompts', group, kind: 'cmd', label: t('workspace.commandPalette.command.prompts'), run: () => { onOpenSettings('prompts'); close(); } },
       ...(onOpenIdeas

@@ -77,6 +77,10 @@ pub struct ComputerRequest {
     /// throws work away...): the card warns and doesn't make Run the default.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub risky: bool,
+    /// What this step already did on the computer, oldest first (commands
+    /// and file changes as run details record them, without their output).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub so_far: Vec<Value>,
 }
 
 impl Pending for PendingAction {

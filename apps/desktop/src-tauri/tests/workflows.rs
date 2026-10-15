@@ -7535,7 +7535,8 @@ async fn after_reading_outside_content_every_command_asks_and_deny_rules_never_o
         let asked = action.computer.clone().unwrap();
         // The user's global deny rule comes first: it always asks, and
         // "allow from now on" isn't offered.
-        assert!(asked.reason.contains("deny rule"), "{}", asked.reason);
+        assert!(asked.reason.contains("always-ask rule"), "{}", asked.reason);
+        assert!(asked.risky);
         assert!(asked.suggested_rule.is_none());
         assert!(action.sensitive);
         assert_eq!(

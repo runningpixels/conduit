@@ -5,6 +5,8 @@
 import { useT, type Translate } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import type { ComputerOutcome, ComputerRecord } from '../ipc/contracts';
+import { FileDiff } from './FileDiff';
+import '../styles/computer-card.css';
 
 const OUTCOME_KEY: Record<ComputerOutcome, string> = {
   ran: 'workspace.workflows.runDetail.computer.outcome.ran',
@@ -62,7 +64,8 @@ export function StepComputer({ output }: { output: unknown }) {
       <p className="wf-io-label">{t('workspace.workflows.runDetail.computer.title')}</p>
       <ul className="wf-actions-taken">
         {records.map((r, i) => {
-          const bad = r.outcome === 'failed' || r.outcome === 'timedOut';
+          const badExit = r.kind === 'command' && r.exitCode !== undefined && r.exitCode !== 0;
+          const bad = r.outcome === 'failed' || r.outcome === 'timedOut' || badExit;
           const approved = approvedText(r.approvedBy, t);
           const what = r.kind === 'command' ? [baseName(r.program), ...r.args].join(' ') : r.path;
           const output = r.kind === 'command' ? (r.output ?? '').trim() : '';
@@ -76,14 +79,22 @@ export function StepComputer({ output }: { output: unknown }) {
                 {[
                   approved,
                   r.kind === 'command' && r.cwd && r.cwd !== '.' ? t('workspace.workflows.runDetail.computer.in', { cwd: r.cwd }) : null,
-                  r.kind === 'command' && r.exitCode !== undefined
-                    ? t('workspace.workflows.runDetail.computer.exit', { code: r.exitCode })
-                    : null,
+                  r.kind === 'command' && r.exitCode !== undefined ? (
+                    <span key="exit" className={badExit ? 'cc-exit' : undefined}>
+                      {t('workspace.workflows.runDetail.computer.exit', { code: r.exitCode })}
+                    </span>
+                  ) : null,
                   r.kind === 'command' && r.durationMs !== undefined ? fmt.duration(r.durationMs) : null,
                 ]
-                  .filter((x): x is string => Boolean(x))
-                  .join(' · ')}
+                  .filter((x): x is NonNullable<typeof x> => Boolean(x))
+                  .flatMap((x, n) => (n === 0 ? [x] : [' · ', x]))}
               </span>
+              {r.kind !== 'command' && r.previous !== undefined && r.content !== undefined ? (
+                <details>
+                  <summary className="wf-muted">{t('workspace.workflows.runDetail.computer.showChanges')}</summary>
+                  <FileDiff previous={r.previous} content={r.content} />
+                </details>
+              ) : null}
               {r.kind === 'command' && r.reason ? <span className="wf-muted">{r.reason}</span> : null}
               {r.kind === 'command' && r.error ? <span className="wf-error">{r.error}</span> : null}
               {output ? (

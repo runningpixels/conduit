@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComputerRequest, WorkflowAction } from '../ipc/contracts';
 import { ActionCard } from './ActionCard';
-import { lineDiff } from './lineDiff';
+import { FileDiff } from './FileDiff';
+import { diffStats, lineDiff, numberRows } from './lineDiff';
 
-const ipc = vi.hoisted(() => ({ answerWorkflowAction: vi.fn() }));
+const ipc = vi.hoisted(() => ({ answerWorkflowAction: vi.fn(), getWorkflowRun: vi.fn() }));
 vi.mock('../ipc/client', () => ipc);
 
 function action(computer: ComputerRequest, over: Partial<WorkflowAction> = {}): WorkflowAction {
@@ -35,10 +36,9 @@ const command: ComputerRequest = {
   folder: 'C:\\work\\site',
   program: 'C:\\Program Files\\Git\\cmd\\git.exe',
   args: ['log', '--oneline', '-5'],
-  path: 'docs',
+  path: '.',
   why: 'See what changed lately',
   reason: 'It is not on your list of commands that run without asking.',
-  readBefore: '2 web pages and a web search',
   suggestedRule: 'git log *',
 };
 
@@ -61,27 +61,40 @@ function setup(request: ComputerRequest, over: Partial<WorkflowAction> = {}) {
 beforeEach(() => {
   ipc.answerWorkflowAction.mockReset();
   ipc.answerWorkflowAction.mockResolvedValue(true);
+  ipc.getWorkflowRun.mockReset();
+  ipc.getWorkflowRun.mockResolvedValue({ run: {}, steps: [] });
 });
 
 describe('ActionCard for a command', () => {
-  it('shows why it asks, what it read first, and the command one argument per line', () => {
+  it('leads with the purpose, then the command as one terminal line and the reason chip', () => {
     setup(command);
-    expect(screen.getByRole('group', { name: 'Check before it runs a command' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'See what changed lately' })).toBeInTheDocument();
+    expect(screen.getByText(/Site check · step “s1” ·/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Command').textContent).toBe('site> git log --oneline -5');
+    expect(screen.getByText('git is C:\\Program Files\\Git\\cmd\\git.exe')).toBeInTheDocument();
     expect(screen.getByText('It is not on your list of commands that run without asking.')).toBeInTheDocument();
-    expect(screen.getByText('It read 2 web pages and a web search before asking.')).toBeInTheDocument();
-    expect(screen.getByText('It says: See what changed lately')).toBeInTheDocument();
-    expect(screen.getByLabelText('Command').textContent).toBe(
-      'C:\\Program Files\\Git\\cmd\\git.exe\nlog\n--oneline\n-5',
-    );
-    expect(screen.getByText('in C:\\work\\site\\docs')).toBeInTheDocument();
+    expect(screen.queryByText(/It says/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Run' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Don’t run' })).toBeInTheDocument();
   });
 
-  it('shows just the folder when it runs there', () => {
-    setup({ ...command, path: '.', readBefore: undefined });
-    expect(screen.getByText('in C:\\work\\site')).toBeInTheDocument();
-    expect(screen.queryByText(/before asking/)).toBeNull();
+  it('falls back to the plain title and quotes arguments with spaces', () => {
+    setup({ ...command, why: undefined, args: ['commit', '-m', 'a b'], path: 'docs' });
+    expect(screen.getByRole('group', { name: 'Check before it runs a command' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Command').textContent).toBe('docs> git commit -m "a b"');
+  });
+
+  it('says the wording of the deadline', () => {
+    setup(command);
+    expect(screen.getByText(/^Waits until .*, then counts as Don’t run\.$/)).toBeInTheDocument();
+  });
+
+  it('shows one chip for outside content instead of two sentences', () => {
+    setup({ ...command, readBefore: '2 web pages' });
+    expect(
+      screen.getByText('Asking because the agent read outside content first (2 web pages)'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(command.reason)).toBeNull();
   });
 
   it('runs it as shown', async () => {
@@ -97,27 +110,41 @@ describe('ActionCard for a command', () => {
     await waitFor(() => expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', { send: false }));
   });
 
-  it('remembers the rule the user edited', async () => {
+  it('runs and allows the offered rule with one click', async () => {
     setup(command);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow git log * from now on' }));
-    const box = screen.getByRole('textbox', { name: 'Rule to remember' });
-    expect(box).toHaveValue('git log *');
-    fireEvent.change(box, { target: { value: 'git log --oneline *' } });
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Run and allow git log *' }));
+    await waitFor(() =>
+      expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', { send: true, remember: true, rule: 'git log *' }),
+    );
+  });
+
+  it('lets the rule be reworded in Edit mode', async () => {
+    setup(command);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow this rule from now on' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Rule to remember' }), { target: { value: 'git log --oneline *' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run' }));
     await waitFor(() =>
       expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', {
         send: true,
+        arguments: { program: 'C:\\Program Files\\Git\\cmd\\git.exe', args: ['log', '--oneline', '-5'], cwd: '.' },
         remember: true,
         rule: 'git log --oneline *',
       }),
     );
   });
 
-  it('does not remember unless ticked, and not when declining', async () => {
+  it('does not remember in Edit mode unless ticked', async () => {
     setup(command);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow git log * from now on' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Don’t run' }));
-    await waitFor(() => expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', { send: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    await waitFor(() =>
+      expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', {
+        send: true,
+        arguments: { program: 'C:\\Program Files\\Git\\cmd\\git.exe', args: ['log', '--oneline', '-5'], cwd: '.' },
+      }),
+    );
   });
 
   it('sends edited arguments, one per line', async () => {
@@ -130,24 +157,17 @@ describe('ActionCard for a command', () => {
     await waitFor(() =>
       expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', {
         send: true,
-        arguments: { program: 'C:\\Program Files\\Git\\cmd\\git.exe', args: ['log', '-1'], cwd: 'docs' },
+        arguments: { program: 'C:\\Program Files\\Git\\cmd\\git.exe', args: ['log', '-1'], cwd: '.' },
       }),
     );
   });
 
   it('offers no rule when it must always ask or none is suggested', () => {
-    const { unmount } = render(
-      <ActionCard action={action({ ...command, readBefore: undefined }, { sensitive: true })} onAnswered={vi.fn()} />,
-    );
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.getByText('This one always asks first.')).toBeInTheDocument();
+    const { unmount } = render(<ActionCard action={action(command, { sensitive: true })} onAnswered={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Run and allow/ })).toBeNull();
     unmount();
-    // Asking because of outside content is for this time only, not always.
-    const tainted = render(<ActionCard action={action(command, { sensitive: true })} onAnswered={vi.fn()} />);
-    expect(screen.queryByText('This one always asks first.')).toBeNull();
-    tainted.unmount();
     render(<ActionCard action={action({ ...command, suggestedRule: undefined })} onAnswered={vi.fn()} />);
-    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Run and allow/ })).toBeNull();
   });
 
   it('shows the backend reason when the answer fails', async () => {
@@ -156,25 +176,77 @@ describe('ActionCard for a command', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Rule does not parse');
   });
+
+  it('sums up what already happened in this run, last four at most', async () => {
+    const rec = (args: string[], approvedBy: string) => ({
+      kind: 'command', program: 'git', args, cwd: '.', approvedBy, outcome: 'ran',
+    });
+    ipc.getWorkflowRun.mockResolvedValue({
+      run: {},
+      steps: [
+        { output: { computer: [rec(['a'], 'rule: git a'), rec(['b'], 'you'), rec(['c'], 'you')] } },
+        { output: { computer: [rec(['status'], 'rule: git status'), { kind: 'write', path: 'price.js', approvedBy: 'you', outcome: 'changed' }] } },
+        { output: null },
+      ],
+    });
+    setup(command);
+    expect(await screen.findByText(/^So far in this run:/)).toHaveTextContent(
+      'So far in this run: git b ran (you approved) · git c ran (you approved) · git status ran (rule) · price.js changed (you approved)',
+    );
+    expect(screen.getByText(/^So far/).textContent).not.toContain('git a ran');
+    expect(ipc.getWorkflowRun).toHaveBeenCalledWith('r1');
+  });
+
+  it('shows nothing extra when the run cannot be read', async () => {
+    ipc.getWorkflowRun.mockRejectedValue(new Error('gone'));
+    setup(command);
+    await waitFor(() => expect(ipc.getWorkflowRun).toHaveBeenCalled());
+    expect(screen.queryByText(/So far in this run/)).toBeNull();
+  });
+});
+
+describe('ActionCard for a risky command', () => {
+  const risky = { ...command, risky: true, suggestedRule: undefined, reason: 'It deletes files.' };
+
+  it('makes Don’t run the main button and Run anyway a plain one', async () => {
+    setup(risky);
+    const no = screen.getByRole('button', { name: 'Don’t run' });
+    expect(no).toHaveClass('primary');
+    const anyway = screen.getByRole('button', { name: 'Run anyway' });
+    expect(anyway).not.toHaveClass('primary');
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+    expect(screen.getByRole('group', { name: 'See what changed lately' })).toHaveClass('cc-risky');
+    fireEvent.click(no);
+    await waitFor(() => expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', { send: false }));
+  });
+
+  it('runs only when asked to run anyway, never remembering', async () => {
+    setup({ ...risky, suggestedRule: 'git log *' });
+    expect(screen.queryByRole('button', { name: /Run and allow/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Run anyway' }));
+    await waitFor(() => expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', { send: true }));
+  });
 });
 
 describe('ActionCard for a file change', () => {
-  it('shows the change as a line diff', () => {
+  it('shows the path, the counts and the change as a line diff', () => {
     setup(fileChange);
     expect(screen.getByRole('group', { name: 'Check before it changes a file' })).toBeInTheDocument();
-    expect(screen.getByText('Change to notes.txt in C:\\work\\site')).toBeInTheDocument();
+    expect(screen.getByText('notes.txt')).toBeInTheDocument();
+    expect(screen.getByText('+1')).toBeInTheDocument();
+    expect(screen.getByText('−1')).toBeInTheDocument();
     const diff = screen.getByRole('group', { name: 'Changes to the file' });
     expect(diff.querySelector('[data-diff="del"]')).toHaveTextContent('two');
     expect(diff.querySelector('[data-diff="add"]')).toHaveTextContent('two changed');
+    expect(screen.getByText(/^Waits until .*, then counts as Don’t change\.$/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change file' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Don’t change' })).toBeInTheDocument();
   });
 
-  it('shows just the content for a new file', () => {
+  it('badges a new file and shows its content', () => {
     setup({ ...fileChange, kind: 'write_file', previous: undefined, content: 'hello' });
-    expect(screen.getByText('New file notes.txt in C:\\work\\site')).toBeInTheDocument();
-    expect(screen.getByLabelText('File content').textContent).toBe('hello');
-    expect(screen.queryByRole('group', { name: 'Changes to the file' })).toBeNull();
+    expect(screen.getByText('New file')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'File content' })).toHaveTextContent('hello');
   });
 
   it('sends edited content', async () => {
@@ -197,6 +269,31 @@ describe('ActionCard for a file change', () => {
   });
 });
 
+describe('FileDiff', () => {
+  it('numbers old and new lines in the gutter', () => {
+    const { container } = render(<FileDiff previous={'a\nold\nb'} content={'a\nnew\nb'} />);
+    const nos = (kind: string) =>
+      Array.from(container.querySelectorAll(`[data-diff="${kind}"] .fd-no`)).map((n) => n.textContent);
+    expect(nos('same')).toEqual(['1', '1', '3', '3']);
+    expect(nos('del')).toEqual(['2', '']);
+    expect(nos('add')).toEqual(['', '2']);
+  });
+
+  it('folds a long file behind a toggle', () => {
+    const content = Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n');
+    const { container } = render(<FileDiff path="big.txt" previous={undefined} content={content} />);
+    expect(container.querySelectorAll('.fd-line')).toHaveLength(40);
+    fireEvent.click(screen.getByRole('button', { name: 'Show all 100 lines' }));
+    expect(container.querySelectorAll('.fd-line')).toHaveLength(100);
+    expect(screen.getByRole('button', { name: 'Show fewer lines' })).toBeInTheDocument();
+  });
+
+  it('says so when nothing changed', () => {
+    render(<FileDiff previous="same" content="same" />);
+    expect(screen.getByText('The new content is the same as the file now.')).toBeInTheDocument();
+  });
+});
+
 describe('lineDiff', () => {
   it('marks removed and added lines and folds long unchanged stretches', () => {
     const before = Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n');
@@ -208,6 +305,9 @@ describe('lineDiff', () => {
       { kind: 'skip', count: 4 },
       { kind: 'skip', count: 3 },
     ]);
+    expect(diffStats(rows)).toEqual({ added: 1, removed: 1 });
+    // After the 4-line skip, the next row is old/new line 5.
+    expect(numberRows(rows)[1]).toMatchObject({ oldNo: 5, newNo: 5 });
   });
 
   it('shows the taken-out line before the one replacing it', () => {

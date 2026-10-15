@@ -66,6 +66,8 @@ interface NodeData extends Record<string, unknown> {
   statusText: string | null;
   iterations: string | null;
   flags: string[];
+  /** A run waits for the user's answer on this step's computer action; clicking goes to the card. */
+  waitingYou: (() => void) | null;
   problem: boolean;
   /** Flow wires may start here: editing, and not a step inside a loop. */
   flowEditable: boolean;
@@ -96,6 +98,12 @@ export interface WorkflowCanvasProps {
   run?: WorkflowRunDetail | null;
   /** The steps a paused run waits at (a review or an "Ask me" question each). */
   waitingStepIds?: readonly string[];
+  /** The workflow's folder name: the "Uses the computer" chip names it. */
+  computerFolder?: string | null;
+  /** Steps a run holds at a command or file change on this computer (a subset of the waiting steps). */
+  computerWaitingStepIds?: readonly string[];
+  /** The user clicked "Waiting for you" on this step: show its approval card. */
+  onShowWaiting?: (stepId: string) => void;
   /** The checker's problems; steps they name are marked. */
   problems?: readonly string[];
   selectedId?: string | null;
@@ -149,9 +157,24 @@ const StepNode = memo(function StepNode({ id, data, selected }: NodeProps<Node<N
       <span className="wfc-head">
         <span className="wfc-kind">{data.kind}</span>
         {data.problem ? <span className="wfc-needs-fix">{t('workspace.workflows.canvas.needsFix')}</span> : null}
-        {data.statusText ? <span className={STATUS_CLASS[data.status] ?? 'wfc-status'}>{data.statusText}</span> : null}
+        {/* The button below says the same as the "waiting" status, and does something. */}
+        {data.statusText && !(data.waitingYou && data.status === 'waiting') ? (
+          <span className={STATUS_CLASS[data.status] ?? 'wfc-status'}>{data.statusText}</span>
+        ) : null}
       </span>
       <span className="wfc-line">{data.line}</span>
+      {data.waitingYou ? (
+        <button
+          type="button"
+          className="wfc-waiting-you nodrag nopan"
+          onClick={(e) => {
+            e.stopPropagation();
+            data.waitingYou?.();
+          }}
+        >
+          {t('workspace.workflows.canvas.waitingForYou')}
+        </button>
+      ) : null}
       {data.flags.length > 0 || data.iterations ? (
         <span className="wfc-flags">
           {data.iterations ? <span className="wfc-flag">{data.iterations}</span> : null}
@@ -375,6 +398,9 @@ function Canvas({
   connectorNames = NO_NAMES,
   run = null,
   waitingStepIds = NO_WAITS,
+  computerFolder = null,
+  computerWaitingStepIds = NO_WAITS,
+  onShowWaiting,
   problems = NO_PROBLEMS,
   selectedId: controlledId,
   onSelect,
@@ -397,6 +423,11 @@ function Canvas({
     [controlledId, onSelect],
   );
 
+  // The callback and the list are fresh on every page render; the nodes should not be rebuilt for that.
+  const showWaiting = useRef(onShowWaiting);
+  showWaiting.current = onShowWaiting;
+  const computerWaitKey = computerWaitingStepIds.join('|');
+
   const graph = useMemo(() => buildCanvas(definition), [definition]);
   const statuses = useMemo(() => runStatuses(definition, run, waitingStepIds), [definition, run, waitingStepIds]);
   const { byStep: problemSteps } = useMemo(() => problemsByStep(problems, definition), [problems, definition]);
@@ -414,9 +445,13 @@ function Canvas({
               status,
               statusText: status === 'idle' ? null : t(STATUS_KEY[status]),
               iterations: iterationText(t, nodeRun),
+              waitingYou:
+                computerWaitKey.split('|').includes(n.id) && showWaiting.current ? () => showWaiting.current?.(n.id) : null,
               flags: [
                 handsToText(step, t, helperNames(definition)),
-                computerText(step, t),
+                computerText(step, t) && computerFolder
+                  ? t('workspace.workflows.step.usesComputerIn', { folder: computerFolder })
+                  : computerText(step, t),
                 step.onError === 'skip' ? t('workspace.workflows.step.continuesOnError') : null,
               ].filter((flag): flag is string => flag !== null),
               problem: problemSteps.has(n.id),
@@ -430,6 +465,7 @@ function Canvas({
               statusText: null,
               iterations: null,
               flags: [],
+              waitingYou: null,
               problem: false,
               flowEditable: false,
               branch: false,
@@ -452,7 +488,7 @@ function Canvas({
           ariaLabel: step ? `${data.kind}: ${data.line}` : data.kind,
         };
       }),
-    [graph, statuses, problemSteps, selectedId, editor, fill, t, labels, connectorNames, definition],
+    [graph, statuses, problemSteps, selectedId, editor, fill, t, labels, connectorNames, definition, computerFolder, computerWaitKey],
   );
 
   // React Flow keeps what it measured on its own node objects; rebuilding them

@@ -791,6 +791,25 @@ impl Team {
             done.push(record);
         }
     }
+
+    /// What the step did on the computer so far, for an approval card: the
+    /// records without output or file content.
+    fn computer_so_far(&self) -> Vec<Value> {
+        let Ok(done) = self.computer.lock() else {
+            return Vec::new();
+        };
+        done.iter()
+            .map(|record| {
+                let mut short = record.clone();
+                if let Some(fields) = short.as_object_mut() {
+                    for key in ["output", "previous", "content", "suggestedRule"] {
+                        fields.remove(key);
+                    }
+                }
+                short
+            })
+            .collect()
+    }
 }
 
 /// What a helper is called as a tool.
@@ -1090,6 +1109,7 @@ impl ConnectorTools<'_, '_> {
                     read_before: read.clone(),
                     suggested_rule: suggested.clone(),
                     risky,
+                    so_far: self.team.computer_so_far(),
                 };
                 let started = Instant::now();
                 let asked = exec
@@ -1349,6 +1369,7 @@ impl ConnectorTools<'_, '_> {
                 read_before: self.taint.describe(),
                 suggested_rule: None,
                 risky: false,
+                so_far: self.team.computer_so_far(),
             };
             let started = Instant::now();
             let asked = exec

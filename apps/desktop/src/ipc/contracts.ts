@@ -1058,6 +1058,8 @@ export interface ComputerRequest {
   suggestedRule?: string;
   /** It matched an always-ask rule or the built-in list (deletes files, throws work away…): warn, and don't default to Run. */
   risky?: boolean;
+  /** What this step already did on the computer, oldest first (no output or file content). */
+  soFar?: ComputerRecord[];
 }
 
 /**

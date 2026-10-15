@@ -49,6 +49,7 @@
 .wfv-chip-label { flex: none; color: var(--ink-3); }
 .wfv-chip-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wfv-chip.is-action { cursor: pointer; }
+.wfv-chip-warn { color: var(--warn); border-color: var(--warn); font-weight: 600; }
 .wfv-chip.is-action:hover { background: var(--card-hi); border-color: var(--line-hi); }
 
 /* ── Tabs ── */
@@ -61,6 +62,7 @@
   color: var(--ink-3);
 }
 .wfv-tab:hover { color: var(--ink); }
+.wfv-tab-warn { margin-left: 6px; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid var(--warn); color: var(--warn); font-size: var(--fs-xl); font-weight: 700; }
 .wfv-tab.is-active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
 
 .wfv-pane { flex: 1; min-height: 0; position: relative; }

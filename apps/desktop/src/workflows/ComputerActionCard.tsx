@@ -1,17 +1,19 @@
 /// The approval card for a command or file change an agent wants to make on
-/// this computer. It leads with why it asks and what outside content the agent
-/// read first (the safety signal), then the exact command or change, which the
-/// user can run, edit, or refuse. "Allow from now on" adds a rule the user can
-/// word themselves before confirming.
+/// this computer. It leads with what the agent says it is for, then the exact
+/// command (as a terminal line) or file change, and one chip saying why it asks.
+/// The user can run it, run it and allow its rule, edit it, or refuse. A risky
+/// one makes "Don’t run" the main button.
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { useT } from '../i18n';
+import { useT, type Translate } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
-import { answerWorkflowAction } from '../ipc/client';
-import type { ComputerRequest, WorkflowAction } from '../ipc/contracts';
+import { answerWorkflowAction, getWorkflowRun } from '../ipc/client';
+import type { ComputerRecord, ComputerRequest, WorkflowAction } from '../ipc/contracts';
 import { rejectionText } from './CommandRuleList';
-import { lineDiff } from './lineDiff';
+import { FileDiff } from './FileDiff';
 import { formatNextRun } from './ScheduleSection';
+import { stepComputer } from './StepComputer';
+import '../styles/computer-card.css';
 
 /// The folder and where inside it, as a path; just the folder for ".".
 function whereText(request: ComputerRequest): string {
@@ -22,6 +24,36 @@ function whereText(request: ComputerRequest): string {
 
 function textArg(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+/// The program's file name without a Windows executable extension.
+function programName(program: string): string {
+  const base = program.split(/[\\/]/).pop() || program;
+  return base.replace(/\.(exe|cmd|bat)$/i, '');
+}
+
+function folderName(path: string): string {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
+}
+
+function quoteArg(arg: string): string {
+  return /\s/.test(arg) ? `"${arg}"` : arg;
+}
+
+/// Most earlier records shown in "So far in this run".
+const SO_FAR_MAX = 4;
+
+function soFarItem(r: ComputerRecord, t: Translate): string {
+  const what = r.kind === 'command' ? [programName(r.program), ...r.args].join(' ').slice(0, 60) : r.path;
+  const outcome = t(`workspace.workflows.computer.soFar.outcome.${r.outcome}`);
+  let by = '';
+  if (r.approvedBy === 'you') by = t('workspace.workflows.computer.soFar.by.you');
+  else if (r.approvedBy.startsWith('rule:')) by = t('workspace.workflows.computer.soFar.by.rule');
+  else if (r.approvedBy === "the workflow's edit mode") by = t('workspace.workflows.computer.soFar.by.editMode');
+  else if (r.approvedBy) by = r.approvedBy;
+  return by
+    ? t('workspace.workflows.computer.soFar.item', { what, outcome, by })
+    : t('workspace.workflows.computer.soFar.itemPlain', { what, outcome });
 }
 
 export function ComputerActionCard({
@@ -37,8 +69,9 @@ export function ComputerActionCard({
   const fmt = useFormatters();
   const headingId = useId();
   const command = request.kind === 'run_command';
+  const risky = Boolean(request.risky);
   const args = request.args ?? [];
-  const offered = !action.sensitive && Boolean(request.suggestedRule);
+  const offered = !action.sensitive && !risky && Boolean(request.suggestedRule);
   const [editing, setEditing] = useState(false);
   const [argsText, setArgsText] = useState('');
   const [contentText, setContentText] = useState('');
@@ -46,6 +79,7 @@ export function ComputerActionCard({
   const [rule, setRule] = useState(request.suggestedRule ?? '');
   const [sending, setSending] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  const [earlier, setEarlier] = useState<ComputerRecord[]>([]);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -53,6 +87,24 @@ export function ComputerActionCard({
       alive.current = false;
     };
   }, []);
+  useEffect(() => {
+    // What this step did so far comes with the request (a step's output is
+    // saved only when it ends); finished steps' records are read from the run.
+    // A failed lookup just leaves those out.
+    const current = stepComputer({ computer: request.soFar ?? [] });
+    setEarlier(current.slice(-SO_FAR_MAX));
+    try {
+      void Promise.resolve(getWorkflowRun(action.runId))
+        .then((detail) => {
+          if (!alive.current) return;
+          setEarlier([...detail.steps.flatMap((step) => stepComputer(step.output)), ...current].slice(-SO_FAR_MAX));
+        })
+        .catch(() => {});
+    } catch {
+      /* no run to read */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch when the run or what this step did changes, not on every poll
+  }, [action.runId, request.soFar?.length]);
 
   function startEditing() {
     setArgsText(args.join('\n'));
@@ -60,7 +112,7 @@ export function ComputerActionCard({
     setEditing(true);
   }
 
-  async function answer(send: boolean, edited?: Record<string, unknown>) {
+  async function answer(send: boolean, edited?: Record<string, unknown>, rememberNow = false) {
     setSending(true);
     setRefused(null);
     const ruleText = rule.trim();
@@ -68,7 +120,7 @@ export function ComputerActionCard({
       const taken = await answerWorkflowAction(action.runId, action.stepId, {
         send,
         ...(edited ? { arguments: edited } : {}),
-        ...(send && offered && remember && ruleText ? { remember: true, rule: ruleText } : {}),
+        ...(send && offered && (rememberNow || remember) && ruleText ? { remember: true, rule: ruleText } : {}),
       });
       onAnswered(action, taken);
     } catch (e) {
@@ -92,157 +144,155 @@ export function ComputerActionCard({
   }
 
   const titleKey = command ? 'workspace.workflows.computer.title.command' : 'workspace.workflows.computer.title.file';
+  const reasonText = request.readBefore
+    ? t('workspace.workflows.computer.readBeforeChip', { what: request.readBefore })
+    : request.reason;
+  const name = request.program ? programName(request.program) : '';
+  const termLine = `${folderName(whereText(request))}> ${[name, ...args.map(quoteArg)].join(' ')}`;
+  const runLabel = command ? t('workspace.workflows.computer.run') : t('workspace.workflows.computer.change');
+  const runAnywayLabel = command
+    ? t('workspace.workflows.computer.runAnyway')
+    : t('workspace.workflows.computer.changeAnyway');
+  const noLabel = command ? t('workspace.workflows.computer.dontRun') : t('workspace.workflows.computer.dontChange');
+  const sofar = earlier.map((r) => soFarItem(r, t)).join(' · ');
 
   return (
     <section
-      className="wf-offer wf-review wf-action wf-computer"
+      className={`wf-offer wf-review wf-action wf-computer${risky ? ' cc-risky' : ''}`}
       role="group"
       aria-labelledby={headingId}
       data-run-id={action.runId}
     >
-      <b id={headingId}>{t(titleKey)}</b>
-      <p className="wf-review-what wf-computer-reason">{request.reason}</p>
-      {request.readBefore ? (
-        <p className="wf-computer-read" role="note">
-          {t('workspace.workflows.computer.readBefore', { what: request.readBefore })}
-        </p>
-      ) : null}
-      {request.why ? <p className="wf-muted">{t('workspace.workflows.computer.why', { why: request.why })}</p> : null}
+      <p className="cc-meta">
+        {t('workspace.workflows.computer.meta', {
+          workflow: action.workflowName,
+          step: action.stepId,
+          when: fmt.timeAgo(action.requestedAt),
+        })}
+      </p>
+      <b id={headingId} className="cc-headline">
+        {request.why ? request.why : t(titleKey)}
+      </b>
 
       {command ? (
-        <>
-          {editing ? (
-            <label className="wf-field">
-              <span>{t('workspace.workflows.computer.argsLabel')}</span>
-              <textarea
-                className="mem-input wf-action-json"
-                rows={Math.min(10, Math.max(3, argsText.split('\n').length + 1))}
-                spellCheck={false}
-                value={argsText}
-                disabled={sending}
-                onChange={(e) => setArgsText(e.target.value)}
-              />
-              <span className="wf-muted">{t('workspace.workflows.computer.argsHint')}</span>
-            </label>
-          ) : (
-            <pre className="wf-computer-command" aria-label={t('workspace.workflows.computer.commandLabel')}>
-              {[request.program ?? '', ...args].join('\n')}
+        editing ? (
+          <label className="wf-field">
+            <span>{t('workspace.workflows.computer.argsLabel')}</span>
+            <textarea
+              className="mem-input wf-action-json"
+              rows={Math.min(10, Math.max(3, argsText.split('\n').length + 1))}
+              spellCheck={false}
+              value={argsText}
+              disabled={sending}
+              onChange={(e) => setArgsText(e.target.value)}
+            />
+            <span className="wf-muted">{t('workspace.workflows.computer.argsHint')}</span>
+          </label>
+        ) : (
+          <>
+            <pre className="cc-term" aria-label={t('workspace.workflows.computer.commandLabel')} title={whereText(request)}>
+              {termLine}
             </pre>
-          )}
-          <p className="wf-muted">{t('workspace.workflows.computer.runsIn', { where: whereText(request) })}</p>
-        </>
+            {request.program && request.program !== name ? (
+              <p className="wf-muted">{t('workspace.workflows.computer.programIs', { name, path: request.program })}</p>
+            ) : null}
+          </>
+        )
+      ) : editing ? (
+        <label className="wf-field">
+          <span>{t('workspace.workflows.computer.contentLabel')}</span>
+          <textarea
+            className="mem-input wf-action-json"
+            rows={10}
+            spellCheck={false}
+            value={contentText}
+            disabled={sending}
+            onChange={(e) => setContentText(e.target.value)}
+          />
+        </label>
       ) : (
         <>
-          <p className="wf-muted">
-            {request.previous === undefined
-              ? t('workspace.workflows.computer.newFile', { path: request.path, folder: request.folder })
-              : t('workspace.workflows.computer.changeFile', { path: request.path, folder: request.folder })}
-          </p>
-          {editing ? (
-            <label className="wf-field">
-              <span>{t('workspace.workflows.computer.contentLabel')}</span>
-              <textarea
-                className="mem-input wf-action-json"
-                rows={10}
-                spellCheck={false}
-                value={contentText}
-                disabled={sending}
-                onChange={(e) => setContentText(e.target.value)}
-              />
-            </label>
-          ) : (
-            <FileChange previous={request.previous} content={request.content ?? ''} />
-          )}
+          <FileDiff path={request.path} previous={request.previous} content={request.content ?? ''} />
+          <p className="wf-muted">{t('workspace.workflows.computer.runsIn', { where: request.folder })}</p>
         </>
       )}
 
-      <p className="wf-muted">
-        {t('workspace.workflows.review.expires', { when: formatNextRun(action.expiresAt, fmt.locale) })}
+      <p className={`cc-chip${risky || request.readBefore ? ' warn' : ''}`} role="note">
+        {reasonText}
       </p>
-      {action.sensitive ? (
-        // A file change says why it asks above; outside content asks only this time.
-        command && !request.readBefore ? <p className="wf-muted">{t('workspace.workflows.computer.alwaysAsks')}</p> : null
-      ) : offered ? (
-        <div className="wf-computer-remember">
+
+      {editing && offered ? (
+        <div className="cc-rule">
+          <label className="wf-field">
+            <span>{t('workspace.workflows.computer.ruleLabel')}</span>
+            <input
+              className="mem-input wf-action-json"
+              spellCheck={false}
+              value={rule}
+              disabled={sending}
+              onChange={(e) => setRule(e.target.value)}
+            />
+          </label>
           <label className="wf-action-remember">
             <input type="checkbox" checked={remember} disabled={sending} onChange={(e) => setRemember(e.target.checked)} />
-            <span>{t('workspace.workflows.computer.remember', { rule: request.suggestedRule ?? '' })}</span>
+            <span>{t('workspace.workflows.computer.allowRule')}</span>
           </label>
-          {remember ? (
-            <label className="wf-field">
-              <span>{t('workspace.workflows.computer.ruleLabel')}</span>
-              <input
-                className="mem-input wf-action-json"
-                spellCheck={false}
-                value={rule}
-                disabled={sending}
-                onChange={(e) => setRule(e.target.value)}
-              />
-            </label>
-          ) : null}
         </div>
       ) : null}
+
+      <p className="wf-muted">
+        {t(command ? 'workspace.workflows.computer.deadline.command' : 'workspace.workflows.computer.deadline.file', {
+          when: formatNextRun(action.expiresAt, fmt.locale),
+        })}
+      </p>
+
       <div className="wf-offer-actions">
         {editing ? (
           <>
             <button type="button" className="btn primary" disabled={sending} onClick={sendEdited}>
-              {command ? t('workspace.workflows.computer.run') : t('workspace.workflows.computer.change')}
+              {risky ? runAnywayLabel : runLabel}
             </button>
             <button type="button" className="btn" disabled={sending} onClick={() => setEditing(false)}>
               {t('workspace.workflows.action.cancel')}
             </button>
           </>
+        ) : risky ? (
+          <>
+            <button type="button" className="btn primary" disabled={sending} onClick={() => void answer(false)}>
+              {noLabel}
+            </button>
+            <button type="button" className="btn" disabled={sending} onClick={() => void answer(true)}>
+              {runAnywayLabel}
+            </button>
+            <button type="button" className="btn ghost" disabled={sending} onClick={startEditing}>
+              {t('workspace.workflows.action.edit')}
+            </button>
+          </>
         ) : (
           <>
             <button type="button" className="btn primary" disabled={sending} onClick={() => void answer(true)}>
-              {command ? t('workspace.workflows.computer.run') : t('workspace.workflows.computer.change')}
+              {runLabel}
             </button>
+            {offered ? (
+              <button type="button" className="btn" disabled={sending} onClick={() => void answer(true, undefined, true)}>
+                {t('workspace.workflows.computer.runAndAllow', { rule: request.suggestedRule ?? '' })}
+              </button>
+            ) : null}
             <button type="button" className="btn" disabled={sending} onClick={startEditing}>
               {t('workspace.workflows.action.edit')}
             </button>
             <button type="button" className="btn ghost" disabled={sending} onClick={() => void answer(false)}>
-              {command ? t('workspace.workflows.computer.dontRun') : t('workspace.workflows.computer.dontChange')}
+              {noLabel}
             </button>
           </>
         )}
       </div>
+      {sofar ? <p className="wf-muted cc-sofar">{t('workspace.workflows.computer.soFar', { items: sofar })}</p> : null}
       {refused ? (
         <p className="wf-error" role="alert">
           {refused}
         </p>
       ) : null}
     </section>
-  );
-}
-
-/// The new content of a file, as a line diff against the old when there is one.
-function FileChange({ previous, content }: { previous: string | undefined; content: string }) {
-  const t = useT();
-  if (previous === undefined) {
-    return (
-      <pre className="wf-computer-file" aria-label={t('workspace.workflows.computer.contentLabel')}>
-        {content}
-      </pre>
-    );
-  }
-  const rows = lineDiff(previous, content);
-  if (rows.every((r) => r.kind === 'same')) {
-    return <p className="wf-muted">{t('workspace.workflows.computer.noChange')}</p>;
-  }
-  return (
-    <div className="wf-diff" role="group" aria-label={t('workspace.workflows.computer.diffLabel')}>
-      {rows.map((row, i) =>
-        row.kind === 'skip' ? (
-          <div key={i} className="wf-diff-line skip">
-            {t('workspace.workflows.computer.unchangedLines', { count: row.count })}
-          </div>
-        ) : (
-          <div key={i} className={`wf-diff-line ${row.kind}`} data-diff={row.kind}>
-            <span aria-hidden="true">{row.kind === 'add' ? '+ ' : row.kind === 'del' ? '- ' : '  '}</span>
-            {row.text}
-          </div>
-        ),
-      )}
-    </div>
   );
 }

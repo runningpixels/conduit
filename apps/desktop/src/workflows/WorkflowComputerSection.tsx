@@ -21,6 +21,7 @@ export function WorkflowComputerSection({
   const set = (patch: Partial<WorkflowComputer>) => onChange(withComputer(def, { ...computer, ...patch }));
   const editMode = computer.editMode ?? 'ask';
   const whenNobody = computer.whenNobodyAnswers ?? 'wait';
+  const outside = computer.allowOutside === true;
 
   return (
     <section className="wfe-section wfe-computer" aria-labelledby={`${id}-title`}>
@@ -64,20 +65,10 @@ export function WorkflowComputerSection({
         </label>
       </fieldset>
 
-      <label className="wf-check">
-        <input
-          type="checkbox"
-          checked={computer.allowOutside === true}
-          onChange={(e) => set({ allowOutside: e.target.checked })}
-        />
-        {t('workspace.workflows.computerSettings.allowOutside')}
-      </label>
-      <p className="wfe-help">{t('workspace.workflows.computerSettings.allowOutsideHint')}</p>
-
-      <label className="wfe-field wf-narrow">
+      <label className="wfe-field">
         <span>{t('workspace.workflows.computerSettings.timeout')}</span>
         <input
-          className="mem-input"
+          className="mem-input wf-narrow"
           type="number"
           min={1}
           max={MAX_COMPUTER_TIMEOUT_SECS}
@@ -93,6 +84,16 @@ export function WorkflowComputerSection({
           }}
         />
       </label>
+
+      <details className={`wfe-advanced${outside ? ' is-warn' : ''}`} open={outside || undefined}>
+        <summary>{t('workspace.workflows.computerSettings.advanced')}</summary>
+        <label className="wf-check">
+          <input type="checkbox" checked={outside} onChange={(e) => set({ allowOutside: e.target.checked })} />
+          {t('workspace.workflows.computerSettings.allowOutside')}
+        </label>
+        <p className="wfe-help">{t('workspace.workflows.computerSettings.allowOutsideHint')}</p>
+        {outside ? <p className="wfe-warn">{t('workspace.workflows.computerSettings.outsideWarn')}</p> : null}
+      </details>
     </section>
   );
 }

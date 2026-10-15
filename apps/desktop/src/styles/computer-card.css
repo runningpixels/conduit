@@ -1,0 +1,64 @@
+/* The approval card for a command or file change, the shared file diff, and the run-details markers. */
+.cc-meta { margin: 0; font-size: var(--fs-5xl); color: var(--ink-3); }
+.cc-headline { font-weight: 600; }
+.wf-offer.cc-risky {
+  border-color: color-mix(in srgb, var(--err) 70%, var(--line));
+  border-left: 4px solid var(--err);
+  background: color-mix(in srgb, var(--err) 6%, var(--bg-side));
+}
+.cc-term {
+  margin: 0;
+  padding: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-5xl);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 14em;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.cc-chip {
+  justify-self: start;
+  margin: 0;
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-5xl);
+  color: var(--ink);
+}
+.cc-chip.warn {
+  border-color: color-mix(in srgb, var(--warn) 60%, var(--line));
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.cc-risky .cc-chip {
+  border-color: color-mix(in srgb, var(--err) 60%, var(--line));
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+}
+.cc-sofar { margin: 0; font-size: var(--fs-5xl); }
+.cc-rule { display: grid; gap: var(--sp-2); }
+.cc-exit { color: var(--err); }
+
+.fd { display: grid; gap: var(--sp-1); }
+.fd-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-5xl); }
+.fd-path { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.fd-badge {
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ink);
+}
+.fd-counts { font-family: var(--font-mono); }
+.fd-add { color: var(--ok); }
+.fd-del { color: var(--err); }
+.fd-body { font-family: var(--font-mono); font-size: var(--fs-5xl); max-height: 28em; overflow: auto; }
+.fd-line { display: grid; grid-template-columns: 4ch 4ch 2ch 1fr; }
+.fd-line.skip { grid-template-columns: 1fr; padding-left: 10ch; }
+.fd-no { text-align: right; padding-right: 1ch; color: var(--ink-3); user-select: none; }
+.fd-sign { user-select: none; }
+.fd-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.fd-line.add { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.fd-line.del { background: color-mix(in srgb, var(--err) 18%, transparent); }
+.fd-line.skip { color: var(--ink-3); font-style: italic; }
+.fd-toggle { justify-self: start; }

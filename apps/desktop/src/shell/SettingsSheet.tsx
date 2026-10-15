@@ -74,6 +74,7 @@ export type SettingsSection =
   | 'chat'
   | 'web-search'
   | 'workspace'
+  | 'computer'
   | 'connectors'
   | 'prompts'
   | 'skills'
@@ -131,6 +132,7 @@ const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode; group:
   { id: 'chat', labelId: 'shell.settingsSheet.nav.chat', icon: <ChatIcon />, group: 'models' },
   { id: 'web-search', labelId: 'shell.settingsSheet.nav.web-search', icon: <SearchIcon />, group: 'models' },
   { id: 'workspace', labelId: 'shell.settingsSheet.nav.workspace', icon: <FolderIcon />, group: 'assistant' },
+  { id: 'computer', labelId: 'shell.settingsSheet.nav.computer', icon: <ComputerNavIcon />, group: 'assistant' },
   { id: 'connectors', labelId: 'shell.settingsSheet.nav.connectors', icon: <ConnectorsIcon />, group: 'assistant' },
   { id: 'prompts', labelId: 'shell.settingsSheet.nav.prompts', icon: <ListNavIcon />, group: 'assistant' },
   { id: 'skills', labelId: 'shell.settingsSheet.nav.skills', icon: <SkillNavIcon />, group: 'assistant' },
@@ -141,6 +143,15 @@ const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode; group:
   { id: 'privacy', labelId: 'shell.settingsSheet.nav.privacy', icon: <LockIcon />, group: 'app' },
   { id: 'about', labelId: 'shell.settingsSheet.nav.about', icon: <InfoIcon />, group: 'app' },
 ];
+
+function ComputerNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="14" rx="2" />
+      <path d="M7 9l3 2.5L7 14M12 14h4M8 21h8" />
+    </svg>
+  );
+}
 
 function KeyNavIcon() {
   return (
@@ -578,6 +589,13 @@ export function SettingsSheet({
                 {t('shell.settingsSheet.workspace.intro')}
               </p>
               <WorkspaceToolsSection settings={settings} onUpdate={save} onStatus={onStatus} />
+            </>
+          )}
+
+          {section === 'computer' && (
+            <>
+              <h2 className="sheet-h">{t('shell.settingsSheet.computer.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.computer.intro')}</p>
               <ComputerSection settings={settings} onUpdate={onSettingsChange} />
             </>
           )}

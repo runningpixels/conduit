@@ -11,7 +11,7 @@ import {
 import type { SettingsSection } from './SettingsSheet';
 
 const SECTIONS: { id: SettingsSection; labelId: string }[] = [
-  'providers', 'chat', 'web-search', 'workspace', 'connectors', 'prompts',
+  'providers', 'chat', 'web-search', 'workspace', 'computer', 'connectors', 'prompts',
   'skills', 'memory', 'appearance', 'branding', 'privacy', 'about',
 ].map((id) => ({ id: id as SettingsSection, labelId: `shell.settingsSheet.nav.${id}` }));
 

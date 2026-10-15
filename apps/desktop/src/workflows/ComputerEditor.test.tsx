@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import { WorkflowEditor, type WorkflowDraft } from './WorkflowEditor';
 import { describeStep, computerText } from './describeStep';
@@ -130,6 +130,52 @@ describe('the editor', () => {
     fireEvent.change(ui.getByRole('spinbutton'), { target: { value: '' } });
     expect(latest.draft.definition.computer).toBeUndefined();
     expect(latest.draft.definition.steps[0]).toMatchObject({ tools: ['computer'] });
+  });
+
+  it('says where the agent works and how it treats files, with a way to the Computer settings', () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    vi.useFakeTimers();
+    try {
+      renderEditor({
+        folder: 'C:/work/demo-shop',
+        steps: [{ id: 'agent', type: 'agent', prompt: 'Do it', tools: ['computer'] }],
+      });
+      expect(screen.getByText('In demo-shop · asks before changing files')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Computer settings' }));
+      vi.advanceTimersByTime(100);
+      expect(scroll).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says files change freely when the workflow is set that way', () => {
+    renderEditor({
+      folder: 'C:/work/demo-shop',
+      computer: { editMode: 'free' },
+      steps: [{ id: 'agent', type: 'agent', prompt: 'Do it', tools: ['computer'] }],
+    });
+    expect(screen.getByText('In demo-shop · changes files freely')).toBeInTheDocument();
+  });
+
+  it('offers to pick the folder when the workflow has none', async () => {
+    ipc.pickWorkspaceFolder.mockResolvedValue('C:/work/shop');
+    const latest = renderEditor({ steps: [{ id: 'agent', type: 'agent', prompt: 'Do it', tools: ['computer'] }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Pick the folder it works in' }));
+    await waitFor(() => expect(latest.draft.definition.folder).toBe('C:/work/shop'));
+  });
+
+  it('keeps “write outside the folder” under Advanced, flagged while it is on', () => {
+    renderEditor({
+      folder: 'C:/work',
+      steps: [{ id: 'agent', type: 'agent', prompt: 'Do it', tools: ['computer'] }],
+      computer: { allowOutside: true },
+    });
+    const advanced = screen.getByText('Advanced').closest('details') as HTMLDetailsElement;
+    expect(advanced.open).toBe(true);
+    expect(within(advanced).getByRole('checkbox', { name: /write outside the folder/ })).toBeChecked();
+    expect(within(advanced).getByText(/Not confined/)).toBeInTheDocument();
   });
 
   it('ticks the computer on a helper', () => {

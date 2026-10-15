@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AppSettings } from '../ipc/contracts';
 import { SettingsSheet, type SettingsSection } from './SettingsSheet';
 
@@ -210,8 +210,18 @@ describe('SettingsSheet', () => {
     const group = (name: string) =>
       Array.from(screen.getByRole('group', { name }).querySelectorAll('button')).map((b) => b.textContent);
     expect(group('Models')).toEqual(['Providers & keys', 'Chat defaults', 'Web search']);
-    expect(group('Assistant')).toEqual(['Workspace', 'Connectors', 'Prompts', 'Skills', 'Memory', 'Knowledge']);
+    expect(group('Assistant')).toEqual(['Workspace', 'Computer', 'Connectors', 'Prompts', 'Skills', 'Memory', 'Knowledge']);
     expect(group('App')).toEqual(expect.arrayContaining(['Appearance', 'Privacy & data', 'About']));
+  });
+
+  it('gives the computer its own entry, not a corner of Workspace', () => {
+    renderSheet({ initialSection: 'workspace' });
+    expect(screen.queryByRole('checkbox', { name: 'Let workflows use this computer' })).toBeNull();
+    cleanup();
+    renderSheet({ initialSection: 'computer' });
+    expect(screen.getByRole('heading', { name: 'Computer', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Let workflows use this computer' })).toBeInTheDocument();
+    expect(screen.getByText('Always ask first (all workflows)')).toBeInTheDocument();
   });
 
   it('reports the section on screen, on open and on every change', () => {

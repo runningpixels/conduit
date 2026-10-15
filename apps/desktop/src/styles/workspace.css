@@ -90,8 +90,14 @@ html[data-sidebar="closed"] .head-nav { display: flex; }
    * caption row reads as the window's top edge rather than empty space above
    * the content. The rail's column runs up through it, so the rail reads as
    * one strip to the top of the window (it is ink-blue in light mode). */
+  /* The rail's 1px edge (.rail's border) continues up through it too. */
   background:
-    linear-gradient(to right, var(--bg-rail) var(--rail-w), transparent var(--rail-w)),
+    linear-gradient(
+      to right,
+      var(--bg-rail) calc(var(--rail-w) - 1px),
+      color-mix(in srgb, var(--rail-ink) 10%, var(--bg-rail)) calc(var(--rail-w) - 1px) var(--rail-w),
+      transparent var(--rail-w)
+    ),
     linear-gradient(to top, var(--line-soft) 1px, var(--bg-side) 1px);
 }
 

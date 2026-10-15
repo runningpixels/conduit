@@ -177,7 +177,9 @@
   --rail-ink-2: #c9cdd5;
   --rail-ink-3: #a4aab6;
   --rail-hover: #1a1f2c;
-  /* One colour per area, on its icon, tile and label (Home, lists). The accent
+  /* One colour per area, on Home's tiles and cards, where items of different
+   * kinds sit side by side (not on the rail or page titles: there the accent
+   * alone marks where you are). The accent
    * stays the colour of actions and selection. Each clears AA as text. */
   --area-chats: #9b9dff;
   --area-slides: #f5b14c;

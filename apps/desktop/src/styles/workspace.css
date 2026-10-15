@@ -1117,22 +1117,9 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   outline-offset: -1px;
 }
 .rail-btn:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
-/* Each area's icon in its own colour; the current one takes the accent. */
-.rail-btn[data-destination="chats"] { --area: var(--area-chats); }
-.rail-btn[data-destination="slides"] { --area: var(--area-slides); }
-.rail-btn[data-destination="writing"] { --area: var(--area-writing); }
-.rail-btn[data-destination="apps"] { --area: var(--area-apps); }
-.rail-btn[data-destination="workflows"] { --area: var(--area-workflows); }
-.rail-btn[data-destination]:not([aria-current="page"]) svg { color: var(--area, currentColor); }
-/* Light mode: the rail is ink-blue, so the area colours take their dark-mode
- * values there, and the current item is a solid accent tile. */
-[data-theme="light"] .rail {
-  --area-chats: #9b9dff;
-  --area-slides: #f5b14c;
-  --area-writing: #4fd1c5;
-  --area-apps: #f472b6;
-  --area-workflows: #6ee7a0;
-}
+/* Light mode: the rail is ink-blue, so the current item is a solid accent
+ * tile. (One accent on the rail: area colours belong to Home, where items of
+ * different kinds sit side by side; next to the accent they clashed.) */
 [data-theme="light"] .rail-btn[aria-current="page"] .rail-icon {
   color: var(--on-accent);
   background: var(--accent);
@@ -1267,8 +1254,8 @@ html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
 .page-head-text { min-width: 0; }
 /* ADR-011: page titles carry the hierarchy the rail no longer has to. */
 .page-title { margin: 0; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -.03em; line-height: var(--leading-tight); display: flex; align-items: center; gap: var(--sp-3); }
-/* The page's rail icon leads its title, in the area's colour where it has
- * one, so the page and its rail button read as the same place. */
+/* The page's rail icon leads its title, in the accent, so the page and its
+ * rail button read as the same place. */
 .page-title-icon {
   flex: none;
   display: grid;
@@ -1276,18 +1263,13 @@ html[data-reduce-motion="on"] .convo-status-mark { animation: none; }
   width: 44px;
   height: 44px;
   border-radius: var(--r);
-  color: var(--page-area, var(--ink-2));
-  background: color-mix(in srgb, var(--page-area, var(--ink-3)) 15%, transparent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .page-title-icon svg { width: 24px; height: 24px; }
 /* A column header's (Chats) smaller version. */
 .page-title-icon.small { width: 32px; height: 32px; border-radius: var(--r-sm); }
 .page-title-icon.small svg { width: 18px; height: 18px; }
-.page-title-icon[data-area="chats"] { --page-area: var(--area-chats); }
-.page-title-icon[data-area="slides"] { --page-area: var(--area-slides); }
-.page-title-icon[data-area="writing"] { --page-area: var(--area-writing); }
-.page-title-icon[data-area="apps"] { --page-area: var(--area-apps); }
-.page-title-icon[data-area="workflows"] { --page-area: var(--area-workflows); }
 .page-subtitle { margin: 6px 0 0; font-size: var(--fs-5xl); color: var(--ink-2); font-weight: var(--muted-weight); line-height: 1.5; max-width: 72ch; }
 .page-head-actions { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 .page-about {

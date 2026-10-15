@@ -378,7 +378,7 @@ export function Sidebar({
         {/* The product mark lives in the rail (ADR-011 shell); this column is
             the Chats destination's own list, so it says so. */}
         <h2 className="sb-title">
-          <span className="page-title-icon small" data-area="chats" aria-hidden="true">
+          <span className="page-title-icon small" aria-hidden="true">
             {destinationIcon('chats')}
           </span>
           {t('shell.rail.chats')}

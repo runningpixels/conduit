@@ -30,8 +30,7 @@ export interface PageFrameProps {
   children: ReactNode;
   /** Extra class on the root, for page-specific rules. */
   className?: string;
-  /** The rail destination this page is: its icon leads the title, in the
-   *  area's colour where it has one (Slides, Writing, Apps, Workflows). */
+  /** The rail destination this page is: its icon leads the title. */
   destination?: Destination;
 }
 
@@ -57,7 +56,7 @@ export function PageFrame({
         <div className="page-head-text">
           <h2 id={headingId} className="page-title">
             {destination ? (
-              <span className="page-title-icon" data-area={destination} aria-hidden="true">
+              <span className="page-title-icon" aria-hidden="true">
                 {destinationIcon(destination)}
               </span>
             ) : null}

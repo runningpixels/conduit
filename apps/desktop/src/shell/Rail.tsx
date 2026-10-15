@@ -92,7 +92,7 @@ export const RAIL_BANDS: ReadonlyArray<{ id: string; items: readonly Destination
   { id: 'top', items: ['home'] },
   { id: 'make', items: ['chats', 'slides', 'writing'] },
   { id: 'apps', items: ['apps', 'manage'] },
-  { id: 'automate', items: ['inbox', 'workflows', 'agents'] },
+  { id: 'automate', items: ['workflows', 'inbox', 'agents'] },
   { id: 'context', items: ['context'] },
 ];
 

@@ -1032,8 +1032,8 @@ html[data-panel-overlay="open"] .body > .doc-panel {
 }
 .rail-spacer { flex: 1; }
 /* Groups: the rail's buttons gathered by what they are for — make (Chats,
- * Slides, Writing), apps (Apps, Manage), what runs without you (Inbox,
- * Workflows, Agents) and Context — split by a short hairline. */
+ * Slides, Writing), apps (Apps, Manage), what runs without you (Workflows,
+ * Inbox, Agents) and Context — split by a short hairline. */
 .rail-band {
   display: flex;
   flex-direction: column;

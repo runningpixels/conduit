@@ -24,7 +24,7 @@ import type {
   WorkflowTrigger,
 } from '../ipc/contracts';
 import { BackgroundSection } from './BackgroundSection';
-import { permissionText } from './permissionText';
+import { permissionText, type HelperNames } from './permissionText';
 import { loadWatchStatus, watchingText, type WatchStatus } from './triggers';
 
 /// What a schedule starts as when it is first switched on.
@@ -51,12 +51,12 @@ export function formatNextRun(iso: string, locale: string): string {
   }).format(new Date(iso));
 }
 
-function PermissionList({ items }: { items: WorkflowPermissionView[] }) {
+function PermissionList({ items, helpers }: { items: WorkflowPermissionView[]; helpers?: HelperNames }) {
   const t = useT();
   return (
     <ul className="wf-permission-list">
       {items.map((p) => (
-        <li key={JSON.stringify(p)}>{permissionText(p, t)}</li>
+        <li key={JSON.stringify(p)}>{permissionText(p, t, helpers)}</li>
       ))}
     </ul>
   );
@@ -68,6 +68,7 @@ export function ScheduleSection({
   definitionVersion,
   trigger,
   folder,
+  helperNames,
   onStatus,
   onChanged,
 }: {
@@ -80,6 +81,8 @@ export function ScheduleSection({
   trigger?: WorkflowTrigger;
   /// The workflow's folder, named when a folder trigger is on.
   folder?: string;
+  /// The workflow's helper names by id, so a permission can name the helper.
+  helperNames?: HelperNames;
   onStatus: (message: string) => void;
   /// Called after a change is saved (the list shows the next run too).
   onChanged?: () => void;
@@ -203,7 +206,7 @@ export function ScheduleSection({
         <div className="wf-offer" role="group" aria-label={t('workspace.workflows.permissions.approveTitle')}>
           <b>{t('workspace.workflows.permissions.approveTitle')}</b>
           <p className="wf-muted">{t('workspace.workflows.permissions.approveBody')}</p>
-          <PermissionList items={permissions.required} />
+          <PermissionList items={permissions.required} helpers={helperNames} />
           <div className="wf-offer-actions">
             <button
               type="button"
@@ -239,7 +242,7 @@ export function ScheduleSection({
       {enabled && missing.length === 0 && permissions && permissions.required.length > 0 ? (
         <p className="wf-muted wf-allowed">
           {t('workspace.workflows.permissions.allowed', {
-            list: permissions.required.map((p) => permissionText(p, t)).join(' · '),
+            list: permissions.required.map((p) => permissionText(p, t, helperNames)).join(' · '),
           })}
         </p>
       ) : null}

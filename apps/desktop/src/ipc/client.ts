@@ -124,6 +124,7 @@ import type {
   ExampleItem,
   SeedExamplesRequest,
   SeedExamplesOutcome,
+  AgentEntry,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -1971,6 +1972,11 @@ export async function setAppInputs(id: string, values: Record<string, unknown>):
 
 export async function listWorkflows(): Promise<WorkflowSummary[]> {
   return invokeCommand<WorkflowSummary[]>('list_workflows');
+}
+
+/** Every agent step and helper across workflows, with what it is doing now. */
+export async function listAgents(): Promise<AgentEntry[]> {
+  return invokeCommand<AgentEntry[]>('list_agents');
 }
 
 export async function getWorkflow(id: string): Promise<WorkflowRecord> {

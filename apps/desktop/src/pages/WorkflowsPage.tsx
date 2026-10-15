@@ -25,6 +25,7 @@ import { START_ID } from '../workflows/canvas/canvasModel';
 import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../shell/uiPrefs';
 import { MoreMenu, SummaryChips, WorkflowTabs, tabPanelId, tabButtonId, type WorkflowTab } from '../workflows/WorkflowViewParts';
 import { ActionCard } from '../workflows/ActionCard';
+import { AgentHandoffs } from '../workflows/AgentHandoffs';
 import { ReviewCard } from '../workflows/ReviewCard';
 import { useWorkflowActionEvents } from '../workflows/workflowRunEvents';
 import { WorkflowEditBar } from '../workflows/WorkflowEditBar';
@@ -80,7 +81,7 @@ import type {
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, stepLabels, type InputLabels } from '../workflows/describeStep';
-import { findStep, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
+import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { ResultView } from '../workflows/ResultView';
 import { runsAfterLine } from '../workflows/runsAfter';
@@ -1182,6 +1183,7 @@ export function WorkflowsPage({
               busy={answering.has(waitKey(review))}
               error={reviewErrors[waitKey(review)]}
               onAnswer={(decision) => void answer(review, decision)}
+              helperNames={helperNames(record.definition)}
             />
           ))}
         {questions
@@ -1240,6 +1242,7 @@ export function WorkflowsPage({
               definitionVersion={record.version}
               trigger={record.definition.trigger}
               folder={record.definition.folder}
+              helperNames={helperNames(record.definition)}
               onStatus={onStatus}
               onChanged={() => void refreshList()}
             />
@@ -1376,7 +1379,7 @@ export function WorkflowsPage({
               <div className="wfv-listview">
                 <div className="wfv-listview-steps">
                   {stepsToggle}
-                  <StepList steps={record.definition.steps} labels={inputLabels} connectorNames={stepNames} />
+                  <StepList steps={record.definition.steps} labels={inputLabels} connectorNames={stepNames} helpers={helperNames(record.definition)} />
                 </div>
                 <aside className="wfv-panel" aria-label={t('workspace.workflows.canvas.inspector')}>
                   {renderPanel(selectedStep === START_ID ? START_ID : null, null)}
@@ -1423,6 +1426,7 @@ export function WorkflowsPage({
                     detail={openRun}
                     steps={record.definition.steps}
                     labels={inputLabels}
+                    helpers={helperNames(record.definition)}
                     statusLabel={statusLabel}
                     onOpenDocument={onOpenDocument}
                     onOpenDeck={onOpenDeck}
@@ -1658,6 +1662,7 @@ function StepList({
   steps,
   labels,
   connectorNames,
+  helpers,
   scope = steps,
 }: {
   steps: WorkflowStep[];
@@ -1666,6 +1671,8 @@ function StepList({
   scope?: WorkflowStep[];
   /// Set by a nested list; the top-level list looks the names up.
   connectorNames?: Record<string, string>;
+  /// Helper names by id, so an agent step can say whom it hands work to.
+  helpers?: Record<string, string>;
 }) {
   const t = useT();
   const looked = useConnectorNames(steps, connectorNames !== undefined);
@@ -1674,10 +1681,10 @@ function StepList({
     <ol className="wf-steps">
       {steps.map((step, index) => (
         <li key={step.id}>
-          <span>{describeStep(step, t, labels, names, scope)}</span>
+          <span>{describeStep(step, t, labels, names, scope, helpers)}</span>
           {steps === scope && runsAfterLine(scope, index, t) ? <span className="wf-muted">{runsAfterLine(scope, index, t)}</span> : null}
           {step.onError === 'skip' ? <span className="wf-flag">{t('workspace.workflows.step.continuesOnError')}</span> : null}
-          {step.type === 'for_each' ? <StepList steps={step.steps} labels={labels} connectorNames={names} scope={scope} /> : null}
+          {step.type === 'for_each' ? <StepList steps={step.steps} labels={labels} connectorNames={names} scope={scope} helpers={helpers} /> : null}
         </li>
       ))}
     </ol>
@@ -1805,6 +1812,7 @@ function RunDetail({
   detail,
   steps = [],
   labels = {},
+  helpers = {},
   statusLabel,
   onOpenDocument,
   onOpenDeck,
@@ -1817,6 +1825,7 @@ function RunDetail({
   /// The workflow's steps and input names, so each row can say what its step does.
   steps?: WorkflowStep[];
   labels?: InputLabels;
+  helpers?: Record<string, string>;
   statusLabel: (s: string) => string;
   onOpenDocument?: (conversationId: string, artifactId: string) => void;
   onOpenDeck?: (deckId: string) => void;
@@ -1876,7 +1885,7 @@ function RunDetail({
             step={step}
             description={(() => {
               const def = findStep(steps, step.stepId);
-              return def ? describeStep(def, t, labels, connectorNames, steps) : null;
+              return def ? describeStep(def, t, labels, connectorNames, steps, helpers) : null;
             })()}
             statusLabel={statusLabel}
             onOpenDocument={onOpenDocument}
@@ -1959,6 +1968,7 @@ function RunStepRow({
         {step.error ? <p className="wf-error">{step.error}</p> : null}
         <StepModelLine output={step.output} />
         <StepActions output={step.output} />
+        <AgentHandoffs output={step.output} />
         {onRerun ? (
           <button
             type="button"

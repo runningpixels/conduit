@@ -20,7 +20,7 @@ use provider_core::schema::{
     ToolCallStatus,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -186,9 +186,10 @@ const SPECS: &[Spec] = &[
             req("prompt", "text (template)", "what to do"),
             opt("input", "text (template)", "text to work on"),
             opt("tools", "list of text", "tools it may use: names from the agent tool list below, and connector tools from CONNECTORS written \"<connector id>/<tool>\""),
+            opt("agents", "list of text", "ids of HELPERS it may hand tasks to"),
             opt("model", "never set", MODEL_NOTE),
         ],
-        outputs: "text (its answer), toolCalls (the tools it called), actions (what it sent through connectors, when it did)",
+        outputs: "text (its answer), toolCalls (the tools it called), actions (what it sent through connectors, when it did), handoffs (the tasks it handed to helpers)",
     },
     Spec {
         kind: "ask",
@@ -355,6 +356,10 @@ const EXAMPLES: &[(&str, &str)] = &[
         "Check a status page: tell me at once if something is down, otherwise just keep a log",
         r##"{"name":"Status check","description":"Check a status page, alert when something is down and log every check.","notes":[],"definition":{"inputs":[{"id":"page","label":"Status page","default":"https://www.githubstatus.com/"}],"steps":[{"id":"status","type":"fetch_page","urls":["{{inputs.page}}"]},{"id":"down","type":"branch","value":"{{steps.status.text}}","is":"contains","text":"Major Outage"},{"id":"what","type":"summarize","prompt":"Say in one sentence what is down.","input":"{{steps.status.text}}","after":["down.yes"]},{"id":"alert","type":"notify","title":"Something is down","body":"{{steps.what.text}}"},{"id":"fine","type":"template","template":"All clear.","after":["down.no"]},{"id":"log","type":"save_artifact","title":"Status log {{run.date}}","content":"Checked at {{run.time}}: {{steps.what.text}}{{steps.fine.text}}","after":["alert","fine"]}]}}"##,
     ),
+    (
+        "Agents that work together: one finds the facts, another writes them up",
+        r##"{"name":"Topic write-up","description":"A lead agent has a researcher find the facts and a writer turn them into a short article.","notes":[],"definition":{"inputs":[{"id":"topic","label":"Topic","default":"Home solar batteries"}],"agents":[{"id":"researcher","name":"Researcher","instructions":"Search the web and read the best sources. Answer with the key facts as short bullet points, each with its source address.","tools":["web_search","web_fetch"]},{"id":"writer","name":"Writer","instructions":"Turn the facts you are given into a clear article of about 300 words with a title, keeping the source addresses as links."}],"steps":[{"id":"lead","type":"agent","prompt":"Write a short, well-sourced article about this topic. Have the researcher find the facts, then have the writer write the article from them. Answer with the article only.","input":"{{inputs.topic}}","agents":["researcher","writer"]},{"id":"save","type":"save_artifact","title":"{{inputs.topic}}","content":"{{steps.lead.text}}","mode":"create"}]}}"##,
+    ),
 ];
 
 /// The step types the model is shown.
@@ -436,6 +441,16 @@ including steps inside for_each), \"type\" (see below), and optionally \"onError
 - A condition step can't run beside other steps. Use a branch when the run should go one of two ways instead of ending.\n\
 - Leave \"after\" out when steps simply follow each other: most workflows are a straight line.\n",
     );
+    out.push_str(&format!(
+        "\nHELPERS: a workflow may list helpers in \"agents\" next to \"steps\": agents an agent step hands tasks to, each with its own instructions and tools. The agent step names the ones it may use in its own \"agents\" list, and while it works it writes each one a task and gets its answer back.\n\
+- A helper is {{\"id\": \"researcher\", \"name\": \"Researcher\", \"instructions\": \"what it is for and how it works\", \"tools\": [...], \"agents\": [...]}}. Its instructions are plain text, never templates: it learns everything else from the task it is handed.\n\
+- Use helpers only when the user asks for agents that work together, or when one agent's work splits into jobs that need different instructions or tools (finding facts, then writing). Most workflows need none.\n\
+- At most {} helpers, and an agent hands work to at most {}. A helper may list other helpers, but work is handed on at most {} times and never in a circle.\n\
+- Never set a helper's \"model\" or \"maxTokens\".\n",
+        definition::MAX_HELPERS,
+        definition::MAX_HELPERS_PER_AGENT,
+        definition::MAX_HANDOFF_DEPTH,
+    ));
     out.push_str(&format!(
         "\nTRIGGERS: a workflow may have one optional \"trigger\" next to \"inputs\" and \"steps\", so it runs by itself once for each new item:\n\
 - {{\"kind\": \"feed\", \"url\": \"https://...\", \"everyMinutes\": 30}}: a new post in an RSS or Atom feed, looked at every {} to {} minutes (default {}). Inside the steps, {{{{trigger.title}}}}, {{{{trigger.link}}}}, {{{{trigger.summary}}}}, {{{{trigger.published}}}} and {{{{trigger.id}}}} are that post.\n\
@@ -995,6 +1010,17 @@ fn clear_personal_choices(definition: &mut Value, connectors: &[KnownConnector])
             }
         }
         clear_steps(object.get_mut("steps"), connectors, &mut found);
+        for helper in object
+            .get_mut("agents")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_object_mut)
+        {
+            helper.remove("model");
+            helper.remove("maxTokens");
+            found.agent_tools |= keep_known_tools(helper, connectors);
+        }
     }
     let mut notes = Vec::new();
     if found.folder {
@@ -1072,6 +1098,22 @@ fn known_tool(connectors: &[KnownConnector], connector: &str, tool: &str) -> boo
     })
 }
 
+/// Drop the connector tools an agent step or helper lists that the user
+/// doesn't have; whether any were dropped.
+fn keep_known_tools(agent: &mut Map<String, Value>, connectors: &[KnownConnector]) -> bool {
+    let Some(tools) = agent.get_mut("tools").and_then(Value::as_array_mut) else {
+        return false;
+    };
+    let before = tools.len();
+    tools.retain(
+        |tool| match tool.as_str().and_then(definition::connector_tool_entry) {
+            Some((connector, name)) => known_tool(connectors, connector, name),
+            None => true,
+        },
+    );
+    tools.len() != before
+}
+
 fn clear_steps(steps: Option<&mut Value>, connectors: &[KnownConnector], found: &mut Found) {
     let Some(steps) = steps.and_then(Value::as_array_mut) else {
         return;
@@ -1114,18 +1156,7 @@ fn clear_steps(steps: Option<&mut Value>, connectors: &[KnownConnector], found: 
                 }
             }
             Some("agent") => {
-                if let Some(tools) = step.get_mut("tools").and_then(Value::as_array_mut) {
-                    let before = tools.len();
-                    tools.retain(|tool| {
-                        match tool.as_str().and_then(definition::connector_tool_entry) {
-                            Some((connector, name)) => known_tool(connectors, connector, name),
-                            None => true,
-                        }
-                    });
-                    if tools.len() != before {
-                        found.agent_tools = true;
-                    }
-                }
+                found.agent_tools |= keep_known_tools(step, connectors);
             }
             _ => {}
         }
@@ -1797,6 +1828,30 @@ mod tests {
         assert!(!problems.is_empty());
         assert!(problems.iter().all(|p| expected_blank(p)), "{problems:?}");
         assert!(catalog_text().contains("\"kind\": \"connector\""));
+    }
+
+    #[test]
+    fn a_helper_keeps_only_the_tools_the_user_has_and_no_model() {
+        let reply = json!({
+            "name": "Team",
+            "definition": {
+                "agents": [{ "id": "saver", "name": "Saver", "instructions": "Save notes.",
+                             "tools": ["local:notes/add_note", "slack/post"],
+                             "model": { "provider": "openai", "model": "gpt-5" }, "maxTokens": 5 }],
+                "steps": [{ "id": "a", "type": "agent", "prompt": "Save it", "agents": ["saver"] }]
+            }
+        })
+        .to_string();
+        let parsed = parse_reply(&reply, &notes_connector()).unwrap();
+        let helper = &parsed.definition["agents"][0];
+        assert_eq!(helper["tools"], json!(["local:notes/add_note"]));
+        assert!(helper.get("model").is_none());
+        assert!(helper.get("maxTokens").is_none());
+        assert_eq!(
+            parsed.notes,
+            vec!["Add the connector tools the agent step should use."]
+        );
+        assert!(problems_of(&parsed.definition).is_empty());
     }
 
     #[test]

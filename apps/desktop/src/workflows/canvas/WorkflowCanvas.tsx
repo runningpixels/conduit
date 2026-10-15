@@ -29,7 +29,8 @@ import {
 import { useT, type Translate } from '../../i18n';
 import { useFormatters } from '../../i18n/formatters';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowStep } from '../../ipc/contracts';
-import { describeStep, type InputLabels } from '../describeStep';
+import { describeStep, handsToText, type InputLabels } from '../describeStep';
+import { helperNames } from '../editorModel';
 import { STEP_TYPE_KEY } from '../stepTypes';
 import { START_ID, buildCanvas, problemsByStep, runStatuses, type CanvasEdge, type CanvasNode, type NodeRun, type NodeStatus } from './canvasModel';
 
@@ -412,7 +413,10 @@ function Canvas({
               status,
               statusText: status === 'idle' ? null : t(STATUS_KEY[status]),
               iterations: iterationText(t, nodeRun),
-              flags: step.onError === 'skip' ? [t('workspace.workflows.step.continuesOnError')] : [],
+              flags: [
+                handsToText(step, t, helperNames(definition)),
+                step.onError === 'skip' ? t('workspace.workflows.step.continuesOnError') : null,
+              ].filter((flag): flag is string => flag !== null),
               problem: problemSteps.has(n.id),
               flowEditable: Boolean(editor?.onConnectFlow) && n.parent === null,
               branch: step.type === 'branch',
@@ -714,7 +718,7 @@ function RunInspector({
   return (
     <div className="wfc-inspect">
       <span className="wfc-kind">{t(STEP_TYPE_KEY[step.type])}</span>
-      <p className="wfc-inspect-line">{describeStep(step, t, labels, connectorNames, definition.steps)}</p>
+      <p className="wfc-inspect-line">{describeStep(step, t, labels, connectorNames, definition.steps, helperNames(definition))}</p>
       <span className="wf-muted wfc-inspect-id">{node.id}</span>
       {problems.map((p) => (
         <p key={p} className="wf-error">

@@ -74,6 +74,9 @@ struct EchoModel {
     /// Answers a request from (system prompt, last user text) before the
     /// usual echo does; `None` falls through to it.
     script: Option<Script>,
+    /// Call only the scripted tools a request offers, and report `usage`
+    /// on those rounds too (agents handing tasks to helpers).
+    offered_only: bool,
 }
 
 type Script = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
@@ -195,11 +198,14 @@ impl ProviderAdapter for EchoModel {
                 }
             }
         };
-        let scripted: Vec<(&'static str, Value)> = if self.tool_calls.is_empty() {
+        let mut scripted: Vec<(&'static str, Value)> = if self.tool_calls.is_empty() {
             self.tool_call.iter().cloned().collect()
         } else {
             self.tool_calls.clone()
         };
+        if self.offered_only {
+            scripted.retain(|(name, _)| request.tool_definitions.iter().any(|d| d.name == *name));
+        }
         if !scripted.is_empty() {
             let answered = request
                 .messages
@@ -240,6 +246,16 @@ impl ProviderAdapter for EchoModel {
                         arguments: arguments.clone(),
                     });
                     index += 2;
+                }
+                if let Some(used) = self.usage.filter(|_| self.offered_only) {
+                    events.push(ProviderEvent::Usage {
+                        request_id: r.clone(),
+                        usage: serde_json::from_value(json!({
+                            "inputTokens": used / 2,
+                            "outputTokens": used - used / 2,
+                        }))
+                        .unwrap(),
+                    });
                 }
                 events.push(ProviderEvent::MessageComplete {
                     request_id: r,
@@ -7210,6 +7226,141 @@ async fn agent_steps_side_by_side_take_turns_in_the_workflow_conversation() {
     assert_eq!(run.run.status, "completed", "{:?}", run.run.error);
     assert_eq!(status_of(&run, "a"), "completed");
     assert_eq!(status_of(&run, "b"), "completed");
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/// An agent step that may hand tasks to a Researcher helper.
+fn with_a_helper(helper: Value) -> Value {
+    json!({
+        "agents": [helper],
+        "steps": [
+            { "id": "lead", "type": "agent", "prompt": "Plan the trip", "agents": ["researcher"] },
+        ]
+    })
+}
+
+#[tokio::test]
+async fn an_agent_hands_a_task_to_a_helper_and_hears_its_answer() {
+    let model = EchoModel {
+        tool_calls: vec![(
+            "ask_researcher",
+            json!({ "task": "Find the capital of France" }),
+        )],
+        offered_only: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(with_a_helper(json!({
+            "id": "researcher", "name": "Researcher", "instructions": "Find facts on the web."
+        })))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = detail.steps[0].output.as_ref().unwrap();
+    assert_eq!(out["toolCalls"], json!(["ask_researcher"]));
+    let handoff = &out["handoffs"][0];
+    assert_eq!(handoff["agent"], "researcher");
+    assert_eq!(handoff["task"], "Find the capital of France");
+    assert!(handoff["error"].is_null(), "{handoff}");
+    assert!(handoff["answer"].as_str().is_some_and(|a| !a.is_empty()));
+
+    let requests = h.model.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 3, "lead, helper, lead again");
+    let helper = &requests[1];
+    assert!(helper
+        .system_prompt
+        .as_deref()
+        .unwrap()
+        .contains("You are Researcher. Find facts on the web."));
+    assert!(
+        helper.tool_definitions.is_empty(),
+        "a helper with no tools has none"
+    );
+    assert_ne!(
+        helper.conversation_id, requests[0].conversation_id,
+        "a helper works in its own conversation"
+    );
+    let left: Option<String> = sqlx::query_scalar("SELECT id FROM conversations WHERE id = ?")
+        .bind(&helper.conversation_id)
+        .fetch_optional(&h.state.db)
+        .await
+        .unwrap();
+    assert!(
+        left.is_none(),
+        "the helper's conversation is deleted once it answers"
+    );
+
+    // The Agents page sees both agents' work.
+    let activity = repo::agent_activity(&h.state.db, &h.state.encryption, "2000-01-01T00:00:00Z")
+        .await
+        .unwrap();
+    let of = |kind: &str| activity.iter().find(|a| a.kind == kind).unwrap();
+    assert_eq!(of("step").agent_id, "lead");
+    assert_eq!(of("helper").agent_id, "researcher");
+    assert_eq!(of("helper").tasks, 1);
+    assert_eq!(of("helper").failed, 0);
+    assert!(of("helper").current_task.is_none());
+}
+
+#[tokio::test]
+async fn a_helper_that_uses_up_its_tokens_fails_and_the_agent_carries_on() {
+    let model = EchoModel {
+        tool_calls: vec![
+            ("ask_researcher", json!({ "task": "Work out 6*7" })),
+            ("calculator", json!({ "expression": "6*7" })),
+        ],
+        offered_only: true,
+        usage: Some(5_000),
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(with_a_helper(json!({
+            "id": "researcher", "name": "Researcher", "instructions": "Do sums.",
+            "tools": ["calculator"], "maxTokens": 1000
+        })))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let handoff = &detail.steps[0].output.as_ref().unwrap()["handoffs"][0];
+    assert!(
+        handoff["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("limit of 1000 tokens")),
+        "{handoff}"
+    );
+    assert_eq!(handoff["tokens"], 5_000);
+    let activity = repo::agent_activity(&h.state.db, &h.state.encryption, "2000-01-01T00:00:00Z")
+        .await
+        .unwrap();
+    let helper = activity.iter().find(|a| a.kind == "helper").unwrap();
+    assert_eq!(helper.failed, 1);
+    assert_eq!(helper.tokens, 5_000);
+}
+
+#[tokio::test]
+async fn helpers_that_hand_work_round_in_a_circle_are_refused_on_save() {
+    let problems = conduit_desktop::workflows::definition::check_value(&json!({
+        "agents": [
+            { "id": "writer", "name": "Writer", "instructions": "Write.", "agents": ["editor"] },
+            { "id": "editor", "name": "Editor", "instructions": "Edit.", "agents": ["writer"] },
+        ],
+        "steps": [{ "id": "lead", "type": "agent", "prompt": "Go", "agents": ["writer"] }]
+    }))
+    .unwrap_err();
+    assert!(problems.contains("in a circle"), "{problems}");
 }
 
 // ── Carrying on after a restart ─────────────────────────────────────────────

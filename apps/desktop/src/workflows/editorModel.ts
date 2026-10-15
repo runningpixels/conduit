@@ -10,7 +10,7 @@
 /// item's fields. It mirrors the backend's validation (`workflows::definition`),
 /// so anything offered here is accepted on save.
 
-import type { WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep, WorkflowTrigger } from '../ipc/contracts';
+import type { AgentDef, WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep, WorkflowTrigger } from '../ipc/contracts';
 import { ancestorsOf, dependencies, removeTopLevel } from './stepGraph';
 
 export type StepType = WorkflowStep['type'];
@@ -113,6 +113,94 @@ export function withBuiltinTool(tools: readonly string[], tool: string, on: bool
 export function withConnectorTool(tools: readonly string[], ref: string, on: boolean): string[] {
   const others = tools.filter((x) => x !== ref);
   return on ? [...others, ref] : others;
+}
+
+/// Most helpers a workflow may have, and most one agent may list (the backend's limits).
+export const MAX_HELPERS = 8;
+export const MAX_HELPER_LINKS = 5;
+/// The token limits a helper may ask for, and the default (the backend's own).
+export const MIN_HELPER_TOKENS = 1000;
+export const MAX_HELPER_TOKENS = 300000;
+export const DEFAULT_HELPER_TOKENS = 120000;
+
+/// The helpers of a workflow (never undefined).
+export function helpersOf(def: Pick<WorkflowDefinition, 'agents'>): readonly AgentDef[] {
+  return def.agents ?? [];
+}
+
+/// Helper names by id.
+export function helperNames(def: Pick<WorkflowDefinition, 'agents'>): Record<string, string> {
+  return Object.fromEntries(helpersOf(def).map((h) => [h.id, h.name || h.id]));
+}
+
+/// `def` with its helpers set; an empty list removes the key.
+export function withHelpers(def: WorkflowDefinition, agents: readonly AgentDef[]): WorkflowDefinition {
+  const { agents: _drop, ...rest } = def;
+  return agents.length > 0 ? { ...rest, agents: [...agents] } : rest;
+}
+
+/// A new helper whose id comes from `name` (lowercase, digits, `_`), unique among
+/// the helpers. It starts with the web tools, like a new agent step.
+export function newHelper(helpers: readonly AgentDef[], name: string): AgentDef {
+  const id = uniqueId(name || 'helper', new Set(helpers.map((h) => h.id)));
+  return { id, name, instructions: '', tools: ['web_search', 'web_fetch'] };
+}
+
+/// `def` with helper `id` replaced by `next` (the id stays as it was).
+export function updateHelper(def: WorkflowDefinition, id: string, fn: (h: AgentDef) => AgentDef): WorkflowDefinition {
+  return withHelpers(def, helpersOf(def).map((h) => (h.id === id ? { ...fn(h), id } : h)));
+}
+
+function stripHelperFromSteps(steps: readonly WorkflowStep[], id: string): WorkflowStep[] {
+  return steps.map((step) => {
+    if (step.type === 'for_each') return { ...step, steps: stripHelperFromSteps(step.steps, id) };
+    if (step.type === 'agent' && step.agents?.includes(id)) return withStepHelper(step, id, false);
+    return step;
+  });
+}
+
+/// `def` without helper `id`: it also leaves every step's and helper's list.
+export function removeHelper(def: WorkflowDefinition, id: string): WorkflowDefinition {
+  const left = helpersOf(def)
+    .filter((h) => h.id !== id)
+    .map((h) => (h.agents?.includes(id) ? withHelperLink(h, id, false) : h));
+  return { ...withHelpers(def, left), steps: stripHelperFromSteps(def.steps, id) };
+}
+
+/// A helper id added to (or removed from) a list; an emptied list is `undefined`.
+function toggled(list: readonly string[] | undefined, id: string, on: boolean): string[] | undefined {
+  const others = (list ?? []).filter((x) => x !== id);
+  const next = on ? [...others, id] : others;
+  return next.length > 0 ? next : undefined;
+}
+
+/// `step` with helper `id` allowed (or not); other steps come back unchanged.
+export function withStepHelper(step: WorkflowStep, id: string, on: boolean): WorkflowStep {
+  if (step.type !== 'agent') return step;
+  const { agents: _drop, ...rest } = step;
+  const agents = toggled(step.agents, id, on);
+  return (agents ? { ...rest, agents } : rest) as WorkflowStep;
+}
+
+/// `helper` allowed (or not) to hand work to helper `id`.
+export function withHelperLink(helper: AgentDef, id: string, on: boolean): AgentDef {
+  const { agents: _drop, ...rest } = helper;
+  const agents = toggled(helper.agents, id, on);
+  return agents ? { ...rest, agents } : rest;
+}
+
+/// `helper` with its token limit set, clamped; `null` removes the key (the default applies).
+export function withHelperTokens(helper: AgentDef, tokens: number | null): AgentDef {
+  const { maxTokens: _drop, ...rest } = helper;
+  return tokens == null
+    ? rest
+    : { ...rest, maxTokens: Math.max(MIN_HELPER_TOKENS, Math.min(MAX_HELPER_TOKENS, Math.round(tokens) || DEFAULT_HELPER_TOKENS)) };
+}
+
+/// `helper` with its own model set; `null` removes the key.
+export function withHelperModel(helper: AgentDef, model: WorkflowModel | null): AgentDef {
+  const { model: _drop, ...rest } = helper;
+  return model ? { ...rest, model } : rest;
 }
 
 /// Most retries a step may ask for (the backend's `MAX_RETRIES`).

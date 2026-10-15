@@ -140,7 +140,7 @@ import { readDevRoute } from './devRoute';
 import { ConfirmDialog } from '@conduit/ui';
 import { AppsPage } from './pages/AppsPage';
 import { AppsHomePage } from './pages/AppsHomePage';
-import { ComingSoonPage } from './pages/ComingSoonPage';
+import { AgentsPage } from './pages/AgentsPage';
 import { InboxPage } from './pages/InboxPage';
 import type { AppSummary, StarterAppInfo } from './ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog';
@@ -4021,7 +4021,15 @@ export default function App() {
                 }}
               />
             )}
-            {destination === 'agents' && <ComingSoonPage copy="shell.agents" onAction={() => navigateTo('workflows')} />}
+            {destination === 'agents' && (
+              <AgentsPage
+                onOpenWorkflow={(workflowId) => {
+                  setWorkflowsFocus({ workflowId, nonce: Date.now() });
+                  setDestination('workflows');
+                }}
+                onOpenWorkflows={() => navigateTo('workflows')}
+              />
+            )}
             {destination === 'slides' && (
               <SlidesPage
                 onOpenDeck={(deck) => void handleOpenDeck(deck.id)}

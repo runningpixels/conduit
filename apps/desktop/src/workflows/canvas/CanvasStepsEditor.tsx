@@ -14,7 +14,7 @@ import { useT } from '../../i18n';
 import type { WorkflowDefinition } from '../../ipc/contracts';
 import { refLabel } from '../refLabel';
 import { STEP_TYPE_KEY } from '../stepTypes';
-import { type StepPath, type StepType } from '../editorModel';
+import { helperNames, type StepPath, type StepType } from '../editorModel';
 import { START_ID, buildCanvas, type CanvasNode } from './canvasModel';
 import { addPlace, addStep, connectFlow, connectReference, deleteStep, disconnectFlow, dropPlace, flowChoices, moveStepTo, pathOf, wireChoices, type TemplateField } from './canvasEdit';
 import { WorkflowCanvas, type CanvasEditor } from './WorkflowCanvas';
@@ -65,7 +65,7 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
   const selectedStep = selected ? flat.find((s) => s.id === selected) : undefined;
   const summary = (id: string) => {
     const step = flat.find((s) => s.id === id);
-    return step ? describeStep(step, t, inputLabels, connectorNames, definition.steps) : id;
+    return step ? describeStep(step, t, inputLabels, connectorNames, definition.steps, helperNames(definition)) : id;
   };
 
   const add = useCallback(

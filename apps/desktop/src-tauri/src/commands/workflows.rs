@@ -690,3 +690,135 @@ pub async fn set_workflow_action_rules(
         .map_err(|e| e.to_string())?;
     Ok(rules)
 }
+
+/// Days of work the Agents page totals.
+const AGENT_ACTIVITY_DAYS: i64 = 30;
+
+/// An agent on the Agents page: an agent step or a helper of a workflow, and
+/// what it has been doing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentEntry {
+    pub workflow_id: String,
+    pub workflow_name: String,
+    /// `step` or `helper`.
+    pub kind: String,
+    /// The step's or the helper's id.
+    pub agent_id: String,
+    /// A helper's name; empty for a step (the page names it).
+    pub name: String,
+    /// A helper's instructions, or the step's instruction.
+    pub about: String,
+    /// Its own model, when it names one.
+    pub model: Option<definition::ModelChoice>,
+    pub tools: Vec<String>,
+    /// The helpers it may hand tasks to, by name.
+    pub hands_to: Vec<String>,
+    /// The task it is working on now, and in which run.
+    pub current_task: Option<String>,
+    pub current_run_id: Option<String>,
+    pub last_active: Option<String>,
+    pub tasks: i64,
+    pub failed: i64,
+    pub tokens: i64,
+}
+
+/// Every agent step and helper in the saved workflows, with what each has
+/// done in the last [`AGENT_ACTIVITY_DAYS`] days and is doing now.
+#[tauri::command]
+pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentEntry>, String> {
+    let pool = &state.db;
+    let since = (chrono::Utc::now() - chrono::Duration::days(AGENT_ACTIVITY_DAYS))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let activity = repo::agent_activity(pool, &state.encryption, &since)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for summary in repo::list(pool).await.map_err(|e| e.to_string())? {
+        let Ok(Some(record)) = repo::get(pool, &state.encryption, &summary.id).await else {
+            continue;
+        };
+        let Ok(def) =
+            serde_json::from_value::<definition::WorkflowDefinition>(record.definition.clone())
+        else {
+            continue;
+        };
+        let name_of = |id: &String| {
+            def.agents
+                .iter()
+                .find(|h| &h.id == id)
+                .map(|h| h.name.trim().to_string())
+                .unwrap_or_else(|| id.clone())
+        };
+        let mut push = |kind: &str,
+                        agent_id: &str,
+                        name: String,
+                        about: String,
+                        model: Option<definition::ModelChoice>,
+                        tools: Vec<String>,
+                        hands_to: Vec<String>| {
+            let seen = activity
+                .iter()
+                .find(|a| a.workflow_id == record.id && a.kind == kind && a.agent_id == agent_id);
+            out.push(AgentEntry {
+                workflow_id: record.id.clone(),
+                workflow_name: record.name.clone(),
+                kind: kind.to_string(),
+                agent_id: agent_id.to_string(),
+                name,
+                about,
+                model,
+                tools,
+                hands_to,
+                current_task: seen.and_then(|a| a.current_task.clone()),
+                current_run_id: seen.and_then(|a| a.current_run_id.clone()),
+                last_active: seen.and_then(|a| a.last_active.clone()),
+                tasks: seen.map_or(0, |a| a.tasks),
+                failed: seen.map_or(0, |a| a.failed),
+                tokens: seen.map_or(0, |a| a.tokens),
+            });
+        };
+        fn agent_steps<'s>(steps: &'s [definition::Step], out: &mut Vec<&'s definition::Step>) {
+            for step in steps {
+                match &step.action {
+                    definition::StepAction::Agent { .. } => out.push(step),
+                    definition::StepAction::ForEach { steps, .. } => agent_steps(steps, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut steps = Vec::new();
+        agent_steps(&def.steps, &mut steps);
+        for step in steps {
+            if let definition::StepAction::Agent {
+                prompt,
+                tools,
+                agents,
+                ..
+            } = &step.action
+            {
+                push(
+                    "step",
+                    &step.id,
+                    String::new(),
+                    prompt.clone(),
+                    step.model.clone(),
+                    tools.clone(),
+                    agents.iter().map(name_of).collect(),
+                );
+            }
+        }
+        for helper in &def.agents {
+            push(
+                "helper",
+                &helper.id,
+                helper.name.trim().to_string(),
+                helper.instructions.clone(),
+                helper.model.clone(),
+                helper.tools.clone(),
+                helper.agents.iter().map(name_of).collect(),
+            );
+        }
+    }
+    Ok(out)
+}

@@ -755,7 +755,56 @@ export interface WorkflowDefinition {
   folder?: string;
   /** Starts a run for each new feed item or new file in `folder`; absent means manual and timed runs only. */
   trigger?: WorkflowTrigger;
+  /** Helpers: agents that agent steps (and other helpers) may hand work to. */
+  agents?: AgentDef[];
   steps: WorkflowStep[];
+}
+
+/** A helper (Rust `workflows::definition::AgentDef`). */
+export interface AgentDef {
+  /** Lowercase letters, digits and `_`; unique in the workflow. */
+  id: string;
+  name: string;
+  instructions: string;
+  model?: WorkflowModel;
+  tools?: string[];
+  /** Ids of the other helpers it may hand work to. */
+  agents?: string[];
+  /** 1000..=300000; 120000 when absent. */
+  maxTokens?: number;
+}
+
+/** One hand-off in an agent step's output. */
+export interface AgentHandoff {
+  agent: string;
+  name: string;
+  task: string;
+  answer?: string;
+  error?: string;
+  tokens: number;
+}
+
+/** One row of the Agents page (`list_agents`). */
+export interface AgentEntry {
+  workflowId: string;
+  workflowName: string;
+  kind: 'step' | 'helper';
+  agentId: string;
+  /** The helper's name; empty for a step. */
+  name: string;
+  /** The helper's instructions, or the step's prompt. */
+  about: string;
+  model: WorkflowModel | null;
+  tools: string[];
+  /** Names of the helpers it may hand work to. */
+  handsTo: string[];
+  currentTask: string | null;
+  currentRunId: string | null;
+  lastActive: string | null;
+  tasks: number;
+  failed: number;
+  /** Last 30 days. */
+  tokens: number;
 }
 
 /** What drafting a workflow from a description (or a chat) returns: an unsaved definition. */
@@ -815,7 +864,7 @@ export type WorkflowStep = {
   /** If… otherwise: later steps wait on the yes or no arm through `after`. */
   | { type: 'branch'; value: string; is: ConditionTest; text?: string }
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
-  | { type: 'agent'; prompt: string; input?: string; tools?: string[]; model?: WorkflowModel }
+  | { type: 'agent'; prompt: string; input?: string; tools?: string[]; model?: WorkflowModel; agents?: string[] }
   | { type: 'read_file'; path: string }
   | { type: 'edit_deck'; deck: string; instructions: string; input?: string; model?: WorkflowModel }
   | { type: 'edit_draft'; draft: string; instructions: string; input?: string; model?: WorkflowModel }

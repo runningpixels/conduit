@@ -43,6 +43,17 @@ fn main() {
         .with_writer(std::io::stderr)
         .init();
 
+    // The app's async runtime, with deeper thread stacks than tokio's 2 MiB: a
+    // workflow agent that hands a task to a helper runs the helper's turn
+    // inside its own (up to `MAX_HANDOFF_DEPTH` deep), and a debug build's
+    // frames for that overflow the default. Stacks are reserved, not used.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(16 * 1024 * 1024)
+        .build()
+        .expect("failed to start the async runtime");
+    tauri::async_runtime::set(runtime.handle().clone());
+
     // Pool init + migrations are async; run them on the Tauri async runtime
     // before building the app so `AppState` (with `db: DbPool`) is ready to
     // `.manage()`. A migration failure returns a user-safe `MigrationRecovery`
@@ -367,6 +378,7 @@ fn main() {
             draft_workflow_from_chat,
             cancel_workflow_draft,
             list_workflows,
+            list_agents,
             get_workflow,
             create_workflow,
             update_workflow,

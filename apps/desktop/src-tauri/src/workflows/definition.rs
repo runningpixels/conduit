@@ -41,7 +41,60 @@ pub struct WorkflowDefinition {
     /// started a run is read as `{{trigger.<field>}}`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger: Option<Trigger>,
+    /// Helpers: agents an `agent` step (or another helper) may hand part of
+    /// its work to. Each runs only when an agent asks it to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<AgentDef>,
     pub steps: Vec<Step>,
+}
+
+/// A helper agent. The agent that hands it work sees it as a tool taking a
+/// task in words, and gets its answer back.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentDef {
+    /// Listed by the agents that may hand it work. Lowercase letters, digits, `_`.
+    pub id: String,
+    /// What the user (and the agent handing it work) calls it.
+    pub name: String,
+    /// What it is for and how it works; plain text, not a template (it gets
+    /// its run values through the task it is handed).
+    #[serde(default)]
+    pub instructions: String,
+    /// Its model; without one, the workflow's (or the chat's active) model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelChoice>,
+    /// Tools it may call, as an agent step lists them.
+    #[serde(default)]
+    pub tools: Vec<String>,
+    /// Other helpers it may hand work to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<String>,
+    /// Most model tokens one task it's handed may use; without one,
+    /// [`DEFAULT_HELPER_TOKENS`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
+}
+
+/// Most helpers a workflow may have, and most one agent may hand work to.
+pub const MAX_HELPERS: usize = 8;
+pub const MAX_HELPERS_PER_AGENT: usize = 5;
+/// How many times work may be handed on from an agent step: to a helper,
+/// and from it to one more.
+pub const MAX_HANDOFF_DEPTH: usize = 2;
+/// Most tasks one agent step's helpers are handed in all.
+pub const MAX_HANDOFFS_PER_STEP: usize = 12;
+/// Tokens a helper's task may use unless it sets its own, and the range it may set.
+pub const DEFAULT_HELPER_TOKENS: u64 = 120_000;
+pub const MIN_HELPER_TOKENS: u64 = 1_000;
+pub const MAX_HELPER_TOKENS: u64 = 300_000;
+/// Longest helper name.
+pub const MAX_HELPER_NAME_CHARS: usize = 60;
+
+impl AgentDef {
+    pub fn token_limit(&self) -> u64 {
+        self.max_tokens.unwrap_or(DEFAULT_HELPER_TOKENS)
+    }
 }
 
 /// Fewest and most minutes between two looks at a feed, and the default.
@@ -287,6 +340,9 @@ pub enum StepAction {
         /// Tools it may call, from [`AGENT_TOOLS`].
         #[serde(default)]
         tools: Vec<String>,
+        /// Helpers (`WorkflowDefinition::agents` ids) it may hand work to.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        agents: Vec<String>,
     },
     /// Stop and ask the user; the answer is the step's `answer`.
     Ask {
@@ -579,7 +635,16 @@ fn plain_parse_error(message: &str) -> String {
     message.to_string()
 }
 
-const DEFINITION_KEYS: &[&str] = &["inputs", "model", "folder", "trigger", "steps"];
+const DEFINITION_KEYS: &[&str] = &["inputs", "model", "folder", "trigger", "agents", "steps"];
+const HELPER_KEYS: &[&str] = &[
+    "id",
+    "name",
+    "instructions",
+    "model",
+    "tools",
+    "agents",
+    "maxTokens",
+];
 const TRIGGER_KEYS: &[&str] = &["kind", "url", "everyMinutes"];
 const CONNECTOR_TRIGGER_KEYS: &[&str] = &["kind", "connector", "tool", "arguments", "everyMinutes"];
 const MODEL_KEYS: &[&str] = &["provider", "model"];
@@ -633,7 +698,7 @@ pub fn action_keys(step_type: &str) -> &'static [&'static str] {
         "template" => &["template"],
         "for_each" => &["items", "steps"],
         "save_artifact" => &["title", "content", "format", "mode", "onlyIfChanged"],
-        "agent" => &["prompt", "input", "tools", "model"],
+        "agent" => &["prompt", "input", "tools", "agents", "model"],
         "ask" => &["question", "choices", "default"],
         "notify" => &["title", "body", "onlyIfChanged"],
         "condition" | "branch" => &["value", "is", "text"],
@@ -705,6 +770,34 @@ pub fn unknown_settings(raw: &Value) -> Vec<String> {
         }
     }
     unknown_model_settings(def.get("model"), "the workflow's model", &mut problems);
+    for helper in def
+        .get("agents")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(helper) = helper.as_object() else {
+            continue;
+        };
+        let id = helper
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .unwrap_or("(unnamed)");
+        for key in helper.keys() {
+            if !HELPER_KEYS.contains(&key.as_str()) {
+                problems.push(format!(
+                    "Helper \"{id}\": unknown setting \"{key}\"{}",
+                    suggestion(key, HELPER_KEYS)
+                ));
+            }
+        }
+        unknown_model_settings(
+            helper.get("model"),
+            &format!("helper \"{id}\"'s model"),
+            &mut problems,
+        );
+    }
     unknown_step_settings(def.get("steps"), &mut problems);
     problems
 }
@@ -843,6 +936,7 @@ pub fn validate(def: &WorkflowDefinition) -> Result<(), Vec<String>> {
         item_is_loop_result: false,
     };
     check_steps(&def.steps, scope, &mut all_ids, &mut count, &mut problems);
+    check_helpers(def, &mut problems);
     if count > MAX_STEPS {
         problems.push(format!(
             "A workflow can have at most {MAX_STEPS} steps; this one has {count}."
@@ -1094,29 +1188,12 @@ fn check_steps(
                 prompt,
                 input,
                 tools,
+                ..
             } => {
                 if prompt.trim().is_empty() {
                     problems.push(format!("Step \"{name}\" needs an instruction."));
                 }
-                for tool in tools {
-                    if !AGENT_TOOLS.contains(&tool.as_str()) && connector_tool_entry(tool).is_none()
-                    {
-                        problems.push(format!("Step \"{name}\" can't use the tool \"{tool}\"."));
-                    }
-                }
-                let connector_tools = tools
-                    .iter()
-                    .filter(|t| connector_tool_entry(t).is_some())
-                    .count();
-                if connector_tools > MAX_AGENT_CONNECTOR_TOOLS {
-                    problems.push(format!(
-                        "Step \"{name}\" lists more than {MAX_AGENT_CONNECTOR_TOOLS} connector tools."
-                    ));
-                }
-                let mut seen = HashSet::new();
-                if !tools.iter().all(|t| seen.insert(t)) {
-                    problems.push(format!("Step \"{name}\" lists a tool twice."));
-                }
+                check_agent_tools(&format!("Step \"{name}\""), tools, problems);
                 texts.push(prompt);
                 texts.push(input);
             }
@@ -1460,6 +1537,201 @@ fn check_trigger(trigger: &Trigger, has_folder: bool, problems: &mut Vec<String>
     }
 }
 
+/// The tools an agent step or helper lists (`who` is "Step \"x\"" or
+/// "Helper \"x\"").
+fn check_agent_tools(who: &str, tools: &[String], problems: &mut Vec<String>) {
+    for tool in tools {
+        if !AGENT_TOOLS.contains(&tool.as_str()) && connector_tool_entry(tool).is_none() {
+            problems.push(format!("{who} can't use the tool \"{tool}\"."));
+        }
+    }
+    let connector_tools = tools
+        .iter()
+        .filter(|t| connector_tool_entry(t).is_some())
+        .count();
+    if connector_tools > MAX_AGENT_CONNECTOR_TOOLS {
+        problems.push(format!(
+            "{who} lists more than {MAX_AGENT_CONNECTOR_TOOLS} connector tools."
+        ));
+    }
+    let mut seen = HashSet::new();
+    if !tools.iter().all(|t| seen.insert(t)) {
+        problems.push(format!("{who} lists a tool twice."));
+    }
+}
+
+/// The helpers an agent step or helper hands work to: known, listed once, not
+/// too many.
+fn check_handoffs(who: &str, listed: &[String], known: &[AgentDef], problems: &mut Vec<String>) {
+    for id in listed {
+        if !known.iter().any(|h| &h.id == id) {
+            problems.push(format!(
+                "{who} hands work to \"{id}\", which isn't a helper."
+            ));
+        }
+    }
+    let mut seen = HashSet::new();
+    if !listed.iter().all(|id| seen.insert(id)) {
+        problems.push(format!("{who} lists a helper twice."));
+    }
+    if listed.len() > MAX_HELPERS_PER_AGENT {
+        problems.push(format!(
+            "{who} can hand work to at most {MAX_HELPERS_PER_AGENT} helpers."
+        ));
+    }
+}
+
+/// The helpers' own settings, the steps that hand them work, and that work is
+/// never handed round in a circle or further than [`MAX_HANDOFF_DEPTH`].
+fn check_helpers(def: &WorkflowDefinition, problems: &mut Vec<String>) {
+    let helpers = &def.agents;
+    if helpers.len() > MAX_HELPERS {
+        problems.push(format!(
+            "A workflow can have at most {MAX_HELPERS} helpers; this one has {}.",
+            helpers.len()
+        ));
+    }
+    let mut ids = HashSet::new();
+    for helper in helpers {
+        let label = if helper.name.trim().is_empty() {
+            helper.id.as_str()
+        } else {
+            helper.name.trim()
+        };
+        let who = format!("Helper \"{label}\"");
+        if !is_id(&helper.id) {
+            problems.push(format!(
+                "Helper id \"{}\" should use lowercase letters, digits and _.",
+                helper.id
+            ));
+        }
+        if !ids.insert(helper.id.as_str()) {
+            problems.push(format!("Two helpers are called \"{}\".", helper.id));
+        }
+        if helper.name.trim().is_empty() {
+            problems.push(format!("{who} needs a name."));
+        } else if helper.name.trim().chars().count() > MAX_HELPER_NAME_CHARS {
+            problems.push(format!(
+                "{who}: keep the name under {MAX_HELPER_NAME_CHARS} characters."
+            ));
+        }
+        if helper.instructions.trim().is_empty() {
+            problems.push(format!(
+                "{who} needs instructions: what it's for and how to work."
+            ));
+        }
+        if let Some(model) = &helper.model {
+            check_model(model, &format!("{who}'s model"), problems);
+        }
+        if let Some(limit) = helper.max_tokens {
+            if !(MIN_HELPER_TOKENS..=MAX_HELPER_TOKENS).contains(&limit) {
+                problems.push(format!(
+                    "{who}: a task can use {MIN_HELPER_TOKENS} to {MAX_HELPER_TOKENS} tokens."
+                ));
+            }
+        }
+        check_agent_tools(&who, &helper.tools, problems);
+        check_handoffs(&who, &helper.agents, helpers, problems);
+        if helper.agents.contains(&helper.id) {
+            problems.push(format!("{who} can't hand work to itself."));
+        }
+    }
+
+    // How many more hand-offs work can take from each helper: 0 when it hands
+    // nothing on. `None` while a helper is being worked out marks a circle.
+    fn reach(
+        id: &str,
+        helpers: &[AgentDef],
+        depth: &mut std::collections::HashMap<String, Option<usize>>,
+        circle: &mut Option<Vec<String>>,
+        path: &mut Vec<String>,
+    ) -> usize {
+        match depth.get(id) {
+            Some(Some(d)) => return *d,
+            Some(None) => {
+                if circle.is_none() {
+                    let from = path.iter().position(|p| p == id).unwrap_or(0);
+                    *circle = Some(path[from..].to_vec());
+                }
+                return 0;
+            }
+            None => {}
+        }
+        let Some(helper) = helpers.iter().find(|h| h.id == id) else {
+            return 0;
+        };
+        depth.insert(id.to_string(), None);
+        path.push(id.to_string());
+        let mut most = 0;
+        for next in helper.agents.iter().filter(|n| *n != id) {
+            if helpers.iter().any(|h| &h.id == next) {
+                most = most.max(1 + reach(next, helpers, depth, circle, path));
+            }
+        }
+        path.pop();
+        depth.insert(id.to_string(), Some(most));
+        most
+    }
+    let mut depth = std::collections::HashMap::new();
+    let mut circle = None;
+    for helper in helpers {
+        reach(
+            &helper.id,
+            helpers,
+            &mut depth,
+            &mut circle,
+            &mut Vec::new(),
+        );
+    }
+    let name_of = |id: &str| {
+        helpers
+            .iter()
+            .find(|h| h.id == id)
+            .map(|h| h.name.trim())
+            .filter(|n| !n.is_empty())
+            .unwrap_or(id)
+            .to_string()
+    };
+    if let Some(circle) = &circle {
+        let names: Vec<String> = circle
+            .iter()
+            .map(|id| format!("\u{201c}{}\u{201d}", name_of(id)))
+            .collect();
+        problems.push(format!(
+            "The helpers {} hand work to each other in a circle; one of them has to stop handing it on.",
+            names.join(", ")
+        ));
+    }
+
+    fn agent_steps<'s>(steps: &'s [Step], out: &mut Vec<(&'s str, &'s [String])>) {
+        for step in steps {
+            match &step.action {
+                StepAction::Agent { agents, .. } => out.push((&step.id, agents)),
+                StepAction::ForEach { steps, .. } => agent_steps(steps, out),
+                _ => {}
+            }
+        }
+    }
+    let mut listing = Vec::new();
+    agent_steps(&def.steps, &mut listing);
+    for (step, listed) in listing {
+        let who = format!("Step \"{step}\"");
+        check_handoffs(&who, listed, helpers, problems);
+        if circle.is_some() {
+            continue;
+        }
+        let further = listed
+            .iter()
+            .filter_map(|id| depth.get(id.as_str()).copied().flatten())
+            .max();
+        if further.is_some_and(|d| 1 + d > MAX_HANDOFF_DEPTH) {
+            problems.push(format!(
+                "{who}'s work would be handed on more than {MAX_HANDOFF_DEPTH} times; let fewer helpers hand work on."
+            ));
+        }
+    }
+}
+
 fn check_model(model: &ModelChoice, whose: &str, problems: &mut Vec<String>) {
     if model.provider.trim().is_empty() || model.model.trim().is_empty() {
         problems.push(format!("{whose} needs both a provider and a model."));
@@ -1698,6 +1970,93 @@ mod tests {
 
     fn def(v: Value) -> WorkflowDefinition {
         serde_json::from_value(v).expect("parses")
+    }
+
+    fn helper(id: &str, agents: &[&str]) -> Value {
+        json!({ "id": id, "name": id.to_uppercase(), "instructions": "Help.", "agents": agents })
+    }
+
+    fn handing(helpers: Vec<Value>, step_agents: &[&str]) -> Value {
+        json!({
+            "agents": helpers,
+            "steps": [{ "id": "lead", "type": "agent", "prompt": "Go", "agents": step_agents }]
+        })
+    }
+
+    #[test]
+    fn helpers_are_checked() {
+        assert_eq!(
+            validate(&def(handing(
+                vec![helper("a", &["b"]), helper("b", &[])],
+                &["a"]
+            ))),
+            Ok(())
+        );
+
+        let problems = validate(&def(handing(vec![helper("a", &[])], &["nobody"]))).unwrap_err();
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("hands work to \"nobody\", which isn't a helper")),
+            "{problems:?}"
+        );
+
+        let problems = validate(&def(handing(vec![helper("a", &["a"])], &["a"]))).unwrap_err();
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("can't hand work to itself")),
+            "{problems:?}"
+        );
+
+        let problems = validate(&def(handing(
+            vec![
+                helper("a", &["b"]),
+                helper("b", &["c"]),
+                helper("c", &["a"]),
+            ],
+            &["a"],
+        )))
+        .unwrap_err();
+        assert!(problems.iter().any(|p| p.contains("\u{201c}A\u{201d}, \u{201c}B\u{201d}, \u{201c}C\u{201d} hand work to each other in a circle")), "{problems:?}");
+
+        let problems = validate(&def(handing(
+            vec![helper("a", &["b"]), helper("b", &["c"]), helper("c", &[])],
+            &["a"],
+        )))
+        .unwrap_err();
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("handed on more than 2 times")),
+            "{problems:?}"
+        );
+
+        let mut nameless = helper("a", &[]);
+        nameless["name"] = json!(" ");
+        nameless["instructions"] = json!("");
+        nameless["maxTokens"] = json!(10);
+        let problems = validate(&def(handing(vec![nameless], &["a"]))).unwrap_err();
+        assert!(
+            problems.iter().any(|p| p.contains("needs a name")),
+            "{problems:?}"
+        );
+        assert!(
+            problems.iter().any(|p| p.contains("needs instructions")),
+            "{problems:?}"
+        );
+        assert!(
+            problems.iter().any(|p| p.contains("1000 to 300000 tokens")),
+            "{problems:?}"
+        );
+
+        let raw = json!({
+            "agents": [{ "id": "a", "name": "A", "instructions": "Help.", "prompt": "x" }],
+            "steps": [{ "id": "lead", "type": "agent", "prompt": "Go", "agents": ["a"] }]
+        });
+        assert!(unknown_settings(&raw)
+            .iter()
+            .any(|p| p.contains("Helper \"a\": unknown setting \"prompt\"")));
     }
 
     #[test]

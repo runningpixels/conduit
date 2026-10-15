@@ -289,7 +289,63 @@ pub fn required(def: &WorkflowDefinition, ctx: &Context) -> Vec<Permission> {
         set.extend(super::triggers::permission(trigger, folder, &name));
     }
     collect(&def.steps, def.model.as_ref(), folder, ctx, &mut set);
+    // A helper an agent step can hand work to sends its task to its own
+    // model and may use its own tools.
+    for helper in reachable_helpers(def) {
+        let all = |_: &str| true;
+        set.insert(Permission::Model {
+            provider: super::models::resolve(
+                helper.model.as_ref(),
+                def.model.as_ref(),
+                ctx.provider,
+                ctx.model,
+                ctx.configured.unwrap_or(&all),
+            )
+            .provider,
+        });
+        if !helper.tools.is_empty() {
+            set.insert(Permission::AgentTools {
+                step_id: helper_key(&helper.id),
+                tools: sorted(&helper.tools),
+            });
+        }
+    }
     set.into_iter().collect()
+}
+
+/// How a helper's tools are named in an `AgentTools` permission (a step id
+/// can't contain `:`).
+pub fn helper_key(helper_id: &str) -> String {
+    format!("helper:{helper_id}")
+}
+
+/// The helpers some agent step can hand work to, directly or through
+/// another helper, in the order the workflow lists them.
+pub fn reachable_helpers(def: &WorkflowDefinition) -> Vec<&super::definition::AgentDef> {
+    fn listed<'s>(steps: &'s [Step], out: &mut Vec<&'s str>) {
+        for step in steps {
+            match &step.action {
+                StepAction::Agent { agents, .. } => out.extend(agents.iter().map(String::as_str)),
+                StepAction::ForEach { steps, .. } => listed(steps, out),
+                _ => {}
+            }
+        }
+    }
+    let mut todo = Vec::new();
+    listed(&def.steps, &mut todo);
+    let mut seen = BTreeSet::new();
+    while let Some(id) = todo.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        if let Some(helper) = def.agents.iter().find(|h| h.id == id) {
+            todo.extend(helper.agents.iter().map(String::as_str));
+        }
+    }
+    def.agents
+        .iter()
+        .filter(|h| seen.contains(h.id.as_str()))
+        .collect()
 }
 
 fn collect(

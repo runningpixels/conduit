@@ -52,6 +52,9 @@ import {
   withTopK,
   withOnlyIfChanged,
   withStepModel,
+  withStepHelper,
+  helpersOf,
+  MAX_HELPER_LINKS,
   valuesAt,
   type StepPath,
   type StepType,
@@ -626,6 +629,27 @@ function StepCard({
             }
           />
           <p className="wf-muted">{t('workspace.workflows.editor.agent.hint')}</p>
+          {helpersOf(def).length === 0 ? (
+            <p className="wf-muted">{t('workspace.workflows.editor.agent.noHelpers')}</p>
+          ) : (
+            <fieldset className="wf-tools">
+              <legend>{t('workspace.workflows.helpers.handsTo')}</legend>
+              {helpersOf(def).map((helper) => {
+                const on = (step.agents ?? []).includes(helper.id);
+                return (
+                  <label key={helper.id} className="wf-check">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={!on && (step.agents ?? []).length >= MAX_HELPER_LINKS}
+                      onChange={(e) => update((s) => withStepHelper(s, helper.id, e.target.checked))}
+                    />
+                    {helper.name || helper.id}
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
           <WorkflowModelRow
             kind="step"
             idPrefix={`wf-model-${step.id}`}

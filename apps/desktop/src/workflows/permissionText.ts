@@ -33,8 +33,18 @@ export function documentTitles(p: Extract<WorkflowPermissionView, { kind: 'docum
   return p.collections.map((c) => c.title).join(', ');
 }
 
+/// Helper names by id, for a permission that names a helper.
+export type HelperNames = Record<string, string>;
+
+/// Whom an agent-tools permission is for: a step id, or `helper:<id>` for a helper.
+function helperOf(stepId: string, names: HelperNames): string | null {
+  if (!stepId.startsWith('helper:')) return null;
+  const id = stepId.slice('helper:'.length);
+  return names[id] || id;
+}
+
 /// One line of "When it runs on its own, it will be allowed to: …".
-export function permissionText(p: WorkflowPermissionView, t: Translate): string {
+export function permissionText(p: WorkflowPermissionView, t: Translate, helpers: HelperNames = {}): string {
   switch (p.kind) {
     case 'host':
       return t('workspace.workflows.permissions.host', { host: p.host });
@@ -51,7 +61,12 @@ export function permissionText(p: WorkflowPermissionView, t: Translate): string 
     case 'readFolder':
       return t('workspace.workflows.permissions.readFolder', { folder: p.path });
     case 'agentTools':
-      return t('workspace.workflows.permissions.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
+    {
+      const helper = helperOf(p.stepId, helpers);
+      return helper !== null
+        ? t('workspace.workflows.permissions.helperTools', { helper, tools: agentToolsText(p.tools, t) })
+        : t('workspace.workflows.permissions.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
+    }
     case 'research':
       return t('workspace.workflows.permissions.research');
     case 'documents':
@@ -67,7 +82,7 @@ export function permissionText(p: WorkflowPermissionView, t: Translate): string 
 }
 
 /// What a paused run wants, as one sentence ("It wants to read pages on bbc.com.").
-export function reviewText(review: WorkflowReview, t: Translate): string {
+export function reviewText(review: WorkflowReview, t: Translate, helpers: HelperNames = {}): string {
   const p = review.permission;
   switch (p.kind) {
     case 'host':
@@ -85,7 +100,12 @@ export function reviewText(review: WorkflowReview, t: Translate): string {
     case 'readFolder':
       return t('workspace.workflows.review.readFolder', { folder: p.path });
     case 'agentTools':
-      return t('workspace.workflows.review.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
+    {
+      const helper = helperOf(p.stepId, helpers);
+      return helper !== null
+        ? t('workspace.workflows.review.helperTools', { helper, tools: agentToolsText(p.tools, t) })
+        : t('workspace.workflows.review.agentTools', { step: p.stepId, tools: agentToolsText(p.tools, t) });
+    }
     case 'research':
       return t('workspace.workflows.review.research');
     case 'documents':

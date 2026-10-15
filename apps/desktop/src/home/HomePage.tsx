@@ -241,7 +241,7 @@ export function HomePage({
     <section className="page home-page" aria-labelledby={headingId}>
       <div className="page-body page-body-single scroll">
         <div className="home-content">
-          <header className="home-hero">
+          <header>
             <p className="home-greeting">{greeting}</p>
             <h2 id={headingId} className="home-title">
               {t('chat.view.welcomeTitle')}

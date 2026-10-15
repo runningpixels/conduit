@@ -35,7 +35,7 @@
 }
 .home-section > .home-section-title,
 .home-section > .home-section-heading { margin-bottom: var(--sp-4); }
-.home-section-sub { margin: var(--sp-1) 0 0; color: var(--ink-3); font-size: var(--fs-2xl); line-height: 1.5; }
+.home-section-sub { margin: var(--sp-1) 0 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-2xl); line-height: 1.5; }
 .home-section-tools { display: flex; align-items: center; gap: var(--sp-4); flex: none; }
 .home-link {
   padding: var(--sp-1) var(--sp-2);
@@ -60,22 +60,26 @@
 
 /* The tinted square that carries an area's icon. */
 .home-icon-tile {
-  --tile: var(--accent);
   flex: none;
   display: grid;
   place-items: center;
   width: 40px;
   height: 40px;
   border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--tile) 14%, transparent);
-  color: var(--tile);
+  background: color-mix(in srgb, var(--tile, var(--accent)) 13%, transparent);
+  color: var(--tile, var(--accent));
 }
 .home-icon-tile svg { width: 20px; height: 20px; }
-[data-area="apps"] .home-icon-tile,
+/* One colour per area (--area-*): icon tile, eyebrow and count carry it, so an
+ * item's area reads at a glance. The accent stays for actions and selection. */
+[data-area="chats"] { --tile: var(--area-chats); }
+[data-area="slides"] { --tile: var(--area-slides); }
+[data-area="writing"] { --tile: var(--area-writing); }
+[data-area="apps"] { --tile: var(--area-apps); }
+[data-area="workflows"] { --tile: var(--area-workflows); }
 [data-area="connectors"] .home-icon-tile { --tile: var(--signal); }
 [data-area="documents"] .home-icon-tile,
 [data-area="memory"] .home-icon-tile { --tile: var(--ok); }
-[data-area="workflows"] .home-icon-tile { --tile: var(--warn); }
 [data-area="library"] .home-icon-tile { --tile: var(--ink-2); }
 
 .home-tag {
@@ -150,7 +154,7 @@
 }
 .home-ask-input::placeholder { color: var(--ink-3); }
 .home-ask-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-.home-ask-hint { color: var(--ink-3); font-size: var(--fs-xl); }
+.home-ask-hint { color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }
 .home-ask-send {
   display: inline-flex;
   align-items: center;
@@ -167,7 +171,7 @@
 }
 .home-ask-send svg { width: 16px; height: 16px; }
 .home-ask-send:hover:not(:disabled) { filter: brightness(1.08); }
-.home-ask-send:disabled { opacity: .4; cursor: default; }
+.home-ask-send:disabled { background: var(--track); color: var(--ink-3); filter: none; cursor: default; }
 .home-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .home-chip {
   padding: 6px var(--sp-4);
@@ -228,22 +232,18 @@
   width: 44px;
   height: 44px;
   border-radius: var(--r-sm);
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: color-mix(in srgb, var(--tile, var(--accent)) 13%, transparent);
+  color: var(--tile, var(--accent-text));
 }
 .home-pickup-tile svg { width: 20px; height: 20px; }
-.home-pickup-tile[data-kind="deck"] {
-  background: color-mix(in srgb, var(--signal) 14%, transparent);
-  color: var(--signal-text);
-}
 .home-pickup-tile[data-kind="app"] { background: none; }
 .home-pickup-tile .app-tile { width: 100%; height: 100%; border-radius: inherit; }
 .home-pickup-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); height: 100%; }
 .home-pickup-eyebrow {
-  color: var(--ink-3);
-  font: 500 var(--fs-md)/1 var(--font-mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  color: var(--tile, var(--ink-2));
+  font: 600 var(--fs-md)/1 var(--font-ui);
+  letter-spacing: .01em;
+  text-transform: none;
 }
 .home-pickup-name {
   font-size: var(--fs-5xl);
@@ -263,7 +263,7 @@
   justify-content: space-between;
   gap: var(--sp-3);
 }
-.home-pickup-when { color: var(--ink-3); font-size: var(--fs-xl); }
+.home-pickup-when { color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }
 .home-pickup-action { color: var(--ink-2); font-size: var(--fs-xl); font-weight: 600; transition: color var(--tap); }
 .home-pickup-action::after { content: " →"; }
 .home-pickup-card:hover .home-pickup-action { color: var(--accent-text); }
@@ -292,7 +292,7 @@
 }
 .home-tile-main > .home-icon-tile { margin-bottom: var(--sp-2); }
 .home-tile-name { font-size: var(--fs-8xl); font-weight: 650; letter-spacing: -.01em; }
-.home-tile-count { color: var(--accent-text); font-size: var(--fs-xl); font-weight: 600; }
+.home-tile-count { color: var(--tile, var(--accent-text)); font-size: var(--fs-xl); font-weight: 600; }
 .home-tile-desc { margin-top: var(--sp-1); color: var(--ink-2); font-size: var(--fs-xl); line-height: 1.5; }
 /* An empty area's example. A button when the ask box can run it. */
 .home-tile-try {
@@ -311,10 +311,10 @@
 button.home-tile-try { cursor: pointer; transition: border-color var(--tap), background var(--tap); }
 button.home-tile-try:hover { border-color: var(--accent-line); background: var(--accent-soft); }
 .home-tile-try-label {
-  color: var(--ink-3);
-  font: 500 var(--fs-md)/1.4 var(--font-mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  color: var(--ink-2);
+  font: 600 var(--fs-md)/1.4 var(--font-ui);
+  letter-spacing: .01em;
+  text-transform: none;
 }
 .home-tile-try-text { font: var(--fs-xl)/1.45 var(--font-mono); overflow-wrap: anywhere; }
 .home-tile-action {
@@ -377,7 +377,7 @@ button.home-tile-try:hover { border-color: var(--accent-line); background: var(-
 .home-fresh-card:hover { background: var(--card-hi); }
 .home-fresh-card:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
 .home-fresh-name { font-size: var(--fs-5xl); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
-.home-fresh-meta { color: var(--ink-3); font-size: var(--fs-xl); }
+.home-fresh-meta { color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }
 .home-fresh-preview {
   color: var(--ink-2);
   font-size: var(--fs-2xl);

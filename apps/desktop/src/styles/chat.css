@@ -59,7 +59,7 @@
 .turn.app-note { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-5); }
 .turn.app-note::before,
 .turn.app-note::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-.app-note-text { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); text-align: center; }
+.app-note-text { margin: 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-2xl); text-align: center; }
 .bubble {
   /* 72%, not 82%: at 82% a long message spans nearly the full column and the
      left/right rhythm that carries the speaker distinction disappears. */
@@ -140,7 +140,7 @@
   max-width: 220px;
   color: var(--ink);
 }
-.turn-attachment-file-meta { color: var(--ink-3); font: 500 var(--fs-sm)/1 var(--font-mono); white-space: nowrap; }
+.turn-attachment-file-meta { color: var(--ink-2); font: 500 var(--fs-sm)/1 var(--font-mono); white-space: nowrap; }
 
 /* t1-6: which knowledge base documents this turn's retrieval drew on. */
 .turn-citations {
@@ -187,7 +187,7 @@
 }
 .kb-passage-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-4); }
 .kb-passage-head h2 { margin: 0; font-size: var(--fs-5xl); font-weight: 600; overflow-wrap: anywhere; }
-.kb-passage-head small { color: var(--ink-3); }
+.kb-passage-head small { color: var(--ink-2); font-weight: var(--muted-weight); }
 .kb-passage-sections { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 /* The section being read. The header already says "Section 66 of 181"; the tab
    row has to agree, or the two contradict each other at a glance. */
@@ -206,7 +206,7 @@
   line-height: 1.55;
   color: var(--ink-2);
 }
-.kb-passage-note { margin: 0; color: var(--ink-3); }
+.kb-passage-note { margin: 0; color: var(--ink-2); font-weight: var(--muted-weight); }
 .kb-passage-source {
   color: var(--ink-3);
   overflow: hidden;
@@ -271,7 +271,7 @@
 .turn-model .pdot { width: 6px; height: 6px; background: var(--provider-hue); }
 .turn-model b { font-weight: 500; color: var(--ink-2); }
 .turn-model .switched { color: var(--provider-hue-text, var(--ink-2)); }
-.turn-model-time { color: var(--ink-3); }
+.turn-model-time { color: var(--ink-2); font-weight: var(--muted-weight); }
 
 /* transient live meta + agent phase (streaming / agent loop only) */
 .turn-meta {
@@ -422,8 +422,8 @@
   font-style: normal;
   font-size: var(--fs-2xs);
   color: var(--ink-3);
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   display: grid;
   place-items: center;
   background: var(--bg);
@@ -669,7 +669,7 @@
   white-space: nowrap;
   font: 500 var(--fs-md)/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 .inline-code-block-actions {
   display: flex;
@@ -886,7 +886,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.artifact-card-meta { margin-top: 2px; color: var(--ink-3); font-size: var(--fs-lg); }
+.artifact-card-meta { margin-top: 2px; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-lg); }
 .artifact-card .dot { width: 6px; height: 6px; border-radius: var(--r-round); flex: none; background: var(--ink-3); }
 .artifact-card .dot.ok { background: var(--ok); }
 .artifact-card .dot.warn { background: var(--warn); }
@@ -935,10 +935,10 @@
   gap: 6px;
 }
 .composer-queue-label {
-  font: 500 var(--fs-md)/1 var(--font-mono);
-  color: var(--ink-3);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font: 600 var(--fs-md)/1 var(--font-ui);
+  color: var(--ink-2);
+  letter-spacing: .01em;
+  text-transform: none;
   margin-right: 2px;
 }
 .composer-queue-chip {
@@ -1059,7 +1059,7 @@
   max-width: 160px;
   color: var(--ink);
 }
-.composer-attachment-meta { color: var(--ink-3); font: 500 var(--fs-sm)/1 var(--font-mono); white-space: nowrap; }
+.composer-attachment-meta { color: var(--ink-2); font: 500 var(--fs-sm)/1 var(--font-mono); white-space: nowrap; }
 .composer-attachment-chip[data-status="failed"] { border-color: color-mix(in srgb, var(--err) 45%, var(--line)); }
 .composer-attachment-chip[data-status="uploading"] {
   opacity: .85;
@@ -1111,7 +1111,8 @@
 .composer-workspace-note {
   margin: 0;
   font-size: var(--fs-md);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
 }
 
 /* The "+" slot: the one button that replaced the row of composer icons, and
@@ -1313,7 +1314,7 @@
 }
 .model-menu-search input:focus { border-color: var(--line-hi); }
 .model-menu-search input::placeholder { color: var(--ink-3); }
-.menu-empty { padding: 14px 11px; font-size: var(--fs-2xl); color: var(--ink-3); text-align: center; }
+.menu-empty { padding: 14px 11px; font-size: var(--fs-2xl); color: var(--ink-2); font-weight: var(--muted-weight); text-align: center; }
 
 /* The free-text row a provider gets when it lists no models. V7's popover
  * degraded to a `Model id` input in exactly this case, and a self-hosted
@@ -1352,7 +1353,7 @@
   height: 32px;
   flex: none;
   border-radius: var(--r-sm);
-  background: var(--card-hi);
+  background: var(--track);
   color: var(--ink-3);
   border: 0;
   display: grid;
@@ -1394,7 +1395,7 @@
   padding: 2px 8px;
   border-radius: var(--r-sm);
   font: 400 var(--fs-lg)/1 var(--font-mono);
-  color: var(--ink-3);
+  color: var(--ink-2);
   transition: color var(--tap), background var(--tap);
 }
 .status:hover { color: var(--ink-2); background: var(--card); }
@@ -1453,7 +1454,8 @@
   padding: 0;
 }
 .compaction-toggle-meta {
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
   font-size: var(--fs-xl);
   white-space: nowrap;
 }
@@ -1786,7 +1788,7 @@
 .tool-sub-row:last-child { border-bottom: none; }
 .tool-sub-row .t-sub-ok { color: var(--ok); flex: none; }
 .tool-sub-row .t-sub-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool-sub-row .t-sub-dur { margin-left: auto; color: var(--ink-3); font: 500 var(--fs-sm)/1 var(--font-mono); flex: none; }
+.tool-sub-row .t-sub-dur { margin-left: auto; color: var(--ink-2); font: 500 var(--fs-sm)/1 var(--font-mono); flex: none; }
 
 /* P3.6 — GFM: tables, blockquotes, task lists, hr inside chat prose */
 .chat-prose table {
@@ -1832,7 +1834,7 @@
   align-items: center;
   gap: 6px;
   font: 500 var(--fs-sm)/1 var(--font-mono);
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 .msg-meta .live-dot {
   width: 5px;
@@ -1943,10 +1945,10 @@
 }
 .idea-gallery-label {
   margin: 0;
-  color: var(--ink-3);
-  font: 500 var(--fs-md)/1 var(--font-mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  color: var(--ink-2);
+  font: 600 var(--fs-md)/1 var(--font-ui);
+  letter-spacing: .01em;
+  text-transform: none;
 }
 .idea-gallery-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .idea-gallery-filter {
@@ -2035,7 +2037,7 @@
 }
 .idea-gallery-meta {
   margin-top: 2px;
-  color: var(--ink-3);
+  color: var(--ink-2);
   font: var(--fs-md)/1.3 var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
@@ -2061,7 +2063,7 @@
 .idea-gallery-open:hover { border-color: var(--accent); }
 /* Keep the meta line clear of the pill. */
 .idea-gallery-item:has(.idea-gallery-open) .idea-gallery-meta { padding-right: 84px; }
-.idea-gallery-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); }
+.idea-gallery-empty { margin: 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }
 
 /* P2.4 — pane cross-fade */
 @keyframes pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -2252,7 +2254,8 @@
 }
 .composer-skill-list small {
   display: block;
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
   font-size: var(--fs-md);
 }
 
@@ -2292,7 +2295,8 @@
 }
 .composer-doc-list-note {
   font-size: var(--fs-md);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
 }
 
 /* t1-8 M3: the `#` document-reference popover, anchored above the composer
@@ -2321,7 +2325,7 @@
   cursor: pointer;
 }
 .composer-doc-picker li[role="option"] b { color: var(--ink); font-weight: 600; }
-.composer-doc-picker li[role="option"] small { color: var(--ink-3); }
+.composer-doc-picker li[role="option"] small { color: var(--ink-2); font-weight: var(--muted-weight); }
 .composer-doc-picker li[data-active="true"] { background: var(--card-hi); }
 /* The `/` tools menu shares the `#` picker's surface; its rows lead with the
  * tool's icon and end with "On" for a toggle that is on. */
@@ -2331,7 +2335,8 @@
 .composer-slash-menu .tail { margin-left: auto; color: var(--accent-text); font-size: var(--fs-md); }
 .composer-doc-picker-empty {
   padding: 8px;
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
   font-size: var(--fs-md);
 }
 
@@ -2428,7 +2433,7 @@
 html[data-reduce-motion="on"] .research-spinner { animation: none; }
 
 .research-field { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
-.research-label { margin: 0; padding: 0; font-size: var(--fs-xl); color: var(--ink-3); }
+.research-label { margin: 0; padding: 0; font-size: var(--fs-xl); color: var(--ink-2); font-weight: var(--muted-weight); }
 .research-question { margin: 0; font-size: var(--fs-3xl); color: var(--ink); }
 .research-field input[type="text"] {
   border-radius: var(--r-sm);
@@ -2457,13 +2462,13 @@ html[data-reduce-motion="on"] .research-spinner { animation: none; }
 .research-current { margin: 0; font-family: var(--font-mono); font-size: var(--fs-lg); color: var(--ink-3); }
 .research-summary { min-width: 0; }
 .research-outcome { margin: 0; font-size: var(--fs-2xl); color: var(--ink-2); }
-.research-note { margin: 0; font-size: var(--fs-xl); color: var(--ink-3); }
+.research-note { margin: 0; font-size: var(--fs-xl); color: var(--ink-2); font-weight: var(--muted-weight); }
 .research-unanswered { margin: 4px 0 0; padding-left: 18px; }
 
 .research-sources > summary { cursor: pointer; font-size: var(--fs-xl); color: var(--ink-2); }
 .research-source-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
 .research-source { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .research-source .source-link { flex: 1 1 auto; min-width: 0; }
-.research-source-note { flex: none; font-family: var(--font-mono); font-size: var(--fs-md); color: var(--ink-3); }
-.research-source-status { flex: none; font-size: var(--fs-md); color: var(--ink-3); }
+.research-source-note { flex: none; font-family: var(--font-mono); font-size: var(--fs-md); color: var(--ink-2); font-weight: var(--muted-weight); }
+.research-source-status { flex: none; font-size: var(--fs-md); color: var(--ink-2); font-weight: var(--muted-weight); }
 .research-source[data-status="failed"] .research-source-status { color: var(--err); }

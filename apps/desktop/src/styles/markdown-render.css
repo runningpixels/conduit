@@ -46,7 +46,7 @@
 }
 .md-mermaid-label {
   font: 500 var(--fs-md)/1 var(--font-mono);
-  color: var(--ink-3);
+  color: var(--ink-2);
   text-transform: lowercase;
   letter-spacing: .04em;
 }

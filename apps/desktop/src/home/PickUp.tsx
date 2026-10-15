@@ -9,6 +9,9 @@ import type { PickUpItem } from './pickUpItems';
 import { useExampleItems } from '../examples/useExampleItems';
 import { ExampleChip } from '../examples/ExampleChip';
 
+/// The area each kind of item belongs to; CSS colours its icon and eyebrow by it.
+const PICKUP_AREA: Record<PickUpItem['kind'], string> = { chat: 'chats', deck: 'slides', draft: 'writing', app: 'apps' };
+
 export interface PickUpProps {
   items: PickUpItem[];
   onOpenChat: (conversationId: string) => void;
@@ -62,7 +65,7 @@ export function PickUp({ items, onOpenChat, onOpenDeck, onOpenDraft, onOpenApp }
             open = () => onOpenApp(item.id);
           }
           return (
-            <li key={`${item.kind}-${item.id}`} className="home-pickup-item">
+            <li key={`${item.kind}-${item.id}`} className="home-pickup-item" data-area={PICKUP_AREA[item.kind]}>
               <button type="button" className="home-card home-pickup-card" aria-label={aria} onClick={open}>
                 <span className="home-pickup-tile" data-kind={item.kind} aria-hidden="true">
                   {tile}

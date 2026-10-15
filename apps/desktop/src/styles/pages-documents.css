@@ -6,7 +6,8 @@
   margin: 0;
   padding: var(--sp-2) 10px;
   font-size: var(--fs-2xl);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
 }
 
 /* Providers with consent that no collection uses any more. */
@@ -68,7 +69,8 @@
 .docs-row-meta,
 .docs-row-state {
   font-size: var(--fs-md);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
 }
 .docs-row-meta { overflow-wrap: anywhere; }
 .docs-row .kb-import-progress { margin-top: 2px; }
@@ -77,7 +79,8 @@
 .docs-drop-hint {
   margin: var(--sp-2) 0 0;
   font-size: var(--fs-2xl);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
 }
 
 .docs-consent {

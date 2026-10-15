@@ -114,7 +114,7 @@ const STATUS_CLASS: Record<string, string> = {
 const RUN_TONE: Record<string, string> = {
   completed: 'wfv-tone wfv-tone-ok',
   failed: 'wfv-tone wfv-tone-err',
-  running: 'wfv-tone wfv-tone-warn',
+  running: 'wfv-tone wfv-tone-run',
   paused: 'wfv-tone wfv-tone-warn',
   stopped: 'wfv-tone wfv-tone-muted',
 };

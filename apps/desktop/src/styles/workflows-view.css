@@ -46,7 +46,7 @@
   font-size: var(--fs-3xl);
   color: var(--ink);
 }
-.wfv-chip-label { flex: none; color: var(--ink-3); }
+.wfv-chip-label { flex: none; color: var(--ink-2); font-weight: var(--muted-weight); }
 .wfv-chip-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wfv-chip.is-action { cursor: pointer; }
 .wfv-chip-warn { color: var(--warn); border-color: var(--warn); font-weight: 600; }
@@ -82,11 +82,13 @@
 .wfv-all-runs { justify-self: start; }
 .wfv-statusline { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); font-size: var(--fs-5xl); color: var(--ink-2); }
 
-.wfv-tone { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
-.wfv-tone-ok { color: var(--ok); }
-.wfv-tone-err { color: var(--err); }
-.wfv-tone-warn { color: var(--warn); }
-.wfv-tone-muted { color: var(--ink-3); }
+/* A run's status word as a small filled chip (latest run, recent runs, runs list). */
+.wfv-tone { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: var(--r-pill); font-size: var(--fs-xl); font-weight: 600; white-space: nowrap; }
+.wfv-tone-ok { background: var(--ok-soft); color: var(--ok); }
+.wfv-tone-err { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+.wfv-tone-run { background: color-mix(in srgb, var(--signal) 14%, transparent); color: var(--signal-text); }
+.wfv-tone-warn { background: var(--warn-soft); color: var(--warn); }
+.wfv-tone-muted { background: var(--track); color: var(--ink-2); }
 .wfv-dot { flex: none; width: 8px; height: 8px; border-radius: var(--r-round); background: currentColor; }
 
 .wfv-recent { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
@@ -107,7 +109,7 @@
 .wfv-pane-split { display: grid; grid-template-columns: 340px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .wfv-side { min-height: 0; overflow: auto; padding: var(--sp-3); border-right: 1px solid var(--line); }
 .wfv-main { min-width: 0; min-height: 0; overflow: auto; padding: var(--sp-5) var(--sp-6); display: grid; gap: var(--sp-5); align-content: start; }
-.wfv-empty { grid-column: 1 / -1; margin: 0; padding: var(--sp-6); font-size: var(--fs-5xl); color: var(--ink-3); }
+.wfv-empty { grid-column: 1 / -1; margin: 0; padding: var(--sp-6); font-size: var(--fs-5xl); color: var(--ink-2); font-weight: var(--muted-weight); }
 .wfv-runlist { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
 .wfv-run-row {
   display: grid;
@@ -122,7 +124,7 @@
 .wfv-run-row:hover { background: var(--card-hi); }
 .wfv-run-row[aria-current="true"] { background: var(--accent-soft); outline: 1px solid var(--accent-line); outline-offset: -1px; color: var(--ink); }
 .wfv-run-top { display: flex; align-items: center; gap: var(--sp-3); }
-.wfv-run-sub { font-size: var(--fs-3xl); color: var(--ink-3); }
+.wfv-run-sub { font-size: var(--fs-3xl); color: var(--ink-2); font-weight: var(--muted-weight); }
 .wfv-result-title { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 
 /* ── Editing: the editor takes the whole page, under the editing bar ── */

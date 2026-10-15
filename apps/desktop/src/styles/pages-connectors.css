@@ -23,10 +23,10 @@
 }
 .cx-row-text { flex: 1 1 16rem; min-width: 0; display: grid; gap: 2px; }
 .cx-row-text b { font-size: var(--fs-3xl); font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
-.cx-row-text small { font-size: var(--fs-lg); color: var(--ink-3); line-height: 1.45; overflow-wrap: anywhere; }
+.cx-row-text small { font-size: var(--fs-lg); color: var(--ink-2); font-weight: var(--muted-weight); line-height: 1.45; overflow-wrap: anywhere; }
 .cx-inline-meta { font-weight: 400; }
 .cx-mono { font-family: var(--font-mono); }
-.cx-note { margin: 0; font-size: var(--fs-2xl); color: var(--ink-3); line-height: 1.5; }
+.cx-note { margin: 0; font-size: var(--fs-2xl); color: var(--ink-2); font-weight: var(--muted-weight); line-height: 1.5; }
 .cx-tag {
   font-size: var(--fs-md);
   color: var(--hue-text);
@@ -100,7 +100,7 @@ textarea.cx-input { resize: vertical; }
 .cx-version[aria-current="true"] { background: var(--hue-weak); color: var(--hue-text); border-color: transparent; }
 .cx-danger { padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); }
 .cx-danger .cx-row { border-bottom: 0; }
-.cx-list-hint { margin: 0; padding: var(--sp-2) 10px; font-size: var(--fs-xl); color: var(--ink-3); }
+.cx-list-hint { margin: 0; padding: var(--sp-2) 10px; font-size: var(--fs-xl); color: var(--ink-2); font-weight: var(--muted-weight); }
 
 /* ── Memory ──────────────────────────────────────────────────────────────── */
 .mem-switch {
@@ -163,7 +163,7 @@ textarea.cx-input { resize: vertical; }
 .mem-row > .mem-edit { flex: 1 1 100%; }
 .mem-main { flex: 1 1 20rem; min-width: 0; }
 .mem-body { margin: 0; font-size: var(--fs-3xl); line-height: 1.5; color: var(--ink); overflow-wrap: anywhere; white-space: pre-wrap; }
-.mem-meta { margin: 2px 0 0; font-size: var(--fs-lg); color: var(--ink-3); }
+.mem-meta { margin: 2px 0 0; font-size: var(--fs-lg); color: var(--ink-2); font-weight: var(--muted-weight); }
 .mem-flag {
   margin-right: var(--sp-2);
   padding: 1px 6px;

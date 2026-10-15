@@ -18,7 +18,7 @@
 .agent-card-head .wf-flag { margin-left: 0; flex: none; }
 .agent-name { color: var(--ink); font-size: var(--fs-5xl); overflow-wrap: anywhere; }
 .agent-status { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-5xl); }
-.agent-status-busy { color: var(--ink); }
+.agent-status-busy { padding: 1px 8px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--signal) 14%, transparent); color: var(--signal-text); font-weight: 600; }
 .agent-pulse {
   width: 8px;
   height: 8px;

@@ -31,7 +31,7 @@
 .apps-section { display: grid; gap: 12px; }
 .apps-section + .apps-section { margin-top: var(--sp-6); }
 .apps-section-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
-.apps-section-note { color: var(--ink-3); font-size: var(--fs-xl); }
+.apps-section-note { color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }
 .apps-empty-note { margin: 0 0 var(--sp-5); color: var(--ink-2); font-size: var(--fs-2xl); max-width: 64ch; }
 .apps-starters {
   display: grid;
@@ -52,14 +52,14 @@
 }
 .starter-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .starter-name { font-size: var(--fs-2xl); font-weight: 600; }
-.starter-blurb { color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.4; }
+.starter-blurb { color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); line-height: 1.4; }
 .starter-hosts { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: var(--fs-md); }
 .apps-section-title {
   margin: 0;
-  color: var(--ink-3);
-  font: 500 var(--fs-md)/1 var(--font-mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  color: var(--ink-2);
+  font: 600 var(--fs-md)/1 var(--font-ui);
+  letter-spacing: .01em;
+  text-transform: none;
 }
 .apps-grid {
   display: grid;
@@ -92,7 +92,8 @@
 }
 .app-card-desc {
   min-height: 2.8em;
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
   font-size: var(--fs-xl);
   line-height: 1.4;
   display: -webkit-box;
@@ -133,7 +134,7 @@
   cursor: pointer;
 }
 .app-card-update:hover { text-decoration: underline; }
-.app-card-version { margin-left: auto; color: var(--ink-3); font: var(--fs-md)/1 var(--font-mono); }
+.app-card-version { margin-left: auto; color: var(--ink-2); font: var(--fs-md)/1 var(--font-mono); }
 
 /* ── Open app ─────────────────────────────────────────────────────────── */
 .app-view { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
@@ -159,7 +160,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.app-view-version { color: var(--ink-3); font: var(--fs-md)/1 var(--font-mono); }
+.app-view-version { color: var(--ink-2); font: var(--fs-md)/1 var(--font-mono); }
 .app-view-spacer { flex: 1; }
 .app-view-update { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); }
 .app-view-update svg { width: 14px; height: 14px; }
@@ -181,7 +182,7 @@
   font-size: var(--fs-xl);
 }
 .app-view-fact { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
-.app-view-when { margin-left: auto; color: var(--ink-3); white-space: nowrap; }
+.app-view-when { margin-left: auto; color: var(--ink-2); font-weight: var(--muted-weight); white-space: nowrap; }
 .app-view-dot { flex: none; width: 7px; height: 7px; border-radius: var(--r-round); background: var(--ink-3); }
 .app-view-dot[data-tone="net"] { background: var(--signal); }
 .app-view-dot[data-tone="warn"] { background: var(--warn); }
@@ -210,8 +211,8 @@
 }
 .app-settings-section h3 { margin: 0; font-size: var(--fs-4xl); font-weight: 700; }
 .app-settings-section h4 { margin: 6px 0 0; color: var(--ink-2); font-size: var(--fs-xl); font-weight: 600; }
-.app-settings-hint { margin: 0; color: var(--ink-3); font-size: var(--fs-md); }
-.app-settings-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); }
+.app-settings-hint { margin: 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-md); }
+.app-settings-empty { margin: 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }
 .app-settings-summary { margin: 0; color: var(--ink); font-size: var(--fs-xl); }
 .app-settings-error { margin: 0; color: var(--err); font-size: var(--fs-xl); }
 .app-settings-list { display: grid; margin: 0; padding: 0; list-style: none; }
@@ -226,7 +227,7 @@
 }
 .app-settings-row:last-child { border-bottom: 0; }
 .app-settings-key { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--fs-lg, var(--fs-xl)); }
-.app-settings-meta { flex: none; color: var(--ink-3); font-size: var(--fs-md); white-space: nowrap; }
+.app-settings-meta { flex: none; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-md); white-space: nowrap; }
 .app-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .app-settings-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
 .app-settings-actions .btn svg { width: 14px; height: 14px; }
@@ -262,7 +263,7 @@
 .app-settings-cap-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .app-settings-cap-row input { width: 140px; font-family: var(--font-mono); }
 .app-settings-activity .app-settings-row { gap: 8px; }
-.app-settings-when { flex: none; width: 76px; color: var(--ink-3); font-size: var(--fs-md); white-space: nowrap; }
+.app-settings-when { flex: none; width: 76px; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-md); white-space: nowrap; }
 .app-settings-kind { flex: none; display: inline-flex; color: var(--ink-3); }
 .app-settings-kind svg { width: 14px; height: 14px; }
 .app-settings-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -295,7 +296,7 @@
 .app-details-identity { display: flex; align-items: flex-end; gap: 14px; }
 .app-details-fields { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 10px; }
 .app-field { display: grid; gap: 5px; min-width: 0; }
-.app-field-label { color: var(--ink-3); font-size: var(--fs-md); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.app-field-label { color: var(--ink-2); font-size: var(--fs-md); font-weight: 600; letter-spacing: .01em; text-transform: none; }
 .app-field input,
 .app-field select {
   width: 100%;
@@ -447,7 +448,7 @@
   font-size: var(--fs-8xl);
   font-weight: 700;
 }
-.apps-home-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--ink-3); font-size: var(--fs-2xl); }
+.apps-home-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-2xl); }
 .apps-home-desc {
   display: -webkit-box;
   -webkit-box-orient: vertical;

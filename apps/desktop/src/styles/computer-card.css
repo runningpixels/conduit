@@ -1,5 +1,5 @@
 /* The approval card for a command or file change, the shared file diff, and the run-details markers. */
-.cc-meta { margin: 0; font-size: var(--fs-5xl); color: var(--ink-3); }
+.cc-meta { margin: 0; font-size: var(--fs-5xl); color: var(--ink-2); font-weight: var(--muted-weight); }
 .cc-headline { font-weight: 600; }
 .wf-offer.cc-risky {
   border-color: color-mix(in srgb, var(--err) 70%, var(--line));

@@ -79,7 +79,7 @@
   font-size: var(--fs-2xl);
   line-height: 1.5;
 }
-.deck-assumptions-label { margin-right: var(--sp-2); color: var(--ink-3); font-weight: 600; }
+.deck-assumptions-label { margin-right: var(--sp-2); color: var(--ink-2); font-weight: 600; }
 .deck-workspace[data-layout="studio"] .storyline { padding-top: var(--sp-4); }
 
 /* ── First-time tips ──────────────────────────────────────────────────── */
@@ -96,7 +96,7 @@
   color: var(--ink-2);
   font-size: var(--fs-2xl);
 }
-.studio-tips-count { flex: none; color: var(--ink-3); font: 500 var(--fs-md)/1 var(--font-mono); }
+.studio-tips-count { flex: none; color: var(--ink-2); font: 500 var(--fs-md)/1 var(--font-mono); }
 .studio-tips-text { flex: 1; min-width: 0; margin: 0; }
 
 /* ── Dock ─────────────────────────────────────────────────────────────── */
@@ -125,7 +125,7 @@
 
 /* ── Compact chat turns (ChatView compact) ────────────────────────────── */
 .turn-compact-details { display: grid; gap: var(--sp-2); margin-top: var(--sp-2); }
-.deck-chat-empty { margin: var(--sp-6) 0 0; color: var(--ink-3); font-size: var(--fs-3xl); line-height: 1.5; }
+.deck-chat-empty { margin: var(--sp-6) 0 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-3xl); line-height: 1.5; }
 
 /* ── Shell: the studio grid ───────────────────────────────────────────── */
 /* A deck open in Slides: the deck takes the window and the chat column
@@ -249,7 +249,7 @@
   background: var(--bg);
   color: var(--ink);
 }
-.presenter-empty { align-items: center; justify-content: center; color: var(--ink-3); }
+.presenter-empty { align-items: center; justify-content: center; color: var(--ink-2); font-weight: var(--muted-weight); }
 .presenter-main {
   flex: 1;
   display: grid;
@@ -278,7 +278,7 @@
 .presenter-timer { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .presenter-clock { font-size: var(--fs-hero); font-weight: 650; font-variant-numeric: tabular-nums; margin-right: var(--sp-2); }
 .presenter-wall { margin-left: auto; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.presenter-label { color: var(--ink-3); font-size: var(--fs-xl); text-transform: uppercase; letter-spacing: 0.04em; }
+.presenter-label { color: var(--ink-2); font-size: var(--fs-xl); text-transform: none; font-weight: 600; letter-spacing: .01em; }
 .presenter-next { width: 55%; }
 .presenter-next-frame { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--r-lg); overflow: hidden; background: #000; margin-top: var(--sp-1); }
 .presenter-next-end { margin-top: var(--sp-1); color: var(--ink-3); }
@@ -294,4 +294,4 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
 }
-.presenter-notes-empty { color: var(--ink-3); font-size: var(--fs-xl); }
+.presenter-notes-empty { color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }

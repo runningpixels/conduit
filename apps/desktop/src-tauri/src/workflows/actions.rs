@@ -73,6 +73,14 @@ pub struct ComputerRequest {
     /// The rule "Allow from now on" would add; `None` when it isn't offered.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggested_rule: Option<String>,
+    /// It matched an always-ask rule or the built-in list (it deletes files,
+    /// throws work away...): the card warns and doesn't make Run the default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub risky: bool,
+    /// What this step already did on the computer, oldest first (commands
+    /// and file changes as run details record them, without their output).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub so_far: Vec<Value>,
 }
 
 impl Pending for PendingAction {

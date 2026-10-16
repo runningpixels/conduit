@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { AppSettings } from '../../ipc/contracts';
 
-const ipc = vi.hoisted(() => ({ updateSettings: vi.fn(), previewCommandRule: vi.fn() }));
+const ipc = vi.hoisted(() => ({
+  updateSettings: vi.fn(),
+  previewCommandRule: vi.fn(),
+  listWorkflows: vi.fn(),
+  getWorkflow: vi.fn(),
+}));
 vi.mock('../../ipc/client', () => ipc);
 
 import { ComputerSection } from './ComputerSection';
@@ -11,6 +16,7 @@ const settings = (workflowComputer?: { enabled: boolean; deny: string[] }) => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
+  ipc.listWorkflows.mockResolvedValue([]);
   ipc.previewCommandRule.mockResolvedValue({ error: null, covers: ['rm -rf x'], doesNotCover: ['rm file'] });
   ipc.updateSettings.mockImplementation(async (patch: Partial<AppSettings>) => patch as AppSettings);
 });
@@ -23,6 +29,35 @@ describe('ComputerSection', () => {
     expect(screen.getByText('Commands ask first, unless a rule allows them.')).toBeInTheDocument();
     expect(screen.getByText(/Some commands always ask/)).toBeInTheDocument();
     expect(screen.getByText(/kept inside the workflow’s folder/)).toBeInTheDocument();
+  });
+
+  it('calls the global list “Always ask first” and suggests a rule worth asking about', () => {
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    expect(screen.getByRole('group', { name: 'Always ask first (all workflows)' })).toBeInTheDocument();
+    expect(screen.getByText(/asks every time in every workflow/)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /New rule for/ })).toHaveAttribute('placeholder', 'git push *');
+    expect(screen.queryByText(/never run/i)).toBeNull();
+  });
+
+  it('lists the workflows that use the computer, with their folders', async () => {
+    const agent = { id: 'a', type: 'agent' as const, prompt: 'p', tools: ['computer'] };
+    ipc.listWorkflows.mockResolvedValue([{ id: 'w1' }, { id: 'w2' }, { id: 'w3' }]);
+    ipc.getWorkflow.mockImplementation(async (id: string) =>
+      id === 'w1'
+        ? { id, name: 'Fix the shop', definition: { folder: 'C:/work/demo-shop', steps: [agent] } }
+        : id === 'w2'
+          ? { id, name: 'Briefing', definition: { steps: [{ id: 't', type: 'template', template: 'x' }] } }
+          : { id, name: 'No folder yet', definition: { steps: [agent] } },
+    );
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    expect(await screen.findByText('Fix the shop · demo-shop')).toBeInTheDocument();
+    expect(screen.getByText('No folder yet · no folder yet')).toBeInTheDocument();
+    expect(screen.queryByText(/Briefing/)).toBeNull();
+  });
+
+  it('says when no workflow uses the computer', async () => {
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    expect(await screen.findByText('No workflow uses the computer yet.')).toBeInTheDocument();
   });
 
   it('turns the switch on and keeps the deny rules', async () => {

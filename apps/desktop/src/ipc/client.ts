@@ -105,6 +105,7 @@ import type {
   WorkflowActionAnswer,
   WorkflowActionRules,
   CommandRulePreview,
+  CommandRuleSuggestion,
   WorkflowQuestion,
   ConversationFolder,
   KnowledgeCollection,
@@ -2139,6 +2140,11 @@ export async function setWorkflowActionRules(id: string, rules: WorkflowActionRu
 /** What a command rule would match, for showing while the user types it. */
 export async function previewCommandRule(rule: string): Promise<CommandRulePreview> {
   return invokeCommand<CommandRulePreview>('preview_command_rule', { rule });
+}
+
+/** Rules worth adding to a workflow, from commands approved by hand in its last 10 runs. */
+export async function suggestCommandRules(id: string): Promise<CommandRuleSuggestion[]> {
+  return invokeCommand<CommandRuleSuggestion[]>('suggest_command_rules', { id });
 }
 
 /** Ask a workflow's run in progress to stop; resolves `false` if it wasn't running. */

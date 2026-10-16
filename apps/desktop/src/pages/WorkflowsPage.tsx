@@ -89,7 +89,10 @@ import { runsAfterLine } from '../workflows/runsAfter';
 import { isUnread, primaryOutput } from '../workflows/results';
 import { isNothingNew, nothingNewStop } from '../workflows/runOutcome';
 import { formatNextRun, ScheduleSection } from '../workflows/ScheduleSection';
-import { ActionRulesSection } from '../workflows/ActionRulesSection';
+import { ActionRulesSection, hasPermissions } from '../workflows/ActionRulesSection';
+import { RuleSuggestionsBanner } from '../workflows/RuleSuggestionsBanner';
+import { useWorkflowActionRules } from '../workflows/useActionRules';
+import { folderName } from '../workflows/WorkflowViewParts';
 import { StepActions, stepActionsSummary } from '../workflows/StepActions';
 import { revealExportedFile, runTriggerLabel } from '../workflows/triggers';
 import { STARTER_WORKFLOWS, type StarterWorkflow } from '../workflows/starters';
@@ -247,6 +250,9 @@ export function WorkflowsPage({
   /// The open workflow's tab, the node selected in its Steps tab (a step id or the start node), and the
   /// result picked in its Results tab. Component state only; a different workflow starts over.
   const [tab, setTab] = useState<WorkflowTab>('steps');
+  // The open workflow's command and action rules; read again when a run ends (usage counts change).
+  const rulesKey = `${refreshKey ?? 0}:${runs[0]?.id ?? ''}:${runs[0]?.status ?? ''}`;
+  const [rules, setRules] = useWorkflowActionRules(record?.id ?? null, rulesKey);
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [resultSel, setResultSel] = useState<string | null>(null);
   const [stepsPref, setStepsPref] = useState<WorkflowViewPref>(() => readWorkflowView());
@@ -1134,6 +1140,19 @@ export function WorkflowsPage({
     const waitingStepIds = openRun
       ? [...reviews, ...questions, ...actions].filter((w) => w.runId === openRun.run.id).map((w) => w.stepId)
       : [];
+    const showPermissions = hasPermissions(record.definition.steps, usesComputer(record.definition), rules);
+    const notConfined = usesComputer(record.definition) && record.definition.computer?.allowOutside === true;
+    // Steps of this workflow waiting on a command or file change on this computer.
+    const computerWaitingStepIds = actions
+      .filter((a) => a.workflowId === record.id && a.computer)
+      .map((a) => a.stepId);
+    const showWaitingCard = (stepId: string) => {
+      setSelectedStep(null);
+      setTimeout(() => {
+        const card = detailRef.current?.querySelector(`[data-wf-wait-step="${CSS.escape(stepId)}"]`);
+        card?.scrollIntoView?.({ block: 'center' });
+      }, 0);
+    };
     const branchy = record.definition.steps.some((s) => s.type === 'for_each' || s.type === 'condition' || s.type === 'branch' || s.type === 'agent' || s.after !== undefined);
     const stepsView = stepsPref === 'auto' ? (branchy ? 'canvas' : 'list') : stepsPref;
     const chooseStepsView = (next: 'canvas' | 'list') => {
@@ -1202,7 +1221,9 @@ export function WorkflowsPage({
           .filter((action) => action.workflowId === record.id && (!runId || action.runId === runId))
           .sort(byStep)
           .map((action) => (
-            <ActionCard key={waitKey(action)} action={action} onAnswered={actionAnswered} />
+            <div key={waitKey(action)} data-wf-wait-step={action.stepId}>
+              <ActionCard action={action} onAnswered={actionAnswered} />
+            </div>
           ))}
       </>
     );
@@ -1236,11 +1257,15 @@ export function WorkflowsPage({
                 ))}
               </section>
             ) : null}
-            <ActionRulesSection
-              workflowId={record.id}
-              steps={record.definition.steps}
-              usesComputer={usesComputer(record.definition)}
-            />
+            {showPermissions ? (
+              <section className="wfv-section" aria-label={t('workspace.workflows.perm.tab')}>
+                <h5 className="wfv-h wfv-h-sub">{t('workspace.workflows.perm.tab')}</h5>
+                <p className="wf-muted">{t('workspace.workflows.perm.startHint')}</p>
+                <button type="button" className="btn ghost" onClick={() => setTab('permissions')}>
+                  {t('workspace.workflows.perm.open')}
+                </button>
+              </section>
+            ) : null}
             <ScheduleSection
               workflowId={record.id}
               refreshKey={refreshKey}
@@ -1265,6 +1290,15 @@ export function WorkflowsPage({
       return (
         <div className="wfv-panel-body">
           {waiting()}
+          {latest && !running && usesComputer(record.definition) ? (
+            <RuleSuggestionsBanner
+              workflowId={record.id}
+              rules={rules}
+              runKey={`${latest.id}:${latest.finishedAt ?? ''}`}
+              enabled
+              onRules={setRules}
+            />
+          ) : null}
           <section className="wfv-section" aria-label={t('workspace.workflows.view.latestRun')}>
             <h4 className="wfv-h">{t('workspace.workflows.view.latestRun')}</h4>
             {latest ? (
@@ -1358,13 +1392,25 @@ export function WorkflowsPage({
         <SummaryChips
           definition={record.definition}
           nextRunAt={nextRunAt}
+          computer={
+            usesComputer(record.definition)
+              ? { rules: rules ? (rules.commands?.allow.length ?? 0) : null, onOpen: () => setTab('permissions') }
+              : undefined
+          }
           onOpenStart={() => {
             setTab('steps');
             setSelectedStep(START_ID);
           }}
         />
 
-        <WorkflowTabs tab={tab} onTab={setTab} runCount={runs.length} resultCount={wfResults.length} />
+        <WorkflowTabs
+          tab={tab}
+          onTab={setTab}
+          runCount={runs.length}
+          resultCount={wfResults.length}
+          showPermissions={showPermissions}
+          notConfined={notConfined}
+        />
 
         {tab === 'steps' ? (
           <div role="tabpanel" id={tabPanelId('steps')} aria-labelledby={tabButtonId('steps')} className="wfv-pane wfv-pane-steps">
@@ -1375,6 +1421,9 @@ export function WorkflowsPage({
                 connectorNames={stepNames}
                 run={canvasRun}
                 waitingStepIds={waitingStepIds}
+                computerFolder={folderName(record.definition.folder)}
+                computerWaitingStepIds={computerWaitingStepIds}
+                onShowWaiting={showWaitingCard}
                 selectedId={selectedStep}
                 onSelect={setSelectedStep}
                 toolbar={stepsToggle}
@@ -1443,6 +1492,20 @@ export function WorkflowsPage({
                 </>
               ) : null}
             </div>
+          </div>
+        ) : tab === 'permissions' ? (
+          <div role="tabpanel" id={tabPanelId('permissions')} aria-labelledby={tabButtonId('permissions')} className="wfv-pane wfv-pane-perm">
+            {rules && showPermissions ? (
+              <ActionRulesSection
+                workflowId={record.id}
+                steps={record.definition.steps}
+                usesComputer={usesComputer(record.definition)}
+                computer={record.definition.computer}
+                rules={rules}
+                onRules={setRules}
+                runKey={rulesKey}
+              />
+            ) : null}
           </div>
         ) : (
           <div role="tabpanel" id={tabPanelId('results')} aria-labelledby={tabButtonId('results')} className="wfv-pane wfv-pane-split">
@@ -1933,9 +1996,11 @@ function RunStepRow({
   const t = useT();
   const fmt = useFormatters();
   const ms = durationMs(step.startedAt, step.finishedAt);
-  const label = description ?? step.stepId;
+  // The step's name leads; what it does sits under it, and the rest is small print.
   const name =
-    step.iteration != null ? t('workspace.workflows.runDetail.iteration', { step: label, n: step.iteration + 1 }) : label;
+    step.iteration != null
+      ? t('workspace.workflows.runDetail.iteration', { step: step.stepId, n: step.iteration + 1 })
+      : step.stepId;
   const dataSummary =
     dataStepSummary(step, t, (bytes) => fmt.size(bytes)) ??
     researchStepSummary(step, t) ??
@@ -1955,20 +2020,22 @@ function RunStepRow({
   return (
     <li className={step.iteration != null ? 'wf-run-step wf-run-step-nested' : 'wf-run-step'}>
       <details>
-        <summary>
-          <span className={STATUS_CLASS[step.status] ?? 'wf-status'}>{statusLabel(step.status)}</span>
-          <span className="wf-step-name">{name}</span>
-          {description ? <span className="wf-muted wf-step-id">{step.stepId}</span> : null}
-          {usedModelId(step.output) ? <span className="wf-muted wf-step-model">{usedModelId(step.output)}</span> : null}
-          {conditionText(step) ? (
-            <span className="wf-muted wf-step-reason">{conditionText(step)}</span>
-          ) : null}
-          {dataSummary ? <span className="wf-muted wf-step-reason">{dataSummary}</span> : null}
-          {edit ? <span className="wf-muted wf-step-reason">{edit.text}</span> : null}
-          {stepActionsSummary(step.output, t) ? (
-            <span className="wf-muted wf-step-reason">{stepActionsSummary(step.output, t)}</span>
-          ) : null}
-          {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
+        <summary className="wf-step-sum">
+          <span className="wf-step-top">
+            <span className={STATUS_CLASS[step.status] ?? 'wf-status'}>{statusLabel(step.status)}</span>
+            <span className="wf-step-name">{name}</span>
+          </span>
+          {description ? <span className="wf-muted wf-step-desc">{description}</span> : null}
+          <span className="wf-step-meta">
+            {usedModelId(step.output) ? <span className="wf-muted wf-step-model">{usedModelId(step.output)}</span> : null}
+            {conditionText(step) ? <span className="wf-muted wf-step-reason">{conditionText(step)}</span> : null}
+            {dataSummary ? <span className="wf-muted wf-step-reason">{dataSummary}</span> : null}
+            {edit ? <span className="wf-muted wf-step-reason">{edit.text}</span> : null}
+            {stepActionsSummary(step.output, t) ? (
+              <span className="wf-muted wf-step-reason">{stepActionsSummary(step.output, t)}</span>
+            ) : null}
+            {ms != null ? <span className="wf-muted">{fmt.duration(ms)}</span> : null}
+          </span>
         </summary>
         {step.error ? <p className="wf-error">{step.error}</p> : null}
         <StepModelLine output={step.output} />

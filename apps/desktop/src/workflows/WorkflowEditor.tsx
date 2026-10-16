@@ -16,7 +16,7 @@
 import { STEP_TYPE_KEY } from './stepTypes';
 import { CanvasStepsEditor } from './canvas/CanvasStepsEditor';
 import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../shell/uiPrefs';
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AddStepMenu, ViewToggle } from './AddStepMenu';
 import { StartPanel } from './StartPanel';
 import { AgentConnectorTools } from './AgentConnectorTools';
@@ -55,12 +55,14 @@ import {
   withStepModel,
   withStepHelper,
   helpersOf,
+  withFolder,
   MAX_HELPER_LINKS,
   valuesAt,
   type StepPath,
   type StepType,
   type ValueRef,
 } from './editorModel';
+import { DEFAULT_NAV, EditorNavContext } from './EditorNav';
 import { refLabel } from './refLabel';
 import { entryName, runsAfterLine, stepName } from './runsAfter';
 import { addDependency, dependencies, entryFor, parseEntry, removeDependency } from './stepGraph';
@@ -122,10 +124,12 @@ export function WorkflowEditor({
   };
   const setDefinition = (definition: WorkflowDefinition) => onChange({ ...draft, definition });
   const setSteps = (steps: WorkflowStep[]) => setDefinition({ ...def, steps });
+  const nav = useMemo(() => ({ ...DEFAULT_NAV, setFolder: (folder: string) => onChange({ ...draft, definition: withFolder(def, folder) }) }), [draft, def, onChange]);
   const start = <StartPanel draft={draft} onChange={onChange} notes={notes} />;
 
   return (
     <ProviderModelsProvider>
+      <EditorNavContext.Provider value={nav}>
       <div className="wf-editor">
         {stepsView === 'canvas' ? (
           <CanvasStepsEditor
@@ -170,6 +174,7 @@ export function WorkflowEditor({
           </div>
         )}
       </div>
+      </EditorNavContext.Provider>
     </ProviderModelsProvider>
   );
 }
@@ -626,6 +631,8 @@ function StepCard({
           <ComputerToolOption
             tools={step.tools ?? []}
             hasFolder={Boolean(def.folder?.trim())}
+            folder={def.folder}
+            computer={def.computer}
             onChange={(tools) => update((s) => (s.type === 'agent' ? { ...s, tools } : s))}
           />
           <AgentConnectorTools

@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep } from '../../ipc/contracts';
 import { STARTER_WORKFLOWS } from '../starters';
@@ -58,6 +58,26 @@ describe('WorkflowCanvas', () => {
     const detail: WorkflowRunDetail = { run: { id: 'r', workflowId: 'w', status: 'paused' } as WorkflowRunDetail['run'], steps: [row('fetch', 'completed')] };
     render(<WorkflowCanvas definition={briefing} run={detail} waitingStepIds={['pick']} />);
     expect(within(node('pick')).getByText('Waiting for you')).toBeTruthy();
+  });
+
+  it('names the folder on the computer chip, and lets the user jump to a waiting approval', () => {
+    const def: WorkflowDefinition = {
+      folder: 'C:/work/demo-shop',
+      steps: [{ id: 'agent', type: 'agent', prompt: 'Fix it', tools: ['computer'] }],
+    };
+    const show = vi.fn();
+    const detail: WorkflowRunDetail = {
+      run: { id: 'r', workflowId: 'w', status: 'paused' } as WorkflowRunDetail['run'],
+      steps: [],
+    };
+    const { rerender } = render(<WorkflowCanvas definition={def} computerFolder="demo-shop" />);
+    expect(within(node('agent')).getByText('Uses the computer · demo-shop')).toBeTruthy();
+    expect(within(node('agent')).queryByRole('button', { name: 'Waiting for you' })).toBeNull();
+    rerender(
+      <WorkflowCanvas definition={def} computerFolder="demo-shop" run={detail} waitingStepIds={['agent']} computerWaitingStepIds={['agent']} onShowWaiting={show} />,
+    );
+    fireEvent.click(within(node('agent')).getByRole('button', { name: 'Waiting for you' }));
+    expect(show).toHaveBeenCalledWith('agent');
   });
 
   it('marks the steps the checker has problems with', () => {

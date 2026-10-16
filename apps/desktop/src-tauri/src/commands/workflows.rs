@@ -697,11 +697,15 @@ pub async fn set_workflow_action_rules(
         .map_err(|e| format!("The rules can't be read: {e}"))?;
     // A caller that only changes the outside-action rules leaves the command
     // rules as they are.
+    let stored = repo::get_action_rules(&state.db, &state.encryption, &id)
+        .await
+        .map_err(|e| e.to_string())?
+        .commands;
     if rules.get("commands").is_none() {
-        parsed.commands = repo::get_action_rules(&state.db, &state.encryption, &id)
-            .await
-            .map_err(|e| e.to_string())?
-            .commands;
+        parsed.commands = stored;
+    } else {
+        // The UI sends the rules without how often they were used.
+        parsed.commands.keep_uses(&stored);
     }
     for list in [&mut parsed.commands.allow, &mut parsed.commands.deny] {
         *list = list
@@ -727,6 +731,44 @@ pub struct CommandRulePreview {
     pub error: Option<String>,
     pub covers: Vec<String>,
     pub does_not_cover: Vec<String>,
+}
+
+/// How many recent runs [`suggest_command_rules`] looks through.
+const SUGGESTION_RUNS: i64 = 10;
+
+/// Rules worth adding to `id`: commands its recent runs asked about and the
+/// user approved by hand, grouped by the rule that would have covered them.
+#[tauri::command]
+pub async fn suggest_command_rules(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<computer::RuleSuggestion>, String> {
+    let rules = repo::get_action_rules(&state.db, &state.encryption, &id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let runs = repo::list_runs(&state.db, &id, SUGGESTION_RUNS)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut records: Vec<Value> = Vec::new();
+    for run in runs {
+        let Some(detail) = repo::get_run(&state.db, &state.encryption, &run.id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+        for step in detail.steps {
+            if let Some(list) = step
+                .output
+                .as_ref()
+                .and_then(|o| o.get("computer"))
+                .and_then(Value::as_array)
+            {
+                records.extend(list.iter().cloned());
+            }
+        }
+    }
+    Ok(computer::suggestions(&records, &rules.commands))
 }
 
 #[tauri::command]

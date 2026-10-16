@@ -131,3 +131,12 @@
 }
 .wf-editor .wfe-insert { height: auto; font-size: var(--fs-3xl); }
 .wfe-insert:hover { color: var(--ink); border-color: var(--accent-line); }
+
+/* The Computer option on a step: where the agent works, and the way to its settings. */
+.wf-computer-summary { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2); }
+.wf-computer-link { padding-left: 0; padding-right: 0; }
+/* Computer settings → Advanced: letting commands out of the folder is flagged while it is on. */
+.wfe-advanced { display: grid; gap: var(--sp-2); }
+.wfe-advanced > summary { cursor: pointer; color: var(--ink-2); font-size: var(--fs-5xl); }
+.wfe-advanced.is-warn { padding: var(--sp-2) var(--sp-3); border: 1px solid var(--warn); border-radius: var(--r-sm); }
+.wfe-warn { margin: 0; color: var(--warn); font-size: var(--fs-5xl); font-weight: 600; }

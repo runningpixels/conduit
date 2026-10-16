@@ -43,6 +43,9 @@ const ipc = vi.hoisted(() => ({
   listWorkflowResults: vi.fn(),
   markWorkflowRunsSeen: vi.fn(),
   getArtifact: vi.fn(),
+  getWorkflowActionRules: vi.fn(),
+  setWorkflowActionRules: vi.fn(),
+  suggestCommandRules: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -151,6 +154,9 @@ describe('WorkflowsPage', () => {
     ipc.listWorkflowResults.mockResolvedValue([]);
     ipc.markWorkflowRunsSeen.mockResolvedValue(0);
     ipc.getArtifact.mockResolvedValue(null);
+    ipc.getWorkflowActionRules.mockResolvedValue({ allowAll: false, allowed: [], commands: { allow: [], deny: [] } });
+    ipc.setWorkflowActionRules.mockImplementation(async (_id: string, next: unknown) => next);
+    ipc.suggestCommandRules.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -1342,6 +1348,70 @@ describe('WorkflowsPage', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       expect(await screen.findByRole('alert')).toHaveTextContent('The name is taken.');
+    });
+  });
+
+  describe('permissions', () => {
+    const computerRecord: WorkflowRecord = {
+      ...record,
+      definition: {
+        folder: 'C:/work/demo-shop',
+        steps: [{ id: 'agent', type: 'agent', prompt: 'Fix it', tools: ['computer'] }],
+      },
+    };
+    const withRules = {
+      allowAll: false,
+      allowed: [],
+      commands: { allow: ['git status', 'git log *'], deny: ['git push *'] },
+    };
+
+    it('has no Permissions tab or Computer pill when nothing can act', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      await screen.findByRole('heading', { name: 'Morning briefing', level: 3 });
+      expect(screen.queryByRole('tab', { name: 'Permissions' })).toBeNull();
+      expect(screen.queryByText('Computer')).toBeNull();
+    });
+
+    it('shows a Computer pill with the allow-rule count that opens the Permissions tab', async () => {
+      ipc.getWorkflow.mockResolvedValue(computerRecord);
+      ipc.getWorkflowActionRules.mockResolvedValue(withRules);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const pill = await screen.findByRole('button', { name: /Computer.*2 rules/ });
+      expect(screen.getByRole('tab', { name: /Permissions/ })).toBeInTheDocument();
+      expect(screen.queryByText('Not confined')).toBeNull();
+      fireEvent.click(pill);
+      expect(await screen.findByRole('region', { name: 'This computer' })).toBeInTheDocument();
+      expect(screen.getByText('git push *')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Permissions/ })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('warns "Not confined" when commands may leave the folder', async () => {
+      ipc.getWorkflow.mockResolvedValue({
+        ...computerRecord,
+        definition: { ...computerRecord.definition, computer: { allowOutside: true } },
+      });
+      ipc.getWorkflowActionRules.mockResolvedValue(withRules);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const warn = await screen.findByRole('button', { name: 'Not confined' });
+      fireEvent.click(warn);
+      expect(await screen.findByRole('region', { name: 'This computer' })).toHaveTextContent('Not confined');
+    });
+
+    it('offers to allow what the finished run asked about', async () => {
+      ipc.getWorkflow.mockResolvedValue(computerRecord);
+      ipc.getWorkflowActionRules.mockResolvedValue(withRules);
+      ipc.listWorkflowRuns.mockResolvedValue([finishedRun.run]);
+      ipc.suggestCommandRules.mockResolvedValue([{ rule: 'git diff *', times: 2, example: 'git diff --stat' }]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      expect(await screen.findByText('This workflow asked you 2 times. Allow these from now on?')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Allow selected' }));
+      await waitFor(() =>
+        expect(ipc.setWorkflowActionRules).toHaveBeenCalledWith('w1', {
+          ...withRules,
+          commands: { allow: ['git status', 'git log *', 'git diff *'], deny: ['git push *'] },
+        }),
+      );
+      await waitFor(() => expect(screen.queryByText(/asked you/)).toBeNull());
     });
   });
 

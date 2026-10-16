@@ -56,6 +56,9 @@
 .wfc-status { padding: 2px 8px; border-radius: var(--r-pill); font-size: var(--fs-xl); font-weight: 600; white-space: nowrap; background: var(--card-hi); }
 .wfc-status-running { color: var(--warn); }
 .wfc-status-waiting { color: var(--warn); }
+/* A run waits for the user's answer on this step's computer action: a button that goes to the card. */
+.wfc-waiting-you { padding: 2px 8px; border: 1px solid var(--warn); border-radius: var(--r-pill); background: var(--card-hi); color: var(--warn); font: inherit; font-size: var(--fs-xl); font-weight: 600; white-space: nowrap; cursor: pointer; }
+.wfc-waiting-you:hover { background: var(--card); }
 .wfc-status-completed { color: var(--ok); }
 .wfc-status-failed { color: var(--err); }
 .wfc-status-stopped,

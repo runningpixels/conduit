@@ -791,6 +791,25 @@ impl Team {
             done.push(record);
         }
     }
+
+    /// What the step did on the computer so far, for an approval card: the
+    /// records without output or file content.
+    fn computer_so_far(&self) -> Vec<Value> {
+        let Ok(done) = self.computer.lock() else {
+            return Vec::new();
+        };
+        done.iter()
+            .map(|record| {
+                let mut short = record.clone();
+                if let Some(fields) = short.as_object_mut() {
+                    for key in ["output", "previous", "content", "suggestedRule"] {
+                        fields.remove(key);
+                    }
+                }
+                short
+            })
+            .collect()
+    }
 }
 
 /// What a helper is called as a tool.
@@ -1027,9 +1046,28 @@ impl ConnectorTools<'_, '_> {
             self.team.note_computer(entry);
         };
         let mut waited = Duration::ZERO;
+        // What "Allow from now on" offered, when the user said Run without it:
+        // kept on the record so the workflow page can suggest the rule later.
+        let mut offered_rule: Option<String> = None;
         let (program, args, cwd, approved) = match verdict {
-            computer::Verdict::Run { rule } => (program, args, cwd, format!("rule: {rule}")),
-            computer::Verdict::Ask { reason, remember } => {
+            computer::Verdict::Run { rule } => {
+                let mut counted = rules.clone();
+                counted
+                    .commands
+                    .note_use(&rule, &crate::time::now_iso8601());
+                if let Err(e) =
+                    repo::set_action_rules(&state.db, &state.encryption, exec.workflow_id, &counted)
+                        .await
+                {
+                    tracing::warn!(error = %e, "could not count a command rule's use");
+                }
+                (program, args, cwd, format!("rule: {rule}"))
+            }
+            computer::Verdict::Ask {
+                reason,
+                remember,
+                risky,
+            } => {
                 // Run before the app restarted, and asked for again the same
                 // way: not run twice.
                 if let Some(earlier) =
@@ -1070,6 +1108,8 @@ impl ConnectorTools<'_, '_> {
                     reason: reason.clone(),
                     read_before: read.clone(),
                     suggested_rule: suggested.clone(),
+                    risky,
+                    so_far: self.team.computer_so_far(),
                 };
                 let started = Instant::now();
                 let asked = exec
@@ -1121,6 +1161,9 @@ impl ConnectorTools<'_, '_> {
                     Some(Err(e)) => return (Err(e), waited),
                     None => (program, args, cwd),
                 };
+                if !answer.remember {
+                    offered_rule = suggested.clone();
+                }
                 if answer.remember {
                     if let Some(rule) = answer.rule.clone().or(suggested) {
                         if computer::parse_rule(&rule).is_ok() {
@@ -1167,11 +1210,17 @@ impl ConnectorTools<'_, '_> {
                     &cwd,
                     &approved,
                     if ran.timed_out { "timedOut" } else { "ran" },
-                    json!({
-                        "exitCode": ran.exit_code,
-                        "durationMs": ran.duration.as_millis() as u64,
-                        "output": output,
-                    }),
+                    {
+                        let mut extra = json!({
+                            "exitCode": ran.exit_code,
+                            "durationMs": ran.duration.as_millis() as u64,
+                            "output": output,
+                        });
+                        if let Some(rule) = &offered_rule {
+                            extra["suggestedRule"] = Value::String(rule.clone());
+                        }
+                        extra
+                    },
                 );
                 let result = ran.for_model();
                 if approved == "you" {
@@ -1275,6 +1324,23 @@ impl ConnectorTools<'_, '_> {
                 "outcome": outcome,
             }));
         };
+        // A change that went through: what the file held before and after,
+        // when both are small enough to keep with the run.
+        let record_change = |approved: &str, written: &str| {
+            const KEPT: usize = 20_000;
+            let mut entry = json!({
+                "kind": if name == computer::EDIT_TOOL { "edit" } else { "write" },
+                "path": shown,
+                "approvedBy": approved,
+                "outcome": "changed",
+            });
+            let before = previous.as_deref().unwrap_or("");
+            if before.len() <= KEPT && written.len() <= KEPT {
+                entry["previous"] = Value::String(before.to_string());
+                entry["content"] = Value::String(written.to_string());
+            }
+            self.team.note_computer(entry);
+        };
         let mut waited = Duration::ZERO;
         let (content, approved) = if access.config.edit_mode == computer::EditMode::Free {
             (content, "the workflow's edit mode")
@@ -1302,6 +1368,8 @@ impl ConnectorTools<'_, '_> {
                 reason: "This workflow asks before changing files.".to_string(),
                 read_before: self.taint.describe(),
                 suggested_rule: None,
+                risky: false,
+                so_far: self.team.computer_so_far(),
             };
             let started = Instant::now();
             let asked = exec
@@ -1352,6 +1420,7 @@ impl ConnectorTools<'_, '_> {
         let config = crate::workspace_tools::WorkspaceToolConfig {
             root: access.folder.clone(),
         };
+        let written = content.clone();
         let input = crate::workspace_tools::tools::WriteInput {
             path: shown.clone(),
             content,
@@ -1359,7 +1428,7 @@ impl ConnectorTools<'_, '_> {
         };
         match crate::workspace_tools::execute_workspace_write(&config, input) {
             Ok(result) => {
-                record(approved, "changed");
+                record_change(approved, &written);
                 (Ok(result), waited)
             }
             Err(error) => {

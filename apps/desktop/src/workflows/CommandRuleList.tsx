@@ -26,6 +26,8 @@ export function CommandRuleList({
   error,
   onAdd,
   onRemove,
+  note,
+  placeholder,
 }: {
   label: string;
   hint?: string;
@@ -36,6 +38,10 @@ export function CommandRuleList({
   /// Resolves `true` when the rule was saved; the box is cleared only then, so a refused rule stays to be fixed.
   onAdd: (rule: string) => Promise<boolean>;
   onRemove: (rule: string) => void;
+  /// A muted line after a rule, such as how often it let a command run.
+  note?: (rule: string) => string | null;
+  /// An example rule for the empty box; a command the user would want to keep asking about, or to allow.
+  placeholder?: string;
 }) {
   const t = useT();
   const inputId = useId();
@@ -82,7 +88,10 @@ export function CommandRuleList({
         <ul className="wf-actions-allowed">
           {rules.map((r) => (
             <li key={r}>
-              <code>{r}</code>
+              <span className="wf-cmdrule">
+                <code>{r}</code>
+                {note?.(r) ? <span className="wf-muted wf-cmdrule-note">{note(r)}</span> : null}
+              </span>
               <button
                 type="button"
                 className="btn ghost"
@@ -102,7 +111,7 @@ export function CommandRuleList({
           className="mem-input"
           spellCheck={false}
           aria-label={t('workspace.workflows.commands.newLabel', { list: label })}
-          placeholder={t('workspace.workflows.commands.placeholder')}
+          placeholder={placeholder ?? t('workspace.workflows.commands.placeholder')}
           value={draft}
           disabled={busy}
           aria-invalid={preview?.error ? true : undefined}

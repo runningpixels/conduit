@@ -51,8 +51,21 @@
 }
 .wf-run-step summary:hover { background: var(--bg-side); }
 .wf-run-step-nested { padding-left: var(--sp-5); }
-.wf-step-name { font-size: var(--fs-5xl); }
-.wf-step-id { font-family: var(--font-mono); }
+.wf-step-name { font-size: var(--fs-5xl); font-family: var(--font-mono); min-width: 0; overflow-wrap: anywhere; }
+/* A step in the run details: its name and status, what it does (two lines at most), then small print. */
+.wf-run-step summary.wf-step-sum { display: grid; gap: 2px; justify-items: start; }
+.wf-step-top { display: flex; align-items: baseline; gap: var(--sp-3); min-width: 0; max-width: 100%; }
+.wf-step-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.wf-step-meta { display: flex; flex-wrap: wrap; gap: 2px var(--sp-3); max-width: 100%; font-size: var(--fs-xl); }
+.wf-step-meta:empty { display: none; }
+.wf-step-meta > span { min-width: 0; overflow-wrap: anywhere; }
 
 .wf-status { min-width: 6.5em; font-size: var(--fs-5xl); }
 .wf-status-completed { color: var(--ok); }
@@ -311,41 +324,56 @@ html[data-theme="dark"] .wf-view-btn.active { background: var(--card-hi); filter
 .wf-actions { display: grid; gap: var(--sp-2); }
 .wf-actions-allowed, .wf-actions-taken { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); font-size: var(--fs-5xl); }
 .wf-actions-allowed li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); overflow-wrap: anywhere; }
+.wf-cmdrule { display: grid; gap: 1px; min-width: 0; }
+.wf-cmdrule-note { font-size: var(--fs-xl); }
+
+/* Permissions tab: connectors and this computer, each with its own summary line. */
+.wfv-pane-perm { overflow: auto; padding: var(--sp-5) var(--sp-6); }
+.wf-perm { display: grid; gap: var(--sp-6); max-width: 46rem; }
+.wf-perm-group { display: grid; gap: var(--sp-3); }
+.wf-perm-summary { margin: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-5xl); color: var(--ink-2); }
+.wf-perm-warn {
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-weight: 600;
+}
+.wf-perm-suggest { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
+.wf-perm-suggest li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  font-size: var(--fs-5xl);
+  overflow-wrap: anywhere;
+}
+.wf-perm-suggest-actions { display: inline-flex; gap: var(--sp-1); }
+.wf-perm-builtin { font-size: var(--fs-5xl); color: var(--ink-2); }
+.wf-perm-builtin summary { cursor: pointer; }
+.wf-perm-builtin ul { margin: var(--sp-2) 0; padding-left: 18px; display: grid; gap: 2px; }
+
+/* "This workflow asked you N times": allow what was approved by hand. */
+.wf-learn { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card); }
+.wf-learn-title { margin: 0; font-weight: 600; color: var(--ink); }
+.wf-learn-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); }
+.wf-learn-list .wf-check { align-items: flex-start; overflow-wrap: anywhere; }
+.wf-learn-actions { display: flex; gap: var(--sp-2); }
 .wf-actions-taken { margin: var(--sp-2) 10px 0; }
 .wf-actions-taken details { margin-top: 2px; }
 .wf-connector-tools { display: grid; gap: var(--sp-1); }
 .wf-connector-name { margin-top: var(--sp-1); }
 .wf-gone-tool { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-5xl); }
 
-/* Agents that use the computer: the approval card, the diff, the rules and the run details. */
-.wf-computer-reason { font-weight: 600; }
-.wf-computer-read {
-  margin: 0;
-  padding: var(--sp-2);
-  border-left: 3px solid var(--warn);
-  color: var(--ink);
-  font-size: var(--fs-5xl);
-}
-.wf-computer-command, .wf-computer-file {
-  margin: 0;
-  padding: var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-5xl);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 14em;
-  overflow: auto;
-}
-.wf-computer-remember { display: grid; gap: var(--sp-2); }
-.wf-diff { font-family: var(--font-mono); font-size: var(--fs-5xl); max-height: 18em; overflow: auto; }
-.wf-diff-line { white-space: pre-wrap; overflow-wrap: anywhere; }
-.wf-diff-line.add { background: color-mix(in srgb, var(--ok) 18%, transparent); }
-.wf-diff-line.del { background: color-mix(in srgb, var(--err) 18%, transparent); }
-.wf-diff-line.skip { color: var(--ink-3); font-style: italic; }
+/* Agents that use the computer: the rules (the card and diff live in computer-card.css). */
 .wf-cmdrules { display: grid; gap: var(--sp-1); margin-top: var(--sp-2); }
 .wf-cmdrules-add { display: flex; gap: var(--sp-2); }
 .wf-cmdrules-add .mem-input { flex: 1; font-family: var(--font-mono); }
-.wf-commands { display: grid; gap: var(--sp-2); }
 .wf-computer-taken { margin: var(--sp-2) 10px 0; }
 .wf-computer-record { display: grid; gap: 2px; }
 .wf-computer-meta { font-size: var(--fs-5xl); }

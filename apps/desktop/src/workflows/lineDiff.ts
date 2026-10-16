@@ -90,3 +90,33 @@ function fold(rows: DiffRow[]): DiffRow[] {
   if (skipped > 0) out.push({ kind: 'skip', count: skipped });
   return out;
 }
+
+/// How many lines the diff puts in and takes out.
+export function diffStats(rows: DiffRow[]): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const row of rows) {
+    if (row.kind === 'add') added += 1;
+    else if (row.kind === 'del') removed += 1;
+  }
+  return { added, removed };
+}
+
+/// A diff row with the line numbers it has in the old and new text (none for a skip).
+export type NumberedRow = DiffRow & { oldNo?: number; newNo?: number };
+
+/// Adds old/new line numbers to each row; a skip row moves both counters past its lines.
+export function numberRows(rows: DiffRow[]): NumberedRow[] {
+  let oldNo = 1;
+  let newNo = 1;
+  return rows.map((row): NumberedRow => {
+    if (row.kind === 'skip') {
+      oldNo += row.count;
+      newNo += row.count;
+      return row;
+    }
+    if (row.kind === 'del') return { ...row, oldNo: oldNo++ };
+    if (row.kind === 'add') return { ...row, newNo: newNo++ };
+    return { ...row, oldNo: oldNo++, newNo: newNo++ };
+  });
+}

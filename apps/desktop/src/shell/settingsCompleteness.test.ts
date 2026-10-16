@@ -96,6 +96,7 @@ describe('settings sections', () => {
         'appearance',
         'branding',
         'chat',
+        'computer',
         'connectors',
         'knowledge',
         'memory',

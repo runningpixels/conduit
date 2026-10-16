@@ -102,6 +102,8 @@ export function HelpersSection({
             <ComputerToolOption
               tools={helper.tools ?? []}
               hasFolder={Boolean(def.folder?.trim())}
+              folder={def.folder}
+              computer={def.computer}
               onChange={(tools) => set(helper.id, (h) => ({ ...h, tools }))}
             />
             <AgentConnectorTools

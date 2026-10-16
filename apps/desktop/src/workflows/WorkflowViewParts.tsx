@@ -8,9 +8,9 @@ import type { WorkflowDefinition } from '../ipc/contracts';
 import { formatNextRun } from './ScheduleSection';
 import { useFormatters } from '../i18n/formatters';
 
-export type WorkflowTab = 'steps' | 'runs' | 'results';
+export type WorkflowTab = 'steps' | 'runs' | 'results' | 'permissions';
 
-const TAB_ORDER: WorkflowTab[] = ['steps', 'runs', 'results'];
+const TAB_ORDER: WorkflowTab[] = ['steps', 'runs', 'results', 'permissions'];
 
 export const tabButtonId = (tab: WorkflowTab) => `wfv-tab-${tab}`;
 export const tabPanelId = (tab: WorkflowTab) => `wfv-panel-${tab}`;
@@ -44,11 +44,14 @@ export function SummaryChips({
   definition,
   nextRunAt,
   onOpenStart,
+  computer,
 }: {
   definition: WorkflowDefinition;
   nextRunAt: string | null | undefined;
   /** Show the Start node (its values and schedule) in the Steps tab. */
   onOpenStart: () => void;
+  /** The workflow uses the computer: how many commands run without asking (null until known), and a way to the Permissions tab. */
+  computer?: { rules: number | null; onOpen: () => void };
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -74,13 +77,42 @@ export function SummaryChips({
       {inputs.length > 0 ? <Chip label={t('workspace.workflows.view.chipAsks')} value={inputs.join(', ')} onClick={onOpenStart} /> : null}
       <Chip label={t('workspace.workflows.view.chipModel')} value={definition.model?.model || t('workspace.workflows.view.modelChat')} />
       <Chip label={t('workspace.workflows.view.chipFolder')} value={folderName(definition.folder) ?? t('workspace.workflows.view.folderNone')} />
+      {computer ? (
+        <Chip
+          label={t('workspace.workflows.view.chipComputer')}
+          value={computer.rules === null ? t('workspace.workflows.perm.tab') : t('workspace.workflows.view.computerRules', { count: computer.rules })}
+          onClick={computer.onOpen}
+        />
+      ) : null}
+      {computer && definition.computer?.allowOutside === true ? (
+        <button type="button" className="wfv-chip is-action wfv-chip-warn" onClick={computer.onOpen}>
+          {t('workspace.workflows.perm.notConfined')}
+        </button>
+      ) : null}
     </div>
   );
 }
 
 /** The tab strip; the page renders the panel it controls. */
-export function WorkflowTabs({ tab, onTab, runCount, resultCount }: { tab: WorkflowTab; onTab: (tab: WorkflowTab) => void; runCount: number; resultCount: number }) {
+export function WorkflowTabs({
+  tab,
+  onTab,
+  runCount,
+  resultCount,
+  showPermissions = false,
+  notConfined = false,
+}: {
+  tab: WorkflowTab;
+  onTab: (tab: WorkflowTab) => void;
+  runCount: number;
+  resultCount: number;
+  /** The workflow uses the computer or a connector that acts: it has permissions to show. */
+  showPermissions?: boolean;
+  /** Commands may leave the folder: the tab carries a warning. */
+  notConfined?: boolean;
+}) {
   const t = useT();
+  const order = showPermissions ? TAB_ORDER : TAB_ORDER.filter((id) => id !== 'permissions');
   const label = (id: WorkflowTab) =>
     id === 'steps'
       ? t('workspace.workflows.steps.title')
@@ -88,14 +120,16 @@ export function WorkflowTabs({ tab, onTab, runCount, resultCount }: { tab: Workf
         ? runCount > 0
           ? t('workspace.workflows.view.tabRunsCount', { count: runCount })
           : t('workspace.workflows.view.tabRuns')
-        : resultCount > 0
-          ? t('workspace.workflows.results.tabResultsCount', {
-              count: resultCount,
-            })
-          : t('workspace.workflows.results.tabResults');
+        : id === 'permissions'
+          ? t('workspace.workflows.perm.tab')
+          : resultCount > 0
+            ? t('workspace.workflows.results.tabResultsCount', {
+                count: resultCount,
+              })
+            : t('workspace.workflows.results.tabResults');
   return (
     <div className="wfv-tabs" role="tablist" aria-label={t('workspace.workflows.view.tabsLabel')}>
-      {TAB_ORDER.map((id) => (
+      {order.map((id) => (
         <button
           key={id}
           type="button"
@@ -110,12 +144,17 @@ export function WorkflowTabs({ tab, onTab, runCount, resultCount }: { tab: Workf
             const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
             if (!step) return;
             e.preventDefault();
-            const next = TAB_ORDER[(TAB_ORDER.indexOf(id) + step + TAB_ORDER.length) % TAB_ORDER.length];
+            const next = order[(order.indexOf(id) + step + order.length) % order.length];
             onTab(next);
             document.getElementById(tabButtonId(next))?.focus();
           }}
         >
           {label(id)}
+          {id === 'permissions' && notConfined ? (
+            <span className="wfv-tab-warn" role="img" aria-label={t('workspace.workflows.perm.notConfined')} title={t('workspace.workflows.perm.notConfined')}>
+              !
+            </span>
+          ) : null}
         </button>
       ))}
     </div>

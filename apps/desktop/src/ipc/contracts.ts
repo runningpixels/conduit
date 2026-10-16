@@ -1056,6 +1056,10 @@ export interface ComputerRequest {
   readBefore?: string;
   /** The rule "Allow from now on" would add; absent = not offered. */
   suggestedRule?: string;
+  /** It matched an always-ask rule or the built-in list (deletes files, throws work away…): warn, and don't default to Run. */
+  risky?: boolean;
+  /** What this step already did on the computer, oldest first (no output or file content). */
+  soFar?: ComputerRecord[];
 }
 
 /**
@@ -1115,7 +1119,27 @@ export interface WorkflowActionRules {
 /** Command rules: a program plus leading arguments, optionally ending in ` *`. */
 export interface WorkflowCommandRules {
   allow: string[];
+  /** Always-ask rules: a matching command asks every time, even when an allow rule covers it. */
   deny: string[];
+  /** How often each allow rule let a command run (read-only; kept by the backend on save). */
+  uses?: CommandRuleUse[];
+}
+
+/** One allow rule's use. */
+export interface CommandRuleUse {
+  rule: string;
+  count: number;
+  /** ISO 8601. */
+  lastUsedAt: string;
+}
+
+/** A rule worth adding: commands the user approved by hand in recent runs that it would have covered (`suggest_command_rules`). */
+export interface CommandRuleSuggestion {
+  rule: string;
+  /** How many approved commands it would have covered. */
+  times: number;
+  /** One of them, e.g. "git diff --stat". */
+  example: string;
 }
 
 /** What a command rule matches (`preview_command_rule`). */
@@ -1141,8 +1165,18 @@ export type ComputerRecord =
       output?: string;
       reason?: string;
       error?: string;
+      /** Approved by hand: the rule its card offered (for rule suggestions). */
+      suggestedRule?: string;
     }
-  | { kind: 'write' | 'edit'; path: string; approvedBy: string; outcome: ComputerOutcome };
+  | {
+      kind: 'write' | 'edit';
+      path: string;
+      approvedBy: string;
+      outcome: ComputerOutcome;
+      /** A change that went through: the file before and after, when both are under 20,000 characters. */
+      previous?: string;
+      content?: string;
+    };
 
 /** How an outside action ended, in a step's output (`action` or `actions[]`). */
 export type WorkflowActionOutcome = 'sent' | 'sentWithoutAsking' | 'notSent' | 'failed';

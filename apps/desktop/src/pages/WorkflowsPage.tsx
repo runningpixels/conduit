@@ -651,7 +651,6 @@ export function WorkflowsPage({
         try {
           const next = await listWorkflowRuns(selectedId, 20);
           if (cancelled) return;
-          setRuns(next);
           const live = next.find((r) => isLive(r.status));
           const shown = openRunRef.current;
           const target =
@@ -660,10 +659,15 @@ export function WorkflowsPage({
               : shown && isLive(shown.run.status)
                 ? shown.run.id
                 : null;
-          if (target) {
-            const detail = await getWorkflowRun(target);
-            if (!cancelled) setOpenRun(detail);
-          }
+          // Read the detail before the list: the list showing no live run ends
+          // `running`, which stops this effect and would drop the run's last
+          // detail, leaving the canvas on "Running…".
+          const detail = target ? await getWorkflowRun(target) : null;
+          if (cancelled) return;
+          // A read that started mid-run can land after `run()` has shown the
+          // finished run; never go back from finished to running.
+          if (detail) setOpenRun((prev) => (prev && prev.run.id === detail.run.id && !isLive(prev.run.status) && isLive(detail.run.status) ? prev : detail));
+          setRuns(next);
           if (!live) void refreshList();
         } catch {
           // The next tick tries again.

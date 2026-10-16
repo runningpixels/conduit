@@ -1015,6 +1015,51 @@ describe('WorkflowsPage', () => {
       expect(screen.getByRole('region', { name: 'What this run did' })).toHaveTextContent('Finished');
     });
 
+    it('keeps the last detail when the list stops showing the run live', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([live]);
+      ipc.getWorkflowRun.mockResolvedValue(liveDetail);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      await screen.findByRole('button', { name: 'Running…' });
+      await runDetail();
+
+      // The list says done before the detail read comes back.
+      const done = { ...live, status: 'completed' as const, finishedAt: '2026-09-28T08:00:09Z' };
+      let finish: (d: WorkflowRunDetail) => void = () => {};
+      ipc.listWorkflowRuns.mockResolvedValue([done]);
+      ipc.getWorkflowRun.mockReturnValueOnce(new Promise<WorkflowRunDetail>((r) => (finish = r)));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2100);
+      });
+      await act(async () => finish({ run: done, steps: [] }));
+      expect(screen.getByRole('region', { name: 'What this run did' })).toHaveTextContent('Finished');
+    });
+
+    it('does not go back to running when a read from mid-run lands after the run ended', async () => {
+      let end: (d: WorkflowRunDetail) => void = () => {};
+      ipc.runWorkflow.mockReturnValueOnce(new Promise<WorkflowRunDetail>((r) => (end = r)));
+      ipc.listWorkflowRuns.mockResolvedValue([]);
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
+      await screen.findByRole('button', { name: 'Running…' });
+
+      // A poll reads the run while it is going; its answer is late.
+      let late: (d: WorkflowRunDetail) => void = () => {};
+      ipc.listWorkflowRuns.mockResolvedValue([live]);
+      ipc.getWorkflowRun.mockReturnValueOnce(new Promise<WorkflowRunDetail>((r) => (late = r)));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2100);
+      });
+      const done = { ...live, status: 'completed' as const, finishedAt: '2026-09-28T08:00:09Z' };
+      // run() shows the finished run, then is still reading the list when the late answer lands.
+      let listed: (runs: (typeof done)[]) => void = () => {};
+      ipc.listWorkflowRuns.mockReturnValueOnce(new Promise((r) => (listed = r)));
+      await act(async () => end({ run: done, steps: [] }));
+      await act(async () => late(liveDetail));
+      ipc.listWorkflowRuns.mockResolvedValue([done]);
+      await act(async () => listed([done]));
+      expect(await runDetail()).toHaveTextContent('Finished');
+    });
+
     it('treats a run paused for approval as still going', async () => {
       ipc.listWorkflowRuns.mockResolvedValue([{ ...live, status: 'paused' as const }]);
       render(<WorkflowsPage onStatus={vi.fn()} />);

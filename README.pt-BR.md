@@ -48,7 +48,7 @@ guarda como um app pessoal que você abre em **Apps** na barra de navegação (u
 deles: ele chama a API do GitHub ao vivo, depois de perguntar uma vez por esse
 site.
 
-![A página Apps: três apps pessoais (Upstream watch, um timer Pomodoro e um conversor de unidades) e os apps iniciais que você pode adicionar](./docs/assets/screenshot-apps.png)
+![A página Apps: seis apps pessoais em cartões (Budget tracker, Snake, Weather dashboard, Pomodoro timer, Unit converter, Upstream watch), cada um com o que pode fazer](./docs/assets/screenshot-apps.png)
 
 Os apps pessoais podem fazer três coisas que uma página comum em um ambiente
 isolado não pode, cada uma declarada pela página e verificada pelo Conduit:
@@ -72,7 +72,7 @@ usar, e uma semana de registros de atividade de uma linha, nunca prompts,
 respostas ou valores salvos. Nove **apps iniciais** já vêm incluídos, de um
 timer Pomodoro a um painel do tempo ao vivo.
 
-![Uma página pedindo para usar o modelo de IA: o aviso nomeia o LM Studio e diz que ele roda neste dispositivo](./docs/assets/screenshot-llm-consent.png)
+![Um app pessoal pedindo para usar o modelo de IA: o aviso nomeia o OpenRouter, diz que o que a página escreve é enviado a ele e oferece Não permitir, Permitir desta vez e Sempre permitir](./docs/assets/screenshot-llm-consent.png)
 
 ### Slides
 
@@ -177,7 +177,7 @@ modelo rascunhá-lo, ou salve uma conversa como fluxo. Execute agora, em um hor�
 vez, o Conduit mostra tudo o que o fluxo poderá fazer por conta própria, para
 você aprovar, e uma execução que precisa de mais pausa e pergunta. Uma execução que está esperando por você continua depois que você reinicia o Conduit.
 
-![Um fluxo "Tauri blog digest" rascunhado a partir de uma descrição de uma linha: acompanha o feed do blog do Tauri, resume cada nova publicação com um modelo escolhido para essa etapa, salva um documento e avisa; abaixo, o que ele pode fazer sozinho e sua primeira execução de teste](./docs/assets/screenshot-workflows.png)
+![Um fluxo "Weekly Ferry team brief" na tela: duas páginas buscadas e resumidas lado a lado, depois combinadas, com todas as etapas concluídas; à direita, o resultado da última execução](./docs/assets/screenshot-workflows.png)
 
 Um fluxo abre como uma **tela**: um nó para cada etapa, com o status mostrado ao
 vivo enquanto ele roda. Também dá para editar na tela: adicione etapas por um
@@ -249,7 +249,7 @@ Memória como abas, e reabre na que você usou por último. `Ctrl+1` a `Ctrl+9`
 (`⌘` no macOS) levam às áreas (`Ctrl+/` mostra qual é qual), e a paleta de
 comandos (`Ctrl+K`) tem uma entrada "Ir para" para cada uma.
 
-![Início: o campo de pedido com atalhos para começar, duas sugestões de memória aguardando revisão, e os chats recentes e a apresentação do postmortem para retomar](./docs/assets/screenshot-home.png)
+![Início: o campo de pedido com atalhos para começar, duas sugestões de memória que precisam de você, um resultado recente de fluxo de trabalho, e a apresentação, o chat e o rascunho para retomar](./docs/assets/screenshot-home.png)
 
 ### Todos os modelos, e a web
 
@@ -267,7 +267,7 @@ pesquisa pelo Exa, que não precisa de chave, ou por um serviço à sua escolha
 uma chave. Listas de domínios permitidos e bloqueados a restringem, e as fontes
 aparecem junto com a resposta e no inspetor.
 
-![Uma resposta de busca na web sobre o Rust 1.90 com uma linha de pesquisa (6 fontes) e citações em linha, ligada de volta ao Ferry pela memória](./docs/assets/screenshot-search.png)
+![Uma resposta de busca na web sobre o Rust 1.90 com uma linha de pesquisa (6 fontes) e citações em linha](./docs/assets/screenshot-search.png)
 
 O **+** no campo de mensagem anexa arquivos (imagens e documentos) e adiciona
 busca na web, uma pasta do espaço de trabalho que o assistente pode ler e
@@ -380,7 +380,7 @@ Veja o [`CHANGELOG.md`](./CHANGELOG.md) para tudo o que muda em cada versão.
   em segundo plano e a instalação ao fechar são opcionais, e o Conduit nunca se
   reinicia sozinho.
 
-![Configurações → Privacidade e dados: o estado da fronteira de confiança, o modo somente local, onde as chaves ficam guardadas e os sites que as páginas podem sempre acessar](./docs/assets/screenshot-privacy.png)
+![Configurações → Privacidade e dados: o estado da fronteira de confiança, o modo somente local, a exportação de diagnósticos, onde as chaves ficam guardadas, os dados locais e as chaves de segurança dos artefatos](./docs/assets/screenshot-privacy.png)
 
 ## Situação
 

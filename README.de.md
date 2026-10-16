@@ -51,7 +51,7 @@ daneben enthält Details, Netzwerkzugriff und Starter-Apps), und sie
 funktioniert weiter, auch wenn Sie den Chat löschen. Das Dashboard oben ist eine solche App: Es ruft die GitHub-API live ab,
 nachdem es einmal für diese Website nachgefragt hat.
 
-![Die Apps-Seite: drei persönliche Apps (Upstream watch, ein Pomodoro-Timer und ein Einheitenumrechner) und die Starter-Apps, die Sie hinzufügen können](./docs/assets/screenshot-apps.png)
+![Die Apps-Seite: sechs persönliche Apps als Karten (Budget tracker, Snake, Weather dashboard, Pomodoro timer, Unit converter, Upstream watch), jeweils mit dem, was sie tun dürfen](./docs/assets/screenshot-apps.png)
 
 Persönliche Apps können drei Dinge, die eine einfache Seite in einer Sandbox
 nicht kann, jeweils von der Seite deklariert und von Conduit geprüft:
@@ -75,7 +75,7 @@ Websites und Anbieter, die sie nutzen darf, und eine Woche einzeiliger
 Aktivitätseinträge, nie Prompts, Antworten oder gespeicherte Werte. Neun
 **Starter-Apps** sind eingebaut, vom Pomodoro-Timer bis zum Live-Wetter-Dashboard.
 
-![Eine Seite, die um die Nutzung des KI-Modells bittet: Die Abfrage nennt LM Studio und sagt, dass es auf diesem Gerät läuft](./docs/assets/screenshot-llm-consent.png)
+![Eine persönliche App bittet um die Nutzung des KI-Modells: Die Abfrage nennt OpenRouter, sagt, dass die Eingaben der Seite dorthin gesendet werden, und bietet Nicht erlauben, Dieses Mal erlauben und Immer erlauben](./docs/assets/screenshot-llm-consent.png)
 
 ### Folien
 
@@ -192,7 +192,7 @@ der Workflow von selbst tun darf, und kann es freigeben; ein Durchlauf, der mehr
 braucht, hält an und fragt nach. Ein Durchlauf, der auf Sie wartet, läuft nach
 einem Neustart von Conduit weiter.
 
-![Ein Workflow „Tauri blog digest“, aus einer einzeiligen Beschreibung entworfen: Er beobachtet den Feed des Tauri-Blogs, fasst jeden neuen Beitrag mit einem für diesen Schritt gewählten Modell zusammen, speichert ein Dokument und benachrichtigt; darunter, was er allein tun darf, und sein erster Testlauf](./docs/assets/screenshot-workflows.png)
+![Ein Workflow „Weekly Ferry team brief“ auf der Arbeitsfläche: zwei Seiten werden nebeneinander abgerufen und zusammengefasst, dann zusammengeführt, jeder Schritt abgeschlossen; rechts das Ergebnis des letzten Laufs](./docs/assets/screenshot-workflows.png)
 
 Ein Workflow öffnet sich als **Zeichenfläche**: ein Knoten pro Schritt, dessen
 Status während des Laufs live angezeigt wird. Auch das Bearbeiten geht auf der
@@ -271,7 +271,7 @@ genutzt haben. `Ctrl+1` bis `Ctrl+9` (`⌘` unter macOS) springen zu den
 Bereichen (`Ctrl+/` zeigt, welcher welcher ist), und die Befehlspalette
 (`Ctrl+K`) hat zu jedem einen Eintrag „Gehe zu“.
 
-![Start: das Eingabefeld mit Schnellstarts, zwei Vorschläge für gespeicherte Fakten, die auf Prüfung warten, sowie letzte Chats und die Postmortem-Präsentation zum Weitermachen](./docs/assets/screenshot-home.png)
+![Start: das Eingabefeld mit Schnellstarts, zwei Vorschläge für gespeicherte Fakten, die Sie brauchen, ein frisches Workflow-Ergebnis sowie Präsentation, Chat und Entwurf zum Weitermachen](./docs/assets/screenshot-home.png)
 
 ### Jedes Modell und das Web
 
@@ -288,7 +288,7 @@ sucht über Exa, das keinen Schlüssel braucht, oder über einen Dienst Ihrer Wa
 einen Schlüssel zu holen. Listen erlaubter und gesperrter Domains grenzen sie
 ein, und Quellen werden mit der Antwort und im Inspektor angezeigt.
 
-![Eine Websuche-Antwort zu Rust 1.90 mit einer Suchzeile (6 Quellen) und Inline-Quellenangaben, über gespeicherte Fakten mit Ferry verknüpft](./docs/assets/screenshot-search.png)
+![Eine Websuche-Antwort zu Rust 1.90 mit einer Suchzeile (6 Quellen) und Inline-Quellenangaben](./docs/assets/screenshot-search.png)
 
 Das **+** im Eingabefeld hängt Dateien (Bilder und Dokumente) an und fügt
 Websuche, einen Arbeitsbereich-Ordner, den der Assistent lesen und bearbeiten
@@ -409,7 +409,7 @@ Siehe [`CHANGELOG.md`](./CHANGELOG.md) für alles, was in jeder Version enthalte
   Hintergrundsuche und Installation beim Beenden sind optional, und Conduit
   startet sich nie selbst neu.
 
-![Einstellungen → Datenschutz & Daten: der Status der Vertrauensgrenze, der Nur-lokal-Modus, wo Schlüssel gespeichert sind und die Websites, die Seiten immer kontaktieren dürfen](./docs/assets/screenshot-privacy.png)
+![Einstellungen → Datenschutz & Daten: der Status der Vertrauensgrenze, der Nur-lokal-Modus, der Diagnose-Export, wo Schlüssel gespeichert sind, lokale Daten und die Sicherheitsschalter für Artefakte](./docs/assets/screenshot-privacy.png)
 
 ## Status
 

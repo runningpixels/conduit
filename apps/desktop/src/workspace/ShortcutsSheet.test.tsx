@@ -22,8 +22,8 @@ describe('the hotkey registry', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('maps Mod+1…9 to the rail: Home, Chats, Slides, Writing, Apps, Inbox, Workflows, Agents, Context', () => {
-    const order = ['goHome', 'goChats', 'goSlides', 'goWriting', 'goApps', 'goInbox', 'goWorkflows', 'goAgents', 'goContext'];
+  it('maps Mod+1…9 to the rail: Home, Chats, Slides, Writing, Apps, Workflows, Inbox, Agents, Context', () => {
+    const order = ['goHome', 'goChats', 'goSlides', 'goWriting', 'goApps', 'goWorkflows', 'goInbox', 'goAgents', 'goContext'];
     order.forEach((id, i) => {
       expect(matchHotkey(new KeyboardEvent('keydown', { key: String(i + 1), ctrlKey: true }))?.id).toBe(id);
     });

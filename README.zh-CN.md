@@ -43,7 +43,7 @@ Rust 和 Tauri 开发。
 网络访问和入门应用）中打开它，即使删除了那段聊天，它也能继续使用。上面的仪表盘就是一个例子：它会实时调用
 GitHub API，并且只在首次访问该网站时询问一次。
 
-![应用页面：三个个人应用（上游动态、番茄钟和单位换算器），以及可以添加的入门应用](./docs/assets/screenshot-apps.png)
+![应用页面：六个个人应用以卡片显示（Budget tracker、Snake、Weather dashboard、Pomodoro timer、Unit converter、Upstream watch），每个都标明可以做什么](./docs/assets/screenshot-apps.png)
 
 个人应用可以做到三件沙箱里的普通网页做不到的事，每一件都由页面声明、由 Conduit
 检查：
@@ -62,7 +62,7 @@ GitHub API，并且只在首次访问该网站时询问一次。
 绝不包含提示词、回复或已保存的值。内置九个**入门应用**，从番茄钟到实时天气仪表盘
 一应俱全。
 
-![一个请求使用 AI 模型的页面：提示写明了 LM Studio，并说明它运行在这台设备上](./docs/assets/screenshot-llm-consent.png)
+![一个个人应用请求使用 AI 模型：提示写明了 OpenRouter，说明页面写入的内容会发送到那里，并提供“不允许”“仅本次允许”“始终允许”](./docs/assets/screenshot-llm-consent.png)
 
 ### 幻灯片
 
@@ -145,7 +145,7 @@ GitHub API，并且只在首次访问该网站时询问一次。
 首次开启自动运行时，会先列出该工作流被允许自行完成的所有操作，供你批准；需要更多
 权限的运行会暂停并询问。正在等你处理的运行，在你重启 Conduit 后会继续进行。
 
-![一个由一句话描述起草的“Tauri blog digest”工作流：它监视 Tauri 博客的订阅源，用为该步骤选定的模型总结每篇新文章，保存为文档并发出通知；下方是它可以自行执行的操作及第一次测试运行](./docs/assets/screenshot-workflows.png)
+![画布上的“Weekly Ferry team brief”工作流：两个页面并排抓取并总结，再合并，每个步骤均已完成；右侧是最近一次运行的结果](./docs/assets/screenshot-workflows.png)
 
 工作流以**画布**的形式打开：每个步骤是一个节点，运行时会实时显示其状态。在画布上也
 可以编辑：从菜单添加步骤，拖到合适的位置，再从一个步骤的输出连线到另一个步骤的
@@ -197,7 +197,7 @@ GitHub API，并且只在首次访问该网站时询问一次。
 区域（`Ctrl+/` 会列出哪个键对应哪个区域），命令面板（`Ctrl+K`）中每个区域也都有
 一个“前往”条目。
 
-![首页：带有快速开始的输入框、两条等待查看的记忆建议，以及可以继续的最近聊天和复盘演示文稿](./docs/assets/screenshot-home.png)
+![首页：带有快速开始的输入框、两条需要你处理的记忆建议、一条新的工作流结果，以及可以继续的演示文稿、聊天和草稿](./docs/assets/screenshot-home.png)
 
 ### 任意模型，以及网络
 
@@ -211,7 +211,7 @@ Fireworks AI、LM Studio、Ollama，或任何兼容 OpenAI 的接口。当聊天
 Brave 或你自己的 SearXNG）进行搜索，设置中还有获取密钥的链接。允许与屏蔽的域名
 列表可以缩小搜索范围，来源会显示在回答中以及检查器里。
 
-![一个关于 Rust 1.90 的网页搜索回答，带有搜索行（6 个来源）和内联引用，并通过记忆与 Ferry 关联起来](./docs/assets/screenshot-search.png)
+![一个关于 Rust 1.90 的网页搜索回答，带有搜索行（6 个来源）和内联引用](./docs/assets/screenshot-search.png)
 
 输入区里的 **+** 可以附加文件（图像和文档），并添加网页搜索、助手可读写的工作区
 文件夹、文档集合、技能和连接器提示词。一轮回复进行期间，你可以排队追加一条后续消息，或者打断并引导
@@ -301,7 +301,7 @@ Brave 或你自己的 SearXNG）进行搜索，设置中还有获取密钥的链
 - **没有遥测。** 更新检查需要主动开启，且仅发送 `Conduit-Updater/<version>`。
   默认仅手动检查；后台检查与退出时安装均需主动开启，且 Conduit 绝不会自行重启。
 
-![设置 → 隐私与数据：信任边界状态、仅本地模式、密钥的存放位置，以及页面可始终访问的网站](./docs/assets/screenshot-privacy.png)
+![设置 → 隐私与数据：信任边界状态、仅本地模式、诊断导出、密钥的存放位置、本地数据和构件安全开关](./docs/assets/screenshot-privacy.png)
 
 ## 状态
 

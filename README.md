@@ -46,7 +46,7 @@ you delete the chat.
 The dashboard above is one: it calls the GitHub API live, after asking once for
 that site.
 
-![The Apps page: three personal apps (Upstream watch, a Pomodoro timer and a unit converter), and the starter apps you can add](./docs/assets/screenshot-apps.png)
+![The Apps page: six personal apps as cards (Budget tracker, Snake, Weather dashboard, Pomodoro timer, Unit converter, Upstream watch), each showing what it may do](./docs/assets/screenshot-apps.png)
 
 Personal apps can do three things a plain page in a sandbox can't, each
 declared by the page and checked by Conduit:
@@ -66,7 +66,7 @@ the sites and providers it may use, and a week of one-line activity records,
 never prompts, replies or saved values. Nine **starter apps** come built in,
 from a Pomodoro timer to a live weather dashboard.
 
-![A page asking to use the AI model: the prompt names LM Studio and says it runs on this device](./docs/assets/screenshot-llm-consent.png)
+![A personal app asking to use the AI model: the prompt names OpenRouter, says what the page writes is sent there, and offers Don't allow, Allow this time or Always allow](./docs/assets/screenshot-llm-consent.png)
 
 ### Slides
 
@@ -168,7 +168,7 @@ automatic runs on first lists everything the workflow will be allowed to do on
 its own, for you to approve, and a run that needs more pauses and asks. A run
 that is waiting for you carries on after you restart Conduit.
 
-![A "Tauri blog digest" workflow drafted from a one-line description: it watches the Tauri blog feed, summarises each new post with a model chosen for that step, saves a document and notifies; below, what it may do on its own and its first test run](./docs/assets/screenshot-workflows.png)
+![A "Weekly Ferry team brief" workflow on the canvas: two pages fetched and summarised side by side, then combined, every step finished; on the right, the latest run's result](./docs/assets/screenshot-workflows.png)
 
 A workflow opens as a **canvas**: a node for each step, with its status shown
 live while it runs. Edit on the canvas too: add steps from a menu, drag them
@@ -233,7 +233,7 @@ reopens on the one you used last. `Ctrl+1` to `Ctrl+9` (`⌘` on macOS) jump to
 the areas (`Ctrl+/` lists which is which), and the command palette (`Ctrl+K`)
 has a "Go to" entry for each.
 
-![Home: the ask box with quick starts, two memory suggestions waiting for review, and recent chats and the postmortem deck to pick up](./docs/assets/screenshot-home.png)
+![Home: the ask box with quick starts, two memory suggestions that need you, a fresh workflow result, and the deck, chat and draft to pick up](./docs/assets/screenshot-home.png)
 
 ### Every model, and the web
 
@@ -249,7 +249,7 @@ Exa, which needs no key, or a service you choose (Tavily, Brave or your own
 SearXNG), with a link in Settings to get a key. Allowed and blocked domain lists
 narrow it, and sources show with the answer and in the inspector.
 
-![A web search answer about Rust 1.90 with a search row (6 sources) and inline citations, tied back to Ferry through memory](./docs/assets/screenshot-search.png)
+![A web search answer about Rust 1.90 with a search row (6 sources) and inline citations](./docs/assets/screenshot-search.png)
 
 The **+** in the composer attaches files (images and documents) and adds web
 search, a workspace folder the assistant can read and edit, document
@@ -352,7 +352,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
   `Conduit-Updater/<version>`. Checking is manual by default; background
   checking and install-on-quit are opt-in, and Conduit never restarts itself.
 
-![Settings → Privacy & data: the trust boundary status, local-only mode, where keys are stored, and the sites pages may always contact](./docs/assets/screenshot-privacy.png)
+![Settings → Privacy & data: the trust boundary status, local-only mode, diagnostics export, where keys are stored, local data, and the artifact security switches](./docs/assets/screenshot-privacy.png)
 
 ## Status
 

@@ -51,7 +51,7 @@ côté, contient les détails, l'accès réseau et les apps de départ), et elle
 continue de fonctionner après la suppression de la conversation. Le tableau de bord ci-dessus en est une : elle appelle l'API
 GitHub en direct, après avoir demandé une fois l'autorisation pour ce site.
 
-![La page Apps : trois apps personnelles (Upstream watch, un minuteur Pomodoro et un convertisseur d'unités), et les apps de départ que vous pouvez ajouter](./docs/assets/screenshot-apps.png)
+![La page Apps : six apps personnelles sous forme de cartes (Budget tracker, Snake, Weather dashboard, Pomodoro timer, Unit converter, Upstream watch), chacune avec ce qu’elle peut faire](./docs/assets/screenshot-apps.png)
 
 Les apps personnelles peuvent faire trois choses qu'une simple page cloisonnée
 ne peut pas, chacune déclarée par la page et vérifiée par Conduit :
@@ -76,7 +76,7 @@ d'une ligne, jamais les prompts, les réponses ni les valeurs enregistrées. Neu
 **apps de départ** sont fournies, d'un minuteur Pomodoro à un tableau de bord
 météo en direct.
 
-![Une page demandant à utiliser le modèle d'IA : la demande nomme LM Studio et indique qu'il s'exécute sur cet appareil](./docs/assets/screenshot-llm-consent.png)
+![Une app personnelle demandant à utiliser le modèle d'IA : la demande nomme OpenRouter, indique que ce que la page écrit lui est envoyé, et propose Ne pas autoriser, Autoriser cette fois ou Toujours autoriser](./docs/assets/screenshot-llm-consent.png)
 
 ### Présentations
 
@@ -198,7 +198,7 @@ activation des exécutions automatiques affiche tout ce que le flux sera autoris
 s'interrompt et demande. Une exécution qui attend votre réponse reprend après
 un redémarrage de Conduit.
 
-![Un flux « Tauri blog digest » rédigé à partir d’une description d’une ligne : il surveille le flux du blog Tauri, résume chaque nouvel article avec un modèle choisi pour cette étape, enregistre un document et prévient ; en dessous, ce qu’il peut faire seul et sa première exécution de test](./docs/assets/screenshot-workflows.png)
+![Un flux « Weekly Ferry team brief » sur le canevas : deux pages récupérées et résumées côte à côte, puis combinées, chaque étape terminée ; à droite, le résultat de la dernière exécution](./docs/assets/screenshot-workflows.png)
 
 Un flux s'ouvre sur un **canevas** : un nœud par étape, dont l'état s'affiche en
 direct pendant l'exécution. Vous pouvez aussi modifier sur le canevas : ajoutez
@@ -277,7 +277,7 @@ celui que vous avez utilisé en dernier. `Ctrl+1` à `Ctrl+9` (`⌘` sur macOS)
 mènent aux espaces (`Ctrl+/` indique lequel est lequel), et la palette de
 commandes (`Ctrl+K`) propose une entrée « Aller à » pour chacun.
 
-![Accueil : la zone de saisie avec des démarrages rapides, deux suggestions de mémoire en attente de revue, ainsi que les conversations récentes et la présentation du post-mortem à reprendre](./docs/assets/screenshot-home.png)
+![Accueil : la zone de saisie avec des démarrages rapides, deux suggestions de mémoire qui vous attendent, un résultat récent de flux de travail, ainsi que la présentation, la conversation et le brouillon à reprendre](./docs/assets/screenshot-home.png)
 
 ### Tous les modèles, et le web
 
@@ -296,7 +296,7 @@ dans les Réglages pour obtenir une clé. Des listes de domaines autorisés et
 bloqués la restreignent, et les sources s'affichent avec la réponse et dans
 l'inspecteur.
 
-![Une réponse de recherche web sur Rust 1.90 avec une ligne de recherche (6 sources) et des citations en ligne, reliée à Ferry par la mémoire](./docs/assets/screenshot-search.png)
+![Une réponse de recherche web sur Rust 1.90 avec une ligne de recherche (6 sources) et des citations en ligne](./docs/assets/screenshot-search.png)
 
 Le **+** de la zone de saisie joint des fichiers (images et documents) et ajoute
 la recherche web, un dossier de l'espace de travail que l'assistant peut lire et
@@ -419,7 +419,7 @@ Voir [`CHANGELOG.md`](./CHANGELOG.md) pour le détail de chaque version.
   manuelle ; la recherche en arrière-plan et l'installation à la fermeture sont
   facultatives, et Conduit ne redémarre jamais de lui-même.
 
-![Paramètres → Vie privée & données : l'état de la frontière de confiance, le mode local uniquement, l'endroit où les clés sont stockées et les sites que les pages peuvent toujours contacter](./docs/assets/screenshot-privacy.png)
+![Paramètres → Vie privée & données : l'état de la frontière de confiance, le mode local uniquement, l'export de diagnostics, l'endroit où les clés sont stockées, les données locales et les réglages de sécurité des artefacts](./docs/assets/screenshot-privacy.png)
 
 ## État
 

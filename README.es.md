@@ -48,7 +48,7 @@ conserva como una app personal que abres desde **Apps** en la barra de navegaci�
 arriba es una: llama a la API de GitHub en vivo, tras preguntar una vez por ese
 sitio.
 
-![La página Apps: tres apps personales (Upstream watch, un temporizador Pomodoro y un conversor de unidades) y las apps de inicio que puedes añadir](./docs/assets/screenshot-apps.png)
+![La página Apps: seis apps personales como tarjetas (Budget tracker, Snake, Weather dashboard, Pomodoro timer, Unit converter, Upstream watch), cada una con lo que puede hacer](./docs/assets/screenshot-apps.png)
 
 Las apps personales pueden hacer tres cosas que una página normal en un entorno
 aislado no puede, cada una declarada por la página y comprobada por Conduit:
@@ -72,7 +72,7 @@ proveedores que puede usar, y una semana de registros de actividad de una línea
 nunca prompts, respuestas ni valores guardados. Vienen nueve **apps de inicio**
 incluidas, desde un temporizador Pomodoro hasta un panel meteorológico en vivo.
 
-![Una página que pide usar el modelo de IA: el aviso nombra a LM Studio y dice que se ejecuta en este dispositivo](./docs/assets/screenshot-llm-consent.png)
+![Una app personal que pide usar el modelo de IA: el aviso nombra a OpenRouter, dice que lo que escribe la página se envía allí y ofrece No permitir, Permitir esta vez y Permitir siempre](./docs/assets/screenshot-llm-consent.png)
 
 ### Diapositivas
 
@@ -178,7 +178,7 @@ que el modelo lo redacte, o guarda un chat como flujo. Ejecútalo ahora, según 
 muestra todo lo que el flujo podrá hacer por su cuenta, para que lo apruebes, y
 una ejecución que necesita más se detiene y pregunta. Una ejecución que espera por ti continúa después de reiniciar Conduit.
 
-![Un flujo «Tauri blog digest» redactado a partir de una descripción de una línea: vigila el feed del blog de Tauri, resume cada publicación nueva con un modelo elegido para ese paso, guarda un documento y avisa; debajo, lo que puede hacer por su cuenta y su primera ejecución de prueba](./docs/assets/screenshot-workflows.png)
+![Un flujo «Weekly Ferry team brief» en el lienzo: dos páginas obtenidas y resumidas en paralelo, luego combinadas, con todos los pasos terminados; a la derecha, el resultado de la última ejecución](./docs/assets/screenshot-workflows.png)
 
 Un flujo se abre como un **lienzo**: un nodo por cada paso, con su estado en vivo
 mientras se ejecuta. También se edita en el lienzo: añade pasos desde un menú,
@@ -251,7 +251,7 @@ Memoria como pestañas, y se reabre en la que usaste por última vez. `Ctrl+1` a
 `Ctrl+9` (`⌘` en macOS) saltan a las áreas (`Ctrl+/` indica cuál es cuál), y la
 paleta de comandos (`Ctrl+K`) tiene una entrada «Ir a» para cada una.
 
-![Inicio: el campo de petición con inicios rápidos, dos sugerencias de memoria pendientes de revisión, y chats recientes y la presentación del postmortem para retomar](./docs/assets/screenshot-home.png)
+![Inicio: el campo de petición con inicios rápidos, dos sugerencias de memoria que requieren tu atención, un resultado reciente de un flujo, y la presentación, el chat y el borrador para retomar](./docs/assets/screenshot-home.png)
 
 ### Todos los modelos, y la web
 
@@ -269,7 +269,7 @@ modelo busca mediante Exa, que no necesita clave, o un servicio que elijas
 clave. Las listas de dominios permitidos y bloqueados la acotan, y las fuentes
 se muestran con la respuesta y en el inspector.
 
-![Una respuesta de búsqueda web sobre Rust 1.90 con una fila de búsqueda (6 fuentes) y citas en línea, vinculada con Ferry a través de la memoria](./docs/assets/screenshot-search.png)
+![Una respuesta de búsqueda web sobre Rust 1.90 con una fila de búsqueda (6 fuentes) y citas en línea](./docs/assets/screenshot-search.png)
 
 El **+** del campo de mensaje adjunta archivos (imágenes y documentos) y añade
 búsqueda web, una carpeta del espacio de trabajo que el asistente puede leer y
@@ -386,7 +386,7 @@ Consulta [`CHANGELOG.md`](./CHANGELOG.md) para ver todo lo incluido en cada vers
   comprobación en segundo plano y la instalación al cerrar son opcionales, y
   Conduit nunca se reinicia solo.
 
-![Configuración → Privacidad y datos: el estado de la frontera de confianza, el modo solo local, dónde se guardan las claves y los sitios con los que las páginas pueden contactar siempre](./docs/assets/screenshot-privacy.png)
+![Configuración → Privacidad y datos: el estado de la frontera de confianza, el modo solo local, la exportación de diagnósticos, dónde se guardan las claves, los datos locales y los interruptores de seguridad de los artefactos](./docs/assets/screenshot-privacy.png)
 
 ## Estado
 

@@ -40,7 +40,9 @@ open-source sync app built with Rust and Tauri.
 
 Ask for a tool and you get a working page: a dashboard, a converter, a tracker,
 a game. **Save as app** (in the page's ⋯ menu) keeps it as a personal app you
-open from **Apps** on the rail, and it keeps working after you delete the chat.
+open from **Apps** on the rail (a screen of your apps as cards; **Manage** beside
+it holds details, network access and starter apps), and it keeps working after
+you delete the chat.
 The dashboard above is one: it calls the GitHub API live, after asking once for
 that site.
 
@@ -61,7 +63,7 @@ Every personal app has its own **Settings** page: which model answers it, tokens
 per day with a daily limit for cloud models (100,000 by default; models on your
 computer are never limited), its saved data key by key with Export and Clear,
 the sites and providers it may use, and a week of one-line activity records,
-never prompts, replies or saved values. Eight **starter apps** come built in,
+never prompts, replies or saved values. Nine **starter apps** come built in,
 from a Pomodoro timer to a live weather dashboard.
 
 ![A page asking to use the AI model: the prompt names LM Studio and says it runs on this device](./docs/assets/screenshot-llm-consent.png)
@@ -160,11 +162,41 @@ a document, or suggest a memory.
 
 Start from a ready-made workflow, describe what you want in your own words and
 let the model draft it, or save a chat as a workflow. Run it now, on a schedule,
-or when a new post appears in a feed or a new file lands in its folder. Turning
+when a new post appears in a feed, when a new file lands in its folder, or when
+a connector's list shows something new, such as an issue or a message. Turning
 automatic runs on first lists everything the workflow will be allowed to do on
-its own, for you to approve, and a run that needs more pauses and asks.
+its own, for you to approve, and a run that needs more pauses and asks. A run
+that is waiting for you carries on after you restart Conduit.
 
 ![A "Tauri blog digest" workflow drafted from a one-line description: it watches the Tauri blog feed, summarises each new post with a model chosen for that step, saves a document and notifies; below, what it may do on its own and its first test run](./docs/assets/screenshot-workflows.png)
+
+A workflow opens as a **canvas**: a node for each step, with its status shown
+live while it runs. Edit on the canvas too: add steps from a menu, drag them
+into place, and draw a wire from one step's output to another step's input. The
+list view is still there if you prefer it. Steps can run side by side, split
+with an **If... otherwise** branch and come back together at a join, and a
+step can wait for any earlier step you choose. The **Runs** tab keeps every run
+with its step-by-step detail, and **Results** collects what each run saved
+(documents, decks, drafts, files). Unread results show up on Home and as a dot
+on the rail.
+
+**Agent steps** can use connector tools you pick and hand tasks to helpers,
+each with its own instructions, model, tools and token limit. A tool that
+changes something (send, post, edit) pauses the run and shows the exact call:
+send it, edit it first, or don't. You can let a workflow skip the question for
+actions you list; each one is removable. Everything waiting on you, across all
+workflows, is in the **Inbox**. The **Agents** page lists each agent and helper
+with what it is working on and its last 30 days of tasks and tokens.
+
+**Agents that use your computer** can run commands and change files in one
+folder you choose for the workflow. This is off until you turn it on in
+Settings → Computer and opt in per step. Each command asks first, unless a rule
+you wrote for that workflow covers it, and some commands always ask: deleting
+files, `git reset --hard`, force pushes and the like. Changes to files show as
+a diff. After an agent reads outside content such as a web page, your allow
+rules stop covering its commands for that run. On Windows, commands also run
+confined to that folder. Each workflow has a **Permissions** tab with its command
+rules, how often each was used, and rules suggested from commands you approved.
 
 ### MCP connectors
 
@@ -189,11 +221,17 @@ picker attaches a document to the next message.
 The app opens on **Home**. One box starts anything: ask for a deck and Slides
 opens with a storyline; anything else starts a chat. Below it, **Needs you**
 lists workflow approvals, workflow questions and memory suggestions waiting on
-you, **Pick up where
-you left off** shows your latest chats, decks and apps, and every area of the
-app sits in a tile with a live count, or an example to try while it is empty.
-`Ctrl+1` to `Ctrl+9` (`⌘` on macOS) jump to each area, and the command palette
-(`Ctrl+K`) has a "Go to" entry for each.
+you, **Fresh from your workflows** shows results you haven't opened, **Pick up
+where you left off** shows your latest chats, decks and apps, and every area of
+the app sits in a tile with a live count, or an example to try while it is
+empty.
+
+The rail on the left is grouped by purpose: Home; Chats, Slides and Writing;
+Apps and Manage; Workflows, Inbox and Agents; Context; and Settings at the
+bottom. **Context** holds Documents, Library, Connectors and Memory as tabs, and
+reopens on the one you used last. `Ctrl+1` to `Ctrl+9` (`⌘` on macOS) jump to
+the areas (`Ctrl+/` lists which is which), and the command palette (`Ctrl+K`)
+has a "Go to" entry for each.
 
 ![Home: the ask box with quick starts, two memory suggestions waiting for review, and recent chats and the postmortem deck to pick up](./docs/assets/screenshot-home.png)
 
@@ -274,6 +312,10 @@ dates, numbers and file sizes follow the language you pick.
   self-hosted endpoints, a compatible API or a LiteLLM proxy.
 - **First-run setup** covers language, theme, text size, local-only mode, key
   storage, update checks and diagnostics.
+- **First-run examples**: a new, empty profile starts with a live weather app, a
+  short deck, a couple of chats and a Morning briefing result to look at, in
+  your language. Each is marked "Example", needs no key, and **Settings →
+  Privacy & data → Remove all examples** deletes them.
 - **Ideas**: a page of things to try, each starting a chat with the prompt
   filled in, chosen on your device from what you've tried.
 - **Conversations** can be pinned, archived, filed in folders and exported; the
@@ -296,6 +338,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
   [`docs/architecture/foundation-contracts.md`](./docs/architecture/foundation-contracts.md).
 - **Everything asks first.** Each site a page wants to reach, each
   side-effecting tool call, each scheduled workflow's permissions, each
+  outside action and command a workflow agent wants to run, each
   provider that indexes your documents and the first billed image.
 - **Optional encryption at rest.** AES-256-GCM over attachment and artifact
   blobs and several database columns, with a master key wrapped in the OS
@@ -313,7 +356,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.10 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.12 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -341,13 +384,17 @@ left is checking it on real installs before calling it final.
 | Image generation (OpenAI, Gemini, OpenRouter) | Working |
 | MCP prompts and resources in the composer | Working |
 | One design in dark and light, with a main-colour setting | Working |
-| Workflows — ready-made, custom or drafted from a description; run now, on a schedule, or on a new feed post or file; a model per step; Research, Documents and read-only connector steps; with approval | Working |
-| Personal apps — save a page, eight starter apps, per-app storage, settings, model access and usage limits | Working |
+| Workflows — ready-made, custom or drafted from a description; run now, on a schedule, or on a new feed post, file or connector item; a model per step; Research, Documents and connector steps; with approval | Working |
+| Workflow canvas — live step status, editing on the canvas, branches, parallel steps and joins, Runs and Results tabs, runs that resume after a restart | Working |
+| Workflow agents — connector tools with approval, helpers, Inbox and Agents pages | Working |
+| Computer use — agents run commands and change files in a folder you choose, with approval, command rules and a Permissions tab | Working, off by default; commands are confined to the folder on Windows only |
+| Personal apps — save a page, nine starter apps, per-app storage, settings, model access and usage limits | Working |
+| First-run examples in a new profile | Working |
 | Slides — storyline, one live deck built from layout parts, charts drawn from data, a layout check after each change, Script, history, themes, presenter window | Working |
 | Slides export — HTML on every platform, PDF on Windows | Working |
-| Home — ask box, needs-you, pick up, area tiles, `Ctrl+1`…`9` navigation | Working |
+| Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.10 built, signed and published on all four targets; the updater itself is not yet verified by a real install |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.12 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

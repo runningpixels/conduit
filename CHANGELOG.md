@@ -7,6 +7,144 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.12] - 2026-10-15
+
+Workflows become something you can see and build on a canvas, and their agents
+can now act for you, with your approval, on connectors and on your computer.
+The app also gets a grouped navigation rail, example content for new profiles
+and a pass on readability.
+
+### Added
+
+- **Workflows on a canvas.** "How it's built" has a Canvas / List switch. The
+  canvas draws the start, each step, loops and the lines between them, and
+  each step shows its live status during a run: running, finished, failed,
+  skipped or waiting for you. Loops count their items ("8 of 8"). Selecting a
+  step shows its inputs and outputs.
+- **Edit a workflow on the canvas.** Add steps from a palette, drag them to
+  reorder or into a loop, and drag a wire from one step to another to pick
+  which output goes into which field. Steps with problems are marked, and
+  leaving with unsaved changes asks first.
+- **Branches, parallel steps and joins.** The new "If… otherwise" step sends
+  the run down a Yes or No path, and the path not taken is shown as "Not
+  taken". A step can wait for any earlier steps, and steps that don't depend
+  on each other run side by side (up to 4 at once). A "Runs after" control on
+  each step does the same without dragging. Existing workflows run as before.
+- **Results you can find.** Every finished run keeps what it saved, with a
+  preview. The workflow page opens on its latest result, a Results tab lists
+  them per workflow, and a Results toggle in the Workflows sidebar lists
+  everything, with unread dots and "Mark all as read". Home shows "Fresh from
+  your workflows", and a scheduled run's notification offers **Open**.
+- **Agents that act, with your approval.** When a workflow step wants to use a
+  connector tool that sends, posts or edits something, the run pauses and
+  shows the exact call. Choose **Send**, **Edit** and send, or **Don't send**,
+  or allow that action from now on in this workflow. "Outside actions" in the
+  Start panel turns asking on or off per workflow and lists what is allowed.
+  Agent steps can use up to 10 connector tools.
+- **Inbox.** Everything waiting for you across workflows is in one place.
+  The rail's Inbox shows a dot, and new requests raise a system notification.
+- **Agents that hand work to helpers.** A workflow can define helpers, each
+  with its own instructions, model, tools and token limit. An agent step
+  hands tasks to them and gets their answers back.
+- **An Agents page.** One card per agent step and helper, showing whether it
+  is working, its model, tools, computer use, hand-offs, and tasks, failures
+  and tokens over the last 30 days. Search, and filter by All, Working or
+  Helpers.
+- **Agents that use your computer.** Off by default, turned on in Settings →
+  Computer. A workflow's agent step or helper can opt in with "Use the
+  computer" and a folder you choose. It can then run commands, list, read and
+  search files, and write or edit files in that folder.
+  - Every command asks for approval unless one of the workflow's allow rules
+    covers it. Some commands always ask, such as deleting files, `git reset
+    --hard`, force pushes, system tools, shells and long or unusual commands.
+  - After the agent reads outside content, such as a web page or a connector
+    result, allow rules stop applying for the rest of that run.
+  - File changes show a diff and ask first, unless you let the workflow change
+    files freely in its folder.
+  - On Windows, commands run confined to the folder.
+  - Run details list every command and file change, who approved it, the exit
+    code and the output.
+- **Approval cards that explain themselves.** A command shows one line with
+  the agent's purpose and why it is asking. Risky commands get their own card
+  with **Don't run** as the main button and **Run anyway** beside it. "Run and
+  allow …" shows the rule it would add, and "So far in this run" lists what
+  the step already did.
+- **A Permissions tab on each workflow.** It shows the workflow's command
+  rules and how often each was used, the built-in list of commands that always
+  ask, and rules suggested from commands you approved in the last 10 runs.
+- **Connector triggers.** A workflow can start when a connector's read-only
+  list tool returns something new, checked every 15 to 1440 minutes. Each new
+  item starts a run, and its fields can be used in the steps.
+- **AI drafting covers more.** Drafts can now use branches, parallel steps,
+  your installed connectors and their tools, helpers and the computer. Anything
+  it invents, such as a connector you don't have, is removed and noted.
+- **A grouped navigation rail.** Home; Chats, Slides, Writing; Apps, Manage;
+  Workflows, Inbox, Agents; Context; Settings. The current place shows a solid
+  icon. Ctrl+1 to Ctrl+9 follow the rail.
+- **An Apps home screen.** Your apps as cards with name, category, last
+  opened, what the app does and whether it uses the internet or your model,
+  with search and a **New app** button. **Manage** keeps the previous Apps
+  page.
+- **Context.** Documents, Library, Connectors and Memory are tabs in one place
+  and reopen on the last tab you used.
+- **First-run examples.** A new profile starts with a World weather app, the
+  chat that built it, a chat with a plan for a rainy Saturday, an 8-slide
+  "How LLMs work" deck and a Morning briefing with a result waiting, in your
+  language and with no API key needed. They are marked "Example", and
+  Settings → Privacy & data → Remove all examples deletes them.
+
+### Changed
+
+- **A better Morning briefing starter.** It reads 8 stories matching a
+  "What I care about" input, follows each link, and saves a new dated briefing
+  each run, grouped by theme with a link, the site, a summary and "Why it
+  matters" for each story. It has a **Language** input.
+- **Workflows page rebuilt around the canvas.** An open workflow has a header
+  with Edit, a ··· menu and Run now, summary chips, and Steps, Runs and Results
+  tabs. While editing, a bar keeps the problems count, Edit as JSON, Cancel and
+  Save in view, and **+ Add a step** offers steps in four groups.
+- **Runs survive a restart.** A run waiting on Ask me, a review or an outside
+  action carries on after Conduit is closed and reopened, keeps its original
+  deadline, and doesn't repeat finished steps or send an action twice. Time
+  spent waiting for you no longer counts against a run's time limit.
+- **"Use this" on a starter you already have** offers **Open it** or **Make
+  another copy**.
+- **Readable type.** No text in the app is below 12px. Dark has brighter
+  secondary text and clearer cards. Light has a cooler background, white
+  cards, stronger lines and text, and an ink-blue rail. Labels are in sentence
+  case, status chips are clearer and disabled primary buttons are grey.
+- **One accent colour.** Slides, Writing, Apps and Workflows keep their own
+  colours on Home only.
+- **Page header bands with icons.** Each page title sits in a bordered band and
+  leads with its rail icon, and the rail runs up to the top of the window.
+- **Requests to OpenRouter are credited to conduitllm.com** instead of
+  conduit.app. Usage from older versions stays credited to conduit.app.
+- A profile opened with this version can't be opened by an older build.
+
+### Fixed
+
+- **The workflow canvas no longer stays on "Running…"** after a run has ended.
+- **The slide strip uses the app's thin scrollbar.**
+- **Links in a workflow's document work.** They ask first, then open in your
+  browser.
+- **Markdown shows links and code inside bold and italic text** instead of raw
+  characters.
+- **A branch answering "no" no longer makes the run read as "Nothing new"**,
+  and a stopped run is no longer titled "Failed".
+- **Choosing Don't send on an outside action stops the run** with a reason
+  instead of failing it.
+- **The Start node shows an outline when selected**, like other steps.
+- **Onboarding turns local-only mode off** when you pick a cloud provider, so
+  chat and the weather app work straight away.
+- **The "Summarize a page" starter cites the page it read.**
+
+### Security
+
+- **Updated rustls to 0.23.46**, which addresses four advisories: debug output
+  that could expose TLS session secrets, data leaking when a server rejects
+  ECH, a large memory allocation before a certificate is verified, and a
+  key-exchange downgrade in the server's reply.
+
 ## [1.0.0-rc.11] - 2026-10-10
 
 Pages can now reach the web like real websites, chats can read pages you name,
@@ -1190,7 +1328,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.11...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.12...HEAD
+[1.0.0-rc.12]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.11...v1.0.0-rc.12
 [1.0.0-rc.11]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.10...v1.0.0-rc.11
 [1.0.0-rc.10]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.9...v1.0.0-rc.10
 [1.0.0-rc.9]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.8...v1.0.0-rc.9

@@ -204,7 +204,7 @@ ${scaffold}`));
   );
 
   return (
-    <PageFrame title={t('slides.page.title')} subtitle={t('slides.page.subtitle')} className="slides-page">
+    <PageFrame destination="slides" title={t('slides.page.title')} subtitle={t('slides.page.subtitle')} className="slides-page">
       {loadError && (
         <p className="slides-error" role="alert">
           {loadError}

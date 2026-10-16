@@ -42,7 +42,7 @@
 }
 .wfc-start { border-style: dashed; background: var(--card-hi); }
 .wfc-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.wfc-kind { font-size: var(--fs-xl); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+.wfc-kind { font-size: var(--fs-xl); font-weight: 600; letter-spacing: .01em; text-transform: none; color: var(--ink-2); }
 .wfc-line {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -63,8 +63,8 @@
 .wfc-status-failed { color: var(--err); }
 .wfc-status-stopped,
 .wfc-status-skipped,
-.wfc-status-reused { color: var(--ink-3); }
-.wfc-status-not-taken { color: var(--ink-3); }
+.wfc-status-reused { color: var(--ink-2); font-weight: var(--muted-weight); }
+.wfc-status-not-taken { color: var(--ink-2); font-weight: var(--muted-weight); }
 
 .wfc-step:hover { border-color: var(--line-hi); }
 .wfc-step.is-selected,
@@ -173,7 +173,7 @@
 }
 /* The drawing is wider than the canvas: where the rest is. */
 .wfc-canvas .wfc-wide-hint { margin: var(--sp-3); padding: 6px 10px; border-radius: var(--r-sm); background: var(--card); border: 1px solid var(--line); color: var(--ink-2); font-size: var(--fs-xl); pointer-events: none; }
-.wfc-hint { position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 5; margin: 0; padding: 6px 10px; border-radius: var(--r-sm); background: var(--card); color: var(--ink-3); font-size: var(--fs-xl); pointer-events: none; }
+.wfc-hint { position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 5; margin: 0; padding: 6px 10px; border-radius: var(--r-sm); background: var(--card); color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); pointer-events: none; }
 .wfc-empty { margin: 0; color: var(--ink-2); font-size: var(--fs-5xl); }
 .wfc-inspect { display: flex; flex-direction: column; gap: var(--sp-2); }
 .wfc-inspect-line { margin: 0; font-size: var(--fs-8xl); line-height: 1.45; }

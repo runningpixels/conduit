@@ -31,8 +31,8 @@ export const DEFAULT_ACCENT: Record<AccentMode, string> = { dark: '#ff7a59', lig
 /** Every surface text can sit on, per mode: --bg, --bg-side, --card, --card-hi.
  *  accent.test.ts checks these against tokens.css so they cannot drift. */
 export const ACCENT_SURFACES: Record<AccentMode, readonly string[]> = {
-  dark: ['#0b0d12', '#10131a', '#11141b', '#161a23'],
-  light: ['#f6f6f8', '#eff0f4', '#ffffff', '#f1f2f5'],
+  dark: ['#0b0d12', '#11141c', '#151925', '#1a1f2c'],
+  light: ['#eef0f8', '#e6e9f5', '#ffffff', '#f4f5fc'],
 };
 
 /** Curated choices per mode, default first. Each is valid in its mode

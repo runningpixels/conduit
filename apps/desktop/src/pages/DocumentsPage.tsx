@@ -110,6 +110,7 @@ export function DocumentsPage({
 
   return (
     <PageFrame
+      destination="documents"
       className="docs-page"
       title={t('shell.documentsSheet.heading')}
       subtitle={t('shell.documentsPage.subtitle')}

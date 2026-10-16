@@ -200,9 +200,30 @@ describe.each(Object.entries(MODES))('%s mode', (_mode, layers) => {
   it.each(surfaces)('--signal-text clears AA on --%s', (_s, bg) => {
     expect(contrast(resolve(layers, 'signal-text'), bg)).toBeGreaterThanOrEqual(AA);
   });
-  // Rail labels are ink on --bg-rail.
-  it.each(INKS)('--%s clears AA on --bg-rail', (ink) => {
+  // The rail has its own ink (`.rail` remaps the ramp to these): in light
+  // mode it is ink-blue, so the page's dark ink would vanish on it.
+  it.each(['rail-ink', 'rail-ink-2', 'rail-ink-3'])('--%s clears AA on --bg-rail', (ink) => {
     expect(contrast(resolve(layers, ink), resolve(layers, 'bg-rail'))).toBeGreaterThanOrEqual(AA);
+  });
+  it('--rail-hover keeps rail ink legible', () => {
+    expect(contrast(resolve(layers, 'rail-ink-3'), resolve(layers, 'rail-hover'))).toBeGreaterThanOrEqual(AA);
+  });
+  // Supporting text is mostly small (12–13px: timestamps, counts, labels), so
+  // the two quieter steps are held to 7:1, not 4.5:1, on every surface. At
+  // 4.5:1 the dimmest step read as hard to read in dark mode (2026-10).
+  it.each((['ink-2', 'ink-3'] as const).flatMap((ink) => SURFACES.map((s) => [ink, s] as const)))(
+    '--%s on --%s clears 7:1 for small text',
+    (ink, surface) => {
+      expect(contrast(resolve(layers, ink), resolve(layers, surface))).toBeGreaterThanOrEqual(7);
+    },
+  );
+  // One colour per area (icons, tiles, labels): legible as text on every surface.
+  it.each(
+    (['area-chats', 'area-slides', 'area-writing', 'area-apps', 'area-workflows', 'area-research'] as const).flatMap(
+      (a) => SURFACES.map((s) => [a, s] as const),
+    ),
+  )('--%s clears AA on --%s', (area, surface) => {
+    expect(contrast(resolve(layers, area), resolve(layers, surface))).toBeGreaterThanOrEqual(AA);
   });
 });
 

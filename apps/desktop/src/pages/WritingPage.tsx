@@ -113,7 +113,7 @@ export function WritingPage({ onOpenDraft, onStartDraft, onStatus, refreshKey = 
   };
 
   return (
-    <PageFrame title={t('writing.page.title')} subtitle={t('writing.page.subtitle')} className="writing-page">
+    <PageFrame destination="writing" title={t('writing.page.title')} subtitle={t('writing.page.subtitle')} className="writing-page">
       {loadError && (
         <p className="slides-error" role="alert">
           {loadError}

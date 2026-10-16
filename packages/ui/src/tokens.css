@@ -117,13 +117,13 @@
    * column / panel / sheet-nav surface, --bg-rail the navigation rail. */
   --bg: #0b0d12;
   --bg-rail: #07090d;
-  --bg-side: #10131a;
-  --card: #11141b;
-  --card-hi: #161a23;
-  --line: #1c2130;
-  --line-soft: #161a24;
+  --bg-side: #11141c;
+  --card: #151925;
+  --card-hi: #1a1f2c;
+  --line: #262c3d;
+  --line-soft: #1c2130;
   /* Raised border weight: control borders, and a hovered or active edge. */
-  --line-hi: #262c3c;
+  --line-hi: #333a4e;
   /* Text-field and dropdown border. --line is for dividers; a field needs a
    * boundary that reads at 3:1 against every surface (WCAG 1.4.11). Mixed from
    * --ink-3 and --bg so one declaration serves both modes;
@@ -132,14 +132,14 @@
   /* Three-step ink ramp. Every step clears AA (4.5:1) on every surface,
    * including --card-hi, and each step is a perceptible jump (>1.4:1) from the
    * next; tokenContrast.test.ts asserts both. */
-  --ink: #e8eaf0;
-  --ink-2: #b8becc;
-  --ink-3: #8990a2;
+  --ink: #f3f5f9;
+  --ink-2: #c9cdd5;
+  --ink-3: #a4aab6;
   --shade: rgba(0,0,0,.55);
   /* Summoned overlays and floating panels. */
   --lift: 0 30px 80px rgba(0,0,0,.45);
   /* Resting cards and the composer: a hairline ring, no drop. */
-  --soft-lift: 0 0 0 1px #1c2130;
+  --soft-lift: 0 0 0 1px #262c3d;
   --ok: #7cffb2;
   --ok-soft: rgba(124,255,178,.12);
   --warn: #febc2e;
@@ -170,6 +170,25 @@
   /* Signal: running and in-progress state, the far end of the activity line. */
   --signal: #7cc4ff;
   --signal-text: #7cc4ff;
+  /* The navigation rail's own ink (design polish 2026-10): in light mode the
+   * rail is deep ink-blue, so it carries light text of its own; .rail remaps
+   * the ink ramp to these. tokenContrast.test.ts checks them on --bg-rail. */
+  --rail-ink: #f3f5f9;
+  --rail-ink-2: #c9cdd5;
+  --rail-ink-3: #a4aab6;
+  --rail-hover: #1a1f2c;
+  /* One colour per area, on Home's tiles and cards, where items of different
+   * kinds sit side by side (not on the rail or page titles: there the accent
+   * alone marks where you are). The accent
+   * stays the colour of actions and selection. Each clears AA as text. */
+  --area-chats: #9b9dff;
+  --area-slides: #f5b14c;
+  --area-writing: #4fd1c5;
+  --area-apps: #f472b6;
+  --area-workflows: #6ee7a0;
+  --area-research: #7cc4ff;
+  /* Muted text a step heavier on dark, where thin grey letters blur. */
+  --muted-weight: 450;
   /* Progress tracks and segmented-control grounds. */
   --track: #171b25;
   /* Text fields and the user's message bubble. */
@@ -232,25 +251,28 @@
   --space-24: 28px;
   --space-32: 38px;
 
-  /* ── Scale tokens: typography ── */
-  --fs-xs: 10px;
-  --fs-sm: 10.5px;
-  --fs-md: 11px;
-  --fs-lg: 11.5px;
-  --fs-xl: 12px;
-  --fs-2xl: 12.5px;
-  --fs-3xl: 13px;
-  --fs-4xl: 13.5px;
-  --fs-5xl: 14px;
-  --fs-6xl: 14.5px;
-  --fs-8xl: 16px;
-  --fs-9xl: 18px;
-  --fs-10xl: 20px;
-  --fs-7xl: 25px;
-  --fs-display: 25px;
+  /* ── Scale tokens: typography ──
+   * Every size follows --fs-scale (Settings → Appearance → UI font size, set
+   * on <html>), and nothing a person reads is under 12px, even at Compact:
+   * typeScale.test.ts holds both. */
+  --fs-xs: max(12px, calc(12px * var(--fs-scale)));
+  --fs-sm: max(12px, calc(12px * var(--fs-scale)));
+  --fs-md: max(12px, calc(12px * var(--fs-scale)));
+  --fs-lg: max(12px, calc(12.5px * var(--fs-scale)));
+  --fs-xl: max(12px, calc(12.5px * var(--fs-scale)));
+  --fs-2xl: max(12px, calc(13px * var(--fs-scale)));
+  --fs-3xl: max(12px, calc(13px * var(--fs-scale)));
+  --fs-4xl: calc(13.5px * var(--fs-scale));
+  --fs-5xl: calc(14px * var(--fs-scale));
+  --fs-6xl: calc(14.5px * var(--fs-scale));
+  --fs-8xl: calc(16px * var(--fs-scale));
+  --fs-9xl: calc(18px * var(--fs-scale));
+  --fs-10xl: calc(20px * var(--fs-scale));
+  --fs-7xl: calc(25px * var(--fs-scale));
+  --fs-display: calc(25px * var(--fs-scale));
   /* One step above --fs-display, for the empty-thread greeting only (spec §7).
    * Set at 400, not 600: at this size weight would read as shouting. */
-  --fs-hero: 32px;
+  --fs-hero: calc(32px * var(--fs-scale));
 
   /* ── Scale tokens: line-height ── */
   --leading-tight: 1.25;
@@ -292,10 +314,10 @@
    * named so components reference a scale instead of literals. (These were
    * the look axis's retargetable set; ADR-011 retired the looks.)
    *
-   * Two extra steps below the type scale, for the few 9–9.5px micro labels
-   * that previously spelled their size out. */
-  --fs-3xs: 9px;
-  --fs-2xs: 9.5px;
+   * Two names kept for the few micro labels (badge counts) that spelled
+   * their size out; both now sit at the 12px floor. */
+  --fs-3xs: max(12px, calc(12px * var(--fs-scale)));
+  --fs-2xs: max(12px, calc(12px * var(--fs-scale)));
   /* Small radii that sat below --r-xs as literals (inline code, marks,
    * progress bars, kbd). Numbered by value, unlike the space scale. */
   --r-1: 1px;
@@ -392,21 +414,21 @@ html[lang^="zh-CN"] {
  * is the *darkest* one — --bg-side — which is what the ink and status values
  * below are solved against. */
 [data-theme="light"] {
-  --bg: #f6f6f8;
-  --bg-rail: #e2e4ea;
-  --bg-side: #eff0f4;
+  --bg: #eef0f8;
+  --bg-rail: #1d1b45;
+  --bg-side: #e6e9f5;
   --card: #ffffff;
-  --card-hi: #f1f2f5;
-  --line: #e1e3ea;
-  --line-soft: #eeeff3;
-  --line-hi: #dadce3;
-  --ink: #16181d;
-  --ink-2: #3a3f4a;
-  --ink-3: #5f6573;
+  --card-hi: #f4f5fc;
+  --line: #cfd3e4;
+  --line-soft: #e2e5f1;
+  --line-hi: #bfc4da;
+  --ink: #14161c;
+  --ink-2: #31343c;
+  --ink-3: #484c56;
   --shade: rgba(20,22,40,.3);
   --lift: 0 1px 2px rgba(20,22,40,.05), 0 30px 70px rgba(20,22,40,.14);
-  --soft-lift: 0 1px 2px rgba(20,22,40,.06), 0 6px 20px rgba(20,22,40,.06);
-  --ok: #137a3a;
+  --soft-lift: 0 1px 2px rgba(30,32,90,.06), 0 6px 18px rgba(30,32,90,.07);
+  --ok: #127638;
   --ok-soft: #e3f6ea;
   /* The dark block's amber fails as text on light surfaces; this one is the
    * legible status colour. */
@@ -420,12 +442,23 @@ html[lang^="zh-CN"] {
   --accent: #4b4ded;
   --accent-text: #2a2aa8;
   --on-accent: #ffffff;
-  --accent-soft: #eef0ff;
-  --accent-line: #c9ccf5;
+  --accent-soft: #e2e4ff;
+  --accent-line: #b3b7f5;
   --glow-color: rgba(75,77,237,.10);
   --signal: #1f86e8;
   --signal-text: #1767b8;
-  --track: #eeeff3;
+  --rail-ink: #ffffff;
+  --rail-ink-2: #e3e4fb;
+  --rail-ink-3: #c7c9f2;
+  --rail-hover: #2b2965;
+  --area-chats: #4b4ded;
+  --area-slides: #a74d08;
+  --area-writing: #0f746c;
+  --area-apps: #be185d;
+  --area-workflows: #147739;
+  --area-research: #1767b8;
+  --muted-weight: 400;
+  --track: #e6e9f5;
   --field-bg: #ffffff;
   --bubble: #ffffff;
   --on-hue: var(--on-accent);
@@ -464,11 +497,11 @@ html[lang^="zh-CN"] {
    --bg-side, so light mode needs no separate --hue-text: the identity value is
    already legible as text there, and --hue-text aliases it. */
 [data-theme="light"] [data-provider="anthropic"],
-[data-theme="light"][data-provider="anthropic"] { --provider-hue: #b04f2b; --provider-hue-text: #b04f2b; --provider-hue-solid: #bd5836; --provider-hue-weak: color-mix(in srgb, #b04f2b 14%, transparent); --provider-hue-weak-solid: rgba(176, 79, 43, .14); }
+[data-theme="light"][data-provider="anthropic"] { --provider-hue: #a94c29; --provider-hue-text: #a94c29; --provider-hue-solid: #bd5836; --provider-hue-weak: color-mix(in srgb, #a94c29 14%, transparent); --provider-hue-weak-solid: rgba(176, 79, 43, .14); }
 [data-theme="light"] [data-provider="openai"],
-[data-theme="light"][data-provider="openai"]    { --provider-hue: #0a7a5e; --provider-hue-text: #0a7a5e; --provider-hue-solid: #0d8667; --provider-hue-weak: color-mix(in srgb, #0a7a5e 14%, transparent); --provider-hue-weak-solid: rgba(10, 122, 94, .14); }
+[data-theme="light"][data-provider="openai"]    { --provider-hue: #0a765b; --provider-hue-text: #0a765b; --provider-hue-solid: #0d8667; --provider-hue-weak: color-mix(in srgb, #0a765b 14%, transparent); --provider-hue-weak-solid: rgba(10, 122, 94, .14); }
 [data-theme="light"] [data-provider="ollama"],
-[data-theme="light"][data-provider="ollama"]    { --provider-hue: #6b6b78; --provider-hue-text: #6b6b78; --provider-hue-solid: #757582; --provider-hue-weak: color-mix(in srgb, #6b6b78 16%, transparent); --provider-hue-weak-solid: rgba(107, 107, 120, .16); }
+[data-theme="light"][data-provider="ollama"]    { --provider-hue: #676773; --provider-hue-text: #676773; --provider-hue-solid: #757582; --provider-hue-weak: color-mix(in srgb, #676773 16%, transparent); --provider-hue-weak-solid: rgba(107, 107, 120, .16); }
 [data-theme="light"] [data-provider="custom"],
 [data-theme="light"][data-provider="custom"]    { --provider-hue: #4d59da; --provider-hue-text: #4d59da; --provider-hue-solid: #5a6ae7; --provider-hue-weak: color-mix(in srgb, #4d59da 14%, transparent); --provider-hue-weak-solid: rgba(77, 89, 218, .14); }
 
@@ -564,7 +597,7 @@ html, body { height: 100%; }
 body {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: calc(var(--fs-4xl) * var(--fs-scale, 1));
+  font-size: var(--fs-4xl);
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -662,6 +695,9 @@ textarea:focus-visible { outline: none; border-color: var(--ink-2); }
 .btn.primary:hover { background: var(--hue); filter: brightness(1.08); }
 .btn.ghost { background: transparent; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
+/* A disabled primary reads as disabled, not as a faded accent. */
+.btn.primary:disabled,
+.btn.primary[aria-disabled="true"] { background: var(--track); color: var(--ink-3); border-color: transparent; opacity: 1; filter: none; }
 .btn.danger {
   background: color-mix(in srgb, var(--err) 16%, var(--card));
   color: var(--err);
@@ -691,9 +727,9 @@ textarea:focus-visible { outline: none; border-color: var(--ink-2); }
 /* Pill (tool status) — .pill.ran/.hold/.local */
 .pill {
   margin-left: auto;
-  font: 600 var(--fs-xs)/1 var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  font: 600 var(--fs-xs)/1 var(--font-ui);
+  text-transform: none;
+  letter-spacing: .01em;
   padding: var(--space-4) var(--space-7);
   border-radius: var(--r-pill);
   white-space: nowrap;
@@ -706,11 +742,11 @@ textarea:focus-visible { outline: none; border-color: var(--ink-2); }
 
 /* StatusPill — .status-pill.ok/.warn/.bad */
 .status-pill {
-  font: 600 var(--fs-xs)/1 var(--font-mono);
+  font: 600 var(--fs-xs)/1 var(--font-ui);
   padding: var(--space-3) var(--space-6);
   border-radius: var(--r-pill);
-  text-transform: uppercase;
-  letter-spacing: .03em;
+  text-transform: none;
+  letter-spacing: .01em;
   flex: none;
 }
 .status-pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }

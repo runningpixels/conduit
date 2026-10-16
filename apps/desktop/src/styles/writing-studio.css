@@ -46,7 +46,7 @@
   line-height: 1.5;
   white-space: pre-wrap;
 }
-.writing-brief-label { margin-right: var(--sp-2); color: var(--ink-3); font-weight: 600; }
+.writing-brief-label { margin-right: var(--sp-2); color: var(--ink-2); font-weight: 600; }
 
 .outline-editor {
   display: grid;
@@ -63,7 +63,7 @@
 .outline-title { margin: 0; font-size: var(--fs-9xl); font-weight: 600; }
 .outline-editor[data-variant="dock"] .outline-title { font-size: var(--fs-5xl); }
 .outline-hint,
-.outline-empty { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); line-height: 1.5; }
+.outline-empty { margin: 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-2xl); line-height: 1.5; }
 .outline-list { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
 .outline-row { display: flex; align-items: flex-start; gap: var(--sp-2); }
 .outline-num {
@@ -246,7 +246,7 @@
   font-size: var(--fs-2xl);
 }
 .draft-selection-input:focus { border-color: var(--accent); outline: none; }
-.draft-selection-note { flex: 1 0 100%; padding: 2px 8px 2px; color: var(--ink-3); font-size: var(--fs-md); }
+.draft-selection-note { flex: 1 0 100%; padding: 2px 8px 2px; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-md); }
 
 /* ── Sources tab ──────────────────────────────────────────────────────── */
 .deck-dock-panel > .draft-sources { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -269,5 +269,5 @@
 .draft-sources-row[data-disabled="true"]:hover { background: transparent; }
 .draft-sources-row input { margin: 0; accent-color: var(--accent); }
 .draft-sources-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-2xl); font-weight: 500; }
-.draft-sources-meta { grid-column: 2; color: var(--ink-3); font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
-.draft-sources-note { margin: 0; padding: 0 var(--sp-2); color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.5; }
+.draft-sources-meta { grid-column: 2; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.draft-sources-note { margin: 0; padding: 0 var(--sp-2); color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); line-height: 1.5; }

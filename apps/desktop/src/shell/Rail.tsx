@@ -92,7 +92,7 @@ export const RAIL_BANDS: ReadonlyArray<{ id: string; items: readonly Destination
   { id: 'top', items: ['home'] },
   { id: 'make', items: ['chats', 'slides', 'writing'] },
   { id: 'apps', items: ['apps', 'manage'] },
-  { id: 'automate', items: ['inbox', 'workflows', 'agents'] },
+  { id: 'automate', items: ['workflows', 'inbox', 'agents'] },
   { id: 'context', items: ['context'] },
 ];
 
@@ -117,6 +117,11 @@ const ICONS: Record<Destination, ReactNode> = {
   ideas: <IdeaIcon />,
   settings: <SettingsIcon />,
 };
+
+/** A destination's outline icon, as the rail shows it (the page header repeats it). */
+export function destinationIcon(d: Destination): ReactNode {
+  return ICONS[d];
+}
 
 /** The solid icon each rail button shows while it is where you are. */
 const SOLID_ICONS: Partial<Record<Destination, ReactNode>> = {

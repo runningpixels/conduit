@@ -11,7 +11,7 @@
 .wf-detail .grp,
 .wf-edit .grp { margin-bottom: 0; }
 
-.wf-muted { margin: 0; color: var(--ink-3); font-size: var(--fs-5xl); }
+.wf-muted { margin: 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-5xl); }
 
 .wf-steps { margin: 0; padding-left: 1.4em; display: grid; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-5xl); }
 .wf-steps .wf-steps { margin-top: var(--sp-2); }
@@ -67,18 +67,19 @@
 .wf-step-meta:empty { display: none; }
 .wf-step-meta > span { min-width: 0; overflow-wrap: anywhere; }
 
-.wf-status { min-width: 6.5em; font-size: var(--fs-5xl); }
-.wf-status-completed { color: var(--ok); }
-.wf-status-failed { color: var(--err); }
-.wf-status-running { color: var(--warn); }
-.wf-status-stopped { color: var(--ink-3); }
-.wf-status-paused { color: var(--warn); }
-.wf-status-reused { color: var(--ink-3); }
-.wf-status-skipped { color: var(--ink-3); }
-.wf-status-not-taken { color: var(--ink-3); }
+/* A run's status word is a small filled chip, tinted by outcome. */
+.wf-status { flex: none; padding: 1px 8px; border-radius: var(--r-pill); background: var(--track); color: var(--ink-2); font-size: var(--fs-xl); font-weight: 600; white-space: nowrap; }
+.wf-status-completed { background: var(--ok-soft); color: var(--ok); }
+.wf-status-failed { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+.wf-status-running { background: color-mix(in srgb, var(--signal) 14%, transparent); color: var(--signal-text); }
+.wf-status-stopped { color: var(--ink-2); }
+.wf-status-paused { background: var(--warn-soft); color: var(--warn); }
+.wf-status-reused { color: var(--ink-2); }
+.wf-status-skipped { color: var(--ink-2); }
+.wf-status-not-taken { color: var(--ink-2); }
 .wf-rerun { margin: var(--sp-2) 10px 0; }
 
-.wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-3); font-size: var(--fs-3xl); }
+.wf-io-label { margin: var(--sp-2) 10px 2px; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-3xl); }
 .wf-io {
   margin: 0 10px;
   padding: var(--sp-2) var(--sp-3);

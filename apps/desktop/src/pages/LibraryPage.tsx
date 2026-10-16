@@ -85,6 +85,7 @@ export function LibraryPage({
 
   const frame: LibraryFrame = ({ actions, listHeader, list, detail }) => (
     <PageFrame
+      destination="library"
       className="library-page"
       title={t('shell.library.heading')}
       subtitle={tab === 'prompts' ? t('shell.settingsSheet.prompts.intro') : tr('shell.settingsSheet.skills.intro')}

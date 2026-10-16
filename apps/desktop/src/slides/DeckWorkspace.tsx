@@ -384,7 +384,7 @@ export function DeckWorkspace({
             <div className="deck-slides" data-script={scriptBeside ? 'open' : undefined}>
               <ul
                 ref={stripRef}
-                className="deck-strip"
+                className="deck-strip scroll"
                 data-busy={busy ? 'true' : undefined}
                 aria-label={t('slides.strip.label')}
               >

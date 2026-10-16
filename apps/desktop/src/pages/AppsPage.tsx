@@ -167,7 +167,7 @@ export function AppsPage({
   }
 
   return (
-    <PageFrame title={t('apps.page.title')} subtitle={t('apps.page.subtitle')} className="apps-page">
+    <PageFrame destination="manage" title={t('apps.page.title')} subtitle={t('apps.page.subtitle')} className="apps-page">
       {loadError && (
         <p className="apps-error" role="alert">
           {loadError}

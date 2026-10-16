@@ -10,6 +10,7 @@
 
 import { useId, useState, type ReactNode } from 'react';
 import { useT } from '../i18n';
+import { destinationIcon, type Destination } from './Rail';
 
 export interface PageFrameProps {
   title: string;
@@ -29,6 +30,8 @@ export interface PageFrameProps {
   children: ReactNode;
   /** Extra class on the root, for page-specific rules. */
   className?: string;
+  /** The rail destination this page is: its icon leads the title. */
+  destination?: Destination;
 }
 
 export function PageFrame({
@@ -41,6 +44,7 @@ export function PageFrame({
   listHeader,
   children,
   className,
+  destination,
 }: PageFrameProps) {
   const t = useT();
   const headingId = useId();
@@ -51,6 +55,11 @@ export function PageFrame({
       <header className="page-head">
         <div className="page-head-text">
           <h2 id={headingId} className="page-title">
+            {destination ? (
+              <span className="page-title-icon" aria-hidden="true">
+                {destinationIcon(destination)}
+              </span>
+            ) : null}
             {title}
           </h2>
           {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}

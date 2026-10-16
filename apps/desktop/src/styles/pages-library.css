@@ -39,10 +39,10 @@
 .library-filter { display: grid; gap: 4px; }
 .library-filter-label {
   font-size: var(--fs-sm);
-  font-weight: 500;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  font-weight: 600;
+  letter-spacing: .01em;
+  text-transform: none;
+  color: var(--ink-2);
 }
 .library-select,
 .library-input {
@@ -71,7 +71,8 @@
   margin: 0;
   padding: var(--sp-2) 10px;
   font-size: var(--fs-xl);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-weight: var(--muted-weight);
   line-height: 1.5;
 }
 

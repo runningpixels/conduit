@@ -35,7 +35,7 @@ describe('Rail', () => {
     expect(bands).toEqual([
       { id: 'make', items: ['chats', 'slides', 'writing'] },
       { id: 'apps', items: ['apps', 'manage'] },
-      { id: 'automate', items: ['inbox', 'workflows', 'agents'] },
+      { id: 'automate', items: ['workflows', 'inbox', 'agents'] },
       { id: 'context', items: ['context'] },
     ]);
     expect(container.querySelector('.rail-band [data-destination="settings"]')).toBeNull();
@@ -68,7 +68,7 @@ describe('Rail', () => {
   it('labels every destination, and leaves Ideas to the new-chat screen', () => {
     const { container } = renderRail();
     const labels = [...container.querySelectorAll('.rail-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['Home', 'Chats', 'Slides', 'Writing', 'Apps', 'Manage', 'Inbox', 'Workflows', 'Agents', 'Context', 'Settings']);
+    expect(labels).toEqual(['Home', 'Chats', 'Slides', 'Writing', 'Apps', 'Manage', 'Workflows', 'Inbox', 'Agents', 'Context', 'Settings']);
     expect(screen.queryByRole('button', { name: 'Ideas' })).toBeNull();
   });
 

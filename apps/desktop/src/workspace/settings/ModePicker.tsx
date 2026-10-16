@@ -14,8 +14,8 @@ interface ModePickerProps {
 /** [ground, surface, ink, accent] per mode — ADR-011's token values, so the
  *  preview shows what the mode will actually look like. */
 const SWATCHES: Record<Exclude<Mode, 'system'>, readonly [string, string, string, string]> = {
-  dark: ['#0b0d12', '#11141b', '#e8eaf0', '#ff7a59'],
-  light: ['#f6f6f8', '#ffffff', '#16181d', '#4b4ded'],
+  dark: ['#0b0d12', '#151925', '#f3f5f9', '#ff7a59'],
+  light: ['#eef0f8', '#ffffff', '#14161c', '#4b4ded'],
 };
 
 const OPTIONS: readonly { mode: Mode; labelKey: string }[] = [

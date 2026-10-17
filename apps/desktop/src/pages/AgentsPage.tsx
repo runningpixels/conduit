@@ -102,6 +102,8 @@ export function AgentsPage({
     const busy = entry.currentTask !== null;
     const kind = entry.kind === 'helper' ? t('shell.agents.kindHelper') : t('shell.agents.kindStep');
     const others = entry.tools.filter((x) => x !== COMPUTER_TOOL).length;
+    /// The whole task stays in the tooltip; the card shows three lines of it.
+    const working = busy ? t('shell.agents.working', { task: entry.currentTask ?? '' }) : '';
     return (
       <li key={`${entry.workflowId}:${entry.kind}:${entry.agentId}`}>
         <button
@@ -121,12 +123,14 @@ export function AgentsPage({
             </span>
           </span>
           {busy ? (
-            <span className="agent-status is-busy" role="status">
-              {t('shell.agents.working', { task: entry.currentTask ?? '' })}
+            <span className="agent-status is-busy" role="status" title={working}>
+              <span className="agent-status-text">{working}</span>
             </span>
           ) : (
             <span className="agent-status">
-              {entry.lastActive ? t('shell.agents.idleSince', { when: fmt.timeAgo(entry.lastActive) }) : t('shell.agents.notUsed')}
+              <span className="agent-status-text">
+                {entry.lastActive ? t('shell.agents.idleSince', { when: fmt.timeAgo(entry.lastActive) }) : t('shell.agents.notUsed')}
+              </span>
             </span>
           )}
           {named && entry.about.trim() ? <span className="agent-about">{entry.about.trim()}</span> : null}

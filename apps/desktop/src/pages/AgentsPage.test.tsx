@@ -74,6 +74,7 @@ describe('AgentsPage', () => {
     expect(screen.getByText('Agent step')).toBeTruthy();
     expect(screen.getByText('Write the report')).toBeTruthy();
     expect(screen.getByText('Working on: Look up the launch date')).toBeTruthy();
+    expect(screen.getByRole('status').getAttribute('title')).toBe('Working on: Look up the launch date');
     expect(screen.getByText('Not used yet')).toBeTruthy();
     expect(screen.getByText('glm-flash')).toBeTruthy();
     expect(screen.getByText("Workflow's model")).toBeTruthy();

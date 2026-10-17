@@ -84,8 +84,17 @@
   overflow-wrap: anywhere;
 }
 .agent-status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--ink-3); }
-.agent-status.is-busy { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
-.agent-status.is-busy::before { background: var(--accent); animation: agent-pulse 1.4s ease-in-out infinite; }
+.agent-status.is-busy { align-self: stretch; align-items: flex-start; padding: 6px 10px; border-radius: var(--r-sm); background: var(--accent-soft); color: var(--ink); font-weight: 600; line-height: 1.35; }
+.agent-status.is-busy::before { margin-top: calc((1.35em - 7px) / 2); background: var(--accent); animation: agent-pulse 1.4s ease-in-out infinite; }
+.agent-status-text { min-width: 0; overflow-wrap: anywhere; }
+.agent-status.is-busy .agent-status-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
 @keyframes agent-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .agent-status.is-busy::before { animation: none; } }
 .agent-about {

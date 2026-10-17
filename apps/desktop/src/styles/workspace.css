@@ -135,6 +135,21 @@ html[data-sidebar="closed"] .head-nav { display: flex; }
 /* The close button is the one control that must not read as "just another
    icon button", so it keeps its colour rather than the neutral chrome. */
 .wincontrol:focus-visible { outline-offset: -2px; }
+/* The light/dark toggle, left of the cluster: the same 32px-high chrome button
+   as the window controls, with a sun or moon instead of a glyph. Not above the
+   scrims (unlike the cluster) — it is an action, not the window's only way out. */
+.titlebar-theme {
+  width: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.titlebar-theme svg { width: 15px; height: 15px; }
+.titlebar-theme:hover { background: var(--card-hi); color: var(--ink); }
+.titlebar-theme:focus-visible { outline: 2px solid var(--hue); outline-offset: -2px; }
+/* With no window controls after it (macOS, dev:web) it keeps off the edge. */
+.titlebar-theme:last-child { margin-right: var(--sp-2); }
 
 kbd {
   font-family: var(--font-mono);
@@ -990,8 +1005,8 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Room under the last button (the theme toggle), off the window's edge. */
-  padding-bottom: var(--sp-4);
+  /* Room under the last button (Settings), off the window's edge. */
+  padding-bottom: var(--sp-3);
 }
 .rail-brand {
   display: flex;
@@ -999,6 +1014,7 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   align-items: center;
   gap: 6px;
   width: 100%;
+  flex: none;
   padding: var(--sp-3) 4px var(--sp-3);
   margin-bottom: var(--sp-2);
   border-bottom: 1px solid var(--line-soft);
@@ -1031,7 +1047,33 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   gap: 2px;
   width: 100%;
 }
-.rail-spacer { flex: 1; }
+/* The destinations scroll when the window is too short for them; Settings
+ * (the toolbar's last child) stays pinned beneath. Nothing inside shrinks. The
+ * scrollbar is hidden but the area still scrolls by wheel, touch and keyboard,
+ * and a fade marks an edge with more beyond it (data-more-above/-below, set in
+ * Rail.tsx). */
+.rail-scroll {
+  --fade-top: 0px;
+  --fade-bottom: 0px;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
+}
+.rail-scroll::-webkit-scrollbar { display: none; }
+.rail-scroll[data-more-above] { --fade-top: 22px; }
+.rail-scroll[data-more-below] { --fade-bottom: 22px; }
+.rail-scroll > *,
+.rail-band > * { flex-shrink: 0; }
+.rail-group > .rail-btn { flex-shrink: 0; }
 /* Groups: the rail's buttons gathered by what they are for — make (Chats,
  * Slides, Writing), apps (Apps, Manage), what runs without you (Workflows,
  * Inbox, Agents) and Context — split by a short hairline. */
@@ -1046,7 +1088,7 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   flex: none;
   width: 32px;
   height: 1px;
-  /* Shrinks on a short window so Settings never falls off the bottom. */
+  /* Never shrinks (flex: none); a short window scrolls the list instead. */
   margin: clamp(var(--sp-1), 1vh, var(--sp-2)) 0;
   background: color-mix(in srgb, var(--ink-3) 35%, transparent);
 }
@@ -1084,7 +1126,9 @@ html[data-panel-overlay="open"] .body > .doc-panel {
 .context-tab:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
 .rail-btn {
   width: 76px;
-  min-height: 52px;
+  /* A variable so the density and height steps compose rather than fight:
+   * density sets it on html, the short-window step on .rail (nearer, wins). */
+  min-height: var(--rail-btn-h, 52px);
   padding: 4px 2px;
   display: grid;
   grid-template-rows: auto auto;
@@ -1152,21 +1196,31 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   border: 2px solid var(--bg-rail);
   box-sizing: content-box;
 }
-.rail-theme {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  margin-top: var(--sp-2);
-  border: 1px solid var(--line-hi);
-  border-radius: var(--r-sm);
-  color: var(--ink-2);
-  transition: background var(--tap), color var(--tap);
+html[data-density="compact"] { --rail-btn-h: 46px; }
+
+/* A short window: the rail tightens before it scrolls. The brand keeps only
+ * its mark, buttons get shorter with a one-line label (the full name is the
+ * button's title), and the hairlines close up. The viewport is the window
+ * minus nothing (the title bar is inside the page). */
+@media (max-height: 820px) {
+  .rail { --rail-btn-h: 44px; }
+  .rail-brand {
+    padding: var(--sp-2) 4px;
+    margin-bottom: var(--sp-1);
+  }
+  .rail-brand-name { display: none; }
+  .rail-icon { height: 24px; }
+  .rail-btn {
+    gap: 1px;
+    padding-block: 2px;
+  }
+  .rail-label {
+    -webkit-line-clamp: 1;
+    text-overflow: ellipsis;
+    font-size: var(--fs-md);
+  }
+  .rail-rule { margin: var(--sp-1) 0; }
 }
-.rail-theme svg { width: 17px; height: 17px; }
-.rail-theme:hover { background: var(--card-hi); color: var(--ink); }
-.rail-theme:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
-html[data-density="compact"] .rail-btn { min-height: 46px; }
 
 /* A destination page covers the body; the chat underneath stays mounted. */
 /* The chat's sashes sit above everything (z-index 25) so a drag never loses

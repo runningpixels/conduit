@@ -4,7 +4,7 @@ import { Rail, type RailProps } from './Rail';
 
 function renderRail(props: Partial<RailProps> = {}) {
   return render(
-    <Rail destination="chats" onNavigate={() => {}} effectiveTheme="dark" onToggleTheme={() => {}} {...props} />,
+    <Rail destination="chats" onNavigate={() => {}} {...props} />,
   );
 }
 
@@ -52,7 +52,7 @@ describe('Rail', () => {
     const { container, rerender } = renderRail({ destination: 'workflows' });
     const filled = () => [...container.querySelectorAll('.rail-icon[data-filled]')].map((el) => el.closest('.rail-btn')?.getAttribute('data-destination'));
     expect(filled()).toEqual(['workflows']);
-    rerender(<Rail destination="memory" onNavigate={() => {}} effectiveTheme="dark" onToggleTheme={() => {}} />);
+    rerender(<Rail destination="memory" onNavigate={() => {}} />);
     expect(filled()).toEqual(['context']);
   });
 
@@ -120,12 +120,26 @@ describe('Rail', () => {
     expect(screen.getByRole('button', { name: 'Inbox' })).toBeTruthy();
   });
 
-  it('toggles light and dark from its own button, outside the destination toolbar', () => {
-    const onToggleTheme = vi.fn();
-    renderRail({ onToggleTheme });
-    const toggle = screen.getByRole('button', { name: /theme|light|dark/i });
-    expect(screen.getByRole('toolbar').contains(toggle)).toBe(false);
-    fireEvent.click(toggle);
-    expect(onToggleTheme).toHaveBeenCalledTimes(1);
+  it('has no theme toggle: that lives in the title bar', () => {
+    renderRail();
+    expect(screen.queryByRole('button', { name: /theme/i })).toBeNull();
+  });
+
+  it('titles each button with its label and keeps Settings outside the scroll area', () => {
+    const { container } = renderRail();
+    expect(screen.getByRole('button', { name: 'Chats' }).getAttribute('title')).toBe('Chats');
+    const scroll = container.querySelector('.rail-scroll')!;
+    expect(scroll.contains(screen.getByRole('button', { name: 'Chats' }))).toBe(true);
+    const settings = container.querySelector('[data-destination="settings"]')!;
+    expect(scroll.contains(settings)).toBe(false);
+    expect(screen.getByRole('toolbar').contains(settings)).toBe(true);
+  });
+
+  it('scrolls a focused button into view', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderRail();
+    fireEvent.focus(screen.getByRole('button', { name: 'Agents' }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
   });
 });

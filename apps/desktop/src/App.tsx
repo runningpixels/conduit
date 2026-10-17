@@ -3612,7 +3612,7 @@ export default function App() {
   if (onboarding?.migrationRecovery) {
     return (
       <div className="app" id="app">
-        <TitleBar />
+        <TitleBar effectiveTheme={effectiveTheme} onToggleTheme={handleToggleTheme} />
         <MigrationRecoveryNotice
           recovery={onboarding.migrationRecovery}
           onStatus={setStatusMessage}
@@ -3630,7 +3630,7 @@ export default function App() {
   if (devRoute === 'onboarding' || (onboarding && (!onboarding.onboardingCompleted || !onboarding.hasProviderCredential))) {
     return (
       <div className="app" id="app">
-        <TitleBar />
+        <TitleBar effectiveTheme={effectiveTheme} onToggleTheme={handleToggleTheme} />
         <Onboarding
           settings={settings}
           onSettingsChange={setSettings}
@@ -3652,15 +3652,13 @@ export default function App() {
       {/* The window's caption row: drag region + minimise/maximise/close.
           Without it a frameless window cannot be moved or closed at all
           (shellContract.test.ts pins this). */}
-      <TitleBar />
+      <TitleBar effectiveTheme={effectiveTheme} onToggleTheme={handleToggleTheme} />
 
       <div className="shell">
       <Rail
         destination={destination}
         onNavigate={navigateTo}
         dots={{ workflows: workflowsUnread && destination !== 'workflows', inbox: waitingCount > 0 && destination !== 'inbox' }}
-        effectiveTheme={effectiveTheme}
-        onToggleTheme={handleToggleTheme}
         logoSrc={brandLogo ?? undefined}
       />
       {/* `data-page`: a rail page covers the chat (see .body[data-page] in workspace.css). */}

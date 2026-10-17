@@ -8,6 +8,9 @@
  * the minimise/maximise/close cluster — with the sidebar, thread and artifact
  * panel all starting beneath it.
  *
+ * The light/dark toggle sits just left of the window controls (at the right
+ * end where there are none).
+ *
  * It renders on every platform, always:
  *   - Windows/Linux (`decorations: false`) — holds `WindowControls`.
  *   - macOS — `WindowControls` renders null, and tauri.macos.conf.json keeps
@@ -25,11 +28,35 @@
  * supposed to take their own clicks. shellContract.test.ts pins both rules.
  */
 
+import { useT } from '../i18n';
+import { MoonIcon, SunIcon } from '../icons';
 import { WindowControls } from './WindowControls';
 
-export function TitleBar() {
+export interface TitleBarProps {
+  /** The theme in effect; with `onToggleTheme`, shows the light/dark toggle. */
+  effectiveTheme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
+}
+
+export function TitleBar({ effectiveTheme = 'dark', onToggleTheme }: TitleBarProps) {
+  const t = useT();
   return (
     <div className="titlebar" data-tauri-drag-region>
+      {/* An action rather than window chrome, but it lives here on every
+          platform (macOS's native controls sit at the left, so the right end
+          is free). A button takes its own clicks, so it needs no drag-region
+          attribute. */}
+      {onToggleTheme && (
+        <button
+          type="button"
+          className="titlebar-theme"
+          aria-label={t('workspace.mainHead.themeToggleAriaLabel')}
+          title={t('workspace.mainHead.themeToggleTitle')}
+          onClick={onToggleTheme}
+        >
+          {effectiveTheme === 'light' ? <SunIcon /> : <MoonIcon />}
+        </button>
+      )}
       <WindowControls />
     </div>
   );

@@ -33,6 +33,19 @@ ignore = [
     # ships a plist that has moved off it.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+    # zip < 9.0: three advisories, all in ZipArchive::extract /
+    # ZipStreamReader::extract (SUID/SGID bits kept, symlinks written outside
+    # the destination, permissions applied through symlinks). Our own zip
+    # (8.x) never calls extract: attachments and knowledge files read entries
+    # in memory, and skill import (skills.rs) unpacks entry by entry through
+    # enclosed_name() and writes plain files, so no symlink or mode is ever
+    # created. zip 4.x arrives via tauri-plugin-updater 2.13 (the latest
+    # stable), which unpacks only update archives verified against our
+    # signing key. Drop these when the updater ships on zip >= 9 and we
+    # move to 9 ourselves.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
 ]
 
 [licenses]

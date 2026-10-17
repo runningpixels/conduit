@@ -1,7 +1,7 @@
 /// The navigation rail (ADR-011 shell): the product mark and name, then one
-/// labeled button per destination, then the light/dark toggle and Settings at
-/// the bottom. Chats shows the chat list and the chat; every other destination
-/// is a page in the main area.
+/// labeled button per destination, then Settings pinned at the bottom (the
+/// light/dark toggle lives in the title bar). Chats shows the chat list and
+/// the chat; every other destination is a page in the main area.
 ///
 /// Every destination carries its label under its icon — the rail is how a
 /// first-time user finds their way around, so nothing here is icon-only.
@@ -13,10 +13,14 @@
 /// which open as tabs of a single page. Icons are outlines; the current
 /// destination's turns solid inside its accent pill.
 ///
+/// The destinations scroll rather than squeeze when the window is short;
+/// Settings stays pinned below them. The scrollbar is hidden and a fade marks
+/// an edge with more beyond it.
+///
 /// A toolbar in ARIA terms: one tab stop, arrow keys move between buttons,
 /// Home/End jump to the ends. `aria-current="page"` marks where you are.
 
-import { Fragment, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { appName } from '../brand';
 import {
@@ -40,12 +44,10 @@ import {
   InboxIcon,
   KnowledgeIcon,
   MemoryIcon,
-  MoonIcon,
   SettingsIcon,
   SkillIcon,
   SlidersIcon,
   SlidesIcon,
-  SunIcon,
   WorkflowIcon,
   WritingIcon,
   AppsIcon,
@@ -150,8 +152,6 @@ export interface RailProps {
   dots?: Partial<Record<Destination, boolean>>;
   /** Hidden destinations (e.g. memory when the feature is off). */
   hidden?: readonly Destination[];
-  effectiveTheme: 'dark' | 'light';
-  onToggleTheme: () => void;
   /** A white-label brand's logo, if one is configured. */
   logoSrc?: string;
 }
@@ -161,18 +161,42 @@ export function Rail({
   onNavigate,
   dots = {},
   hidden = [],
-  effectiveTheme,
-  onToggleTheme,
   logoSrc,
 }: RailProps) {
   const t = useT();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const bands = RAIL_BANDS.map((band) => ({ ...band, items: band.items.filter((d) => !hidden.includes(d)) })).filter(
     (band) => band.items.length > 0,
   );
   const bottom: Destination[] = hidden.includes('settings') ? [] : ['settings'];
   const order = [...bands.flatMap((band) => band.items), ...bottom];
   const here = railItemFor(destination);
+
+  // The fade at the scroll area's edges shows only where there is more to see.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const sync = () => {
+      el.toggleAttribute('data-more-above', el.scrollTop > 1);
+      el.toggleAttribute('data-more-below', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+    };
+    sync();
+    el.addEventListener('scroll', sync, { passive: true });
+    if (typeof ResizeObserver === 'undefined') return () => el.removeEventListener('scroll', sync);
+    const observer = new ResizeObserver(sync);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => {
+      el.removeEventListener('scroll', sync);
+      observer.disconnect();
+    };
+  }, []);
+
+  // A button focused off-screen (arrow keys, Tab) scrolls into view.
+  function onFocus(event: FocusEvent<HTMLElement>) {
+    (event.target as HTMLElement).scrollIntoView?.({ block: 'nearest' });
+  }
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     const index = order.indexOf((event.target as HTMLElement).dataset.destination as Destination);
@@ -202,6 +226,7 @@ export function Rail({
         type="button"
         className="rail-btn"
         data-destination={d}
+        title={label}
         aria-current={current ? 'page' : undefined}
         aria-label={dots[d] ? t('shell.rail.withNew', { label: name }) : name}
         tabIndex={current || (!order.includes(here) && index === 0) ? 0 : -1}
@@ -221,7 +246,7 @@ export function Rail({
   return (
     <nav className="rail" aria-label={t('shell.rail.ariaLabel')} onKeyDown={onKeyDown}>
       <div className="rail-brand">
-        <span className="rail-brand-mark">
+        <span className="rail-brand-mark" title={appName()}>
           <BrandMark className="mark-glyph" src={logoSrc} />
         </span>
         <span className="rail-brand-name" title={appName()}>
@@ -229,32 +254,23 @@ export function Rail({
         </span>
       </div>
       <div className="rail-group" role="toolbar" aria-orientation="vertical" aria-label={t('shell.rail.ariaLabel')}>
-        {bands.map((band, i) =>
-          band.id === 'top' ? (
-            band.items.map(button)
-          ) : (
-            <Fragment key={band.id}>
-              {i > 0 && <span className="rail-rule" aria-hidden="true" />}
-              <div className="rail-band" data-band={band.id}>
-                {band.items.map(button)}
-              </div>
-            </Fragment>
-          ),
-        )}
-        <span className="rail-spacer" aria-hidden="true" />
+        {/* The destinations scroll; Settings below stays pinned. */}
+        <div className="rail-scroll" ref={scrollRef} onFocus={onFocus}>
+          {bands.map((band, i) =>
+            band.id === 'top' ? (
+              band.items.map(button)
+            ) : (
+              <Fragment key={band.id}>
+                {i > 0 && <span className="rail-rule" aria-hidden="true" />}
+                <div className="rail-band" data-band={band.id}>
+                  {band.items.map(button)}
+                </div>
+              </Fragment>
+            ),
+          )}
+        </div>
         {bottom.map(button)}
       </div>
-      {/* Outside the toolbar: it is an action, not a destination, so it keeps
-          its own tab stop rather than joining the arrow-key sequence. */}
-      <button
-        className="rail-theme"
-        type="button"
-        aria-label={t('workspace.mainHead.themeToggleAriaLabel')}
-        title={t('workspace.mainHead.themeToggleTitle')}
-        onClick={onToggleTheme}
-      >
-        {effectiveTheme === 'light' ? <SunIcon /> : <MoonIcon />}
-      </button>
     </nav>
   );
 }

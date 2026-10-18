@@ -43,7 +43,8 @@ fn planner_prompt(question: &str, today: &str) -> String {
         "Today is {today}.\n\nPlan research for this question:\n<question>\n{question}\n</question>\n\n\
 Write 2 to {MAX_PLANNED_SUB_QUESTIONS} short sub-questions that together answer it. Each one must \
 be answerable from web pages and work as a web search on its own. Each must ask something \
-different: never a slice, part or restatement of another.\n\
+different: never a slice, part or restatement of another. Write them in the language the \
+question is written in.\n\
 scope: limits the question states or clearly implies (a place, a time span), else null. Judge \
 time from today's date: \"current\" or \"latest\" means as of {today}, never an earlier year.\n\
 preferDomains / avoidDomains: web sites the question asks to use or avoid (like \"who.int\"), \

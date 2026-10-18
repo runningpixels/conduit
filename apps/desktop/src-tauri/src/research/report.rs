@@ -25,6 +25,7 @@ use regex::Regex;
 use serde_json::{json, Value};
 
 use super::claims::{Credibility, SourceRating};
+use super::labels::ReportLabels;
 use super::run::{ClaimRecord, SourceRecord};
 use super::{ask_json, clip, one_line, ResearchIo};
 
@@ -209,7 +210,9 @@ Low credibility: never state such a fact as established; attribute it (\"an unre
 preprint claims …\") or leave it out. The summary must not rest on low-credibility facts alone.\n\
 A figure a site computed itself is \"calculated by\" that site, not \"published\". State each \
 point once, as the fact itself (never \"the page\" or \"the source\"). Never invent facts, \
-numbers or ids. No title, headings, links or source list.",
+numbers or ids. No title, headings, links or source list.\n\
+Language: write the summary, findings and disagreements in the language the question is \
+written in, even where the facts are in another language.",
         question = brief.question,
         subs = numbered(&brief.sub_questions),
         facts = fact_lines(claims),
@@ -291,7 +294,7 @@ number or date, a dropped qualifier, the wrong source), (b) states a fact but ci
 (c) contradicts another sentence of the draft, or (d) states a low-credibility fact as \
 established. For each, give a fix: \"find\" is the sentence copied exactly from the draft, ids \
 included; \"replace\" is the corrected sentence, citing only ids listed above, or \"\" to delete \
-it. At most {MAX_REVIEW_FIXES} fixes. If nothing needs fixing, give \"fixes\": [].",
+it, in the draft's language. At most {MAX_REVIEW_FIXES} fixes. If nothing needs fixing, give \"fixes\": [].",
         question = brief.question,
         facts = fact_lines(claims),
     )
@@ -769,6 +772,8 @@ pub struct ReportInput<'a> {
     pub unanswered: &'a [usize],
     /// Why the run ended early, said at the top; `None` when it finished.
     pub note: Option<&'a str>,
+    /// The report's own words (headings, byline, source notes) in the app's language.
+    pub labels: &'static ReportLabels,
 }
 
 /// The rendered report.
@@ -783,17 +788,18 @@ pub struct Rendered {
     pub used_claims: HashSet<String>,
 }
 
-fn depth_label(depth: ResearchDepth) -> &'static str {
+fn depth_label(depth: ResearchDepth, labels: &ReportLabels) -> &'static str {
     match depth {
-        ResearchDepth::Quick => "Quick",
-        ResearchDepth::Standard => "Standard",
-        ResearchDepth::Deep => "Deep",
+        ResearchDepth::Quick => labels.quick,
+        ResearchDepth::Standard => labels.standard,
+        ResearchDepth::Deep => labels.deep,
     }
 }
 
 /// Build the report Markdown.
 pub fn render(input: &ReportInput<'_>) -> Rendered {
     let brief = input.brief;
+    let l = input.labels;
     let mut citations = Citations::new(input.claims);
     let summary = citations.map(&input.draft.summary);
     let fallback = fallback_draft(brief.sub_questions.len(), input.claims);
@@ -831,11 +837,12 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         footnotes.insert(id.clone(), k as u32);
         if let Some(source) = by_id.get(id.as_str()) {
             entries.push(format!(
-                "{k}. {} — {} — fetched {}{}",
+                "{k}. {} — {} — {} {}{}",
                 source_link(source),
                 source.host,
+                l.fetched,
                 date_of(&source.fetched_at),
-                low_credibility_mark(&source.rating),
+                low_credibility_mark(&source.rating, l),
             ));
         }
     }
@@ -846,10 +853,10 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
         .take(MAX_OTHER_PAGES)
         .map(|s| {
             let state = match s.status {
-                ResearchSourceStatus::Read => low_credibility_mark(&s.rating),
-                ResearchSourceStatus::Empty => " (no readable text)".to_string(),
-                ResearchSourceStatus::Failed => " (could not be read)".to_string(),
-                ResearchSourceStatus::Skipped => " (skipped)".to_string(),
+                ResearchSourceStatus::Read => low_credibility_mark(&s.rating, l),
+                ResearchSourceStatus::Empty => format!(" ({})", l.no_text),
+                ResearchSourceStatus::Failed => format!(" ({})", l.unreadable),
+                ResearchSourceStatus::Skipped => format!(" ({})", l.skipped),
             };
             format!("- {} — {}{state}", source_link(s), s.host)
         })
@@ -859,47 +866,45 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
     let mut md = String::new();
     md.push_str(&format!("# {}\n\n", one_line(&brief.question)));
     md.push_str(&format!(
-        "*Researched {} · {count} source{} · {}*\n\n",
-        input.date,
-        if count == 1 { "" } else { "s" },
-        depth_label(brief.depth)
+        "*{}*\n\n",
+        (l.researched)(input.date, count, depth_label(brief.depth, l))
     ));
     if let Some(note) = input.note {
         md.push_str(&format!("> {note}\n\n"));
     }
-    md.push_str(&format!("## Summary\n\n{summary}\n\n"));
+    md.push_str(&format!("## {}\n\n{summary}\n\n", l.summary));
     if !findings.is_empty() {
-        md.push_str("## Findings\n\n");
+        md.push_str(&format!("## {}\n\n", l.findings));
         md.push_str(&findings.join("\n\n"));
         md.push_str("\n\n");
     }
     if let Some(d) = &disagreements {
-        md.push_str(&format!("## Where sources disagree\n\n{d}\n\n"));
+        md.push_str(&format!("## {}\n\n{d}\n\n", l.disagreements));
     }
     if !input.unanswered.is_empty() {
-        md.push_str("## Open questions\n\n");
+        md.push_str(&format!("## {}\n\n", l.open_questions));
         for index in input.unanswered {
             if let Some(q) = brief.sub_questions.get(*index) {
                 let hosts = unreadable_hosts(input.sources, *index);
                 let unread = if hosts.is_empty() {
                     String::new()
                 } else {
-                    format!(" (pages that could not be read: {})", hosts.join(", "))
+                    format!(" ({})", (l.unread_pages)(&hosts.join(", ")))
                 };
                 md.push_str(&format!("- {}{unread}\n", one_line(q)));
             }
         }
         md.push('\n');
     }
-    md.push_str("## Sources\n\n");
+    md.push_str(&format!("## {}\n\n", l.sources));
     if entries.is_empty() {
-        md.push_str("*No source is cited.*\n");
+        md.push_str(&format!("*{}*\n", l.none_cited));
     } else {
         md.push_str(&entries.join("\n"));
         md.push('\n');
     }
     if !others.is_empty() {
-        md.push_str("\nAlso read, not cited:\n\n");
+        md.push_str(&format!("\n{}\n\n", l.also_read));
         md.push_str(&others.join("\n"));
         md.push('\n');
     }
@@ -913,10 +918,10 @@ pub fn render(input: &ReportInput<'_>) -> Rendered {
 }
 
 /// ` (low credibility: <reason>)` for a page rated low; nothing otherwise.
-fn low_credibility_mark(rating: &SourceRating) -> String {
+fn low_credibility_mark(rating: &SourceRating, labels: &ReportLabels) -> String {
     match (rating.credibility, rating.reason.is_empty()) {
-        (Credibility::Low, false) => format!(" (low credibility: {})", rating.reason),
-        (Credibility::Low, true) => " (low credibility)".to_string(),
+        (Credibility::Low, false) => format!(" ({}: {})", labels.low_credibility, rating.reason),
+        (Credibility::Low, true) => format!(" ({})", labels.low_credibility),
         _ => String::new(),
     }
 }
@@ -1053,6 +1058,60 @@ mod tests {
     }
 
     #[test]
+    fn render_writes_its_own_words_in_the_app_language() {
+        let sources = vec![
+            source("s1", "a.com"),
+            SourceRecord {
+                status: ResearchSourceStatus::Failed,
+                ..source("s2", "b.org")
+            },
+        ];
+        let claims = vec![claim("c1", "s1", 0)];
+        let labelled = label_claims(&claims, &sources, 2);
+        let brief = ResearchBrief {
+            question: "Warum?".into(),
+            sub_questions: vec!["Eins?".into(), "Zwei?".into()],
+            scope: None,
+            prefer_domains: vec![],
+            avoid_domains: vec![],
+            depth: ResearchDepth::Standard,
+        };
+        let draft = Draft {
+            summary: "So ist es [C1].".into(),
+            findings: HashMap::from([(0, "Einzelheit [C1].".into())]),
+            disagreements: None,
+        };
+        let md = render(&ReportInput {
+            brief: &brief,
+            date: "2026-10-03",
+            draft: &draft,
+            claims: &labelled,
+            sources: &sources,
+            unanswered: &[1],
+            note: None,
+            labels: super::super::labels::for_locale("de"),
+        })
+        .markdown;
+        assert!(
+            md.starts_with("# Warum?\n\n*Recherchiert am 2026-10-03 · 1 Quelle · Standard*\n\n## Zusammenfassung\n\n"),
+            "{md}"
+        );
+        for heading in [
+            "## Ergebnisse",
+            "## Offene Fragen",
+            "## Quellen",
+            "Ebenfalls gelesen, nicht zitiert:",
+        ] {
+            assert!(md.contains(heading), "{heading}: {md}");
+        }
+        assert!(md.contains("— abgerufen am 2026-10-01"), "{md}");
+        assert!(md.contains("(konnte nicht gelesen werden)"), "{md}");
+        for english in ["Summary", "Findings", "Sources", "fetched", "Researched"] {
+            assert!(!md.contains(english), "{english}: {md}");
+        }
+    }
+
+    #[test]
     fn render_uses_only_markdown_the_app_draws() {
         let mut sources = vec![source("s1", "a.com"), source("s2", "b.org")];
         sources.push(SourceRecord {
@@ -1087,6 +1146,7 @@ mod tests {
             sources: &sources,
             unanswered: &[1],
             note: None,
+            labels: &super::super::labels::EN,
         });
         let md = &r.markdown;
         assert_eq!(r.summary, "It is so [1]. Also [2]. Made up.");
@@ -1250,6 +1310,7 @@ mod tests {
             sources: &sources,
             unanswered: &[1],
             note: None,
+            labels: &super::super::labels::EN,
         });
         let md = &r.markdown;
         // C1 is agency.gov (credible first), C2 the archive.

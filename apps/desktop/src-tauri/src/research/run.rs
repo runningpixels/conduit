@@ -30,6 +30,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::claims::SourceRating;
+use super::labels::{self, ReportLabels};
 use super::report::{self, Draft, Labelled, Rendered, ReportInput};
 use super::{
     ask_json, claims, clip, one_line, today, urls, verify, FetchedPage, ResearchIo, SearchHit,
@@ -136,6 +137,8 @@ pub struct Engine<'a> {
     /// Only public web addresses are read. Always true in the app; a test
     /// that serves its pages from this computer turns it off.
     pub public_only: bool,
+    /// The report's headings and notes, in the app's language. English unless set.
+    pub labels: &'static ReportLabels,
 }
 
 impl<'a> Engine<'a> {
@@ -148,6 +151,7 @@ impl<'a> Engine<'a> {
             rate_limit_waits: RATE_LIMIT_WAITS,
             date: None,
             public_only: true,
+            labels: &labels::EN,
         }
     }
 }
@@ -305,15 +309,16 @@ impl Engine<'_> {
                 None => report::fallback_draft(brief.sub_questions.len(), &labelled),
             };
             let note = note_for(stop, error.as_deref(), &self.budget);
-            Some(render_report(
+            Some(report::render(&ReportInput {
                 brief,
-                today,
-                &draft,
-                &labelled,
-                &work.sources,
-                &unanswered_idx,
-                note.as_deref(),
-            ))
+                date: today,
+                draft: &draft,
+                claims: &labelled,
+                sources: &work.sources,
+                unanswered: &unanswered_idx,
+                note: note.as_deref(),
+                labels: self.labels,
+            }))
         };
 
         work.progress.tokens_used = clamp_u32(metered.tokens());
@@ -984,26 +989,6 @@ fn note_for(
             "The research reached its time limit of {} minutes; {covers}",
             budget.minutes
         ),
-    })
-}
-
-fn render_report(
-    brief: &ResearchBrief,
-    date: &str,
-    draft: &Draft,
-    labelled: &[Labelled<'_>],
-    sources: &[SourceRecord],
-    unanswered: &[usize],
-    note: Option<&str>,
-) -> Rendered {
-    report::render(&ReportInput {
-        brief,
-        date,
-        draft,
-        claims: labelled,
-        sources,
-        unanswered,
-        note,
     })
 }
 

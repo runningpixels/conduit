@@ -5,7 +5,7 @@
 use provider_core::schema::{ResearchBrief, ResearchRun, ResearchStatus};
 use tauri::State;
 
-use crate::research::{app, service, ResearchRuns};
+use crate::research::{app, labels, service, ResearchRuns};
 use crate::state::AppState;
 
 /// Save the question and the run's message in the chat, and start planning.
@@ -31,10 +31,17 @@ pub async fn approve_research_brief(
     state: State<'_, AppState>,
     run_id: String,
     brief: ResearchBrief,
+    locale: Option<String>,
 ) -> Result<ResearchRun, String> {
+    // The report's headings follow the UI's language: the webview knows it
+    // even when the setting is "System", so it passes the resolved locale.
+    let labels = match locale.as_deref() {
+        Some(code) => labels::for_locale(code),
+        None => labels::for_setting(state.settings()?.language),
+    };
     let (run, brief) = service::approve(&state, &run_id, &brief).await?;
     app::announce(&app, &run.id, run.status);
-    app::spawn_run(app.clone(), run.id.clone(), brief);
+    app::spawn_run(app.clone(), run.id.clone(), brief, labels);
     Ok(run)
 }
 

@@ -809,6 +809,7 @@ async fn plan_approve_run_and_save_the_report_in_the_chat() {
         &io,
         &run.id,
         &approved,
+        &conduit_desktop::research::labels::EN,
         &CancellationToken::new(),
         &notify,
     )

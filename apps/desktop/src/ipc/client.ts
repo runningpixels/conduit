@@ -2166,9 +2166,12 @@ export async function startResearch(conversationId: string, question: string): P
   return invokeCommand<ResearchRun>('start_research', { conversationId, question });
 }
 
-/** Approve (and start) a run from its edited brief. */
+/** Approve (and start) a run from its edited brief. The UI's resolved
+ *  language (`<html lang>`, set by I18nProvider) goes with it, so the report's
+ *  headings match the app even when the setting is "System". */
 export async function approveResearchBrief(runId: string, brief: ResearchBrief): Promise<ResearchRun> {
-  return invokeCommand<ResearchRun>('approve_research_brief', { runId, brief });
+  const locale = typeof document !== 'undefined' && document.documentElement.lang ? document.documentElement.lang : null;
+  return invokeCommand<ResearchRun>('approve_research_brief', { runId, brief, locale });
 }
 
 /** Stop a running run after its current step; a partial report is written. */

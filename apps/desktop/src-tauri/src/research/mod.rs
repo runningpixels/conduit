@@ -29,6 +29,7 @@
 pub mod app;
 pub mod brief;
 pub mod claims;
+pub mod labels;
 pub mod repo;
 pub mod report;
 pub mod run;

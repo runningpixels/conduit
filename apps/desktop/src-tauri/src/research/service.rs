@@ -15,6 +15,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use super::labels::{self, ReportLabels};
 use super::run::{Engine, StopReason};
 use super::{brief, clip, one_line, repo, ResearchIo, ResearchRuns};
 use crate::db::repository::artifacts::{self, ArtifactContent};
@@ -291,6 +292,8 @@ pub async fn run_headless(
         .ok_or_else(|| "That research no longer exists.".to_string())?;
     let mut engine = Engine::new(io, CancellationToken::new(), row.budget);
     engine.public_only = public_only;
+    // A workflow runs with no window to ask: the language setting decides.
+    engine.labels = labels::for_setting(state.settings()?.language);
     let outcome = engine.run(&brief).await;
     let status = halted().unwrap_or(match &outcome.error {
         Some(_) => ResearchStatus::Failed,
@@ -451,6 +454,7 @@ pub async fn execute(
     io: &dyn ResearchIo,
     run_id: &str,
     brief: &ResearchBrief,
+    labels: &'static ReportLabels,
     stop: &CancellationToken,
     notify: &Notify<'_>,
 ) {
@@ -472,6 +476,7 @@ pub async fn execute(
         };
         let mut engine = Engine::new(io, stop.clone(), budget);
         engine.on_progress = Some(&send);
+        engine.labels = labels;
         engine.run(brief).await
     };
     // Progress is saved (and announced) at most every PROGRESS_EVERY.

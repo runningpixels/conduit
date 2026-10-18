@@ -287,7 +287,12 @@ pub fn spawn_plan(app: AppHandle, run_id: String, question: String) {
 }
 
 /// Run an approved `brief` in the background.
-pub fn spawn_run(app: AppHandle, run_id: String, brief: ResearchBrief) {
+pub fn spawn_run(
+    app: AppHandle,
+    run_id: String,
+    brief: ResearchBrief,
+    labels: &'static super::labels::ReportLabels,
+) {
     let Some(stop) = app.state::<ResearchRuns>().begin(&run_id) else {
         return;
     };
@@ -296,7 +301,7 @@ pub fn spawn_run(app: AppHandle, run_id: String, brief: ResearchBrief) {
         let io = AppIo::new(app.clone(), &run_id, &conversation_id, stop.clone());
         let notify = |id: &str, status: ResearchStatus| announce(&app, id, status);
         let state = app.state::<AppState>();
-        service::execute(&state, &io, &run_id, &brief, &stop, &notify).await;
+        service::execute(&state, &io, &run_id, &brief, labels, &stop, &notify).await;
         app.state::<ResearchRuns>().end(&run_id);
     });
 }

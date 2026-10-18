@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { Rail, type RailProps } from './Rail';
+import { Rail, fitRailLabels, type RailProps } from './Rail';
 
 function renderRail(props: Partial<RailProps> = {}) {
   return render(
@@ -191,5 +191,44 @@ describe('Rail on a phone', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(more);
+  });
+});
+
+describe('fitRailLabels', () => {
+  function label(text: string, client: number, scroll: number) {
+    const el = document.createElement('span');
+    el.className = 'rail-label';
+    el.textContent = text;
+    el.style.lineHeight = '1.15';
+    Object.defineProperty(el, 'clientWidth', { configurable: true, get: () => client });
+    Object.defineProperty(el, 'scrollWidth', { configurable: true, get: () => scroll });
+    return el;
+  }
+
+  it('shrinks a word too wide for its box and leaves the rest alone', () => {
+    const root = document.createElement('nav');
+    root.style.fontSize = '13px';
+    const long = label('Einstellungen', 74, 79);
+    const fits = label('Chats', 40, 40);
+    root.append(long, fits);
+    document.body.append(root);
+    fitRailLabels(root);
+    expect(long.style.fontSize).toBe('12.1px');
+    expect(fits.style.fontSize).toBe('');
+    root.remove();
+  });
+
+  it('never goes below 10px, and resets a label that fits again', () => {
+    const root = document.createElement('nav');
+    root.style.fontSize = '13px';
+    const el = label('Configurações', 40, 86);
+    root.append(el);
+    document.body.append(root);
+    fitRailLabels(root);
+    expect(el.style.fontSize).toBe('10px');
+    Object.defineProperty(el, 'scrollWidth', { configurable: true, get: () => 40 });
+    fitRailLabels(root);
+    expect(el.style.fontSize).toBe('');
+    root.remove();
   });
 });

@@ -24,7 +24,7 @@
 /// bar. CSS lays it out; JS only decides which destinations are tabs
 /// (PHONE_TABS) and which live in the "More" sheet, whose open state it owns.
 
-import { Fragment, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useFocusTrap } from './useFocusTrap';
 import { useT } from '../i18n';
@@ -172,6 +172,22 @@ function usePhone(): boolean {
   return phone;
 }
 
+/**
+ * Shrinks any rail label whose longest word is wider than the label box, so
+ * "Einstellungen" or "Configurações" stays one word instead of breaking into
+ * "Einstellunge / n". Labels with spaces still wrap onto two lines first; only
+ * a word that cannot fit on a line of its own is scaled, and never below 10px.
+ */
+export function fitRailLabels(root: ParentNode): void {
+  for (const el of root.querySelectorAll<HTMLElement>('.rail-label')) {
+    el.style.fontSize = '';
+    const overflow = el.scrollWidth - el.clientWidth;
+    if (overflow <= 0.5 || !el.clientWidth) continue;
+    const size = parseFloat(getComputedStyle(el).fontSize);
+    el.style.fontSize = `${Math.max(10, Math.floor(((size * el.clientWidth) / el.scrollWidth) * 10) / 10)}px`;
+  }
+}
+
 /** Destinations whose short rail label needs a fuller accessible name. */
 const ARIA_LABEL_KEYS: Partial<Record<Destination, string>> = {
   manage: 'shell.rail.manageAria',
@@ -243,6 +259,26 @@ export function Rail({
     };
   }, []);
 
+  // Labels are fitted again whenever their text, the font or the rail's size
+  // changes (the short-window step makes them smaller).
+  const navRef = useRef<HTMLElement>(null);
+  const labelText = order.map((d) => t(`shell.rail.${d}`)).join('|');
+  useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const fit = () => fitRailLabels(el);
+    fit();
+    let live = true;
+    void document.fonts?.ready.then(() => live && fit());
+    if (typeof ResizeObserver === 'undefined') return () => void (live = false);
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => {
+      live = false;
+      observer.disconnect();
+    };
+  }, [labelText, phone]);
+
   // A button focused off-screen (arrow keys, Tab) scrolls into view.
   function onFocus(event: FocusEvent<HTMLElement>) {
     (event.target as HTMLElement).scrollIntoView?.({ block: 'nearest' });
@@ -294,7 +330,7 @@ export function Rail({
   };
 
   return (
-    <nav className="rail" aria-label={t('shell.rail.ariaLabel')} onKeyDown={onKeyDown}>
+    <nav ref={navRef} className="rail" aria-label={t('shell.rail.ariaLabel')} onKeyDown={onKeyDown}>
       <div className="rail-brand">
         <span className="rail-brand-mark" title={appName()}>
           <BrandMark className="mark-glyph" src={logoSrc} />

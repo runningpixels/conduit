@@ -819,12 +819,16 @@ html[data-sidebar-overlay="open"] .body > .sidebar {
 /* The inset card keeps its margins and border as an overlay, including when
    the desktop preference is "closed" (document-panel.css strips both there so a
    zero-width track leaves no sliver). */
+/* As an overlay the thread behind is dimmed and inert, so the panel has no
+   reason to stay at its column width — which a narrow window has clamped to
+   the 280px minimum. It takes at least 640px, or all but a 48px strip of the
+   content area (the scrim, to tap out) when the window is narrower than that. */
 html[data-panel-overlay="open"] .body > .doc-panel {
   position: fixed;
   top: var(--titlebar-h);
   bottom: 0;
   right: 0;
-  width: min(var(--panel-open-w), calc(100vw - 48px));
+  width: min(max(var(--panel-open-w), 640px), calc(100vw - var(--rail-w) - 48px));
   margin: 10px;
   border-width: 1px;
   z-index: 70;

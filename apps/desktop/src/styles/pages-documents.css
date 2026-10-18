@@ -111,3 +111,8 @@ html[data-density="compact"] .docs-detail-meta { margin-bottom: var(--sp-4); }
 .docs-row { padding-left: 16px; padding-right: 16px; }
 .docs-row:last-child { border-bottom: 0; }
 .docs-detail-title { font-size: var(--fs-10xl); font-weight: 700; letter-spacing: -.02em; }
+
+@media (max-width: 720px) {
+  .docs-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .docs-row-main { grid-column: 1 / -1; }
+}

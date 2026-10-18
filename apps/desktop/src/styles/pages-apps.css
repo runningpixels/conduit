@@ -35,7 +35,7 @@
 .apps-empty-note { margin: 0 0 var(--sp-5); color: var(--ink-2); font-size: var(--fs-2xl); max-width: 64ch; }
 .apps-starters {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 12px;
   margin: 0;
   padding: 0;
@@ -63,7 +63,7 @@
 }
 .apps-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: 14px;
   margin: 0;
   padding: 0;
@@ -261,7 +261,7 @@
 .app-settings-cap { display: grid; gap: 6px; margin-top: 6px; }
 .app-settings-cap label { color: var(--ink-2); font-size: var(--fs-xl); font-weight: 600; }
 .app-settings-cap-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.app-settings-cap-row input { width: 140px; font-family: var(--font-mono); }
+.app-settings-cap-row input { width: 140px; max-width: 100%; flex: 1 1 100px; font-family: var(--font-mono); }
 .app-settings-activity .app-settings-row { gap: 8px; }
 .app-settings-when { flex: none; width: 76px; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-md); white-space: nowrap; }
 .app-settings-kind { flex: none; display: inline-flex; color: var(--ink-3); }
@@ -366,7 +366,7 @@
 .your-apps-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .your-apps-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr));
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -411,7 +411,7 @@
 .apps-home-search:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
 .apps-home-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: var(--sp-4);
   margin: 0;
   padding: 0;
@@ -473,3 +473,20 @@
 .apps-home-trait[data-tone="net"]::before { background: var(--signal); }
 .apps-home-trait[data-tone="ai"]::before { background: var(--accent); }
 .apps-home-nomatch { margin: 0; color: var(--ink-3); font-size: var(--fs-2xl); }
+
+@media (max-width: 720px) {
+  /* The open app's header: back, name, then the secondary buttons wrap below. */
+  .app-view-head { flex-wrap: wrap; gap: 6px; padding: 8px var(--sp-3); }
+  .app-view-sep,
+  .app-view-version { display: none; }
+  .app-view-title { flex: 1 1 100px; }
+  .app-view-spacer { flex: 1 1 0; min-width: 0; }
+  .app-view-strip { padding: 6px var(--sp-3); gap: 4px 12px; }
+  .app-view-when { margin-left: 0; }
+  .app-settings-inner { padding: var(--sp-3); }
+  .app-settings-section { padding: var(--sp-3); }
+  .app-settings-when { width: auto; }
+  .your-apps { padding: 0 var(--sp-3); }
+  .apps-home-card .app-tile-lg { width: 56px; height: 56px; }
+  .app-details-identity { flex-wrap: wrap; }
+}

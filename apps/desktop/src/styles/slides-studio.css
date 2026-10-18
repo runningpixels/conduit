@@ -295,3 +295,61 @@
   border-radius: var(--r-lg);
 }
 .presenter-notes-empty { color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }
+
+/* ── Tablet and phone ─────────────────────────────────────────────────── */
+/* The dock stops sitting beside the deck: the deck takes the top of the window
+   and the dock (Ask / Script / History) the bottom. The panel's children carry
+   a min-width from the shell's open-panel width, which would overflow here. */
+@media (max-width: 900px) {
+  .body[data-studio] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+  .body[data-studio] > .doc-panel {
+    grid-row: 1;
+    margin: 6px 6px 0 !important;
+  }
+  .body[data-studio] > .doc-panel > * { min-width: 0; }
+  .body[data-studio] > .center {
+    grid-column: 1;
+    grid-row: 2;
+    margin-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 720px) {
+  .studio-head { padding: var(--sp-3) var(--sp-3) var(--sp-2); }
+  .studio-head-row { flex-wrap: wrap; }
+  .studio-title { flex: 1 1 140px; min-width: 0; }
+  .studio-steps { flex-wrap: wrap; }
+  .studio-export-menu { min-width: min(260px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
+  .studio-made { white-space: normal; }
+  /* The slide strip becomes a row above the slide. */
+  .deck-workspace .deck-slides,
+  .deck-workspace[data-layout="studio"] .deck-slides {
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  }
+  .deck-workspace .deck-strip,
+  .deck-workspace[data-layout="studio"] .deck-strip,
+  .deck-slides[data-script="open"] .deck-strip {
+    width: auto;
+    max-width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px;
+  }
+  .deck-strip-item { width: 104px; }
+  .deck-slides[data-script="open"] .deck-stage-col { min-width: 0; }
+  .deck-assumptions { padding: 0 var(--sp-3); }
+  .deck-workspace[data-layout="studio"] .deck-stage-col { min-height: 200px; }
+  .deck-history { width: min(280px, 85vw); }
+  .deck-dock-tabs { padding: var(--sp-2) var(--sp-3) 0; overflow-x: auto; }
+}
+@media (pointer: coarse) {
+  .storyline-icon-btn { width: 40px; height: 40px; }
+  .deck-dock-tab { padding: 12px 14px; }
+}

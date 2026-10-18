@@ -3660,6 +3660,8 @@ export default function App() {
         onNavigate={navigateTo}
         dots={{ workflows: workflowsUnread && destination !== 'workflows', inbox: waitingCount > 0 && destination !== 'inbox' }}
         logoSrc={brandLogo ?? undefined}
+        effectiveTheme={effectiveTheme}
+        onToggleTheme={handleToggleTheme}
       />
       {/* `data-page`: a rail page covers the chat (see .body[data-page] in workspace.css). */}
       <div

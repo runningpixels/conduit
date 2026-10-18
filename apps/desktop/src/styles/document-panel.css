@@ -1249,3 +1249,24 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
   .activity-turn-chev,
   .turn-steps-chev { transition: none; }
 }
+
+/* ── Phone: the panel can be the whole screen ────────────────────────────── */
+@media (max-width: 720px) {
+  .doc-toolbar { height: auto; min-height: 44px; flex-wrap: wrap; row-gap: 4px; padding: 4px var(--sp-2); }
+  .doc-toolbar-title { flex: 1 1 120px; }
+  [data-multi-open="true"] .artifact-tabs { flex: 1 1 100%; order: 5; }
+  .doc-body { padding: 14px 14px 20px; }
+  .panel-foot { flex-wrap: wrap; row-gap: 2px; }
+  .artifact-file-tab { max-width: 200px; }
+}
+/* Touch: rename and close are revealed by hover, which a finger does not have. */
+@media (pointer: coarse) {
+  .doc-title-row .tab-rename,
+  .doc-title-row .tab-close,
+  .artifact-file-tab .tab-rename { opacity: 1; }
+  .doc-title-row .tab-rename,
+  .doc-title-row .tab-close,
+  .artifact-file-tab .tab-rename,
+  .artifact-file-tab .tab-close { width: 32px; height: 32px; }
+  .doc-view-btn { padding: 8px 12px; }
+}

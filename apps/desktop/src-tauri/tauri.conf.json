@@ -17,7 +17,7 @@
         "width": 1360,
         "height": 900,
         "resizable": true,
-        "minWidth": 760,
+        "minWidth": 360,
         "minHeight": 560,
         "decorations": false,
         "create": false

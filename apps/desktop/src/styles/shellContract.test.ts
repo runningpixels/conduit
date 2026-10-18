@@ -319,7 +319,9 @@ describe('caption row', () => {
   });
 
   it('reserves a non-zero height', () => {
-    const declared = css.match(/--titlebar-h:\s*([^;]+);/);
+    // The token layer only: workspace.css re-declares it as 0px for the web phone shell.
+    const tokens = readFileSync(join(repoRoot, 'packages', 'ui', 'src', 'tokens.css'), 'utf8');
+    const declared = tokens.match(/--titlebar-h:\s*([^;]+);/);
     expect(declared, '--titlebar-h is not declared in the token layer').not.toBeNull();
     expect(declared![1].trim()).toMatch(/^[1-9]\d*px$/);
   });

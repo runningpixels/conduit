@@ -7,10 +7,17 @@ import { PresenterApp } from './slides/PresenterApp';
 import { parsePresenterRoute } from './slides/presentCore';
 import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
 import { applyCachedBrand } from './brand/applyBrand';
+import { installWindowResizeFlag } from './workspace/windowResizing';
 import { applyCachedAccent } from './themes/accent';
 import { resolveTheme } from './theme';
 import { I18nProvider, bootstrapI18n } from './i18n';
 import { installDevLocaleSwitch, readDevLocalePreference } from './i18n/devLocale';
+
+/* Which shell this is: the Tauri app (it has window controls in the title bar)
+ * or a plain browser. workspace.css keys the phone layout's title bar on it. */
+document.documentElement.dataset.shell = '__TAURI_INTERNALS__' in window ? 'desktop' : 'web';
+/* Transitions off while the window is resized, so the layout tracks the edge. */
+installWindowResizeFlag();
 
 applyUiReadability(readUiFontSize(), readUiDensity());
 /* Before first paint, not in App's boot effect: that effect runs after several

@@ -207,7 +207,7 @@
 /* ── Pick up ──────────────────────────────────────────────────────────── */
 .home-pickup {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: var(--sp-3);
   margin: 0;
   padding: 0;
@@ -271,7 +271,7 @@
 /* ── Areas: one tile per area ─────────────────────────────────────────── */
 .home-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: var(--sp-3);
   margin: 0;
   padding: 0;
@@ -334,7 +334,7 @@ button.home-tile-try:hover { border-color: var(--accent-line); background: var(-
 /* ── Try something new ────────────────────────────────────────────────── */
 .home-ideas {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: var(--sp-3);
   margin: 0;
   padding: 0;
@@ -351,7 +351,7 @@ button.home-tile-try:hover { border-color: var(--accent-line); background: var(-
 /* ── Fresh from your workflows ────────────────────────────────────────── */
 .home-fresh {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: var(--sp-3);
   margin: 0;
   padding: 0;
@@ -387,4 +387,17 @@ button.home-tile-try:hover { border-color: var(--accent-line); background: var(-
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .home-content { padding: var(--sp-5) var(--sp-4) calc(var(--sp-6) * 2); gap: var(--sp-6); }
+  .home-ask-wrap { max-width: 100%; }
+  .home-section-head { flex-wrap: wrap; }
+  .home-needs-row { flex-wrap: wrap; }
+  .home-needs-text { flex-basis: calc(100% - 40px); }
+  .home-ask-foot { flex-wrap: wrap; }
+}
+@media (pointer: coarse) {
+  .home-chip { padding: 10px var(--sp-4); }
+  .home-link { padding: var(--sp-2) var(--sp-3); }
 }

@@ -21,7 +21,7 @@
 .agents-filter:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
 .agents-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
   gap: var(--sp-4);
   margin: 0;
   padding: 0;
@@ -138,3 +138,7 @@
 .wf-handoff p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .wf-handoff-head { display: flex; gap: var(--sp-2); align-items: baseline; }
 .wf-handoff-fold summary { cursor: pointer; }
+
+@media (max-width: 720px) {
+  .agents-bar .apps-home-search { max-width: 100%; flex: 1 1 100%; }
+}

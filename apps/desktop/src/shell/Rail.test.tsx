@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Rail, type RailProps } from './Rail';
 
@@ -68,7 +68,7 @@ describe('Rail', () => {
   it('labels every destination, and leaves Ideas to the new-chat screen', () => {
     const { container } = renderRail();
     const labels = [...container.querySelectorAll('.rail-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['Home', 'Chats', 'Slides', 'Writing', 'Apps', 'Manage', 'Workflows', 'Inbox', 'Agents', 'Context', 'Settings']);
+    expect(labels).toEqual(['Home', 'Chats', 'Slides', 'Writing', 'Apps', 'Manage', 'Workflows', 'Inbox', 'Agents', 'Context', 'Settings', 'More']);
     expect(screen.queryByRole('button', { name: 'Ideas' })).toBeNull();
   });
 
@@ -141,5 +141,55 @@ describe('Rail', () => {
     renderRail();
     fireEvent.focus(screen.getByRole('button', { name: 'Agents' }));
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+  });
+});
+
+describe('Rail on a phone', () => {
+  function phone() {
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+  }
+  afterEach(() => {
+    // @ts-expect-error restore jsdom's lack of matchMedia
+    delete window.matchMedia;
+  });
+
+  it('walks the tabs and More with the arrow keys', () => {
+    phone();
+    renderRail({ destination: 'slides' });
+    const more = screen.getByRole('button', { name: 'More' });
+    expect(more).toHaveAttribute('aria-current', 'page');
+    expect(more.tabIndex).toBe(0);
+    more.focus();
+    fireEvent.keyDown(more, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Home' }));
+  });
+
+  it('opens a dialog of the other destinations, navigates and closes', () => {
+    phone();
+    const onNavigate = vi.fn();
+    renderRail({ onNavigate, dots: { workflows: true }, onToggleTheme: () => {} });
+    expect(screen.getByRole('button', { name: 'More (new)' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'More (new)' }));
+    const dialog = screen.getByRole('dialog', { name: 'More' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog.querySelectorAll('.more-row')).toHaveLength(8);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Writing' }).find((b) => b.classList.contains('more-row'))!);
+    expect(onNavigate).toHaveBeenCalledWith('writing');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('closes on Escape and returns focus to More', () => {
+    phone();
+    renderRail();
+    const more = screen.getByRole('button', { name: 'More' });
+    fireEvent.click(more);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(more);
   });
 });

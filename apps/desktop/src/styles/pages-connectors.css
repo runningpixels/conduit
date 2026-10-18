@@ -204,3 +204,14 @@ html[data-density="compact"] .cx-detail-meta { margin-bottom: var(--sp-4); }
 .mem-row:last-child { border-bottom: 0; }
 /* Detail titles match the other pages' (ADR-011). */
 .cx-detail-title { font-size: var(--fs-10xl); font-weight: 700; letter-spacing: -.02em; }
+
+/* Context tabs: one scrolling row on a phone (the base rule is in workspace.css). */
+@media (max-width: 720px) {
+  nav.context-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  nav.context-tabs::-webkit-scrollbar { display: none; }
+  nav.context-tabs > * { flex: none; white-space: nowrap; }
+}

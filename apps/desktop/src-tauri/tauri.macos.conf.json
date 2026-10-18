@@ -5,7 +5,7 @@
       {
         "label": "main",
         "decorations": true,
-        "minWidth": 760,
+        "minWidth": 360,
         "minHeight": 560,
         "titleBarStyle": "Overlay"
       }

@@ -189,3 +189,23 @@
 }
 .wfv-problems-title { margin: 0 0 var(--sp-2); font-size: var(--fs-5xl); font-weight: 600; color: var(--ink); }
 .wfv-problems-pop ul { margin: 0; padding-left: 1.2em; display: grid; gap: var(--sp-1); font-size: var(--fs-5xl); color: var(--warn); }
+
+/* Tablet and phone: every two-column pane stacks and the pane scrolls. */
+@media (max-width: 900px) {
+  .wfv-pane { overflow-y: auto; }
+  .wfv-listview { position: static; grid-template-columns: minmax(0, 1fr); }
+  .wfv-listview-steps { overflow: visible; }
+  .wfv-panel { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .wfv-pane-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; align-content: start; }
+  .wfv-side { max-height: 240px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .wfv-main { overflow: visible; padding: var(--sp-4); }
+  .wfv-edit-json { padding: var(--sp-4); }
+}
+
+@media (max-width: 900px) {
+  .wfv-head { flex-wrap: wrap; padding: var(--sp-4) var(--sp-4) var(--sp-3); }
+  .wfv-title { flex: 1 1 100%; }
+  .wfv-description { max-width: none; }
+  .wfv-actions { flex: 1 1 100%; flex-wrap: wrap; }
+  .wfv-chips { padding: 0 var(--sp-4) var(--sp-3); }
+}

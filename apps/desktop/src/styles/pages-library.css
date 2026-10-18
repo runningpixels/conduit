@@ -138,7 +138,7 @@
 .library-editor .field-label { font-size: var(--fs-sm); }
 .library-editor-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: var(--sp-3);
 }
 .library-editor-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); }
@@ -166,3 +166,9 @@
 
 html[data-density="compact"] .library-detail { gap: var(--sp-3); }
 html[data-density="compact"] .library-prompt-body { padding: var(--sp-2) var(--sp-3); }
+
+@media (max-width: 720px) {
+  .library-embed-split { grid-template-columns: minmax(0, 1fr); }
+  .library-embed-list { max-height: 220px; }
+  .library-editor-actions { flex-wrap: wrap; }
+}

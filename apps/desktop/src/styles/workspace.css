@@ -271,6 +271,14 @@ html[data-resizing] .sidebar-resize { transition: none; }
 html[data-resizing],
 html[data-resizing] * { cursor: col-resize !important; user-select: none; }
 
+/* The same for the window edge (windowResizing.ts): each resize frame reflows
+   the column widths, and an eased track restarts its transition on every one,
+   so the layout stood still while the window was dragged and snapped after.
+   Every transition, not only the grid's: breakpoints swap whole layouts too. */
+html[data-window-resizing] *,
+html[data-window-resizing] *::before,
+html[data-window-resizing] *::after { transition: none !important; }
+
 /* ── Sidebar — conversations only ──────────────────────────────────────── */
 .sidebar {
   min-width: 0;
@@ -733,6 +741,9 @@ html[data-sidebar="closed"] .sidebar-resize:not(.dragging) { visibility: hidden;
    exactly that much. The column is user-resizable, so the arithmetic has to
    follow it. */
 .doc-panel > * { min-width: calc(var(--panel-open-w) - 12px); }
+/* As an overlay the panel is at most the window wide (all the way on a phone), so
+   its children must be allowed to shrink with it. */
+html[data-panel-overlay="open"] .body > .doc-panel > * { min-width: 0; }
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
 @keyframes ping {
@@ -841,8 +852,73 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   .head-nav { display: flex; }
   html:not([data-sidebar-overlay]) .body > .sidebar { visibility: hidden; }
 }
+/* ── Phone (<= 720px): overlays, title bar and the shell's variables ────── */
+/* The rail becomes a bottom tab bar (rules beside the rail, below), so it no
+   longer takes a column: --rail-w is 0 and everything that offsets by it
+   (the sidebar overlay, the title bar's edge) lines up with the window's left
+   edge without further rules. --tabbar-h is the bar plus the home indicator. */
 @media (max-width: 720px) {
-  /* out of scope per spec §2 */
+  :root {
+    --rail-w: 0px;
+    --tabbar-h: calc(56px + env(safe-area-inset-bottom, 0px));
+    --page-max-w: 100%;
+  }
+  /* The browser has no window controls, and the light/dark toggle is in More,
+     so the caption row has nothing to hold: its grid row collapses to 0. The
+     element stays (the row must exist) but is empty of ink. The desktop app
+     keeps the row: it carries minimise/maximise/close. */
+  html[data-shell="web"] { --titlebar-h: 0px; }
+  html[data-shell="web"] .titlebar { visibility: hidden; overflow: hidden; }
+  .titlebar { background: var(--bg-side); }
+  .titlebar-theme { display: none; }
+
+  /* The chat list covers the window, down to the tab bar (which stays usable). */
+  html[data-sidebar-overlay="open"] .body > .sidebar {
+    left: 0;
+    width: 100vw;
+    bottom: var(--tabbar-h);
+    box-shadow: none;
+  }
+  /* The artifact panel is a full screen page covering the tab bar; its own
+     collapse button (DocumentPanel) and the scrim close it. */
+  html[data-panel-overlay="open"] .body > .doc-panel {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    margin: 0;
+    border-width: 0;
+    border-radius: 0;
+    box-shadow: none;
+    z-index: 75;
+  }
+  .menu { min-width: min(216px, calc(100vw - 32px)); }
+  .convo-menu { min-width: min(180px, calc(100vw - 32px)); }
+}
+
+/* ── Touch (coarse pointers) ───────────────────────────────────────────── */
+/* No hover to reveal anything and a fingertip to hit: shell buttons get 40px
+   targets, and what only appeared on hover (a row's timestamp, the ⋯ and
+   delete buttons) is always shown, with room reserved for it. */
+@media (pointer: coarse) {
+  .iconbtn { min-width: 40px; min-height: 40px; }
+  .convo-more,
+  .convo-del {
+    width: 32px;
+    height: 32px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .convo-row:has(.convo-del) .convo-more { right: 40px; }
+  .convo-meta { opacity: 1; }
+  .convo-row .convo,
+  .convo-row:hover .convo,
+  .convo-row:focus-within .convo { padding-right: 44px; }
+  .convo-row:has(.convo-del) .convo,
+  .convo-row:has(.convo-del):hover .convo,
+  .convo-row:has(.convo-del):focus-within .convo { padding-right: 84px; }
+  .sb-group-action,
+  .sb-folder-edit { min-height: 32px; padding: 0 var(--sp-2); }
 }
 
 /* ── Ideas (docs/plans/ideas-and-discovery.md) ─────────────────────────────── */
@@ -1184,6 +1260,8 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   line-height: 1.15;
 }
 .rail-btn[aria-current="page"] .rail-label { font-weight: 700; }
+/* Phone only: the tab bar's fifth tab, which opens the sheet of the rest. */
+.rail-more { display: none; }
 .rail-dot {
   position: absolute;
   top: 3px;
@@ -1220,6 +1298,129 @@ html[data-density="compact"] { --rail-btn-h: 46px; }
     font-size: var(--fs-md);
   }
   .rail-rule { margin: var(--sp-1) 0; }
+}
+
+/* ── Phone tab bar (<= 720px) ──────────────────────────────────────────────
+   The same markup, laid out as a bar: Rail.tsx marks each button
+   data-phone="tab" (Home, Chats, Apps, Inbox) or "more" (hidden here, listed in
+   the More sheet instead) and renders the More button last. The wrappers
+   (.rail-group, .rail-scroll, .rail-band) dissolve with display: contents so
+   the buttons are direct flex children of the bar, in destination order. The
+   bar is fixed to the bottom; .shell reserves its height so no content hides
+   behind it. Above the sidebar overlay's scrim (65), below the overlays
+   themselves (70+) and the More sheet (90+). */
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: var(--tabbar-h);
+  }
+  .rail {
+    position: fixed;
+    inset: auto 0 0 0;
+    height: var(--tabbar-h);
+    z-index: 66;
+    flex-direction: row;
+    align-items: stretch;
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    border-right: 0;
+    border-top: 1px solid var(--line-soft);
+  }
+  .rail-brand,
+  .rail-rule { display: none; }
+  .rail-group,
+  .rail-scroll,
+  .rail-band { display: contents; }
+  .rail-btn[data-phone="more"] { display: none; }
+  .rail .rail-more { display: grid; }
+  .rail .rail-btn {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    min-height: 44px;
+    padding: 4px 2px;
+    gap: 2px;
+    align-content: center;
+  }
+  .rail-label {
+    max-width: 100%;
+    -webkit-line-clamp: 1;
+    text-overflow: ellipsis;
+    font-size: var(--fs-md);
+  }
+  .rail-icon { height: 28px; }
+  .rail-dot { right: 13px; }
+}
+
+/* The More sheet (Rail.tsx, rendered in a portal on phone): a bottom sheet of
+   large rows over a scrim. Uses the app's surface colours, not the rail's. */
+.more-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  animation: pane-in var(--duration-normal) var(--ease-emphasized) both;
+}
+.more-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(100dvh - var(--titlebar-h) - var(--sp-5));
+  overflow-y: auto;
+  padding: var(--sp-2) var(--sp-3) calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: var(--lift);
+  animation: overlay-in-up var(--duration-normal) var(--ease-emphasized) both;
+}
+.more-grip {
+  flex: none;
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  margin: var(--sp-1) 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--line-hi);
+}
+.more-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: none;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r);
+  text-align: left;
+  color: var(--ink-2);
+  font-size: var(--fs-5xl);
+  font-weight: 500;
+  transition: background var(--tap), color var(--tap);
+}
+.more-row:hover { background: var(--card-hi); color: var(--ink); }
+.more-row[aria-current="page"] { background: var(--accent-soft); color: var(--ink); font-weight: 700; }
+.more-row:focus-visible { outline: 2px solid var(--hue); outline-offset: -2px; }
+.more-row-theme { margin-top: var(--sp-1); border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r) var(--r); }
+.more-row-icon {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+}
+.more-row-icon svg { width: 22px; height: 22px; }
+.more-row[aria-current="page"] .more-row-icon { color: var(--accent); }
+.more-row-icon .rail-dot { top: -3px; right: -4px; border-color: var(--card); }
+.more-row-label { min-width: 0; overflow-wrap: anywhere; }
+@keyframes overlay-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* A destination page covers the body; the chat underneath stays mounted. */
@@ -1427,4 +1628,36 @@ html[data-density="compact"] .page-list-item { padding: 6px 8px; }
   letter-spacing: .01em;
   text-transform: none;
   vertical-align: middle;
+}
+
+/* ── Rail pages on a phone (<= 720px) ───────────────────────────────────────
+   Tighter paddings, and the list|detail split stacks: the list on top (capped,
+   scrolling on its own), the detail below. These come after the compact-density
+   rules above on purpose, with their selectors repeated, so density does not
+   win back the desktop paddings. */
+@media (max-width: 720px) {
+  .page-head,
+  html[data-density="compact"] .page-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  }
+  .page-title-icon { width: 36px; height: 36px; }
+  .page-title-icon svg { width: 20px; height: 20px; }
+  .page-about { padding: var(--sp-3) var(--sp-4); }
+  .context-tabs { padding: var(--sp-3) var(--sp-4) 0; }
+  .page-content,
+  .page-detail,
+  html[data-density="compact"] .page-content,
+  html[data-density="compact"] .page-detail { padding: var(--sp-4); }
+  .page-split .page-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .page-list {
+    max-height: 40dvh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
 }

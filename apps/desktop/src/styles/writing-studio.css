@@ -235,7 +235,7 @@
 .draft-selection-btn:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
 .draft-selection-ask { display: flex; align-items: center; gap: 4px; }
 .draft-selection-input {
-  width: 280px;
+  width: min(280px, 100%);
   max-width: 60vw;
   padding: 5px 8px;
   border: 1px solid var(--field-line);

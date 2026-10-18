@@ -53,7 +53,9 @@
 .wfe-list-bar { position: relative; z-index: 2; display: flex; align-items: center; gap: var(--sp-3); }
 .wfe-start-col { min-height: 0; overflow-y: auto; padding: var(--sp-5); background: var(--bg-side); border-left: 1px solid var(--line); font-size: var(--fs-5xl); }
 @media (max-width: 1100px) {
-  .wfe-list-layout { grid-template-columns: 1fr; grid-template-rows: minmax(320px, 1fr) auto; }
+  .wfe-list-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; align-content: start; overflow-y: auto; }
+  .wfe-list-col { overflow: visible; }
+  .wfe-start-col { overflow: visible; }
   .wfe-start-col { border-left: 0; border-top: 1px solid var(--line); }
 }
 

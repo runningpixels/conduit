@@ -1093,8 +1093,8 @@
 .composer-workspace-menu {
   bottom: calc(100% + 6px);
   left: 0;
-  min-width: 220px;
-  max-width: 320px;
+  min-width: min(220px, calc(100vw - 32px));
+  max-width: min(320px, calc(100vw - 32px));
   padding: 8px;
   display: grid;
   gap: 6px;
@@ -1283,7 +1283,8 @@
 .model-menu {
   right: 0;
   bottom: calc(100% + 8px);
-  min-width: 260px;
+  min-width: min(260px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
   max-height: min(420px, var(--model-menu-room, 52vh));
   overflow-y: auto;
 }
@@ -1486,7 +1487,8 @@
 .status-menu {
   bottom: calc(100% + 6px);
   left: 50%;
-  min-width: 260px;
+  min-width: min(260px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
   transform: translateX(-50%) translateY(4px) scale(.985);
 }
 .status-menu[data-open="true"] { transform: translateX(-50%); }
@@ -1648,6 +1650,8 @@
   color: var(--ink-3);
   font: 500 var(--fs-sm)/1 var(--font-mono);
   white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  flex-wrap: wrap;
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--tap);
@@ -1982,7 +1986,7 @@
   /* Three across at the composer's width, fewer as the pane narrows. The
      gallery sits outside the thread's size container, so auto-fill rather
      than a container query. */
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr));
   gap: 10px;
   margin: 0;
   padding: 0;
@@ -2472,3 +2476,25 @@ html[data-reduce-motion="on"] .research-spinner { animation: none; }
 .research-source-note { flex: none; font-family: var(--font-mono); font-size: var(--fs-md); color: var(--ink-2); font-weight: var(--muted-weight); }
 .research-source-status { flex: none; font-size: var(--fs-md); color: var(--ink-2); font-weight: var(--muted-weight); }
 .research-source[data-status="failed"] .research-source-status { color: var(--err); }
+
+/* ── Responsive: phone and touch ─────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .thread { padding: var(--sp-4) var(--sp-3) var(--sp-3); }
+  .composer-wrap { padding: 0 var(--sp-3) var(--sp-2); }
+  /* Tools, model and send no longer fit one row: let the bar wrap, with the
+     spacer dropping out so the model picker and send stay together. */
+  .composer-bar { flex-wrap: wrap; row-gap: 4px; padding: 6px 8px 8px; }
+  .composer-bar .spacer { flex: 1 1 0; min-width: 0; }
+  .composer-attachment-name { max-width: 120px; }
+  .idea-gallery { padding: 0 var(--sp-3) var(--sp-4); }
+}
+
+/* Touch has no hover: reveal what hover reveals and give small buttons a hit
+   area a finger can find. Fine pointers keep the opacity-based hiding above. */
+@media (pointer: coarse) {
+  .turn-actions { opacity: 1; pointer-events: auto; }
+  .act { height: 36px; padding: 0 10px; }
+  .cbtn { min-height: 40px; min-width: 40px; }
+  .composer-plus-btn { width: 40px; }
+  .idea-gallery-filter { padding: 8px 14px; }
+}

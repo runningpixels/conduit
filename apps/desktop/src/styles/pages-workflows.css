@@ -381,3 +381,8 @@ html[data-theme="dark"] .wf-view-btn.active { background: var(--card-hi); filter
 .wf-computer-output { max-height: 12em; overflow: auto; }
 .wf-cmdrules-preview { display: grid; gap: 2px; }
 .wf-computer-option { display: grid; gap: var(--sp-1); }
+
+@media (max-width: 720px) {
+  .wf-narrow { max-width: 100%; }
+  .inbox-item-head { flex-wrap: wrap; }
+}

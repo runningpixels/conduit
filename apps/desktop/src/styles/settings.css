@@ -115,6 +115,7 @@
 .sheet-nav button:hover { background: var(--card); color: var(--ink); }
 .sheet-nav button[aria-current="true"] { background: var(--card); color: var(--ink); font-weight: 500; }
 .sheet-nav svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.sheet-nav button { white-space: nowrap; }
 .sheet-main { padding: var(--sp-6); overflow: auto; min-height: 0; }
 .sheet-h { font-size: var(--fs-sheet-heading); font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
 .sheet-sub { font-size: var(--fs-2xl); color: var(--ink-2); font-weight: var(--muted-weight); margin: 0 0 var(--sp-5); line-height: 1.5; max-width: 68ch; }
@@ -1084,7 +1085,7 @@
 
 .brand-palette-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr));
   gap: 12px;
 }
 .brand-swatch { display: grid; gap: 6px; }
@@ -1216,4 +1217,91 @@
   background: var(--card);
   box-shadow: var(--lift);
   font-weight: 600;
+}
+
+/* ── Phone and touch ─────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  /* The sheet is the whole screen; its nav becomes a row of tabs on top. */
+  .sheet,
+  .scrim[data-open="true"] .sheet {
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100dvh;
+    transform: none;
+    border: 0;
+    border-radius: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  /* Search sits on top at full width (positioned against the sheet, so it does
+     not scroll with the chips); the sections are ONE scrolling row of chips.
+     The nav's groups are wrapper divs, so they dissolve into the row. */
+  .sheet-nav,
+  .sheet-nav.scroll {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 52px var(--sp-2) var(--sp-2);
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .sheet-nav::-webkit-scrollbar { display: none; }
+  .sheet-nav > div[role="group"] { display: contents; }
+  .sheet-nav-title,
+  .sheet-nav-group,
+  .sheet-nav-match,
+  .sheet-search-empty { display: none; }
+  .sheet-search {
+    position: absolute;
+    top: var(--sp-2);
+    left: var(--sp-2);
+    right: var(--sp-2);
+    z-index: 1;
+    width: auto;
+    margin: 0;
+    box-sizing: border-box;
+  }
+  .sheet-nav button {
+    flex: none;
+    width: auto;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    white-space: nowrap;
+  }
+  .sheet-nav button[aria-current="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
+    color: var(--ink);
+  }
+  .sheet-main { padding: var(--sp-4); }
+  .palette { top: 6vh; width: calc(100vw - 24px); }
+  .appearance-form .field { grid-template-columns: minmax(0, 1fr); row-gap: var(--sp-2); }
+  .accent-row { grid-template-columns: minmax(0, 1fr); }
+  .srow { flex-wrap: wrap; }
+  .onboarding-card--split { grid-template-columns: minmax(0, 1fr); }
+  .brand-palette-grid { grid-template-columns: minmax(0, 1fr); }
+  .kb-import-progress { max-width: 100%; }
+  /* Any other summoned dialog fits the screen and scrolls inside itself. */
+  .app-details-dialog,
+  .app-inputs-dialog,
+  .artifact-network-dialog,
+  .page-llm-dialog,
+  .wfc-wire-dialog {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    max-height: 100dvh;
+    padding: var(--sp-4);
+    box-sizing: border-box;
+  }
+}
+@media (pointer: coarse) {
+  .btn { min-height: 40px; }
+  .icon-btn { min-width: 40px; min-height: 40px; }
+  .sheet-nav button { min-height: 40px; }
 }

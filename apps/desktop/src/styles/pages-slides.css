@@ -27,7 +27,7 @@ button.deck-frame-thumb:hover { border-color: var(--line-hi); }
 .slides-error { margin: 0 0 var(--sp-3); color: var(--err); font-size: var(--fs-2xl); }
 .slides-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: 14px;
   margin: 0;
   padding: 0;
@@ -468,3 +468,23 @@ button.deck-frame-thumb:hover { border-color: var(--line-hi); }
 
 @keyframes deck-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 @keyframes deck-ring { 0%, 100% { outline-color: transparent; } 50% { outline-color: var(--accent); } }
+
+@media (max-width: 720px) {
+  .slides-start { padding: var(--sp-4); }
+  .slides-start-chips { flex-basis: 100%; }
+  .deck-head { flex-wrap: wrap; padding: var(--sp-3); }
+  .deck-title-input { flex: 1 1 160px; }
+  .storyline { padding: var(--sp-4) var(--sp-3); }
+  .storyline-row { flex-wrap: wrap; }
+  .storyline-foot { flex-wrap: wrap; }
+  .deck-script-head { flex-wrap: wrap; }
+  .deck-body { flex-direction: column; }
+  .deck-body > .deck-script { flex-basis: auto; border-width: 1px 0 0; }
+  .deck-history { border-left: 0; border-top: 1px solid var(--line); width: auto; }
+}
+
+/* A long nowrap title must not set the card's (and so the page's) minimum width. */
+.slides-grid > li { min-width: 0; }
+.deck-card { min-width: 0; }
+.writing-page,
+.writing-page .page-body { min-width: 0; }

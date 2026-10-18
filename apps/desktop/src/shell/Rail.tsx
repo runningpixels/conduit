@@ -19,8 +19,14 @@
 ///
 /// A toolbar in ARIA terms: one tab stop, arrow keys move between buttons,
 /// Home/End jump to the ends. `aria-current="page"` marks where you are.
+///
+/// Phone widths (<= 720px, workspace.css): the same markup becomes a bottom tab
+/// bar. CSS lays it out; JS only decides which destinations are tabs
+/// (PHONE_TABS) and which live in the "More" sheet, whose open state it owns.
 
-import { Fragment, useEffect, useRef, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useFocusTrap } from './useFocusTrap';
 import { useT } from '../i18n';
 import { appName } from '../brand';
 import {
@@ -51,6 +57,9 @@ import {
   WorkflowIcon,
   WritingIcon,
   AppsIcon,
+  MoonIcon,
+  MoreIcon,
+  SunIcon,
 } from '../icons';
 
 export type Destination =
@@ -140,6 +149,29 @@ const SOLID_ICONS: Partial<Record<Destination, ReactNode>> = {
   settings: <SettingsSolidIcon />,
 };
 
+/** The destinations that are tabs in the phone tab bar; the rest sit in More. */
+export const PHONE_TABS: readonly Destination[] = ['home', 'chats', 'apps', 'inbox'];
+
+/** The phone layout's breakpoint; mirrors `@media (max-width: 720px)` in workspace.css. */
+export const PHONE_BREAKPOINT = 720;
+const PHONE_QUERY = `(max-width: ${PHONE_BREAKPOINT}px)`;
+
+/** True while the window is phone-sized. False where matchMedia is missing (tests). */
+function usePhone(): boolean {
+  const [phone, setPhone] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(PHONE_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(PHONE_QUERY);
+    const sync = () => setPhone(mq.matches);
+    sync();
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
+  }, []);
+  return phone;
+}
+
 /** Destinations whose short rail label needs a fuller accessible name. */
 const ARIA_LABEL_KEYS: Partial<Record<Destination, string>> = {
   manage: 'shell.rail.manageAria',
@@ -154,6 +186,9 @@ export interface RailProps {
   hidden?: readonly Destination[];
   /** A white-label brand's logo, if one is configured. */
   logoSrc?: string;
+  /** The theme in effect; with `onToggleTheme`, the phone More sheet shows a light/dark row. */
+  effectiveTheme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 export function Rail({
@@ -162,9 +197,16 @@ export function Rail({
   dots = {},
   hidden = [],
   logoSrc,
+  effectiveTheme = 'dark',
+  onToggleTheme,
 }: RailProps) {
   const t = useT();
-  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const refs = useRef(new Map<string, HTMLButtonElement | null>());
+  const phone = usePhone();
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => {
+    if (!phone) setMoreOpen(false);
+  }, [phone]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bands = RAIL_BANDS.map((band) => ({ ...band, items: band.items.filter((d) => !hidden.includes(d)) })).filter(
     (band) => band.items.length > 0,
@@ -172,6 +214,14 @@ export function Rail({
   const bottom: Destination[] = hidden.includes('settings') ? [] : ['settings'];
   const order = [...bands.flatMap((band) => band.items), ...bottom];
   const here = railItemFor(destination);
+  // Phone: four tabs and More. Everything else in `order` lives in the sheet.
+  const tabs = order.filter((d) => PHONE_TABS.includes(d));
+  const sheetItems = order.filter((d) => !PHONE_TABS.includes(d));
+  const moreCurrent = sheetItems.includes(here);
+  const moreDot = sheetItems.some((d) => dots[d]);
+  // Arrow keys walk what is visible: the whole rail, or the tabs and More.
+  const nav: string[] = phone ? [...tabs, 'more'] : order;
+  const tabStop = phone ? (tabs.includes(here) ? here : 'more') : order.includes(here) ? here : order[0];
 
   // The fade at the scroll area's edges shows only where there is more to see.
   useEffect(() => {
@@ -199,20 +249,19 @@ export function Rail({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
-    const index = order.indexOf((event.target as HTMLElement).dataset.destination as Destination);
+    const index = nav.indexOf((event.target as HTMLElement).dataset.destination ?? '');
     if (index < 0) return;
     let next = -1;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % order.length;
-    else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (index - 1 + order.length) % order.length;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % nav.length;
+    else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (index - 1 + nav.length) % nav.length;
     else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = order.length - 1;
+    else if (event.key === 'End') next = nav.length - 1;
     if (next < 0) return;
     event.preventDefault();
-    refs.current[next]?.focus();
+    refs.current.get(nav[next])?.focus();
   }
 
   const button = (d: Destination) => {
-    const index = order.indexOf(d);
     const current = d === here;
     const label = t(`shell.rail.${d}`);
     const ariaKey = ARIA_LABEL_KEYS[d];
@@ -221,15 +270,16 @@ export function Rail({
       <button
         key={d}
         ref={(el) => {
-          refs.current[index] = el;
+          refs.current.set(d, el);
         }}
         type="button"
         className="rail-btn"
         data-destination={d}
+        data-phone={PHONE_TABS.includes(d) ? 'tab' : 'more'}
         title={label}
         aria-current={current ? 'page' : undefined}
         aria-label={dots[d] ? t('shell.rail.withNew', { label: name }) : name}
-        tabIndex={current || (!order.includes(here) && index === 0) ? 0 : -1}
+        tabIndex={d === tabStop ? 0 : -1}
         onClick={() => onNavigate(d)}
       >
         <span className="rail-icon" data-filled={current && SOLID_ICONS[d] ? '' : undefined}>
@@ -270,7 +320,116 @@ export function Rail({
           )}
         </div>
         {bottom.map(button)}
+        {/* Phone only (CSS hides it otherwise): opens the sheet of the rest. */}
+        <button
+          ref={(el) => {
+            refs.current.set('more', el);
+          }}
+          type="button"
+          className="rail-btn rail-more"
+          data-destination="more"
+          aria-haspopup="dialog"
+          aria-expanded={phone ? moreOpen : undefined}
+          aria-current={phone && moreCurrent ? 'page' : undefined}
+          aria-label={moreDot ? t('shell.rail.withNew', { label: t('shell.rail.more') }) : t('shell.rail.more')}
+          tabIndex={tabStop === 'more' ? 0 : -1}
+          onClick={() => setMoreOpen((open) => !open)}
+        >
+          <span className="rail-icon" data-filled={phone && moreCurrent ? '' : undefined}>
+            <MoreIcon />
+            {moreDot && <span className="rail-dot" aria-hidden="true" />}
+          </span>
+          <span className="rail-label" aria-hidden="true">
+            {t('shell.rail.more')}
+          </span>
+        </button>
       </div>
+      {phone && moreOpen && (
+        <MoreSheet
+          items={sheetItems}
+          here={here}
+          dots={dots}
+          effectiveTheme={effectiveTheme}
+          onToggleTheme={onToggleTheme}
+          onNavigate={(d) => {
+            setMoreOpen(false);
+            onNavigate(d);
+          }}
+          onClose={() => {
+            setMoreOpen(false);
+            refs.current.get('more')?.focus();
+          }}
+        />
+      )}
     </nav>
+  );
+}
+
+interface MoreSheetProps {
+  items: readonly Destination[];
+  here: Destination;
+  dots: Partial<Record<Destination, boolean>>;
+  effectiveTheme: 'dark' | 'light';
+  onToggleTheme?: () => void;
+  onNavigate: (destination: Destination) => void;
+  onClose: () => void;
+}
+
+/** The phone "More" bottom sheet: the destinations that are not tabs, then light/dark. */
+function MoreSheet({ items, here, dots, effectiveTheme, onToggleTheme, onNavigate, onClose }: MoreSheetProps) {
+  const t = useT();
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, true);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>('button')?.focus();
+  }, []);
+  // Rendered in a portal: the rail's own ink remap and bar geometry must not apply.
+  return createPortal(
+    <>
+      <div className="more-scrim" aria-hidden="true" onClick={onClose} />
+      <div
+        ref={ref}
+        className="more-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('shell.rail.more')}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.stopPropagation();
+            onClose();
+          }
+        }}
+      >
+        <span className="more-grip" aria-hidden="true" />
+        {items.map((d) => {
+          const label = t(`shell.rail.${d}`);
+          const ariaKey = ARIA_LABEL_KEYS[d];
+          const name = ariaKey ? t(ariaKey) : label;
+          return (
+            <button
+              key={d}
+              type="button"
+              className="more-row"
+              aria-current={d === here ? 'page' : undefined}
+              aria-label={dots[d] ? t('shell.rail.withNew', { label: name }) : name}
+              onClick={() => onNavigate(d)}
+            >
+              <span className="more-row-icon">
+                {(d === here && SOLID_ICONS[d]) || ICONS[d]}
+                {dots[d] && <span className="rail-dot" aria-hidden="true" />}
+              </span>
+              <span className="more-row-label">{label}</span>
+            </button>
+          );
+        })}
+        {onToggleTheme && (
+          <button type="button" className="more-row more-row-theme" onClick={onToggleTheme}>
+            <span className="more-row-icon">{effectiveTheme === 'light' ? <SunIcon /> : <MoonIcon />}</span>
+            <span className="more-row-label">{t('workspace.mainHead.themeToggleTitle')}</span>
+          </button>
+        )}
+      </div>
+    </>,
+    document.body,
   );
 }

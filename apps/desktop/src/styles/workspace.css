@@ -1258,7 +1258,12 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   max-width: 74px;
   overflow: hidden;
   text-align: center;
-  overflow-wrap: anywhere;
+  /* Break only between words, never inside one: a word too wide for the box
+     ("Einstellungen", "Configurações", the Japanese labels) is shrunk to fit
+     by fitRailLabels in Rail.tsx instead. keep-all stops CJK breaking between
+     characters. */
+  overflow-wrap: normal;
+  word-break: keep-all;
   font-size: var(--fs-lg);
   font-weight: 500;
   line-height: 1.15;

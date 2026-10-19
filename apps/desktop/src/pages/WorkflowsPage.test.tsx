@@ -1442,6 +1442,29 @@ describe('WorkflowsPage', () => {
       expect(await screen.findByRole('region', { name: 'This computer' })).toHaveTextContent('Not confined');
     });
 
+    it('says "Not confined" right after the setting is saved, with no reload', async () => {
+      ipc.getWorkflow.mockResolvedValue(computerRecord);
+      ipc.getWorkflowActionRules.mockResolvedValue(withRules);
+      ipc.updateWorkflow.mockImplementation(async (_id: string, _name: string, _desc: string | null, definition: WorkflowRecord['definition']) => ({
+        ...computerRecord,
+        definition,
+      }));
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: /Computer.*2 rules/ }));
+      expect(await screen.findByText('Commands stay in the folder with almost no network')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+      fireEvent.click(await screen.findByRole('checkbox', { name: /write outside the folder/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(ipc.updateWorkflow).toHaveBeenCalled());
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Not confined' }));
+      const group = await screen.findByRole('region', { name: 'This computer' });
+      expect(group).toHaveTextContent('Not confined');
+      expect(screen.queryByText('Commands stay in the folder with almost no network')).toBeNull();
+    });
+
     it('offers to allow what the finished run asked about', async () => {
       ipc.getWorkflow.mockResolvedValue(computerRecord);
       ipc.getWorkflowActionRules.mockResolvedValue(withRules);

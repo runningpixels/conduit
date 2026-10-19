@@ -228,6 +228,56 @@ describe('ActionCard for a risky command', () => {
   });
 });
 
+describe('ActionCard offering one run outside the folder', () => {
+  const failed: ComputerRequest = {
+    ...command,
+    program: 'C:\\Users\\me\\.cargo\\bin\\cargo.exe',
+    args: ['test'],
+    why: 'Run the tests',
+    suggestedRule: undefined,
+    reason: 'Windows wouldn’t let it create the shared system objects that compilers use.',
+    outside: {
+      cause: 'namedObjects',
+      output: 'error: failed to run rustc to learn about target-specific information',
+    },
+  };
+
+  it('says why the kept-in run failed and what running it outside means', () => {
+    setup(failed, { sensitive: true });
+    expect(screen.getByLabelText('Command').textContent).toBe('site> cargo test');
+    expect(screen.getByRole('note').textContent).toMatch(/kept in the workflow’s folder/);
+    expect(screen.getByRole('note').textContent).toMatch(/Rust/);
+    expect(screen.getByText(/write anywhere you can and use the network/)).toBeInTheDocument();
+    expect(screen.getByText(/This one command only/)).toBeInTheDocument();
+    expect(screen.getByText(/failed to run rustc/)).toBeInTheDocument();
+  });
+
+  it('offers only a one-off run: no Run default, no rule, no editing', async () => {
+    setup({ ...failed, suggestedRule: 'cargo test *' }, { sensitive: true });
+    const no = screen.getByRole('button', { name: 'Don’t run' });
+    expect(no).toHaveClass('primary');
+    const once = screen.getByRole('button', { name: 'Run once outside the folder' });
+    expect(once).not.toHaveClass('primary');
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Run and allow/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    fireEvent.click(once);
+    await waitFor(() => expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', { send: true }));
+  });
+
+  it('names a refused access more loosely than the known compiler failure', () => {
+    setup({ ...failed, outside: { cause: 'accessDenied', output: 'Error: spawn EPERM' } }, { sensitive: true });
+    expect(screen.getByRole('note').textContent).toMatch(/refused access/);
+    expect(screen.getByRole('note').textContent).not.toMatch(/Rust/);
+  });
+
+  it('declines', async () => {
+    setup(failed, { sensitive: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Don’t run' }));
+    await waitFor(() => expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', { send: false }));
+  });
+});
+
 describe('ActionCard for a file change', () => {
   it('shows the path, the counts and the change as a line diff', () => {
     setup(fileChange);

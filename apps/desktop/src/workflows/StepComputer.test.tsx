@@ -98,4 +98,20 @@ describe('StepComputer details', () => {
     );
     expect(ranBad.container.querySelector('.wf-error')).toHaveTextContent('Ran x');
   });
+
+  it('says when a command ran once outside the folder', () => {
+    render(
+      <StepComputer
+        output={{
+          computer: [
+            { kind: 'command', program: 'cargo.exe', args: ['test'], cwd: '.', approvedBy: 'rule: cargo test *', outcome: 'ran', exitCode: 101, keptIn: 'namedObjects' },
+            { kind: 'command', program: 'cargo.exe', args: ['test'], cwd: '.', approvedBy: 'you', outcome: 'ran', exitCode: 0, outside: true },
+          ],
+        }}
+      />,
+    );
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).not.toHaveTextContent('outside the folder');
+    expect(items[1]).toHaveTextContent('You approved it · outside the folder');
+  });
 });

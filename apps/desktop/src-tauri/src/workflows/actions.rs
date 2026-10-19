@@ -81,6 +81,19 @@ pub struct ComputerRequest {
     /// and file changes as run details record them, without their output).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub so_far: Vec<Value>,
+    /// The command already ran kept in the folder and failed, apparently
+    /// because of that: the card offers to run this one command outside the
+    /// folder (never remembered, never editable).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outside: Option<OutsideOffer>,
+}
+
+/// Why a kept-in command failed, and the end of what it printed.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutsideOffer {
+    pub cause: super::computer::KeptInFailure,
+    pub output: String,
 }
 
 impl Pending for PendingAction {

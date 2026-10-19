@@ -762,6 +762,78 @@ fn head_and_tail(text: &str) -> String {
     )
 }
 
+/// Why a command kept in the folder (`workflows::confine`) probably failed
+/// *because* it was kept in, so the run can offer to run it once outside.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeptInFailure {
+    /// Windows refused to let it create named system objects (a semaphore or
+    /// mutex): a restricted token can't create them in the session's shared
+    /// namespace. rustc's jobserver and error-output lock are the known case;
+    /// other compilers and `make -j` use the same kind of objects.
+    NamedObjects,
+    /// It was refused access to something, which being kept in may explain.
+    AccessDenied,
+}
+
+impl KeptInFailure {
+    /// The cause in plain English, for the model and the card's fallback.
+    pub fn describe(self) -> &'static str {
+        match self {
+            Self::NamedObjects => "It failed while kept in the workflow's folder: Windows wouldn't let it create the shared system objects that compilers such as Rust's use for parallel builds.",
+            Self::AccessDenied => "It failed while kept in the workflow's folder: it was refused access to something, maybe because it was kept in.",
+        }
+    }
+}
+
+/// Whether `ran`, a command that was kept in the folder, failed in a way that
+/// looks caused by that. Reads the output, so it is a hint, never proof: the
+/// user decides on the card. A command that succeeded or timed out never
+/// counts.
+pub fn kept_in_failure(ran: &Ran) -> Option<KeptInFailure> {
+    if ran.timed_out || ran.exit_code == Some(0) {
+        return None;
+    }
+    let text = ran.output.to_ascii_lowercase();
+    // Error code 5 (access denied) shows the same in every Windows language;
+    // "Access is denied." only in English.
+    let denied = text.contains("access is denied")
+        || text.contains("permissiondenied")
+        || text.contains("os error 5)")
+        || text.contains("code: 5,")
+        || text.contains("[winerror 5]")
+        || text.contains("error_access_denied")
+        || has_word(&text, "eperm")
+        || has_word(&text, "eacces");
+    if !denied {
+        return None;
+    }
+    // rustc (any language): its jobserver semaphore or its error-output
+    // mutex; others name the object they tried to make.
+    let named = text.contains("failed to create jobserver")
+        || text.contains(r"rustc_errors\src\lock.rs")
+        || text.contains("rustc_errors/src/lock.rs")
+        || text.contains("createsemaphore")
+        || text.contains("createmutex")
+        || text.contains("createevent")
+        || text.contains("jobserver");
+    Some(if named {
+        KeptInFailure::NamedObjects
+    } else {
+        KeptInFailure::AccessDenied
+    })
+}
+
+/// Whether `word` appears in `text` on its own (not inside a longer word).
+fn has_word(text: &str, word: &str) -> bool {
+    text.match_indices(word).any(|(at, _)| {
+        let before = text[..at].chars().next_back();
+        let after = text[at + word.len()..].chars().next();
+        !before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+            && !after.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
 /// Paths in the work folder that are never written, whatever the edit mode:
 /// git's own settings and hooks run code (a hostile `.git/config` runs
 /// commands even on `git status`). Secrets are refused by the workspace path
@@ -1462,6 +1534,87 @@ mod tests {
             "Use {{steps.mine.text}} and {{inputs.x}}",
             &outside
         ));
+    }
+
+    /// What `cargo test --offline` printed when kept in the folder (captured
+    /// 2026-10-19 through `confine::run`, backtrace shortened).
+    const CARGO_KEPT_IN: &str = r#"error: failed to run `rustc` to learn about target-specific information
+
+Caused by:
+  process didn't exit successfully: `C:\Users\me\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe - --crate-name ___ --print=file-names --crate-type bin --crate-type rlib --crate-type dylib --crate-type cdylib --crate-type staticlib --crate-type proc-macro --print=sysroot --print=split-debuginfo --print=crate-name --print=cfg -Wwarnings` (exit code: 0xc0000409, STATUS_STACK_BUFFER_OVERRUN)
+  --- stderr
+
+  thread 'main' (32392) panicked at /rustc-dev/48a229ceaefd4985c50990b14116b6d856af0985/compiler\rustc_data_structures\src\jobserver.rs:48:34:
+  failed to create jobserver: Os { code: 5, kind: PermissionDenied, message: "Access is denied." }
+  stack backtrace:
+     0:     0x7ff8271d19b9 - <unknown>
+     1:     0x7ff8271fa9f1 - <unknown>
+
+  panicked at /rustc-dev/48a229ceaefd4985c50990b14116b6d856af0985/compiler\rustc_errors\src\lock.rs:54:29:
+
+  thread panicked while processing panic. aborting.
+"#;
+
+    fn failed(output: &str) -> Ran {
+        Ran {
+            exit_code: Some(101),
+            output: output.to_string(),
+            timed_out: false,
+            duration: Duration::from_secs(1),
+        }
+    }
+
+    #[test]
+    fn a_kept_in_rust_build_is_recognised() {
+        assert_eq!(
+            kept_in_failure(&failed(CARGO_KEPT_IN)),
+            Some(KeptInFailure::NamedObjects)
+        );
+        // In another Windows language the message is translated, the code
+        // and kind are not.
+        let german = CARGO_KEPT_IN.replace("Access is denied.", "Zugriff verweigert");
+        assert_eq!(
+            kept_in_failure(&failed(&german)),
+            Some(KeptInFailure::NamedObjects)
+        );
+        // rustc run directly, dying on its error-output lock alone.
+        let lock = "thread 'rustc' panicked at compiler/rustc_errors/src/lock.rs:54:29:\nOs { code: 5, kind: PermissionDenied, message: \"Access is denied.\" }";
+        assert_eq!(
+            kept_in_failure(&failed(lock)),
+            Some(KeptInFailure::NamedObjects)
+        );
+    }
+
+    #[test]
+    fn other_refusals_count_loosely_and_ordinary_failures_not_at_all() {
+        for output in [
+            "Error: spawn EPERM\n    at ChildProcess.spawn",
+            "PermissionError: [WinError 5] Zugriff verweigert: 'C:\\\\x'",
+            "Error: Access is denied. (os error 5)",
+        ] {
+            assert_eq!(
+                kept_in_failure(&failed(output)),
+                Some(KeptInFailure::AccessDenied),
+                "{output}"
+            );
+        }
+        for output in [
+            "error[E0425]: cannot find value `x` in this scope",
+            "test result: FAILED. 3 passed; 1 failed",
+            // Words that merely contain the codes.
+            "EPERMISSIVE mode; read the EACCESSOR docs",
+            "error code: 52, see the log",
+        ] {
+            assert_eq!(kept_in_failure(&failed(output)), None, "{output}");
+        }
+        // Success or a timeout never counts, whatever it printed.
+        let mut ok = failed(CARGO_KEPT_IN);
+        ok.exit_code = Some(0);
+        assert_eq!(kept_in_failure(&ok), None);
+        let mut slow = failed(CARGO_KEPT_IN);
+        slow.timed_out = true;
+        slow.exit_code = None;
+        assert_eq!(kept_in_failure(&slow), None);
     }
 
     #[test]

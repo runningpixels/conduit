@@ -149,7 +149,8 @@ import {
 import {
   failedDocumentToolCalls,
   hadSuccessfulDocumentToolCalls,
-  toolActivityHistoryNote,
+  stripLeakedToolRecord,
+  toolHistoryDeveloperPrompt,
   conversationWorkspaceDisabled,
   resolveActiveWorkspaceRoot,
   type HistoryNoteArtifact,
@@ -410,7 +411,7 @@ export interface ChatRequestOverrides {
   draftSources?: DraftPromptSources;
   /** Verified claims of the Research reports attached to the draft. */
   draftResearch?: ResearchMaterial[] | null;
-  /** This chat's artifacts: the history notes name the documents earlier
+  /** This chat's artifacts: the tool history names the documents earlier
    *  turns wrote by their artifact ids. */
   artifacts?: readonly HistoryNoteArtifact[];
 }
@@ -419,19 +420,13 @@ export interface ChatRequestOverrides {
  * The text a past turn contributes to the next request's history.
  *
  * History carries display text only — tool calls never reach it — and turns
- * with no text are dropped. An assistant turn that called tools leads with a
- * short record of them (`toolActivityHistoryNote`): which documents it wrote
- * or edited, with their artifact ids, and which pages it read. Without it a
- * turn that ended right after writing a document vanished from history, a
- * later turn read cited findings as invented, and a follow-up could not find
- * the document it was asked to change. `artifacts` (this chat's) supplies the
- * ids of documents the turn created.
+ * with no text are dropped. The tools a turn called reach the model through
+ * the developer prompt instead (`toolHistoryDeveloperPrompt`), never inside
+ * the assistant's own text, where models copied them into new replies. A
+ * record an earlier build left in a reply is stripped here.
  */
-export function historyContentForTurn(turn: ChatTurn, artifacts: readonly HistoryNoteArtifact[] = []): string {
-  if (turn.role !== 'assistant') return turn.content;
-  const note = toolActivityHistoryNote(turn.streamState, { turnId: turn.id, artifacts });
-  if (!note) return turn.content;
-  return turn.content.trim() !== '' ? `${note}\n\n${turn.content}` : note;
+export function historyContentForTurn(turn: ChatTurn): string {
+  return turn.role === 'assistant' ? stripLeakedToolRecord(turn.content) : turn.content;
 }
 
 export function buildProviderRequest(
@@ -447,7 +442,7 @@ export function buildProviderRequest(
 ): ProviderRequest {
   const now = new Date().toISOString();
   const messages = history
-    .map((turn) => ({ ...turn, content: historyContentForTurn(turn, chatOverrides?.artifacts) }))
+    .map((turn) => ({ ...turn, content: historyContentForTurn(turn) }))
     .filter((turn) => {
       if (turn.role !== 'user' && turn.role !== 'assistant') return false;
       if (turn.content.trim() !== '') return true;
@@ -609,9 +604,11 @@ export function buildProviderRequest(
   );
   const deckDevPrompt = deck ? deckDeveloperPrompt(deck, chatOverrides?.deckLayoutNotes) : undefined;
   const draftDevPrompt = draft ? draftDeveloperPrompt(draft, chatOverrides?.draftResearch) : undefined;
+  const toolHistoryDevPrompt = toolHistoryDeveloperPrompt(history, chatOverrides?.artifacts);
   const developerPrompt =
     [
       compactionDevPrompt,
+      toolHistoryDevPrompt,
       infoDevPrompt,
       editDevPrompt,
       bound ? undefined : documentWriteDevPrompt,

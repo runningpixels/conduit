@@ -1248,6 +1248,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     currentConversationIdRef.current = conversationId;
     if (activeRequestRef.current?.conversationId === conversationId) {
       setActiveRequestId(activeRequestRef.current.requestId);
+      // Back to the chat whose turn is still running: put that turn on screen
+      // now. Waiting for its next event left a turn that waits on the user
+      // (an ask_user form) invisible, since nothing more arrives until they
+      // answer it.
+      renderStreamNow();
       return;
     }
     if (activeRequestRef.current?.conversationId !== conversationId) {

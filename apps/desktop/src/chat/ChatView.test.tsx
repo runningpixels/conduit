@@ -448,6 +448,62 @@ describe('ChatView queue across conversations', () => {
 });
 
 /**
+ * Bug #15: a turn waiting on an ask_user answer sends nothing more, so when the
+ * user left the chat and came back the live turn (and its form) was never put
+ * back on screen — only the next delta did that, and none comes while the
+ * backend waits. The next message then failed with "already working".
+ */
+describe('ChatView live turn across a chat switch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getMessageIdByRequest).mockResolvedValue(null);
+  });
+
+  it('shows a waiting question again, with Stop, after leaving the chat and coming back', async () => {
+    const streams: Array<{ requestId: string; onEvent: (e: unknown) => void }> = [];
+    vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
+      streams.push({ requestId: request.requestId, onEvent: onEvent as (e: unknown) => void });
+      return { requestId: request.requestId };
+    });
+    const props = {
+      settings: baseSettings,
+      onSelectModel: vi.fn(),
+      onStatus: vi.fn(),
+      artifacts: [],
+      fileStateMap: {},
+      onPromoteArtifact: vi.fn(),
+      onOpenArtifact: vi.fn(),
+    };
+    const { rerender } = render(<ChatView {...props} conversationId="conv-1" />);
+    fireEvent.change(await screen.findByLabelText('Message the active provider'), {
+      target: { value: 'Label the bar' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(streams).toHaveLength(1));
+    const { requestId, onEvent } = streams[0];
+    act(() => {
+      onEvent({ kind: 'messageStart', requestId, index: 0 });
+      onEvent({
+        kind: 'askUserRequested',
+        requestId,
+        toolCallId: 'ask-1',
+        title: 'Which label should I put on the bar?',
+        fields: [{ id: 'label', prompt: 'Label', type: 'text' }],
+      });
+    });
+    expect(await screen.findByRole('form', { name: 'Which label should I put on the bar?' })).toBeInTheDocument();
+
+    rerender(<ChatView {...props} conversationId="conv-2" />);
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Which label should I put on the bar?' })).toBeNull());
+
+    rerender(<ChatView {...props} conversationId="conv-1" />);
+    expect(await screen.findByRole('form', { name: 'Which label should I put on the bar?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument();
+  });
+});
+
+/**
  * A turn that dies mid-flight used to strand the workspace: `onChatTurnComplete`
  * was gated on `!errorText`, and it is the only path that resolves the pending
  * artifact state — so the document panel kept shimmering "Generating…" forever.

@@ -494,3 +494,7 @@
   .apps-home-card .app-tile-lg { width: 56px; height: 56px; }
   .app-details-identity { flex-wrap: wrap; }
 }
+
+/* The ⋮ menu in an open app's header opens under its button. */
+.app-view-overflow { position: relative; flex: none; }
+.app-view-menu { top: calc(100% + 4px); right: 0; }

@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AppView } from './AppView';
 import { ARTIFACT_BLOCKED_LOAD_MESSAGE_TYPE } from '../artifacts/blockedLoads';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ipc = vi.hoisted(() => ({
   openApp: vi.fn(),
@@ -180,6 +183,28 @@ describe('AppView model access (ADR-014)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Stop model access' }));
     await waitFor(() => expect(ipc.revokePageLlm).toHaveBeenCalledWith('app:a1'));
+  });
+
+  // Bug #2: the menu is absolutely positioned, and with no positioned box of
+  // its own and no offsets it opened at the window's top-left, over the rail.
+  it('opens the ⋯ menu under its button', async () => {
+    ipc.openApp.mockResolvedValue({ ...weatherApp, inputs: [], inputsMissing: false });
+    ipc.getAppInputs.mockResolvedValue({});
+    renderAppView();
+
+    const trigger = await screen.findByRole('button', { name: 'App actions' });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('menu');
+    const box = trigger.parentElement!;
+    expect(box).toHaveClass('app-view-overflow');
+    expect(box).toContainElement(menu);
+    expect(menu).toHaveClass('app-view-menu');
+    const rules = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'styles', 'pages-apps.css'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(rules).toMatch(/\.app-view-overflow \{[^}]*position: relative/);
+    expect(rules).toMatch(/\.app-view-menu \{[^}]*top:[^}]*right: 0/);
   });
 
   it('the ⋯ menu and the gear open Settings; the app frame stays mounted while it is open', async () => {

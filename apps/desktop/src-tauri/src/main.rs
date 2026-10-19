@@ -144,6 +144,8 @@ fn main() {
             list_provider_models,
             start_chat_stream,
             cancel_chat_stream,
+            get_active_turn,
+            cancel_conversation_turn,
             steer_chat_stream,
             submit_ask_user,
             get_conversation_messages,

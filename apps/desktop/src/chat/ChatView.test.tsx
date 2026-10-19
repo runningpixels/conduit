@@ -95,6 +95,7 @@ vi.mock('../ipc/client', () => ({
   getArtifact: vi.fn(),
   startChatStream: vi.fn(),
   cancelChatStream: vi.fn(),
+  getActiveTurn: vi.fn().mockResolvedValue(null),
   getMessageIdByRequest: vi.fn(),
   discoverConnector: vi.fn(),
   startConnector: vi.fn(),
@@ -128,6 +129,8 @@ vi.mock('../ipc/client', () => ({
 }));
 
 import {
+  cancelChatStream,
+  getActiveTurn,
   getConversationCompaction,
   getConversationMessages,
   getMessageIdByRequest,
@@ -500,6 +503,66 @@ describe('ChatView live turn across a chat switch', () => {
     rerender(<ChatView {...props} conversationId="conv-1" />);
     expect(await screen.findByRole('form', { name: 'Which label should I put on the bar?' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Bug #15, after a window reload: the backend still holds the turn, but this
+ * window lost its request id, so there was no Stop and the next message failed
+ * with "already working". The chat asks the backend for the conversation's
+ * running turn when it opens.
+ */
+describe('ChatView reply still running after a reload', () => {
+  const formName = 'Which label should I put on the bar?';
+  const form = {
+    requestId: 'req-lost',
+    toolCallId: 'ask-1',
+    title: formName,
+    fields: [{ id: 'label', prompt: 'Label', type: 'text' }],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getConversationMessages).mockResolvedValue([]);
+    vi.mocked(getMessageIdByRequest).mockResolvedValue(null);
+    vi.mocked(getActiveTurn).mockResolvedValue(null);
+  });
+
+  it('shows Stop and the waiting question', async () => {
+    vi.mocked(getActiveTurn).mockResolvedValue({ requestId: 'req-lost', pendingAskUser: form });
+    renderChatView();
+    expect(await screen.findByRole('form', { name: formName })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument();
+    expect(getActiveTurn).toHaveBeenCalledWith('conv-1');
+  });
+
+  it('stops the turn it found by its request id', async () => {
+    vi.mocked(getActiveTurn).mockResolvedValue({ requestId: 'req-lost', pendingAskUser: null });
+    vi.mocked(cancelChatStream).mockResolvedValue(undefined);
+    renderChatView();
+    fireEvent.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() =>
+      expect(cancelChatStream).toHaveBeenCalledWith({ requestId: 'req-lost', conversationId: 'conv-1' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop/i })).toBeNull());
+  });
+
+  it('shows nothing extra when no turn is running', async () => {
+    renderChatView();
+    await screen.findByLabelText('Message the active provider');
+    expect(screen.queryByRole('button', { name: /stop/i })).toBeNull();
+  });
+
+  it('drops the form and Stop once the backend says the turn is over', async () => {
+    vi.mocked(getActiveTurn)
+      .mockResolvedValueOnce({ requestId: 'req-lost', pendingAskUser: form })
+      .mockResolvedValue(null);
+    renderChatView();
+    expect(await screen.findByRole('form', { name: formName })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('form', { name: formName })).toBeNull(), {
+      timeout: 4000,
+    });
+    expect(screen.queryByRole('button', { name: /stop/i })).toBeNull();
   });
 });
 

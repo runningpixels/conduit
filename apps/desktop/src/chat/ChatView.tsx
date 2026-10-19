@@ -16,8 +16,10 @@ import type {
   SkippedResource,
 } from '../ipc/contracts';
 import type { ProviderUsage } from '@conduit/config-schema';
+import type { ActiveTurn } from '../ipc/client';
 import {
   cancelChatStream,
+  getActiveTurn,
   compactConversation,
   steerChatStream,
   discoverConnector,
@@ -104,6 +106,7 @@ import {
   applyConnectorRuntimeEvent,
   applyProviderEvent,
   createAssistantStreamState,
+  createReattachedStreamState,
   markInterrupted,
   toolCallAwaitsRuntimeFinish,
   type AssistantStreamState,
@@ -743,6 +746,15 @@ async function readKnowledgeContext(
   }
 }
 
+/** The reply the backend is running in a conversation, or null (also when it can't be asked). */
+async function findRunningTurn(conversationId: string): Promise<ActiveTurn | null> {
+  try {
+    return await getActiveTurn(conversationId);
+  } catch {
+    return null;
+  }
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
@@ -957,6 +969,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  /** A reply found already running after a reload, which this window polls. */
+  const [reattachedRequestId, setReattachedRequestId] = useState<string | null>(null);
   const [activeStream, setActiveStream] = useState<AssistantStreamState | null>(null);
   const [messageQueues, setMessageQueues] = useState<ConversationQueues>({});
   const [threadLoading, setThreadLoading] = useState(false);
@@ -1301,19 +1315,42 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     setThreadLoading(true);
     void (async () => {
       try {
-        const [messages, conversation, latestCompaction] = await Promise.all([
+        const [messages, conversation, latestCompaction, running] = await Promise.all([
           getConversationMessages(conversationId),
           getConversation(conversationId),
           getConversationCompaction(conversationId),
+          findRunningTurn(conversationId),
         ]);
         if (!cancelled) {
           const nextTurns = (
             await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))
           ).filter((t): t is ChatTurn => t !== null);
+          // A reply the backend still runs that this window doesn't know of (a
+          // reload lost its request id) is live too: don't show its partial
+          // saved turn as a finished one.
+          const reattach = activeRequestRef.current ? null : running;
           const liveRequestId =
-            activeRequestRef.current?.requestId ?? streamStateRef.current?.requestId ?? null;
+            activeRequestRef.current?.requestId ??
+            streamStateRef.current?.requestId ??
+            reattach?.requestId ??
+            null;
           const visible = excludeLiveAssistantTurns(nextTurns, liveRequestId);
           setTurns(visible);
+          if (reattach) {
+            activeRequestRef.current = {
+              requestId: reattach.requestId,
+              conversationId,
+              isAgent: true,
+            };
+            streamStateRef.current = createReattachedStreamState(
+              reattach.requestId,
+              reattach.pendingAskUser,
+            );
+            reportRunStatus();
+            setActiveRequestId(reattach.requestId);
+            renderStreamNow();
+            setReattachedRequestId(reattach.requestId);
+          }
           setCompaction(latestCompaction);
           setConversationWorkspaceRoot(conversation?.workspaceRoot?.trim() || null);
           setWorkspaceOffForChat(conversationWorkspaceDisabled(conversation?.metadata));
@@ -1344,6 +1381,60 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       cancelled = true;
     };
   }, [conversationId, pendingSendText]);
+
+  // A reply this window found already running (see the load above) streams
+  // nothing into it, so ask the backend until it ends or its question changes.
+  useEffect(() => {
+    if (!reattachedRequestId) return;
+    let stopped = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const held = activeRequestRef.current;
+        if (held?.requestId !== reattachedRequestId) {
+          // Stopped from here, or replaced by a new send.
+          setReattachedRequestId(null);
+          return;
+        }
+        // The turn's own chat, which may not be the one on screen.
+        const conversationId = held.conversationId;
+        const live = await findRunningTurn(conversationId);
+        if (stopped || activeRequestRef.current?.requestId !== reattachedRequestId) return;
+        if (live?.requestId === reattachedRequestId) {
+          const shown = streamStateRef.current?.askUser?.toolCallId ?? null;
+          if ((live.pendingAskUser?.toolCallId ?? null) !== shown) {
+            streamStateRef.current = createReattachedStreamState(
+              reattachedRequestId,
+              live.pendingAskUser,
+            );
+            if (currentConversationIdRef.current === conversationId) renderStreamNow();
+          }
+          return;
+        }
+        // The turn ended: show what it saved.
+        setReattachedRequestId(null);
+        activeRequestRef.current = null;
+        streamStateRef.current = null;
+        reportRunStatus();
+        if (currentConversationIdRef.current !== conversationId) return;
+        cancelStreamFrame();
+        setActiveStream(null);
+        setActiveRequestId(null);
+        try {
+          const messages = await getConversationMessages(conversationId);
+          const hydrated = (await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))).filter(
+            (turn): turn is ChatTurn => turn !== null,
+          );
+          if (currentConversationIdRef.current === conversationId) setTurns(hydrated);
+        } catch {
+          /* the next open of this chat shows it */
+        }
+      })();
+    }, 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [reattachedRequestId]);
 
   // A workflow added messages to this chat while it is open: read them. Not
   // while a reply is streaming (the stream owns the thread then).

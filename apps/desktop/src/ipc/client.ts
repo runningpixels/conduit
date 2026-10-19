@@ -379,6 +379,33 @@ export async function cancelChatStream(request: CancelChatStreamRequest): Promis
   await invokeCommand('cancel_chat_stream', { request });
 }
 
+/** A question a running turn has put to the user and not had answered. */
+export interface PendingAskUser {
+  requestId: string;
+  toolCallId: string;
+  title: string;
+  fields: Array<{ id: string; prompt: string; type: string; options?: string[] | null }>;
+}
+
+/** A conversation's running reply, as the backend still holds it. */
+export interface ActiveTurn {
+  requestId: string;
+  pendingAskUser: PendingAskUser | null;
+}
+
+/**
+ * The reply running in a conversation, or null. A reloaded window has lost the
+ * request id of the reply it was showing; this finds it again.
+ */
+export async function getActiveTurn(conversationId: string): Promise<ActiveTurn | null> {
+  return invokeCommand<ActiveTurn | null>('get_active_turn', { conversationId });
+}
+
+/** Stop the reply running in a conversation; false when none is. */
+export async function cancelConversationTurn(conversationId: string): Promise<boolean> {
+  return invokeCommand<boolean>('cancel_conversation_turn', { conversationId });
+}
+
 export async function steerChatStream(request: SteerChatStreamRequest): Promise<void> {
   await invokeCommand('steer_chat_stream', { request });
 }

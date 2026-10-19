@@ -145,6 +145,31 @@ pub async fn cancel_chat_stream(
     }
 }
 
+/// The reply running in a conversation, if any. A window that was reloaded has
+/// lost the request id; this is how it finds the turn again (to show Stop and
+/// the question the turn is waiting on).
+#[tauri::command]
+pub async fn get_active_turn(
+    stream_manager: State<'_, StreamManager>,
+    conversation_id: String,
+) -> Result<Option<crate::stream_manager::ActiveTurn>, String> {
+    Ok(stream_manager.active_turn(&conversation_id))
+}
+
+/// Stop the reply running in a conversation without knowing its request id.
+#[tauri::command]
+pub async fn cancel_conversation_turn(
+    state: State<'_, AppState>,
+    stream_manager: State<'_, StreamManager>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+    conversation_id: String,
+) -> Result<bool, String> {
+    runtime.deny_all_pending();
+    stream_manager
+        .cancel_conversation_turn(state.inner(), &conversation_id)
+        .await
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SteerChatStreamRequest {

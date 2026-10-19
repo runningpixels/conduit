@@ -175,6 +175,32 @@ export function createAssistantStreamState(
   };
 }
 
+/**
+ * The live state for a reply the backend is still running that this window
+ * lost track of (a reload): empty but for the question it waits on, if any.
+ * Nothing more streams into it, so the caller polls for the turn's end.
+ */
+export function createReattachedStreamState(
+  requestId: string,
+  pendingAskUser: {
+    toolCallId: string;
+    title: string;
+    fields: NonNullable<AssistantStreamState['askUser']>['fields'];
+  } | null,
+): AssistantStreamState {
+  const base = createAssistantStreamState(requestId);
+  if (!pendingAskUser) return base;
+  return {
+    ...base,
+    askUser: {
+      toolCallId: pendingAskUser.toolCallId,
+      title: pendingAskUser.title,
+      fields: pendingAskUser.fields,
+    },
+    segments: [{ kind: 'askUser', toolCallId: pendingAskUser.toolCallId }],
+  };
+}
+
 function isWebSearchToolCall(tc: ToolCallState): boolean {
   return tc.toolId === 'web_search' || tc.name === 'web_search';
 }

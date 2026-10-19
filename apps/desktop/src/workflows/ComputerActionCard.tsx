@@ -13,6 +13,7 @@ import { rejectionText } from './CommandRuleList';
 import { FileDiff } from './FileDiff';
 import { formatNextRun } from './ScheduleSection';
 import { stepComputer } from './StepComputer';
+import { translateComputerReason } from './computerReasons';
 import '../styles/computer-card.css';
 
 /// The folder and where inside it, as a path; just the folder for ".".
@@ -146,7 +147,7 @@ export function ComputerActionCard({
   const titleKey = command ? 'workspace.workflows.computer.title.command' : 'workspace.workflows.computer.title.file';
   const reasonText = request.readBefore
     ? t('workspace.workflows.computer.readBeforeChip', { what: request.readBefore })
-    : request.reason;
+    : translateComputerReason(request.reason, t);
   const name = request.program ? programName(request.program) : '';
   const termLine = `${folderName(whereText(request))}> ${[name, ...args.map(quoteArg)].join(' ')}`;
   const runLabel = command ? t('workspace.workflows.computer.run') : t('workspace.workflows.computer.change');

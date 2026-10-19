@@ -2349,6 +2349,13 @@ export default function App() {
         if (!got) return;
         // A restore that resolves after the reader moved to another chat.
         if (forConversation !== undefined && activeConversationIdRef.current !== forConversation) return;
+        // Any open that lands after the reader moved on: a card clicked just
+        // before the switch, or a turn in the chat they left finishing its
+        // document. The panel shows the chat on screen; opening another chat's
+        // page there also handed it to that panel's Save as app.
+        if (!fixture && activeConversationIdRef.current && got.conversationId !== activeConversationIdRef.current) {
+          return;
+        }
         if (reveal) showDocPanel();
         if (replaceId && replaceId !== artifactId) {
           // The header switcher shows another artifact in the same place

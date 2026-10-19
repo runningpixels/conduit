@@ -286,6 +286,27 @@ describe('the panel remembers the artifact open in each chat', { timeout: 30_000
     expect(readLastArtifact('cA')).toBeUndefined();
   });
 
+  // Bug #6: an open that resolves after the reader moved to another chat put
+  // the first chat's page in the second chat's panel, and its ⋮ → Save as app
+  // then saved the first chat's page.
+  it('does not show a chat’s page in another chat when its open lands late', async () => {
+    const ipc = await boot();
+    await waitFor(() => expect(listShown()).toBe(true));
+    let release: (artifact: Artifact) => void = () => {};
+    vi.mocked(ipc.getArtifact).mockImplementationOnce(
+      () => new Promise<Artifact | null>((resolve) => (release = resolve)),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open Alpha two' }));
+    await waitFor(() => expect(ipc.getArtifact).toHaveBeenCalledWith('a2'));
+
+    selectChat('Chat B');
+    await waitFor(() => expect(screen.getByText('1 artifact')).toBeInTheDocument());
+    release(a2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(openTitle()).toBeNull();
+    expect(listShown()).toBe(true);
+  });
+
   it('restores into a hidden panel without showing it', async () => {
     __writeStoredDocPanelForTest('closed');
     writeLastArtifact('cA', 'a2');

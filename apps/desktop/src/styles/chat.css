@@ -1922,9 +1922,12 @@
  * pinning the composer to the floor of an empty room. `.tab-pane` is already
  * the flex column holding `.thread` and `.composer-wrap`, so this is layout
  * only — the Composer never unmounts and keeps its attachment/credential
- * state and its focusPrompt ref. */
-.tab-pane[data-pane="chat"][data-empty="true"] { justify-content: center; }
-.tab-pane[data-pane="chat"][data-empty="true"] .thread { flex: 0 1 auto; }
+ * state and its focusPrompt ref. `safe` plus the scroll matter when the group
+ * is taller than the pane (a narrow column beside the artifact panel, where
+ * the idea gallery stacks): plain `center` overflowed both ends and put the
+ * greeting and composer above the top, out of reach. */
+.tab-pane[data-pane="chat"][data-empty="true"] { justify-content: safe center; overflow-y: auto; }
+.tab-pane[data-pane="chat"][data-empty="true"] .thread { flex: none; }
 
 /* ADR-011 — the new-chat idea gallery, under the composer. Category chips on
  * the left, "More ideas" / hide on the right, then up to six ready ideas as

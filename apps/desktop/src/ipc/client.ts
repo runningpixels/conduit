@@ -1,6 +1,7 @@
 import { Channel } from '@tauri-apps/api/core';
 import { invokeCommand, IpcError } from './errors';
 import type { BridgeErrorCode } from '../artifacts/pageBridge';
+import type { RequestEventLog } from '../chat/streamState';
 import type {
   AddLocalConnectorRequest,
   AddLocalConnectorResult,
@@ -419,11 +420,13 @@ export async function compactConversation(
   return invokeCommand<ConversationCompaction | null>('compact_conversation', { conversationId });
 }
 
-export async function getRequestProviderEvents(
+/** A saved turn's events with the time each was saved, and when each of its
+ *  tool calls finished: what a reload needs to show the turn's real durations. */
+export async function getRequestEventLog(
   conversationId: string,
   requestId: string,
-): Promise<ProviderEvent[]> {
-  return invokeCommand<ProviderEvent[]>('get_request_provider_events', { conversationId, requestId });
+): Promise<RequestEventLog> {
+  return invokeCommand<RequestEventLog>('get_request_event_log', { conversationId, requestId });
 }
 
 export async function createConversation(title?: string): Promise<Conversation> {

@@ -114,7 +114,7 @@ const IPC_EXPORTS = [
   'listWorkflowQuestions', 'answerWorkflowQuestion', 'rerunWorkflowFrom',
   'loadProviderCredentialReference', 'validateProviderCredentials',
   'listProviderDescriptors', 'listProviderModels', 'startChatStream',
-  'cancelChatStream', 'steerChatStream', 'submitAskUser', 'getConversationMessages', 'getConversationCompaction', 'compactConversation', 'getRequestProviderEvents',
+  'cancelChatStream', 'steerChatStream', 'submitAskUser', 'getConversationMessages', 'getConversationCompaction', 'compactConversation', 'getRequestEventLog',
   'startResearch', 'approveResearchBrief', 'stopResearch', 'cancelResearch', 'getResearchRun',
   'createConversation', 'listConversations', 'getConversation',
   'deleteConversation', 'setConversationTitle', 'setConversationPinned',

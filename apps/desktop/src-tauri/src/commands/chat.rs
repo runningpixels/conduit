@@ -211,15 +211,40 @@ pub async fn compact_conversation(
     crate::context_compact::compact_conversation(&state, &conversation_id).await
 }
 
+/// A saved turn's events with their save times, and when each of its tool
+/// calls finished: what a reloaded chat needs to replay the turn with the
+/// durations it showed live instead of the few milliseconds the replay takes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestEventLog {
+    pub events: Vec<crate::db::repository::event_log::LoggedProviderEvent>,
+    /// `tool_call_id` -> `completed_at` (ISO-8601).
+    pub tool_finished_at: std::collections::HashMap<String, String>,
+}
+
 #[tauri::command]
-pub async fn get_request_provider_events(
+pub async fn get_request_event_log(
     state: State<'_, AppState>,
     conversation_id: String,
     request_id: String,
-) -> Result<Vec<provider_core::schema::ProviderEvent>, String> {
-    crate::db::repository::event_log::load_events(&state.db, &conversation_id, &request_id)
-        .await
-        .map_err(|e| e.to_string())
+) -> Result<RequestEventLog, String> {
+    let events = crate::db::repository::event_log::load_logged_events(
+        &state.db,
+        &conversation_id,
+        &request_id,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    let tool_finished_at =
+        crate::db::repository::tool_calls::completion_times_for_request(&state.db, &request_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+    Ok(RequestEventLog {
+        events,
+        tool_finished_at,
+    })
 }
 
 // ---------------------------------------------------------------------------

@@ -185,6 +185,42 @@ pub async fn load_events(
         .collect()
 }
 
+/// One logged event with the time it was saved.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoggedProviderEvent {
+    pub event: ProviderEvent,
+    /// The row's `created_at` (ISO-8601, millisecond precision). Deltas are
+    /// saved in batches at most `DELTA_FLUSH_INTERVAL` apart, so this is
+    /// within that of when the event arrived.
+    pub at: String,
+}
+
+/// [`load_events`] with each event's save time, so a reloaded turn can show
+/// how long it thought and how long each tool ran instead of timing the replay.
+pub async fn load_logged_events(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    request_id: &str,
+) -> Result<Vec<LoggedProviderEvent>, DbError> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT payload, created_at FROM provider_event_log \
+         WHERE conversation_id = ? AND request_id = ? ORDER BY sequence ASC",
+    )
+    .bind(conversation_id)
+    .bind(request_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|(payload, at)| {
+            serde_json::from_str::<ProviderEvent>(&payload)
+                .map(|event| LoggedProviderEvent { event, at })
+                .map_err(|e| DbError::Query(format!("decode ProviderEvent: {e}")))
+        })
+        .collect()
+}
+
 /// Every `request_id` that has logged events for a conversation (used by
 /// reconciliation / recovery sweeps).
 pub async fn load_all_request_ids(

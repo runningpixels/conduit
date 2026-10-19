@@ -205,6 +205,24 @@ pub async fn list_tool_calls_by_request(
         .collect()
 }
 
+/// When each finished tool call of a turn finished, as `(tool_call_id,
+/// completed_at)`. The event log records when a call's arguments were complete
+/// but not when it finished running (execution events are UI-only), so a
+/// reloaded turn reads the end of each call from here.
+pub async fn completion_times_for_request(
+    pool: &SqlitePool,
+    request_id: &str,
+) -> Result<Vec<(String, String)>, DbError> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id, completed_at FROM tool_calls \
+         WHERE request_id = ? AND completed_at IS NOT NULL",
+    )
+    .bind(request_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 /// Read a tool call by id (used by the no-reinjection invariant test + future
 /// UI reads). `result` is decrypted if the encryption tier is on.
 pub async fn get_tool_call(

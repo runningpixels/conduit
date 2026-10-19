@@ -2,7 +2,9 @@
 /// this computer. It leads with what the agent says it is for, then the exact
 /// command (as a terminal line) or file change, and one chip saying why it asks.
 /// The user can run it, run it and allow its rule, edit it, or refuse. A risky
-/// one makes "Don’t run" the main button.
+/// one makes "Don’t run" the main button. A command that already failed kept in
+/// the folder (`request.outside`) offers only "Run once outside the folder" or
+/// "Don’t run": no editing, no rule.
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useT, type Translate } from '../i18n';
@@ -70,9 +72,11 @@ export function ComputerActionCard({
   const fmt = useFormatters();
   const headingId = useId();
   const command = request.kind === 'run_command';
+  // A command that failed kept in the folder: only "run this once outside" or not.
+  const outside = command ? request.outside : undefined;
   const risky = Boolean(request.risky);
   const args = request.args ?? [];
-  const offered = !action.sensitive && !risky && Boolean(request.suggestedRule);
+  const offered = !action.sensitive && !risky && !outside && Boolean(request.suggestedRule);
   const [editing, setEditing] = useState(false);
   const [argsText, setArgsText] = useState('');
   const [contentText, setContentText] = useState('');
@@ -145,9 +149,11 @@ export function ComputerActionCard({
   }
 
   const titleKey = command ? 'workspace.workflows.computer.title.command' : 'workspace.workflows.computer.title.file';
-  const reasonText = request.readBefore
-    ? t('workspace.workflows.computer.readBeforeChip', { what: request.readBefore })
-    : translateComputerReason(request.reason, t);
+  const reasonText = outside
+    ? t(`workspace.workflows.computer.outside.cause.${outside.cause}`)
+    : request.readBefore
+      ? t('workspace.workflows.computer.readBeforeChip', { what: request.readBefore })
+      : translateComputerReason(request.reason, t);
   const name = request.program ? programName(request.program) : '';
   const termLine = `${folderName(whereText(request))}> ${[name, ...args.map(quoteArg)].join(' ')}`;
   const runLabel = command ? t('workspace.workflows.computer.run') : t('workspace.workflows.computer.change');
@@ -218,9 +224,21 @@ export function ComputerActionCard({
         </>
       )}
 
-      <p className={`cc-chip${risky || request.readBefore ? ' warn' : ''}`} role="note">
+      <p className={`cc-chip${risky || request.readBefore || outside ? ' warn' : ''}`} role="note">
         {reasonText}
       </p>
+
+      {outside ? (
+        <>
+          <p className="wf-muted">{t('workspace.workflows.computer.outside.explain')}</p>
+          {outside.output?.trim() ? (
+            <details>
+              <summary className="wf-muted">{t('workspace.workflows.computer.outside.output')}</summary>
+              <pre className="wf-io wf-computer-output">{outside.output.trim()}</pre>
+            </details>
+          ) : null}
+        </>
+      ) : null}
 
       {editing && offered ? (
         <div className="cc-rule">
@@ -248,7 +266,16 @@ export function ComputerActionCard({
       </p>
 
       <div className="wf-offer-actions">
-        {editing ? (
+        {outside ? (
+          <>
+            <button type="button" className="btn primary" disabled={sending} onClick={() => void answer(false)}>
+              {noLabel}
+            </button>
+            <button type="button" className="btn" disabled={sending} onClick={() => void answer(true)}>
+              {t('workspace.workflows.computer.outside.runOnce')}
+            </button>
+          </>
+        ) : editing ? (
           <>
             <button type="button" className="btn primary" disabled={sending} onClick={sendEdited}>
               {risky ? runAnywayLabel : runLabel}

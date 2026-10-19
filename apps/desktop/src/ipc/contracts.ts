@@ -1060,6 +1060,19 @@ export interface ComputerRequest {
   risky?: boolean;
   /** What this step already did on the computer, oldest first (no output or file content). */
   soFar?: ComputerRecord[];
+  /**
+   * The command already ran kept in the folder (Windows) and failed in a way
+   * that looks caused by that: the card offers to run this one command outside
+   * the folder. Never remembered, never editable.
+   */
+  outside?: ComputerOutsideOffer;
+}
+
+/** Why a kept-in command failed (Rust `computer::KeptInFailure`), and the end of what it printed. */
+export interface ComputerOutsideOffer {
+  /** namedObjects: Windows refused the named system objects compilers use (rustc's jobserver); accessDenied: it was refused access to something. */
+  cause: 'namedObjects' | 'accessDenied';
+  output?: string;
 }
 
 /**
@@ -1167,6 +1180,10 @@ export type ComputerRecord =
       error?: string;
       /** Approved by hand: the rule its card offered (for rule suggestions). */
       suggestedRule?: string;
+      /** Kept in the folder, it failed apparently because of that (`computer::KeptInFailure`). */
+      keptIn?: 'namedObjects' | 'accessDenied';
+      /** Run once outside the folder, approved by hand after it failed kept in. */
+      outside?: boolean;
     }
   | {
       kind: 'write' | 'edit';

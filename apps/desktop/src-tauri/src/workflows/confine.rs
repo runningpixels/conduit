@@ -18,6 +18,15 @@
 //! fail (EPERM), Windows' own TLS (curl over HTTPS, PowerShell web requests)
 //! fails, and a folder anyone can write to stays writable. A workflow can turn
 //! confinement off for programs that break (`ComputerConfig::allow_outside`).
+//!
+//! Named kernel objects can't be created either: the restricted token has no
+//! write access to the session's `BaseNamedObjects`. rustc creates a jobserver
+//! semaphore and an error-output mutex there, so `cargo build`/`cargo test`
+//! fail with "failed to create jobserver ... PermissionDenied"; other
+//! compilers and `make -j` likely do too. The runner recognises such a failure
+//! (`computer::kept_in_failure`) and asks whether to run that one command
+//! outside the folder; confinement itself is unchanged. The real fix is an
+//! AppContainer, whose private object namespace lets these work.
 
 use std::collections::HashMap;
 use std::ffi::{c_void, OsString};

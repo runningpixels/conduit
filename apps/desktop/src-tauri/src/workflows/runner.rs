@@ -635,6 +635,17 @@ enum Asked {
     Nobody(String),
 }
 
+/// What came of offering to run a failed kept-in command once outside the
+/// folder (`ConnectorTools::offer_outside`).
+enum Outside {
+    /// Not run outside: why, for the model.
+    NotRun(String),
+    /// Run outside the folder: what the model gets back.
+    Ran(Value),
+    /// It couldn't start or was stopped.
+    Failed(String),
+}
+
 /// What a step that checked an outside action says when the user said Don't send.
 const DECLINED: &str = "You didn't send this.";
 
@@ -1110,6 +1121,7 @@ impl ConnectorTools<'_, '_> {
                     suggested_rule: suggested.clone(),
                     risky,
                     so_far: self.team.computer_so_far(),
+                    outside: None,
                 };
                 let started = Instant::now();
                 let asked = exec
@@ -1190,6 +1202,7 @@ impl ConnectorTools<'_, '_> {
             Ok(path) => path,
             Err(e) => return (Err(e), waited),
         };
+        let kept_in = computer::CAN_CONFINE && !access.config.allow_outside;
         let ran = exec
             .unless_stopped(computer::run(
                 &resolved,
@@ -1198,11 +1211,12 @@ impl ConnectorTools<'_, '_> {
                 &access.config.pass_env,
                 access.config.timeout(),
                 &exec.stop,
-                (!access.config.allow_outside).then_some(access.folder.as_path()),
+                kept_in.then_some(access.folder.as_path()),
             ))
             .await;
         match ran {
             Ok(ran) => {
+                let cause = kept_in.then(|| computer::kept_in_failure(&ran)).flatten();
                 let output: String = ran.output.chars().take(2_000).collect();
                 record(
                     &plain_path(&resolved),
@@ -1219,11 +1233,38 @@ impl ConnectorTools<'_, '_> {
                         if let Some(rule) = &offered_rule {
                             extra["suggestedRule"] = Value::String(rule.clone());
                         }
+                        if let Some(cause) = cause {
+                            extra["keptIn"] = json!(cause);
+                        }
                         extra
                     },
                 );
-                let result = ran.for_model();
-                if approved == "you" {
+                let mut result = ran.for_model();
+                let mut ran_outside = false;
+                if let Some(cause) = cause {
+                    match self
+                        .offer_outside(access, &resolved, &args, &cwd, &why, cause, &ran)
+                        .await
+                    {
+                        Err(e) => return (Err(e), waited),
+                        Ok((outcome, more)) => {
+                            waited += more;
+                            match outcome {
+                                Outside::NotRun(note) => {
+                                    result["keptIn"] =
+                                        Value::String(format!("{} {note}", cause.describe()));
+                                }
+                                Outside::Ran(again) => {
+                                    result = again;
+                                    result["ranOutsideTheFolder"] = Value::Bool(true);
+                                    ran_outside = true;
+                                }
+                                Outside::Failed(e) => return (Err(e), waited),
+                            }
+                        }
+                    }
+                }
+                if approved == "you" || ran_outside {
                     exec.keep_sent(json!({
                         "stepId": self.key,
                         "proposed": arguments,
@@ -1244,6 +1285,152 @@ impl ConnectorTools<'_, '_> {
                     json!({ "error": e }),
                 );
                 (Err(e), waited)
+            }
+        }
+    }
+
+    /// A command kept in the folder failed, apparently because of that
+    /// (`cause`): ask whether to run exactly it once outside the folder. The
+    /// card can't edit it and nothing is remembered, so the next command is
+    /// kept in again. A run nobody is watching isn't asked; the agent is told
+    /// why instead.
+    #[allow(clippy::too_many_arguments)]
+    async fn offer_outside(
+        &self,
+        access: &ComputerAccess,
+        program: &std::path::Path,
+        args: &[String],
+        cwd: &std::path::Path,
+        why: &Option<String>,
+        cause: computer::KeptInFailure,
+        ran: &computer::Ran,
+    ) -> Result<(Outside, Duration), String> {
+        let exec = self.exec;
+        if exec.runner.unattended.is_some() {
+            return Ok((
+                Outside::NotRun(
+                    "Nobody is watching this run, so running it outside the folder wasn't offered: the user can run it by hand, or let this workflow's commands out of the folder in its settings. Don't try it again the same way."
+                        .to_string(),
+                ),
+                Duration::ZERO,
+            ));
+        }
+        let relative = match cwd.strip_prefix(&access.folder) {
+            Ok(rest) if !rest.as_os_str().is_empty() => rest.to_string_lossy().into_owned(),
+            _ => ".".to_string(),
+        };
+        let note = |outcome: &str, extra: Value| {
+            let mut entry = json!({
+                "kind": "command",
+                "program": plain_path(program),
+                "args": args,
+                "cwd": relative,
+                "approvedBy": if outcome == "declined" { "" } else { "you" },
+                "outcome": outcome,
+                "outside": true,
+            });
+            if let (Some(entry), Some(extra)) = (entry.as_object_mut(), extra.as_object()) {
+                entry.extend(extra.clone());
+            }
+            self.team.note_computer(entry);
+        };
+        // What it printed, start and end, for the card.
+        let printed: Vec<char> = ran.output.chars().collect();
+        let shown: String = if printed.len() > 1_500 {
+            let head: String = printed[..800].iter().collect();
+            let tail: String = printed[printed.len() - 700..].iter().collect();
+            format!("{head}\n…\n{tail}")
+        } else {
+            ran.output.clone()
+        };
+        let request = ComputerRequest {
+            kind: computer::RUN_TOOL.to_string(),
+            folder: plain_path(&access.folder),
+            program: Some(plain_path(program)),
+            args: Some(args.to_vec()),
+            path: relative.clone(),
+            content: None,
+            previous: None,
+            why: why.clone(),
+            reason: cause.describe().to_string(),
+            read_before: None,
+            suggested_rule: None,
+            risky: false,
+            so_far: self.team.computer_so_far(),
+            outside: Some(super::actions::OutsideOffer {
+                cause,
+                output: shown,
+            }),
+        };
+        let started = Instant::now();
+        let asked = exec
+            .ask_user(self.step_id, |window| PendingAction {
+                run_id: exec.run_id.to_string(),
+                workflow_id: exec.workflow_id.to_string(),
+                workflow_name: exec.workflow_name.to_string(),
+                step_id: self.step_id.to_string(),
+                connector_id: "computer".to_string(),
+                connector_name: "This computer".to_string(),
+                tool: computer::RUN_TOOL.to_string(),
+                description: why.clone(),
+                arguments: json!({ "program": plain_path(program), "args": args, "cwd": relative }),
+                input_schema: json!({}),
+                // Never "allow from now on".
+                sensitive: true,
+                requested_at: window.since.clone(),
+                expires_at: window.until.clone(),
+                computer: Some(request),
+            })
+            .await?;
+        let waited = started.elapsed();
+        match asked {
+            Asked::Nobody(why_not) => Ok((
+                Outside::NotRun(format!(
+                    "It wasn't run outside the folder: {why_not} Don't try it again the same way."
+                )),
+                waited,
+            )),
+            Asked::Answer(answer) if !answer.send => {
+                note("declined", json!({}));
+                Ok((
+                    Outside::NotRun(
+                        "The user chose not to run it outside the folder. Don't try it again the same way."
+                            .to_string(),
+                    ),
+                    waited,
+                ))
+            }
+            // Exactly the command that failed: edited arguments and rules in
+            // the answer are ignored.
+            Asked::Answer(_) => {
+                let again = exec
+                    .unless_stopped(computer::run(
+                        program,
+                        args,
+                        cwd,
+                        &access.config.pass_env,
+                        access.config.timeout(),
+                        &exec.stop,
+                        None,
+                    ))
+                    .await;
+                match again {
+                    Ok(again) => {
+                        note(
+                            if again.timed_out { "timedOut" } else { "ran" },
+                            json!({
+                                "exitCode": again.exit_code,
+                                "durationMs": again.duration.as_millis() as u64,
+                                "output": again.output.chars().take(2_000).collect::<String>(),
+                            }),
+                        );
+                        Ok((Outside::Ran(again.for_model()), waited))
+                    }
+                    Err(e) => {
+                        note("failed", json!({ "error": e }));
+                        Ok((Outside::Failed(e), waited))
+                    }
+                }
             }
         }
     }
@@ -1370,6 +1557,7 @@ impl ConnectorTools<'_, '_> {
                 suggested_rule: None,
                 risky: false,
                 so_far: self.team.computer_so_far(),
+                outside: None,
             };
             let started = Instant::now();
             let asked = exec

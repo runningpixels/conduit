@@ -7681,6 +7681,218 @@ async fn git_settings_and_the_computer_switch_are_never_bypassed() {
     assert!(told.contains("protected"), "{told}");
 }
 
+/// `rustc` building a one-line library in `dir`: kept in the folder on
+/// Windows it fails (it can't create its jobserver semaphore), outside it
+/// writes `libx.rlib`.
+#[cfg(windows)]
+fn rustc_build(dir: &Path) -> Value {
+    std::fs::write(dir.join("x.rs"), "pub fn x() {}\n").unwrap();
+    json!({ "program": "rustc", "args": ["--crate-type", "lib", "x.rs"], "why": "Build the library" })
+}
+
+/// Everything the model was told, as one text.
+#[cfg(windows)]
+fn told_the_model(h: &Harness) -> String {
+    let requests = h.model.requests.lock().unwrap().clone();
+    requests
+        .last()
+        .unwrap()
+        .messages
+        .iter()
+        .flat_map(|m| m.parts.iter())
+        .filter_map(|p| p.content.clone())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_build_that_fails_kept_in_can_run_once_outside_the_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Harness::new(computer_model(vec![(
+        "run_command",
+        rustc_build(dir.path()),
+    )]))
+    .await;
+    computer_on(&h, &[]);
+    let id = h.save(computer_workflow(dir.path(), json!({}))).await;
+    set_command_rules(&h, &id, &["rustc *"]).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let actions = Actions::default();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        // The rule ran it kept in; it failed, and only then does it ask.
+        let action = next_action(&actions).await;
+        let asked = action.computer.clone().expect("a computer request");
+        let offer = asked.outside.clone().expect("an offer to run it outside");
+        assert_eq!(
+            offer.cause,
+            conduit_desktop::workflows::computer::KeptInFailure::NamedObjects
+        );
+        assert!(offer.output.contains("jobserver"), "{}", offer.output);
+        assert!(action.sensitive, "never allowed from now on");
+        assert!(asked.suggested_rule.is_none());
+        assert_eq!(asked.why.as_deref(), Some("Build the library"));
+        // Edits and a rule sent with the answer are ignored: exactly the
+        // command that failed runs, once.
+        let mut yes = send(
+            Some(json!({ "program": "rustc", "args": ["--version"] })),
+            true,
+        );
+        yes.rule = Some("rustc *".to_string());
+        assert!(actions.answer(&action.run_id, Some("work"), yes));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let used = detail.steps[0].output.as_ref().unwrap()["computer"].clone();
+    assert_eq!(used[0]["approvedBy"], "rule: rustc *", "{used}");
+    assert_eq!(used[0]["keptIn"], "namedObjects", "{used}");
+    assert_ne!(used[0]["exitCode"], 0, "{used}");
+    assert_eq!(used[1]["approvedBy"], "you", "{used}");
+    assert_eq!(used[1]["outside"], true, "{used}");
+    assert_eq!(used[1]["exitCode"], 0, "{used}");
+    assert_eq!(used[1]["args"], json!(["--crate-type", "lib", "x.rs"]));
+    assert!(dir.path().join("libx.rlib").exists());
+    assert!(told_the_model(&h).contains("ranOutsideTheFolder"));
+    // Nothing was remembered.
+    let rules = repo::get_action_rules(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap();
+    assert_eq!(rules.commands.allow, vec!["rustc *".to_string()]);
+    let saved = repo::get(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        saved.definition["computer"]["allowOutside"], true,
+        "the workflow's settings are unchanged"
+    );
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn declining_the_outside_run_tells_the_agent_why_it_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Harness::new(computer_model(vec![(
+        "run_command",
+        rustc_build(dir.path()),
+    )]))
+    .await;
+    computer_on(&h, &[]);
+    let id = h.save(computer_workflow(dir.path(), json!({}))).await;
+    set_command_rules(&h, &id, &["rustc *"]).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let actions = Actions::default();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let answer = async {
+        let action = next_action(&actions).await;
+        assert!(action.computer.unwrap().outside.is_some());
+        let no = ActionAnswer {
+            send: false,
+            arguments: None,
+            remember: false,
+            rule: None,
+        };
+        assert!(actions.answer(&action.run_id, Some("work"), no));
+    };
+    let (detail, ()) = tokio::join!(run, answer);
+    let detail = detail.unwrap();
+    let used = detail.steps[0].output.as_ref().unwrap()["computer"].clone();
+    assert_eq!(used[1]["outcome"], "declined", "{used}");
+    assert_eq!(used[1]["outside"], true, "{used}");
+    assert!(!dir.path().join("libx.rlib").exists());
+    let told = told_the_model(&h);
+    assert!(told.contains("kept in the workflow's folder"), "{told}");
+    assert!(told.contains("chose not to run it outside"), "{told}");
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_run_nobody_watches_never_offers_to_run_outside_the_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Harness::new(computer_model(vec![(
+        "run_command",
+        rustc_build(dir.path()),
+    )]))
+    .await;
+    computer_on(&h, &[]);
+    let id = h.save(computer_workflow(dir.path(), json!({}))).await;
+    set_command_rules(&h, &id, &["rustc *"]).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let actions = Actions::default();
+    let required = h.required(&id).await;
+    let runner = Runner {
+        connectors: Some(&connectors),
+        actions: Some(&actions),
+        ..h.unattended_runner(required, CancellationToken::new())
+    };
+    let detail = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        runner.run(&id, &HashMap::new(), "schedule"),
+    )
+    .await
+    .expect("it didn't ask")
+    .unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert!(actions.list().is_empty(), "nothing asked");
+    let used = detail.steps[0].output.as_ref().unwrap()["computer"].clone();
+    assert_eq!(used.as_array().unwrap().len(), 1, "{used}");
+    assert_eq!(used[0]["keptIn"], "namedObjects", "{used}");
+    assert!(!dir.path().join("libx.rlib").exists());
+    assert!(told_the_model(&h).contains("Nobody is watching this run"));
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_workflow_that_lets_commands_out_builds_without_an_offer() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Harness::new(computer_model(vec![(
+        "run_command",
+        rustc_build(dir.path()),
+    )]))
+    .await;
+    computer_on(&h, &[]);
+    let id = h
+        .save(computer_workflow(
+            dir.path(),
+            json!({ "allowOutside": true }),
+        ))
+        .await;
+    set_command_rules(&h, &id, &["rustc *"]).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let actions = Actions::default();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        actions: Some(&actions),
+        ..h.manual_runner()
+    };
+    let detail = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        runner.run(&id, &HashMap::new(), "manual"),
+    )
+    .await
+    .expect("it didn't ask")
+    .unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let used = detail.steps[0].output.as_ref().unwrap()["computer"].clone();
+    assert_eq!(used[0]["exitCode"], 0, "{used}");
+    assert!(used[0].get("keptIn").is_none(), "{used}");
+    assert!(dir.path().join("libx.rlib").exists());
+}
+
 #[test]
 fn an_agent_that_uses_the_computer_needs_a_folder() {
     let problems = conduit_desktop::workflows::definition::check_value(&json!({

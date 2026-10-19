@@ -11,6 +11,7 @@ import type { CitationAnnotation } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { InlineCodeBlock } from './InlineCodeBlock';
 import { InlineArtifactCard } from './InlineArtifactCard';
+import { useT } from '../i18n';
 import { findPromotedArtifact, shouldRenderAsCard } from './inlineArtifact';
 import { FencePromote, useSyncPromoteReady } from './FencePromote';
 
@@ -124,6 +125,7 @@ export function svgSourceFromFence(info: string, body: string): string | null {
  *  through `<img>`, so scripts or event handlers in the markup never run;
  *  the source stays one click away with its copy and open actions. */
 function SvgFence({ source, sourceProps }: { source: string; sourceProps: FenceSourceProps }) {
+  const t = useT();
   const [showCode, setShowCode] = useState(false);
   const url = useMemo(() => URL.createObjectURL(new Blob([source], { type: 'image/svg+xml' })), [source]);
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
@@ -136,7 +138,7 @@ function SvgFence({ source, sourceProps }: { source: string; sourceProps: FenceS
         aria-expanded={showCode}
         onClick={() => setShowCode((open) => !open)}
       >
-        {showCode ? 'Hide code' : 'Show code'}
+        {showCode ? t('chat.codeBlock.hideCode') : t('chat.codeBlock.showCode')}
       </button>
       {showCode && <FenceSource {...sourceProps} />}
     </div>

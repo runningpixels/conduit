@@ -15,6 +15,7 @@ import { languageFromMime } from '../artifacts/selectRenderer';
 import { ArtifactResultCard } from './ArtifactResultCard';
 import { isPromotable } from './inlineArtifact';
 import { CheckIcon, CopyIcon, FilePlainIcon } from '../icons';
+import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 
 const KIND_LABEL: Record<ArtifactKind, string> = {
@@ -63,6 +64,7 @@ export function InlineArtifactCard({
   onOpenArtifact,
   onStatus,
 }: InlineArtifactCardProps) {
+  const t = useT();
   const fmt = useFormatters();
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -70,7 +72,7 @@ export function InlineArtifactCard({
   const lang = candidateLanguage(candidate);
   const highlighted = useHighlightTokens(showCode ? candidate.body : '', lang);
 
-  const title = candidate.title || 'Untitled';
+  const title = candidate.title || t('chat.artifactCard.untitled');
   const kindLabel = KIND_LABEL[candidate.kind] ?? candidate.kind;
   const size = fmt.size(byteSize(candidate.body), '');
 
@@ -118,8 +120,8 @@ export function InlineArtifactCard({
           <button
             type="button"
             className="icon-btn"
-            aria-label={copied ? 'Copied' : 'Copy code'}
-            title={copied ? 'Copied' : 'Copy code'}
+            aria-label={copied ? t('chat.codeBlock.copied') : t('chat.codeBlock.copy')}
+            title={copied ? t('chat.codeBlock.copied') : t('chat.codeBlock.copy')}
             onClick={() => void handleCopy()}
             disabled={!candidate.body}
           >
@@ -133,10 +135,10 @@ export function InlineArtifactCard({
               type="button"
               className="btn artifact-card-open"
               disabled={pending}
-              title={`Open this ${kindLabel.toLowerCase()} in the artifact panel`}
+              title={t('chat.artifactCard.openTitle', { title })}
               onClick={() => void handleOpen()}
             >
-              {pending ? 'Opening…' : 'Open'}
+              {pending ? t('chat.artifactCard.opening') : t('common.actions.open')}
             </button>
           )}
         </div>
@@ -147,7 +149,7 @@ export function InlineArtifactCard({
         aria-expanded={showCode}
         onClick={() => setShowCode((open) => !open)}
       >
-        {showCode ? 'Hide code' : 'Show code'}
+        {showCode ? t('chat.codeBlock.hideCode') : t('chat.codeBlock.showCode')}
       </button>
       {showCode && (
         <pre className="inline-artifact-source scroll" data-plain={highlighted ? undefined : 'true'}>

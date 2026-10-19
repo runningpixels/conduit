@@ -1033,6 +1033,34 @@ pub(crate) struct ActiveStream {
     pub(crate) cancel: CancellationToken,
     /// Soft interrupt channel for steer (t1-2). Hard cancel uses `cancel`.
     pub(crate) steer_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    /// The conversation the stream answers in, so a view that lost the
+    /// request id (a reloaded window) can find and stop it.
+    pub(crate) conversation_id: Option<String>,
+}
+
+/// An `ask_user` form the turn is waiting on.
+struct PendingAskUser {
+    tx: tokio::sync::oneshot::Sender<serde_json::Value>,
+    form: AskUserForm,
+}
+
+/// A question a running turn has put to the user and not yet had answered.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AskUserForm {
+    pub request_id: String,
+    pub tool_call_id: String,
+    pub title: String,
+    pub fields: Vec<AskUserField>,
+}
+
+/// A conversation's running stream, as [`StreamManager::active_turn`] reports it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveTurn {
+    pub request_id: String,
+    /// The form the turn is paused on, if it is waiting for an answer.
+    pub pending_ask_user: Option<AskUserForm>,
 }
 
 /// Resolves a provider id to the adapter that streams its responses.
@@ -1064,7 +1092,7 @@ pub(crate) fn ensure_provider_allowed(
 pub struct StreamManager {
     active: Arc<Mutex<HashMap<String, ActiveStream>>>,
     /// Pending `ask_user` oneshots keyed by tool_call_id (t1-2).
-    ask_user_pending: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>>>,
+    ask_user_pending: Arc<Mutex<HashMap<String, PendingAskUser>>>,
     /// The built-in provider registry in production. Tests substitute a
     /// scripted adapter so the agent loop can run end to end without a network.
     adapter_resolver: AdapterResolver,
@@ -1203,6 +1231,45 @@ impl StreamManager {
             .unwrap_or_else(|e| e.into_inner())
             .get(conversation_id)
             .cloned()
+    }
+
+    /// The stream running in `conversation_id`, with the question it is
+    /// waiting on. Lets a window that lost the request id (a reload) show Stop
+    /// and the pending form again.
+    pub fn active_turn(&self, conversation_id: &str) -> Option<ActiveTurn> {
+        let request_id = self
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|(_, a)| a.conversation_id.as_deref() == Some(conversation_id))
+            .map(|(id, _)| id.clone())?;
+        let pending_ask_user = self
+            .ask_user_pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .find(|p| p.form.request_id == request_id)
+            .map(|p| p.form.clone());
+        Some(ActiveTurn {
+            request_id,
+            pending_ask_user,
+        })
+    }
+
+    /// Stop whatever stream is running in `conversation_id`. `false` if none is.
+    pub async fn cancel_conversation_turn(
+        &self,
+        state: &AppState,
+        conversation_id: &str,
+    ) -> Result<bool, String> {
+        match self.active_turn(conversation_id) {
+            Some(turn) => {
+                self.cancel_stream(state, &turn.request_id, Some(conversation_id))
+                    .await
+            }
+            None => Ok(false),
+        }
     }
 
     pub fn build_adapter_context(
@@ -1345,7 +1412,8 @@ impl StreamManager {
             );
         }
 
-        let cancel = self.register_stream(&request_id)?;
+        let (cancel, _steer_rx) =
+            self.register_stream_with_steer(&request_id, Some(&request.conversation_id))?;
 
         // Phase 3 cut-over: the stream persists through the SQLite event log +
         // materialized view. Ensure the conversation row exists (the request may
@@ -1475,7 +1543,8 @@ impl StreamManager {
             .map_err(|_| "ask_user lock poisoned".to_string())?
             .remove(tool_call_id);
         match tx {
-            Some(tx) => tx
+            Some(pending) => pending
+                .tx
                 .send(answers)
                 .map_err(|_| "ask_user request was dropped".to_string()),
             None => Err("no pending ask_user for this tool call".to_string()),
@@ -1485,8 +1554,8 @@ impl StreamManager {
     /// Cancel every pending ask_user (hard cancel / steer).
     pub fn cancel_all_ask_user(&self) {
         if let Ok(mut g) = self.ask_user_pending.lock() {
-            for (_, tx) in g.drain() {
-                let _ = tx.send(serde_json::json!({ "cancelled": true }));
+            for (_, pending) in g.drain() {
+                let _ = pending.tx.send(serde_json::json!({ "cancelled": true }));
             }
         }
     }
@@ -1496,7 +1565,7 @@ impl StreamManager {
     /// M1: the single cancellation authority — both real and mock streams
     /// register here.
     pub fn register_stream(&self, request_id: &str) -> Result<CancellationToken, String> {
-        let (cancel, _steer_rx) = self.register_stream_with_steer(request_id)?;
+        let (cancel, _steer_rx) = self.register_stream_with_steer(request_id, None)?;
         Ok(cancel)
     }
 
@@ -1505,6 +1574,7 @@ impl StreamManager {
     pub fn register_stream_with_steer(
         &self,
         request_id: &str,
+        conversation_id: Option<&str>,
     ) -> Result<
         (
             CancellationToken,
@@ -1522,6 +1592,7 @@ impl StreamManager {
                 ActiveStream {
                     cancel: cancel.clone(),
                     steer_tx,
+                    conversation_id: conversation_id.map(str::to_string),
                 },
             );
         Ok((cancel, steer_rx))
@@ -2415,7 +2486,18 @@ impl StreamManager {
                 .ask_user_pending
                 .lock()
                 .map_err(|_| "ask_user lock poisoned".to_string())?;
-            guard.insert(tool_call_id.to_string(), tx);
+            guard.insert(
+                tool_call_id.to_string(),
+                PendingAskUser {
+                    tx,
+                    form: AskUserForm {
+                        request_id: request_id.to_string(),
+                        tool_call_id: tool_call_id.to_string(),
+                        title: title.clone(),
+                        fields: fields.clone(),
+                    },
+                },
+            );
         }
 
         let waiting_since = std::time::Instant::now();
@@ -3119,7 +3201,8 @@ impl StreamManager {
             .await
             .map_err(|e| e.to_string())?;
 
-        let (cancel, mut steer_rx) = self.register_stream_with_steer(&request_id)?;
+        let (cancel, mut steer_rx) =
+            self.register_stream_with_steer(&request_id, Some(&conversation_id))?;
 
         let guardrails = state.settings().map_err(|e| e.to_string())?.agent;
         let max_steps = guardrails.max_steps as usize;

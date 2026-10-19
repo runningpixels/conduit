@@ -23,8 +23,8 @@ export interface ContentBlockState {
   /// at the exact byte ranges the provider specified.
   citations: CitationAnnotation[];
   /// Reasoning blocks only: when the first and latest deltas arrived, so the
-  /// block can say how long the model actually thought. Absent on blocks
-  /// rebuilt from the database, which never recorded it.
+  /// block can say how long the model actually thought. A block rebuilt from
+  /// the database carries the times its deltas were saved.
   startedAt?: number;
   lastDeltaAt?: number;
 }
@@ -222,10 +222,11 @@ function settleUnfinishedToolCalls(
   calls: ToolCallState[],
   status: 'failed' | 'cancelled',
   reason: string,
+  now = Date.now(),
 ): ToolCallState[] {
   return calls.map((tc) =>
     tc.endedAt === undefined && !SETTLED_STATUSES.includes(tc.status as ToolCallStatus)
-      ? { ...tc, status: status as ToolCallStatus, endedAt: Date.now(), error: tc.error ?? reason }
+      ? { ...tc, status: status as ToolCallStatus, endedAt: now, error: tc.error ?? reason }
       : tc,
   );
 }
@@ -338,9 +339,12 @@ export function applyProviderEvent(
   return { ...next, lastEventAt: Date.now() };
 }
 
+/** `now` is when the event happened: the clock for a live event, the time it
+ *  was saved for one replayed from the log. */
 function reduceProviderEvent(
   state: AssistantStreamState,
   event: ProviderEvent,
+  now = Date.now(),
 ): AssistantStreamState {
   switch (event.kind) {
     case 'messageStart':
@@ -401,7 +405,7 @@ function reduceProviderEvent(
           ...state,
           reasoning: state.reasoning.map((block) =>
             block.blockId === event.blockId
-              ? { ...block, content: block.content + event.content, lastDeltaAt: Date.now() }
+              ? { ...block, content: block.content + event.content, lastDeltaAt: now }
               : block,
           ),
           segments: withReasoningSegmentIfNeeded(state.segments, event.blockId),
@@ -416,8 +420,8 @@ function reduceProviderEvent(
             blockKind: 'reasoning',
             content: event.content,
             citations: [],
-            startedAt: Date.now(),
-            lastDeltaAt: Date.now(),
+            startedAt: now,
+            lastDeltaAt: now,
           },
         ],
         segments: withReasoningSegmentIfNeeded(
@@ -440,7 +444,7 @@ function reduceProviderEvent(
             name: event.name,
             argumentsText: '',
             complete: false,
-            startedAt: Date.now(),
+            startedAt: now,
             documentWrite: startDocumentWriteScan(event.name),
           },
         ],
@@ -460,7 +464,7 @@ function reduceProviderEvent(
             ? {
                 ...toolCall,
                 argumentsText: toolCall.argumentsText + event.content,
-                lastDeltaAt: Date.now(),
+                lastDeltaAt: now,
                 ...(toolCall.documentWrite
                   ? { documentWrite: advanceDocumentWriteScan(toolCall.documentWrite, event.content) }
                   : {}),
@@ -500,7 +504,7 @@ function reduceProviderEvent(
                 ...(embeddedSources
                   ? { sources: [...(toolCall.sources ?? []), ...embeddedSources] }
                   : {}),
-                endedAt: Date.now(),
+                endedAt: now,
               }
             : toolCall,
         ),
@@ -531,6 +535,7 @@ function reduceProviderEvent(
           state.toolCalls,
           'failed',
           'The turn ended before this tool finished.',
+          now,
         ),
       };
     case 'searchSources': {
@@ -673,7 +678,7 @@ function reduceProviderEvent(
                 ...tc,
                 status: event.isError ? 'failed' as ToolCallStatus : 'completed' as ToolCallStatus,
                 error: event.error ?? tc.error,
-                endedAt: Date.now(),
+                endedAt: now,
               }
             : tc,
         ),
@@ -683,15 +688,62 @@ function reduceProviderEvent(
   }
 }
 
+/** A saved turn as `get_request_event_log` returns it: each event with the
+ *  time it was saved, and when each finished tool call finished. */
+export interface RequestEventLog {
+  events: { event: ProviderEvent; at: string }[];
+  toolFinishedAt: Record<string, string>;
+}
+
 /** Replay provider events into a finalized assistant stream state (reload path). */
 export function rebuildAssistantStreamStateFromEvents(
   requestId: string,
   events: ProviderEvent[],
 ): AssistantStreamState {
-  let state = createAssistantStreamState(requestId);
-  for (const event of events) {
-    state = applyProviderEvent(state, event);
+  return replayEvents(requestId, events.map((event) => ({ event })), {});
+}
+
+/**
+ * Replay a saved turn with its own times. Replaying on the clock times the
+ * replay — every tool read "1ms" and every think "1s" after a restart — so
+ * each event runs at the time it was saved, and each tool call ends when its
+ * row says it finished (the execution events that end it live are not saved).
+ */
+export function rebuildAssistantStreamStateFromLog(
+  requestId: string,
+  log: RequestEventLog,
+): AssistantStreamState {
+  const finishedAt: Record<string, number> = {};
+  for (const [id, iso] of Object.entries(log.toolFinishedAt ?? {})) {
+    const ms = Date.parse(iso);
+    if (Number.isFinite(ms)) finishedAt[id] = ms;
   }
+  return replayEvents(
+    requestId,
+    log.events.map(({ event, at }) => ({ event, at: Date.parse(at) })),
+    finishedAt,
+  );
+}
+
+function replayEvents(
+  requestId: string,
+  events: { event: ProviderEvent; at?: number }[],
+  toolFinishedAt: Record<string, number>,
+): AssistantStreamState {
+  let state = createAssistantStreamState(requestId);
+  let clock: number | undefined;
+  for (const { event, at } of events) {
+    // Unparseable or missing times hold the last known one, so a gap reads as
+    // no time rather than as the time since the turn ran.
+    if (at !== undefined && Number.isFinite(at)) clock = at;
+    state = reduceProviderEvent(state, event, clock);
+  }
+  const toolCalls = state.toolCalls.map((tc) => {
+    const end = toolFinishedAt[tc.toolCallId];
+    return end !== undefined && tc.startedAt !== undefined && end >= Math.max(tc.startedAt, tc.endedAt ?? 0)
+      ? { ...tc, endedAt: end }
+      : tc;
+  });
   // The replayed turn is definitionally over. Terminal events emitted by the
   // agent loop (rather than a provider round) are not persisted, so a turn that
   // died mid-execution replays with calls that never finished — settle them
@@ -700,9 +752,10 @@ export function rebuildAssistantStreamStateFromEvents(
     ...state,
     streaming: false,
     toolCalls: settleUnfinishedToolCalls(
-      state.toolCalls,
+      toolCalls,
       'failed',
       'The turn ended before this tool finished.',
+      clock,
     ),
   };
 }

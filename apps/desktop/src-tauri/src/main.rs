@@ -149,7 +149,7 @@ fn main() {
             get_conversation_messages,
             get_conversation_compaction,
             compact_conversation,
-            get_request_provider_events,
+            get_request_event_log,
             create_conversation,
             list_conversations,
             get_conversation,

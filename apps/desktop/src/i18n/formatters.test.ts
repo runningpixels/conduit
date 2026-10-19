@@ -38,6 +38,13 @@ describe('durations', () => {
     expect(formatDuration(3_900_000, en)).toBe('1h 5m');
   });
 
+  // Intl.DurationFormat renders {seconds: 0} as "", which printed a label
+  // with a hole in it ("Thinking… " / "已思考 秒").
+  it('never renders an empty duration', () => {
+    expect(formatDuration(0, en)).toBe('0s');
+    expect(formatDuration(200, en)).toBe('0s');
+  });
+
   // CI runs Node 20, which has no Intl.DurationFormat; the first version of
   // this fell back to a bare "588s" there. The fallback must read the same.
   it('reads the same without Intl.DurationFormat', () => {

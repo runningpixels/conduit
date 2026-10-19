@@ -1,7 +1,7 @@
 import type { Message } from '@conduit/config-schema';
-import { getRequestProviderEvents } from '../ipc/client';
+import { getRequestEventLog } from '../ipc/client';
 import { type KnowledgeRef, type TurnAttachment } from './composerTypes';
-import { rebuildAssistantStreamStateFromEvents, type AssistantStreamState } from './streamState';
+import { rebuildAssistantStreamStateFromLog, type AssistantStreamState } from './streamState';
 
 export interface ChatTurn {
   id: string;
@@ -144,9 +144,9 @@ export async function hydrateAssistantTurn(message: Message): Promise<ChatTurn |
     return turn;
   }
   try {
-    const events = await getRequestProviderEvents(message.conversationId, message.requestId);
-    if (events.length > 0) {
-      turn.streamState = rebuildAssistantStreamStateFromEvents(message.requestId, events);
+    const log = await getRequestEventLog(message.conversationId, message.requestId);
+    if (log.events.length > 0) {
+      turn.streamState = rebuildAssistantStreamStateFromLog(message.requestId, log);
     }
   } catch {
     /* fall back to flat content */

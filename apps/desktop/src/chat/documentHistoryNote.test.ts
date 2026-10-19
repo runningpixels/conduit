@@ -13,10 +13,10 @@ import type { AppSettings } from '@conduit/config-schema';
 
 vi.mock('../ipc/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../ipc/client')>()),
-  getRequestProviderEvents: vi.fn(),
+  getRequestEventLog: vi.fn(),
 }));
 
-import { getRequestProviderEvents } from '../ipc/client';
+import { getRequestEventLog } from '../ipc/client';
 
 type Call = { name: string; args: Record<string, unknown>; failed?: boolean };
 
@@ -210,9 +210,13 @@ describe('historyContentForTurn', () => {
   });
 
   it('survives an app restart: a hydrated turn still names the document it wrote', async () => {
-    vi.mocked(getRequestProviderEvents).mockResolvedValueOnce(
-      callEvents([{ name: 'write_html_document', args: { title: 'Paris Weather Dashboard', html: '<p>' } }], 'req-9'),
-    );
+    vi.mocked(getRequestEventLog).mockResolvedValueOnce({
+      events: callEvents(
+        [{ name: 'write_html_document', args: { title: 'Paris Weather Dashboard', html: '<p>' } }],
+        'req-9',
+      ).map((event) => ({ event, at: '2026-10-09T10:00:01.000Z' })),
+      toolFinishedAt: {},
+    });
     const message: Message = {
       id: 'msg-assistant-1',
       conversationId: 'c1',

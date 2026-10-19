@@ -288,3 +288,84 @@ async fn batched_events_fold_exactly_like_single_ones() {
         "the batched view matches the fold of the log"
     );
 }
+
+/// A reloaded turn times itself from these: each event comes back with the
+/// time it was saved, in log order, so "Thought for 1m 52s" and a tool's
+/// "19.1s" survive a restart instead of timing the replay.
+#[tokio::test]
+async fn logged_events_carry_their_save_time() {
+    let pool = common::setup_pool().await;
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let req = "req-timed";
+    let events = complete_turn_events(req);
+    for event in &events[..2] {
+        event_log::append_and_apply(&pool, &conv.id, req, event)
+            .await
+            .unwrap();
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    event_log::append_and_apply_batch(&pool, &conv.id, req, &events[2..])
+        .await
+        .unwrap();
+
+    let logged = event_log::load_logged_events(&pool, &conv.id, req)
+        .await
+        .unwrap();
+    let replayed: Vec<ProviderEvent> = logged.iter().map(|l| l.event.clone()).collect();
+    assert_eq!(replayed, events, "same events, same order as load_events");
+    let at: Vec<chrono::DateTime<chrono::Utc>> = logged
+        .iter()
+        .map(|l| l.at.parse().expect("ISO-8601 save time"))
+        .collect();
+    assert!(
+        at.windows(2).all(|w| w[0] <= w[1]),
+        "save times follow the log: {at:?}"
+    );
+    assert!(
+        at[2] > at[1],
+        "the later batch was saved later: {:?} vs {:?}",
+        at[1],
+        at[2]
+    );
+}
+
+/// The end of a tool call is not in the event log (execution events are
+/// UI-only); a reloaded turn reads it from the call's `completed_at`. Calls
+/// still running, and other turns' calls, are left out.
+#[tokio::test]
+async fn completion_times_cover_only_the_turns_finished_calls() {
+    use conduit_desktop::db::repository::tool_calls;
+    use provider_core::schema::{ToolCallRecord, ToolCallStatus};
+
+    let pool = common::setup_pool().await;
+    let record = |id: &str, request_id: &str, completed_at: Option<&str>| ToolCallRecord {
+        id: id.into(),
+        tool_id: "write_html_document".into(),
+        request_id: request_id.into(),
+        status: if completed_at.is_some() {
+            ToolCallStatus::Completed
+        } else {
+            ToolCallStatus::Running
+        },
+        arguments: None,
+        result: None,
+        error: None,
+        approved_at: None,
+        completed_at: completed_at.map(Into::into),
+    };
+    for rec in [
+        record("done", "req-a", Some("2026-10-19T10:00:19.100Z")),
+        record("running", "req-a", None),
+        record("other", "req-b", Some("2026-10-19T10:01:00.000Z")),
+    ] {
+        tool_calls::insert_tool_call(&pool, &rec).await.unwrap();
+    }
+
+    let times = tool_calls::completion_times_for_request(&pool, "req-a")
+        .await
+        .unwrap();
+    assert_eq!(
+        times,
+        vec![("done".to_string(), "2026-10-19T10:00:19.100Z".to_string())]
+    );
+}

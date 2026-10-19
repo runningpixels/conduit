@@ -10,10 +10,10 @@ import {
 } from './conversationHydration';
 
 vi.mock('../ipc/client', () => ({
-  getRequestProviderEvents: vi.fn(),
+  getRequestEventLog: vi.fn(),
 }));
 
-import { getRequestProviderEvents } from '../ipc/client';
+import { getRequestEventLog } from '../ipc/client';
 
 const now = '2026-07-02T00:00:00.000Z';
 
@@ -219,7 +219,7 @@ describe('messageToDisplayTurn', () => {
 
 describe('hydrateAssistantTurn', () => {
   beforeEach(() => {
-    vi.mocked(getRequestProviderEvents).mockReset();
+    vi.mocked(getRequestEventLog).mockReset();
   });
 
   it('returns null for tool messages', async () => {
@@ -231,41 +231,56 @@ describe('hydrateAssistantTurn', () => {
     );
 
     expect(turn).toBeNull();
-    expect(getRequestProviderEvents).not.toHaveBeenCalled();
+    expect(getRequestEventLog).not.toHaveBeenCalled();
+  });
+
+  // A reasoning think, a text block, and a tool whose arguments streamed for
+  // 19s and which then ran for 0.1s more, saved at these times.
+  const savedTurn = (toolFinishedAt: Record<string, string> = {}) => ({
+    events: [
+      {
+        at: '2026-10-19T10:00:00.000Z',
+        event: { kind: 'reasoningDelta' as const, requestId: 'req-1', blockId: 'think-1', index: 0, content: 'Let me ' },
+      },
+      {
+        at: '2026-10-19T10:01:52.000Z',
+        event: { kind: 'reasoningDelta' as const, requestId: 'req-1', blockId: 'think-1', index: 0, content: 'plan.' },
+      },
+      {
+        at: '2026-10-19T10:01:52.100Z',
+        event: { kind: 'contentBlockStart' as const, requestId: 'req-1', blockId: 'block-1', index: 1, blockKind: 'text' },
+      },
+      {
+        at: '2026-10-19T10:01:52.200Z',
+        event: { kind: 'contentDelta' as const, requestId: 'req-1', blockId: 'block-1', index: 1, content: 'Hello' },
+      },
+      {
+        at: '2026-10-19T10:02:00.000Z',
+        event: {
+          kind: 'toolCallStart' as const,
+          requestId: 'req-1',
+          toolCallId: 'call-1',
+          index: 2,
+          toolId: 'write_html_document',
+          name: 'write_html_document',
+        },
+      },
+      {
+        at: '2026-10-19T10:02:19.000Z',
+        event: {
+          kind: 'toolCallComplete' as const,
+          requestId: 'req-1',
+          toolCallId: 'call-1',
+          index: 2,
+          arguments: { title: 'Doc' },
+        },
+      },
+    ],
+    toolFinishedAt,
   });
 
   it('replays provider events into streamState for assistant turns', async () => {
-    vi.mocked(getRequestProviderEvents).mockResolvedValue([
-      {
-        kind: 'contentBlockStart',
-        requestId: 'req-1',
-        blockId: 'block-1',
-        index: 0,
-        blockKind: 'text',
-      },
-      {
-        kind: 'contentDelta',
-        requestId: 'req-1',
-        blockId: 'block-1',
-        index: 0,
-        content: 'Hello',
-      },
-      {
-        kind: 'toolCallStart',
-        requestId: 'req-1',
-        toolCallId: 'call-1',
-        index: 1,
-        toolId: 'write_html_document',
-        name: 'write_html_document',
-      },
-      {
-        kind: 'toolCallComplete',
-        requestId: 'req-1',
-        toolCallId: 'call-1',
-        index: 1,
-        arguments: { title: 'Doc' },
-      },
-    ]);
+    vi.mocked(getRequestEventLog).mockResolvedValue(savedTurn());
 
     const turn = await hydrateAssistantTurn(
       makeMessage({
@@ -275,7 +290,7 @@ describe('hydrateAssistantTurn', () => {
       }),
     );
 
-    expect(getRequestProviderEvents).toHaveBeenCalledWith('convo-1', 'req-1');
+    expect(getRequestEventLog).toHaveBeenCalledWith('convo-1', 'req-1');
     expect(turn).toMatchObject({
       role: 'assistant',
       content: 'Hello',
@@ -286,6 +301,30 @@ describe('hydrateAssistantTurn', () => {
       name: 'write_html_document',
       complete: true,
     });
+  });
+
+  // Bugs #3 and #16: the replay ran on the clock, so after a restart a tool
+  // that took 19.1s read "1ms" and a 1m 52s think read "Thought for 1s".
+  it('keeps the durations the turn showed live', async () => {
+    vi.mocked(getRequestEventLog).mockResolvedValue(savedTurn({ 'call-1': '2026-10-19T10:02:19.100Z' }));
+    const turn = await hydrateAssistantTurn(
+      makeMessage({ role: 'assistant', requestId: 'req-1', parts: [textPart('Hello')] }),
+    );
+
+    const [think] = turn!.streamState!.reasoning;
+    expect(think.lastDeltaAt! - think.startedAt!).toBe(112_000);
+    const [call] = turn!.streamState!.toolCalls;
+    expect(call.endedAt! - call.startedAt!).toBe(19_100);
+  });
+
+  it('ends a tool at its last saved event when the finish time is missing', async () => {
+    vi.mocked(getRequestEventLog).mockResolvedValue(savedTurn());
+    const turn = await hydrateAssistantTurn(
+      makeMessage({ role: 'assistant', requestId: 'req-1', parts: [textPart('Hello')] }),
+    );
+
+    const [call] = turn!.streamState!.toolCalls;
+    expect(call.endedAt! - call.startedAt!).toBe(19_000);
   });
 });
 

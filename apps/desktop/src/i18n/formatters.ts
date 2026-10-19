@@ -177,7 +177,9 @@ export function formatDuration(ms: number, ctx: FormatContext): string {
   const parts: Record<string, number> =
     hours > 0 ? { hours, minutes } : minutes > 0 ? { minutes, seconds } : { seconds };
   const { DurationFormat } = Intl as unknown as { DurationFormat?: DurationFormatConstructor };
-  if (DurationFormat) return new DurationFormat(ctx.locale, { style: 'narrow' }).format(parts);
+  // DurationFormat drops zero units, so it renders nothing at all for under
+  // half a second; the per-unit fallback below still says "0s".
+  if (DurationFormat && total > 0) return new DurationFormat(ctx.locale, { style: 'narrow' }).format(parts);
   // Node 20 (CI) and older WebViews have no DurationFormat. Each unit on its
   // own is plain NumberFormat, which reads the same in English (`9m 48s`) and
   // stays localised elsewhere (`9 Min. 48 Sek.`).

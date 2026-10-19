@@ -1522,12 +1522,12 @@ function describeToolCallForHistory(
 }
 
 /**
- * A factual record of the tools an earlier assistant turn called, for the
- * history the next request carries. History carries display text only, so
- * without it the model could not see that it had written a document — and
- * once, finding no file for the dashboard it had built two turns earlier, it
- * decided its own earlier replies were made up and started over. Writes and
- * edits name the document and its artifact_id so a follow-up can edit it.
+ * A factual record of the tools an earlier assistant turn called. History
+ * carries display text only, so without it the model could not see that it
+ * had written a document — and once, finding no file for the dashboard it had
+ * built two turns earlier, it decided its own earlier replies were made up and
+ * started over. Writes and edits name the document and its artifact_id so a
+ * follow-up can edit it.
  *
  * Lists at most `TOOL_HISTORY_NOTE_MAX_ENTRIES` calls; never tool results.
  * Empty when the turn called no tool successfully.
@@ -1543,14 +1543,63 @@ export function toolActivityHistoryNote(
   const written = artifactsWrittenByTurn(calls, options.turnId, artifacts);
   const shown = calls.slice(0, TOOL_HISTORY_NOTE_MAX_ENTRIES).map((tc) => describeToolCallForHistory(tc, written, artifacts));
   const more = calls.length - shown.length;
-  const usedWeb = calls.some((tc) => tc.name === 'web_search' || tc.name === 'web_fetch');
+  return more > 0 ? `${shown.join('; ')}; and ${more} more tool call${more === 1 ? '' : 's'}` : shown.join('; ');
+}
+
+/** The turn fields `toolHistoryDeveloperPrompt` reads. */
+export interface ToolHistoryTurn {
+  id: string;
+  role: string;
+  content: string;
+  streamState?: AssistantStreamState;
+}
+
+/**
+ * The tools earlier replies called, as one developer-prompt section. The
+ * record used to lead each assistant turn's text in history, and models copied
+ * it: replies began with "[App record of the tools you called…]" in the chat
+ * (Slides, Writing, in English inside French chats), and once a Writing turn
+ * wrote the record instead of calling write_section. Kept out of the
+ * assistant's own words, it has no reply-shaped text to imitate. Each reply is
+ * named by the request it answered. Undefined when no reply called a tool.
+ */
+export function toolHistoryDeveloperPrompt(
+  history: readonly ToolHistoryTurn[],
+  artifacts: readonly HistoryNoteArtifact[] = [],
+): string | undefined {
+  const lines: string[] = [];
+  let request = '';
+  let usedWeb = false;
+  for (const turn of history) {
+    if (turn.role === 'user') {
+      request = turn.content;
+      continue;
+    }
+    if (turn.role !== 'assistant') continue;
+    const record = toolActivityHistoryNote(turn.streamState, { turnId: turn.id, artifacts });
+    if (!record) continue;
+    usedWeb ||= turn.streamState!.toolCalls.some(
+      (tc) => toolCallSucceeded(tc) && (tc.name === 'web_search' || tc.name === 'web_fetch'),
+    );
+    const answered = request.trim() ? `"${clipNoteValue(request)}"` : 'an earlier message';
+    lines.push(`- Your reply to ${answered}: ${record}.`);
+  }
+  if (lines.length === 0) return undefined;
   return [
-    `[App record of the tools you called in this reply: ${shown.join('; ')}`,
-    more > 0 ? `; and ${more} more tool call${more === 1 ? '' : 's'}.` : '.',
-    ' These calls really happened; their results are not repeated here.',
-    usedWeb ? ' Findings and links in this reply came from those real results.' : '',
-    ']',
-  ].join('');
+    'Tools you called in your earlier replies in this chat, as recorded by the app. These calls really happened; their results are not repeated here.' +
+      (usedWeb ? ' Findings and links in those replies came from the real results.' : ''),
+    ...lines,
+  ].join('\n');
+}
+
+/** The record as earlier builds put it into history, which some models then
+ *  wrote at the start of their own replies. */
+const LEAKED_TOOL_RECORD = /^\s*\[App record of the tools you called in this reply:[^\]]*\]\s*/;
+
+/** An assistant reply without a leaked tool record, so a chat that already
+ *  shows one does not teach the model to write it again. */
+export function stripLeakedToolRecord(content: string): string {
+  return content.replace(LEAKED_TOOL_RECORD, '');
 }
 
 /** Document calls that changed a document. Reads and exports used to count,

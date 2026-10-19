@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Message, ProviderEvent } from '@conduit/config-schema';
-import { TOOL_HISTORY_NOTE_MAX_ENTRIES, toolActivityHistoryNote, type HistoryNoteArtifact } from './agentTools';
+import {
+  TOOL_HISTORY_NOTE_MAX_ENTRIES,
+  toolActivityHistoryNote,
+  toolHistoryDeveloperPrompt,
+  type HistoryNoteArtifact,
+} from './agentTools';
 import { buildProviderRequest, historyContentForTurn } from './ChatView';
 import { applyProviderEvent, createAssistantStreamState, type AssistantStreamState } from './streamState';
 import { hydrateAssistantTurn, type ChatTurn } from './conversationHydration';
@@ -113,8 +118,7 @@ describe('toolActivityHistoryNote', () => {
       `write_html_document: created HTML document "Paris Weather Dashboard" (artifact_id ${ARTIFACT_ID})`,
     );
     expect(note).toContain('web_fetch: https://api.open-meteo.com/v1/forecast');
-    expect(note).toMatch(/^\[App record of the tools you called in this reply: /);
-    expect(note).toContain('Findings and links in this reply came from those real results.');
+    expect(note).not.toContain('App record');
     // Never the document body.
     expect(note).not.toContain('<p>');
   });
@@ -142,7 +146,7 @@ describe('toolActivityHistoryNote', () => {
     const note = toolActivityHistoryNote(stateOf([{ name: 'write_html_document', args: { title: 'Broken' }, failed: true }, ...many]));
     expect(note).not.toContain('Broken');
     expect(note.match(/web_fetch: /g)).toHaveLength(TOOL_HISTORY_NOTE_MAX_ENTRIES);
-    expect(note).toContain('and 3 more tool calls.');
+    expect(note.endsWith('; and 3 more tool calls')).toBe(true);
     expect(note).not.toContain('x'.repeat(150));
   });
 
@@ -153,18 +157,49 @@ describe('toolActivityHistoryNote', () => {
   });
 });
 
+describe('toolHistoryDeveloperPrompt', () => {
+  const wrote: ChatTurn = {
+    id: 'msg-assistant-1',
+    role: 'assistant',
+    content: 'Here is your dashboard.',
+    streamState: stateOf([
+      { name: 'write_html_document', args: { title: 'Paris Weather Dashboard', html: '<p>' } },
+      { name: 'web_fetch', args: { url: 'https://api.open-meteo.com/v1/forecast' } },
+    ]),
+  };
+
+  it('names each reply by the request it answered, with the documents it wrote', () => {
+    const prompt = toolHistoryDeveloperPrompt(
+      [
+        { id: 'm-1', role: 'user', content: 'Build a Paris weather dashboard' },
+        wrote,
+        { id: 'm-2', role: 'user', content: 'thanks' },
+        { id: 'm-3', role: 'assistant', content: 'You are welcome.', streamState: stateOf([]) },
+      ],
+      listed,
+    );
+    expect(prompt).toContain(
+      `- Your reply to "Build a Paris weather dashboard": write_html_document: created HTML document "Paris Weather Dashboard" (artifact_id ${ARTIFACT_ID}); web_fetch: https://api.open-meteo.com/v1/forecast.`,
+    );
+    expect(prompt).toContain('Findings and links in those replies came from the real results.');
+    expect(prompt).not.toContain('thanks');
+  });
+
+  it('is undefined when no reply called a tool', () => {
+    expect(toolHistoryDeveloperPrompt([{ id: 'm-1', role: 'user', content: 'hi' }])).toBeUndefined();
+  });
+});
+
 describe('historyContentForTurn', () => {
-  it('leads every assistant turn that called tools with the record, text or not', () => {
-    const withText: ChatTurn = {
+  it('keeps the tool record out of the assistant text, and strips one an earlier build left there', () => {
+    const turn: ChatTurn = {
       id: 'msg-assistant-1',
       role: 'assistant',
-      content: 'Here is your dashboard.',
-      streamState: stateOf([{ name: 'write_html_document', args: { title: 'Paris Weather Dashboard', html: '<p>' } }]),
+      content:
+        '[App record of the tools you called in this reply: update_slots. These calls really happened; their results are not repeated here.]\n\nJ’ai ajouté l’étiquette.',
+      streamState: stateOf([{ name: 'update_slots', args: { slide_id: 's4' } }]),
     };
-    const content = historyContentForTurn(withText, listed);
-    expect(content).toContain(`(artifact_id ${ARTIFACT_ID})`);
-    expect(content.endsWith('\n\nHere is your dashboard.')).toBe(true);
-    expect(historyContentForTurn({ ...withText, content: '' }, listed)).toContain('created HTML document');
+    expect(historyContentForTurn(turn)).toBe('J’ai ajouté l’étiquette.');
   });
 
   it('leaves user turns and tool-free turns as they are', () => {
@@ -191,7 +226,8 @@ describe('historyContentForTurn', () => {
     const request = buildProviderRequest(settings, 'nice, can you make a nice chart in it?', [turn!], 'c1', [], undefined, null, {
       artifacts: listed,
     });
-    const sent = request.messages.find((m) => m.id === 'msg-assistant-1');
-    expect(sent?.parts[0]?.content).toContain(`(artifact_id ${ARTIFACT_ID})`);
+    expect(request.developerPrompt).toContain(`(artifact_id ${ARTIFACT_ID})`);
+    // A turn with no text of its own is still dropped from the messages.
+    expect(request.messages.find((m) => m.id === 'msg-assistant-1')).toBeUndefined();
   });
 });

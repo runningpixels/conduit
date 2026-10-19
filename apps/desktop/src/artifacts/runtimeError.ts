@@ -19,9 +19,17 @@ export interface ArtifactRuntimeError {
 /// before the artifact's scripts, so their syntax errors are caught too. Only
 /// the first error per load is posted; one broken script can throw on every
 /// animation frame.
+///
+/// A `<script src>` that fails to load is reported too, by URL. Live, a map
+/// page gave leaflet.js a made-up `integrity` hash: the browser refused the
+/// file, and the only error was the later "L is not defined", which told
+/// neither the reader nor the model asked to fix it what was wrong. Load
+/// errors do not bubble, so that listener runs in the capture phase.
 export const ARTIFACT_RUNTIME_ERROR_SCRIPT =
   `(function(){var sent=false;function post(m,l){if(sent)return;sent=true;` +
   `parent.postMessage({type:'${ARTIFACT_RUNTIME_ERROR_MESSAGE_TYPE}',message:String(m||'Error').slice(0,${MAX_MESSAGE}),line:l||0},'*');}` +
+  `window.addEventListener('error',function(e){var t=e&&e.target;if(t&&t!==window&&t.tagName==='SCRIPT'&&t.src)` +
+  `post('Could not load script '+t.src+(t.integrity?' (its integrity hash may not match the file)':''),0);},true);` +
   `window.addEventListener('error',function(e){if(e&&e.target&&e.target!==window)return;post(e.message,e.lineno);});` +
   `window.addEventListener('unhandledrejection',function(e){var r=e&&e.reason;post(r&&r.message?r.message:r,0);});` +
   `})();`;

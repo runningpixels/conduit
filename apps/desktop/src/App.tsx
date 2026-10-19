@@ -424,9 +424,11 @@ export default function App() {
       setSavedApps([]);
     }
   }, []);
+  // Also when an app opens or closes: opening one stamps when it was opened,
+  // and the Apps page, Home and the new-chat row all say so from this list.
   useEffect(() => {
     void refreshSavedApps();
-  }, [refreshSavedApps, destination]);
+  }, [refreshSavedApps, destination, openAppId]);
   // Pages with full web access keep data on their own origin; clear it for
   // pages deleted, or no longer given full access, since the last sweep.
   useEffect(() => {

@@ -108,6 +108,7 @@ import {
   toolCallAwaitsRuntimeFinish,
   type AssistantStreamState,
 } from './streamState';
+import { localizeAgentPhase } from './agentPhaseLabel';
 import { isWebSearchToolCall } from './SearchCallBlock';
 import {
   excludeLiveAssistantTurns,
@@ -783,7 +784,7 @@ function deriveAgentPhase(
   if (state.agentPhase) {
     // If the backend says we're in executing_tools but no pending calls remain,
     // the backend is still updating — trust the backend timestamp.
-    return state.agentPhase;
+    return localizeAgentPhase(state.agentPhase, t);
   }
 
   if (!state.streaming && state.finishReason && pendingCalls.size === 0) {
@@ -3427,7 +3428,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               state={{
                 ...activeStream,
                 agentPhase: (() => {
-                  const phase = agentPhase ?? activeStream.agentPhase;
+                  const phase =
+                    agentPhase ?? (activeStream.agentPhase && localizeAgentPhase(activeStream.agentPhase, t));
                   // While the model builds a document in parts, say how much is
                   // left — the open document refreshes after every patch, and
                   // its placeholders are the sections still to write.

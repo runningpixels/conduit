@@ -169,7 +169,7 @@ const IPC_EXPORTS = [
   // Ideas (App.tsx reads the collection count for "Ask your documents").
   'listKnowledgeCollections',
   // Home: its lists and the apps App.tsx keeps for it.
-  'listWorkflows', 'listAgents', 'listApps', 'listStarterApps',
+  'listWorkflows', 'listAgents', 'listApps', 'listStarterApps', 'openApp',
   // Slides: App.tsx asks whether the open chat is bound to a deck.
   'getDeckForConversation', 'listDecks', 'openDeck', 'undoStartDeck', 'listDeckSnapshots', 'listSlideThemes',
   'editSlideWords', 'setSlotPinned', 'replaceInDeck', 'insertBullet', 'removeBullet',
@@ -259,6 +259,43 @@ describe('App shell', { timeout: 20_000 }, () => {
     fireEvent.keyDown(window, { key: '9', ctrlKey: true });
     await waitFor(() => expect(document.querySelector('.dest-page[data-destination="memory"]')).not.toBeNull());
     expect(screen.queryByText(/something went wrong/i)).toBeNull();
+  });
+
+  // Bug #1: opening an app stamps when it was opened, but the Apps page kept
+  // the list it had before and still said "Not opened yet" after you went back.
+  it('says an app was opened once you go back from it', async () => {
+    const client = await import('./ipc/client');
+    let opened = false;
+    const pomodoro = { id: 'a1', name: 'Pomodoro', description: null, icon: null, category: 'tools', hosts: [] };
+    vi.mocked(client.listApps).mockImplementation(async () => [
+      { ...pomodoro, ...(opened ? { lastOpenedAt: new Date().toISOString() } : {}) } as never,
+    ]);
+    vi.mocked(client.openApp).mockImplementation(async () => {
+      opened = true;
+      return null as never;
+    });
+    try {
+      const { default: App } = await import('./App');
+      render(<App />);
+      await waitFor(() => expect(document.querySelector('.dest-page[data-destination="home"]')).not.toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: 'Apps' }));
+      const card = await screen.findByRole('button', { name: 'Pomodoro' });
+      expect(card.querySelector('.apps-home-meta')?.textContent).toMatch(/Not opened yet/);
+
+      fireEvent.click(card);
+      await waitFor(() => expect(client.openApp).toHaveBeenCalledWith('a1'));
+      await waitFor(() => expect(document.querySelector('.app-view-back')).not.toBeNull());
+      fireEvent.click(document.querySelector('.app-view-back')!);
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Pomodoro' }).querySelector('.apps-home-meta')?.textContent).toMatch(
+          /Opened/,
+        ),
+      );
+    } finally {
+      vi.mocked(client.listApps).mockImplementation(async () => [] as never);
+      vi.mocked(client.openApp).mockImplementation(async () => null as never);
+    }
   });
 
   it('renders no React error boundary fallback on a clean boot', async () => {

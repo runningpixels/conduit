@@ -366,111 +366,116 @@ export function AppView({
         >
           <SettingsIcon />
         </button>
-        <button
-          ref={menuTriggerRef}
-          type="button"
-          className="icon-btn"
-          aria-label={t('apps.view.moreActions')}
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <MoreIcon />
-        </button>
-        <Menu
-          open={menuOpen}
-          onClose={() => setMenuOpen(false)}
-          triggerRef={menuTriggerRef}
-          className="menu app-view-menu"
-          label={t('apps.view.moreActions')}
-          dismissOnOutsidePress
-        >
+        {/* The menu is absolutely placed: this box is what it is placed in.
+            Without it the menu had no offsets and opened at the window's
+            top-left corner, over the rail. */}
+        <div className="app-view-overflow">
           <button
+            ref={menuTriggerRef}
             type="button"
-            className="menu-item"
-            role="menuitem"
-            onClick={() => {
-              setMenuOpen(false);
-              onEdit(summary);
-            }}
+            className="icon-btn"
+            aria-label={t('apps.view.moreActions')}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            onClick={() => setMenuOpen((open) => !open)}
           >
-            <PencilIcon />
-            {t('apps.menu.edit')}
+            <MoreIcon />
           </button>
-          {summary.sourceChanged && (
+          <Menu
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            triggerRef={menuTriggerRef}
+            className="menu app-view-menu"
+            label={t('apps.view.moreActions')}
+            dismissOnOutsidePress
+          >
             <button
               type="button"
               className="menu-item"
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
-                onUpdateFromSource(summary);
+                onEdit(summary);
               }}
             >
-              <RetryIcon />
-              {t('apps.menu.update')}
+              <PencilIcon />
+              {t('apps.menu.edit')}
             </button>
-          )}
-          <button
-            type="button"
-            className="menu-item"
-            role="menuitem"
-            onClick={() => {
-              setMenuOpen(false);
-              setSettingsOpen(true);
-            }}
-          >
-            <SettingsIcon />
-            {t('apps.view.settings')}
-          </button>
-          {declaresStorage && (
+            {summary.sourceChanged && (
+              <button
+                type="button"
+                className="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onUpdateFromSource(summary);
+                }}
+              >
+                <RetryIcon />
+                {t('apps.menu.update')}
+              </button>
+            )}
             <button
               type="button"
               className="menu-item"
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
-                setClearConfirmOpen(true);
+                setSettingsOpen(true);
+              }}
+            >
+              <SettingsIcon />
+              {t('apps.view.settings')}
+            </button>
+            {declaresStorage && (
+              <button
+                type="button"
+                className="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setClearConfirmOpen(true);
+                }}
+              >
+                <TrashIcon />
+                {t('apps.menu.clearData')}
+              </button>
+            )}
+            {network.fullAccess === true && (
+              <button
+                type="button"
+                className="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setSiteDataConfirmOpen(true);
+                }}
+              >
+                <TrashIcon />
+                {t('apps.menu.clearSiteData')}
+              </button>
+            )}
+            {llm.state?.granted && (
+              <button type="button" className="menu-item" role="menuitem" onClick={handleStopModelAccess}>
+                <ModelIcon />
+                {t('apps.menu.stopModelAccess')}
+              </button>
+            )}
+            <div className="menu-sep" role="separator" />
+            <button
+              type="button"
+              className="menu-item danger"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                onDelete(summary);
               }}
             >
               <TrashIcon />
-              {t('apps.menu.clearData')}
+              {t('apps.menu.delete')}
             </button>
-          )}
-          {network.fullAccess === true && (
-            <button
-              type="button"
-              className="menu-item"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                setSiteDataConfirmOpen(true);
-              }}
-            >
-              <TrashIcon />
-              {t('apps.menu.clearSiteData')}
-            </button>
-          )}
-          {llm.state?.granted && (
-            <button type="button" className="menu-item" role="menuitem" onClick={handleStopModelAccess}>
-              <ModelIcon />
-              {t('apps.menu.stopModelAccess')}
-            </button>
-          )}
-          <div className="menu-sep" role="separator" />
-          <button
-            type="button"
-            className="menu-item danger"
-            role="menuitem"
-            onClick={() => {
-              setMenuOpen(false);
-              onDelete(summary);
-            }}
-          >
-            <TrashIcon />
-            {t('apps.menu.delete')}
-          </button>
-        </Menu>
+          </Menu>
+        </div>
       </header>
 
       <ArtifactNetworkBanner

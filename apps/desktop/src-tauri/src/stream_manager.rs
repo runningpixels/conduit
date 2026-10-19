@@ -633,9 +633,63 @@ pub fn next_draft_section(
         .next()
 }
 
+/// The first section of a draft nobody has started: in its draft stage, with
+/// an outline and not one section written. A draft turn that ends there
+/// without writing anything gets one more round (see
+/// [`draft_start_message`]); `None` once that round was used or anything is
+/// written. Models (GLM 5.3 Flash, 2026-10-18) answered "approve outline"
+/// with "First section written…" and no `write_section` call, which left an
+/// empty draft and a finished turn.
+pub fn unstarted_draft_section(
+    stage: provider_core::schema::DraftStage,
+    outline: &[provider_core::schema::OutlineSection],
+    markdown: &str,
+    continuations_used: usize,
+) -> Option<String> {
+    if stage != provider_core::schema::DraftStage::Draft || continuations_used > 0 {
+        return None;
+    }
+    let headings: Vec<String> = outline.iter().map(|s| s.heading.clone()).collect();
+    let unwritten = crate::draft_blocks::unwritten_sections(markdown, &headings);
+    let named = headings.iter().filter(|h| !h.trim().is_empty()).count();
+    (named > 0 && unwritten.len() == named)
+        .then(|| unwritten.into_iter().next())
+        .flatten()
+}
+
 /// The message that asks the model for the next section of a draft.
 pub fn draft_continuation_message(heading: &str) -> String {
     format!("Next: write the section \"{heading}\" with write_section.")
+}
+
+/// The mark at the start of a message the app sent for the user (U+2063
+/// INVISIBLE SEPARATOR; `appPrompt.ts` in the renderer).
+pub const APP_PROMPT_MARK: char = '\u{2063}';
+
+/// The text of the request's latest user message.
+pub fn last_user_text(request: &ProviderRequest) -> String {
+    request
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == MessageRole::User)
+        .map(|m| {
+            m.parts
+                .iter()
+                .filter(|p| p.kind == MessagePartKind::Text)
+                .filter_map(|p| p.content.as_deref())
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .unwrap_or_default()
+}
+
+/// The message after a draft turn that wrote nothing: saying a section is
+/// written does not write it.
+pub fn draft_start_message(heading: &str) -> String {
+    format!(
+        "Nothing has been saved to the draft yet: a section exists only once write_section saves it. Write the section \"{heading}\" with write_section."
+    )
 }
 
 /// Append the model's closing text (if any) and the app's request for the next
@@ -2861,14 +2915,23 @@ impl StreamManager {
     /// The next section of the draft written in this chat when a draft turn
     /// should keep going (see [`next_draft_section`]). `None` for any other
     /// chat, and when the draft cannot be read.
+    /// With `wrote_this_turn` false, only a draft nobody has started yet
+    /// continues (see [`unstarted_draft_section`]).
     async fn draft_section_to_continue(
         &self,
         state: &AppState,
         conversation_id: &str,
         continuations_used: usize,
+        wrote_this_turn: bool,
     ) -> Option<String> {
         match drafts::load_by_conversation(&state.db, &state.encryption, conversation_id).await {
-            Ok(Some(draft)) => next_draft_section(
+            Ok(Some(draft)) if wrote_this_turn => next_draft_section(
+                draft.stage,
+                &draft.outline,
+                &draft.markdown,
+                continuations_used,
+            ),
+            Ok(Some(draft)) => unstarted_draft_section(
                 draft.stage,
                 &draft.outline,
                 &draft.markdown,
@@ -3075,6 +3138,10 @@ impl StreamManager {
         let mut sections_written_this_turn: u32 = 0;
         let mut draft_continuations: usize = 0;
         let mut step_limit = max_steps;
+        // The app sent this turn's message (Writing's "Write the draft from
+        // the outline"), not the user: a reply that writes nothing is then a
+        // failure to write, where a typed question's is an answer.
+        let app_sent_turn = last_user_text(&initial_request).starts_with(APP_PROMPT_MARK);
 
         let active_model_id = initial_request.model_id.clone();
         let mut current_request = initial_request;
@@ -3582,13 +3649,23 @@ impl StreamManager {
             if outcome.completed_tool_calls.is_empty() {
                 // No tool calls requested; the assistant produced a final answer
                 // — unless it is writing a draft and stopped with sections
-                // still to write: then the app asks for the next one.
-                if sections_written_this_turn > 0
+                // still to write: then the app asks for the next one. A turn
+                // that wrote nothing continues only when the app asked for the
+                // draft and none of it is written (the model said it wrote a
+                // section but never called write_section), and only once; a
+                // typed question about the outline is just answered.
+                if (sections_written_this_turn > 0 || app_sent_turn)
                     && !cancel.is_cancelled()
                     && !deadline.expired(tokio::time::Instant::now())
                 {
+                    let wrote = sections_written_this_turn > 0;
                     if let Some(heading) = self
-                        .draft_section_to_continue(state, &conversation_id, draft_continuations)
+                        .draft_section_to_continue(
+                            state,
+                            &conversation_id,
+                            draft_continuations,
+                            wrote,
+                        )
                         .await
                     {
                         draft_continuations += 1;
@@ -3599,11 +3676,12 @@ impl StreamManager {
                             continuation = draft_continuations,
                             "draft turn stopped with sections unwritten; asking for the next"
                         );
-                        push_draft_continuation(
-                            &mut current_request,
-                            &outcome.round_text,
-                            &draft_continuation_message(&heading),
-                        );
+                        let ask = if wrote {
+                            draft_continuation_message(&heading)
+                        } else {
+                            draft_start_message(&heading)
+                        };
+                        push_draft_continuation(&mut current_request, &outcome.round_text, &ask);
                         next_round_label = Some("Writing the next section");
                         continue;
                     }
@@ -3682,7 +3760,7 @@ impl StreamManager {
                     .any(|call| saves_writing(&call.name) && call_has_more_to_write(call))
                     || (tally.sections_written > 0
                         && self
-                            .draft_section_to_continue(state, &conversation_id, 0)
+                            .draft_section_to_continue(state, &conversation_id, 0, true)
                             .await
                             .is_some());
             }
@@ -4199,7 +4277,10 @@ mod document_round_tests {
 
 #[cfg(test)]
 mod draft_continuation_tests {
-    use super::{draft_continuation_message, next_draft_section, push_draft_continuation};
+    use super::{
+        draft_continuation_message, draft_start_message, next_draft_section,
+        push_draft_continuation, unstarted_draft_section,
+    };
     use provider_core::schema::{DraftStage, MessageRole, OutlineSection, ProviderRequest};
 
     fn outline(headings: &[&str]) -> Vec<OutlineSection> {
@@ -4230,6 +4311,41 @@ mod draft_continuation_tests {
             next_draft_section(DraftStage::Draft, &sections, done, 0),
             None
         );
+    }
+
+    // Bug #14: a reply that said "first section written" without calling
+    // write_section ended the turn with an empty draft.
+    #[test]
+    fn an_unstarted_draft_gets_one_more_round_when_nothing_was_written() {
+        let sections = outline(&["Intro", "Body"]);
+        assert_eq!(
+            unstarted_draft_section(DraftStage::Draft, &sections, "", 0).as_deref(),
+            Some("Intro")
+        );
+        // Headings alone are not writing.
+        assert_eq!(
+            unstarted_draft_section(DraftStage::Draft, &sections, "## Intro\n\n## Body\n", 0)
+                .as_deref(),
+            Some("Intro")
+        );
+        // Only once.
+        assert_eq!(
+            unstarted_draft_section(DraftStage::Draft, &sections, "", 1),
+            None
+        );
+        // Not once something is written: a question about a started draft
+        // is answered, not turned into more drafting.
+        assert_eq!(
+            unstarted_draft_section(DraftStage::Draft, &sections, "## Intro\n\nHi.\n", 0),
+            None
+        );
+        // Not before the outline is approved, nor without one.
+        assert_eq!(
+            unstarted_draft_section(DraftStage::Outline, &sections, "", 0),
+            None
+        );
+        assert_eq!(unstarted_draft_section(DraftStage::Draft, &[], "", 0), None);
+        assert!(draft_start_message("Intro").contains("write_section"));
     }
 
     #[test]

@@ -29,6 +29,18 @@ describe('declaredHosts', () => {
     ]);
   });
 
+  // Bug #13: a comma-joined list became one host, "tile.openstreetmap.org,%20a.tile…".
+  it('splits hosts listed with commas, each keeping the shared reason', () => {
+    const html = `<meta name="conduit-network" content="tile.openstreetmap.org, a.tile.openstreetmap.org — map tiles">
+      <meta name="conduit-network" content="b.tile.openstreetmap.org,c.tile.openstreetmap.org">`;
+    expect(declaredHosts(html)).toEqual([
+      { origin: 'https://tile.openstreetmap.org', reason: 'map tiles' },
+      { origin: 'https://a.tile.openstreetmap.org', reason: 'map tiles' },
+      { origin: 'https://b.tile.openstreetmap.org', reason: undefined },
+      { origin: 'https://c.tile.openstreetmap.org', reason: undefined },
+    ]);
+  });
+
   it('ignores other meta tags and non-https declarations', () => {
     const html = `<meta name="description" content="api.example.com — no">
       <meta name="conduit-network" content="http://plain.example.com — insecure">`;

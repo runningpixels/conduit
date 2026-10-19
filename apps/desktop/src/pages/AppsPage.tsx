@@ -6,7 +6,7 @@
 
 import { useExampleItems } from '../examples/useExampleItems';
 import { ExampleChip } from '../examples/ExampleChip';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConfirmDialog } from '@conduit/ui';
 import { useT } from '../i18n';
 import { PageEmpty, PageFrame } from '../shell/PageFrame';
@@ -17,6 +17,7 @@ import type { AppSummary, StarterAppInfo } from '../ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from '../apps/AppDetailsDialog';
 import { AppTile } from '../apps/AppTile';
 import { AppView } from '../apps/AppView';
+import { withLocalStarterNames } from '../apps/starterNames';
 import { useSiteLabel } from '../workspace/ArtifactNetwork';
 import { sweepPageSiteData } from '../artifacts/pageSiteData';
 
@@ -65,15 +66,18 @@ export function AppsPage({
   const [deleting, setDeleting] = useState<AppSummary | null>(null);
   const [revision, setRevision] = useState(0);
 
+  // Read through a ref: the default `[]` is a new array every render.
+  const startersRef = useRef(starters);
+  startersRef.current = starters;
   const refresh = useCallback(async () => {
     try {
-      setApps(await listApps());
+      setApps(await withLocalStarterNames(await listApps(), startersRef.current, t));
       setLoadError(null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
       setApps([]);
     }
-  }, []);
+  }, [t]);
 
   // Reload when an app opens or closes, and when a starter is added (the
   // starter list changes identity), so My apps shows it straight away.

@@ -970,3 +970,66 @@ async fn stop_ends_a_draft_turn_that_would_continue() {
     let draft = studio.draft().await;
     assert!(!draft.markdown.contains("Pothos."), "{}", draft.markdown);
 }
+
+/// What the renderer's `appPrompt` sends for "Write the draft from the outline".
+fn app_prompt(label: &str, text: &str) -> String {
+    format!("\u{2063}{label}\n{text}")
+}
+
+// Bug #14: GLM 5.3 Flash answered the approved outline with "First section
+// written…" and no write_section call; the turn ended with an empty draft.
+#[tokio::test]
+async fn a_draft_the_app_asked_for_is_retried_once_when_nothing_was_written() {
+    let mut studio = Studio::new("Houseplants for dark rooms").await;
+    studio
+        .approved_outline(&["Why light matters", "Care"])
+        .await;
+    let prompt = app_prompt(
+        "Write the draft from the outline",
+        "Write the draft from the approved outline.",
+    );
+    let turn = studio
+        .turn(
+            &prompt,
+            vec![
+                text_round("Première section rédigée : Why light matters."),
+                tool_round(
+                    WRITE_SECTION_TOOL,
+                    section("Why light matters", "Plants feed on light."),
+                ),
+                text_round("First one done."),
+                tool_round(WRITE_SECTION_TOOL, section("Care", "Water less.")),
+                text_round("The draft is written."),
+            ],
+        )
+        .await;
+    assert_eq!(turn.rounds_started, 5);
+    assert!(turn.ended_normally());
+    assert!(
+        last_message_text(&turn.requests[1]).contains("Nothing has been saved to the draft yet")
+    );
+    assert_eq!(
+        last_message_text(&turn.requests[3]),
+        "Next: write the section \"Care\" with write_section."
+    );
+    let draft = studio.draft().await;
+    assert!(
+        draft.markdown.contains("## Care\n\nWater less."),
+        "{}",
+        draft.markdown
+    );
+
+    // Only once: a model that still writes nothing ends the turn.
+    let mut studio = Studio::new("Houseplants for dark rooms").await;
+    studio
+        .approved_outline(&["Why light matters", "Care"])
+        .await;
+    let stubborn = studio
+        .turn(
+            &prompt,
+            vec![text_round("Section written."), text_round("Done, really.")],
+        )
+        .await;
+    assert_eq!(stubborn.rounds_started, 2);
+    assert!(stubborn.ended_normally());
+}

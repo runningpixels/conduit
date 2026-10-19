@@ -32,6 +32,9 @@ function metaContents(html: string): string[] {
   return contents;
 }
 
+/// An https origin whose host is a plain name or address, with an optional port.
+const PLAIN_ORIGIN = /^https:\/\/[a-z0-9.-]+(:\d+)?$/i;
+
 /// Hosts the page declares, in order, first reason winning.
 export function declaredHosts(html: string): DeclaredHost[] {
   const out = new Map<string, DeclaredHost>();
@@ -41,8 +44,17 @@ export function declaredHosts(html: string): DeclaredHost[] {
       if (!trimmed) continue;
       const [hostPart, ...rest] = trimmed.split(/\s+[—–-]\s+|\s*:\s+/);
       const reason = rest.join(' ').trim() || undefined;
-      const origin = requestOrigin(/^https?:\/\//i.test(hostPart) ? hostPart : `https://${hostPart}`);
-      if (origin && !out.has(origin)) out.set(origin, { origin, reason });
+      // Models also list several hosts before one reason with commas
+      // ("tile.openstreetmap.org, a.tile.openstreetmap.org — map tiles").
+      // The WebView's URL parser accepted that whole list as one host,
+      // `tile.openstreetmap.org,%20a.tile…`, which matched nothing and
+      // overflowed the Save as app dialog.
+      for (const host of hostPart.split(/[\s,]+/)) {
+        if (!host) continue;
+        const origin = requestOrigin(/^https?:\/\//i.test(host) ? host : `https://${host}`);
+        if (!origin || !PLAIN_ORIGIN.test(origin)) continue;
+        if (!out.has(origin)) out.set(origin, { origin, reason });
+      }
     }
   }
   return [...out.values()];

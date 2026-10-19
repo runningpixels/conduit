@@ -280,6 +280,9 @@
   background: rgba(0, 0, 0, .45);
 }
 .app-details-dialog {
+  /* One column that may shrink: a long host name wraps instead of widening
+     the dialog past the window (or the panel it opens over). */
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
   gap: 14px;
   width: 90%;
@@ -312,11 +315,12 @@
 .app-field-mark input { font-family: var(--font-mono); text-align: center; }
 .app-field input:focus-visible,
 .app-field select:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: 1px; }
-.app-details-access { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.app-details-access { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); }
 .app-details-access legend { padding: 0 4px; }
 .app-details-keep { display: flex; align-items: flex-start; gap: 8px; font-size: var(--fs-xl); line-height: 1.4; cursor: pointer; }
+.app-details-keep span { min-width: 0; overflow-wrap: anywhere; }
 .app-details-keep input { margin-top: 3px; }
-.app-details-asks { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.4; }
+.app-details-asks { margin: 0; color: var(--ink-3); font-size: var(--fs-xl); line-height: 1.4; overflow-wrap: anywhere; }
 .app-details-error { margin: 0; color: var(--err); font-size: var(--fs-xl); }
 .app-details-actions { display: flex; justify-content: flex-end; gap: 8px; }
 

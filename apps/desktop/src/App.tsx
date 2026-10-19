@@ -144,6 +144,7 @@ import { AgentsPage } from './pages/AgentsPage';
 import { InboxPage } from './pages/InboxPage';
 import type { AppSummary, StarterAppInfo } from './ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog';
+import { withLocalStarterNames } from './apps/starterNames';
 import {
   artifactPrincipal,
   exportConversationDialog,
@@ -418,12 +419,12 @@ export default function App() {
   const refreshSavedApps = useCallback(async () => {
     try {
       const [apps, starters] = await Promise.all([listApps(), listStarterApps()]);
-      setSavedApps(apps);
+      setSavedApps(await withLocalStarterNames(apps, starters, t));
       setStarterApps(starters);
     } catch {
       setSavedApps([]);
     }
-  }, []);
+  }, [t]);
   // Also when an app opens or closes: opening one stamps when it was opened,
   // and the Apps page, Home and the new-chat row all say so from this list.
   useEffect(() => {

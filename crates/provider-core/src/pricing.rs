@@ -408,15 +408,16 @@ mod tests {
 
     #[test]
     fn deepseek_context_windows_come_from_the_snapshot() {
-        // models.dev lists every current DeepSeek API model at 1M tokens.
+        // models.dev lists every current DeepSeek API model at 1,048,576 tokens
+        // (it said 1,000,000 until its 2026-10 data).
         for model in ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-flash"] {
             assert_eq!(
                 snapshot_context_window("deepseek", model),
-                Some(1_000_000),
+                Some(1_048_576),
                 "{model}"
             );
         }
-        // OpenRouter's own listing of the same family reports 1,048,576.
+        // OpenRouter's own listing of the same family agrees.
         assert_eq!(
             snapshot_context_window("openrouter", "deepseek/deepseek-v4-pro"),
             Some(1_048_576)

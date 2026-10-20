@@ -7,6 +7,70 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.13] - 2026-10-20
+
+Conduit now fits small windows, phones and tablets, reads in your language in
+more places, and fixes a run of chat, app and computer-use problems found in
+live testing.
+
+### Added
+
+- **Phone and tablet layout.** Below 720px wide the rail becomes a bottom tab
+  bar (Home, Chats, Apps, Inbox, More), with the other areas and the theme
+  switch in a More sheet. The chat list and the document panel open full
+  width, two-column pages (Workflows, Settings, Context, the Slides and
+  Writing studios) stack, and on touch screens hover-only actions stay
+  visible with larger tap targets. The window can now be as narrow as 360px.
+- **The rail works in short windows.** Below 820px of height the rail turns
+  compact, and its destinations scroll instead of squeezing together, with
+  Settings kept at the bottom. The light/dark switch moves to the title bar.
+- **Stop a reply that is still running after a reload.** If the window
+  reloads while a reply is still working, or waiting on one of its questions,
+  the chat finds it again: Stop comes back, and so does the question's form.
+- **Run one command outside the folder when a confined build fails.** On
+  Windows, a build tool such as `cargo` can fail inside the folder limits.
+  When you are watching the run, a second card offers to run exactly that
+  command once outside the folder. Nothing is remembered, and unattended
+  runs only tell the agent why it failed.
+
+### Changed
+
+- **Research reports in your language.** The plan, findings and report follow
+  the language of the question, and the report's own headings and notes
+  (Summary, Findings, Sources and the rest) come in all eight languages.
+- **More of the app in your language:** the agent's progress line
+  ("Writing the next section…"), the reason a computer-use card asks, the
+  buttons on an unopened document card, and starter apps' names after you
+  switch languages.
+- **Rail labels shrink to fit** instead of breaking inside a word in German,
+  Spanish, French and Portuguese.
+- **Resizing the window no longer lags**: animations pause while you drag.
+- **The Agents page's working status** stays a tidy box of up to three lines;
+  the full task is in its tooltip.
+
+### Fixed
+
+- Replies no longer start with "[App record of the tools you called…]".
+  That record is kept out of the model's view of earlier replies, and old
+  copies of it are removed from history.
+- A question a reply is waiting on comes back when you leave the chat and
+  return, instead of disappearing and blocking the next message.
+- After a restart, tool rows and "Thought for…" show their real durations,
+  not "1ms" and "1s".
+- Writing: when a model answers the "write the draft" step without writing
+  anything, the app asks once more for the first section instead of
+  stopping with an empty draft.
+- A page from the chat you just left no longer opens in the next chat's
+  panel, so **Save as app** can't save the wrong page.
+- Save as app: sites listed with commas are split into separate hosts, and
+  long lists wrap instead of pushing Save off screen.
+- A page that fails to load a script now names the script (and its bad
+  integrity hash, if any), so **Ask to fix** can fix the real cause.
+- The artifact panel opens wide enough to use on a narrow window, and a new
+  chat beside it keeps its message box reachable.
+- An app you just opened no longer reads "Not opened yet", and an open app's
+  ⋮ menu opens under its button instead of the window's corner.
+
 ## [1.0.0-rc.12] - 2026-10-15
 
 Workflows become something you can see and build on a canvas, and their agents
@@ -1328,7 +1392,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.12...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.13...HEAD
+[1.0.0-rc.13]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.12...v1.0.0-rc.13
 [1.0.0-rc.12]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.11...v1.0.0-rc.12
 [1.0.0-rc.11]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.10...v1.0.0-rc.11
 [1.0.0-rc.10]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.9...v1.0.0-rc.10

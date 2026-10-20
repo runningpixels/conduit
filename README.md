@@ -15,7 +15,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-![A chat that built an "Upstream watch" dashboard for the tauri-apps/tauri repo: live stars, open issues, pull requests and releases from the GitHub API, open beside the chat](./docs/assets/screenshot-hero.png)
+![Conduit on Windows, light mode: with the Ferry docs and a sync metrics CSV attached, a chat built a dark "Ferry sync health" dashboard for the 21 September stall, open beside it: four tiles for a 50-minute stall, a 2,034 ms peak p95 commit latency, 184,244 chunks waiting and 2,720 stalled clients; a latency chart with the stall shaded and a dashed "Lock released" line the chat added on request; a bar chart of chunks waiting every 5 minutes; a donut of stalled clients by platform; and a cause-and-fix strip citing the runbook](./docs/assets/screenshot-hero.webp)
 
 Conduit is an open-source desktop app for working with large language models.
 Bring your own key for any of seventeen providers, or run a local model with
@@ -34,6 +34,18 @@ interface.
 The screenshots follow one example: the team behind *Ferry*, a made-up
 open-source sync app built with Rust and Tauri.
 
+## At a glance
+
+| **[Agents](#workflows)**: agents that work on your computer, and ask before they act | **[Workflows](#workflows)**: routines that run on a schedule or when something new arrives, and ask first |
+| --- | --- |
+| ![The Agents page in Conduit: six agents across three workflows, filtered by All 6, Working 1 and Helpers 2. The agent fixing issue #42 in ferry-sync is working and uses your computer; beside it, the Competitor release watch agent that hands work to its Researcher and Editor helpers, the Dependency advisories agent and the cargo test step are idle. Each card shows its model and tools and its tasks, failures and tokens over the last 30 days](./docs/assets/tour-agents.webp) | ![The Workflows screen with the "Weekly Ferry team brief" workflow on the canvas: a Start step that asks for the Tauri blog and Rust blog addresses, two Fetch pages steps and two Ask the model summaries side by side, then a step that combines them, every step marked Finished, and the latest run's result, "Ferry team weekly brief 2026-10-17", on the right](./docs/assets/tour-workflows.webp) |
+| **[Research](#research)**: every claim backed by a real quote | **[Writing](#writing)**: blog posts, docs and reports, written section by section |
+| ![A finished Research run comparing how Automerge, Yjs, cr-sqlite, ElectricSQL and PowerSync resolve conflicts: the card ends with Open report and Write from this report, notes 8 claims left out because their quotes could not be found in their sources, and lists the numbered sources under "10 cited · 10 read", with the report open beside it at its summary](./docs/assets/tour-research.webp) | ![The Writing area: a draft titled "How five sync engines resolve conflicts — and what fits a file-sync app", written from a Research report with links back to its sources, one paragraph selected with the Rewrite, Shorter, Longer, Clearer, Fix grammar and Ask… toolbar above it, and the assistant's notes on each section beside it](./docs/assets/tour-writing.webp) |
+| **[Slides](#slides)**: a deck you edit by asking, not a file you regenerate | **[Personal apps](#personal-apps)**: keep what it builds, and open it any time |
+| ![The Slides studio: a "Ferry 1.0 — how sync works" deck of eight slides in the dark Ink theme, on slide 4, "A one-line edit uploads one chunk": 10 MB for the whole file re-uploaded against 64 KiB, "1 of 5 chunks sent — the changed one", with the slide strip down the left and the chat on the right where the assistant changed that label on request](./docs/assets/tour-slides.webp) | ![A personal app built in a chat: the request for a "Lisbon city guide" with an OpenStreetMap map, and the live app open beside it with 14 places in a list by category (landmarks, museums, viewpoints, markets and food) and coloured pins on the map, São Jorge Castle selected with its popup open](./docs/assets/tour-apps.webp) |
+| **[MCP connectors](#mcp-connectors)**: plug in any MCP server, on your own terms | **[White-label](https://conduitllm.com/whitelabel.html)**: your name, logo and colours from one brand file |
+| ![A chat that called the DeepWiki connector three times (read_wiki_structure, then ask_wiki_question twice) to learn how Tauri passes IPC messages, then wrote a white one-page primer for Ferry's contributors beside it: "Tauri 2 IPC — the invoke round trip", with the round trip in five steps from the webview to the Rust core](./docs/assets/tour-connectors.webp) | ![Conduit rebranded as Ferry Assistant: the Ferry ship logo and name at the top of the rail, a navy and teal palette across the app, and Settings → Branding open with branding enabled, the app name Ferry, the display name Ferry Assistant, the tagline, the logo and the colour fields filled in from one brand file](./docs/assets/tour-whitelabel.webp) |
+
 ## What you can build
 
 ### Personal apps
@@ -43,10 +55,10 @@ a game. **Save as app** (in the page's ⋯ menu) keeps it as a personal app you
 open from **Apps** on the rail (a screen of your apps as cards; **Manage** beside
 it holds details, network access and starter apps), and it keeps working after
 you delete the chat.
-The dashboard above is one: it calls the GitHub API live, after asking once for
-that site.
+Upstream watch, below, is one: it calls the GitHub API live, after asking once
+for that site.
 
-![The Apps page: six personal apps as cards (Budget tracker, Snake, Weather dashboard, Pomodoro timer, Unit converter, Upstream watch), each showing what it may do](./docs/assets/screenshot-apps.png)
+![The Apps page: eight personal apps as cards (Lisbon city guide, Upstream watch, Pomodoro timer, Weather dashboard, Snake, Release note polisher, Budget tracker, Unit converter), each showing what it may do](./docs/assets/screenshot-apps.webp)
 
 Personal apps can do three things a plain page in a sandbox can't, each
 declared by the page and checked by Conduit:
@@ -66,7 +78,7 @@ the sites and providers it may use, and a week of one-line activity records,
 never prompts, replies or saved values. Nine **starter apps** come built in,
 from a Pomodoro timer to a live weather dashboard.
 
-![A personal app asking to use the AI model: the prompt names OpenRouter, says what the page writes is sent there, and offers Don't allow, Allow this time or Always allow](./docs/assets/screenshot-llm-consent.png)
+![A personal app asking to use the AI model: the prompt names OpenRouter, says what the page writes is sent there, and offers Don't allow, Allow this time or Always allow](./docs/assets/screenshot-llm-consent.webp)
 
 ### Slides
 
@@ -74,8 +86,6 @@ Describe the story, or ask for a deck in any chat. The assistant drafts a
 storyline for you to approve, then builds **one live deck**: every change edits
 that deck instead of producing yet another copy of the file. The deck opens in a
 studio with the slide large in the middle and the chat beside it.
-
-![The Slides studio: a Ferry incident postmortem in the light Paper theme, with a bar chart of stalled commits, slide thumbnails, and the chat that edited slide 3](./docs/assets/screenshot-slides-studio.png)
 
 - **Targeted changes.** Ask for a change and the assistant edits one slide, or
   swaps a word across the deck. **History** keeps a version for every change,
@@ -95,7 +105,7 @@ studio with the slide large in the middle and the chat beside it.
 
 | Script: every word of the deck as one document | The presenter window: next slide, notes, timer |
 | --- | --- |
-| ![The Script tab beside the deck, listing each slide's title, bullets and notes](./docs/assets/screenshot-slides-script.png) | ![The presenter window with the current slide, the next slide, a timer and large speaker notes](./docs/assets/screenshot-presenter.png) |
+| ![The Script tab beside the deck, listing each slide's title, bullets and notes](./docs/assets/screenshot-slides-script.webp) | ![The presenter window with the current slide, the next slide, a timer and large speaker notes](./docs/assets/screenshot-presenter.webp) |
 
 ### Answers from your own documents
 
@@ -112,7 +122,7 @@ read PDFs themselves (Claude, OpenAI, Gemini) get the PDF, charts and scans
 included. The document's text, or the PDF, goes to the chat's provider with the
 message.
 
-![A chat with the Ferry docs attached, explaining from the auth design notes why the client retries twice: a normal token expiry, then a refresh race](./docs/assets/screenshot-documents.png)
+![A chat with the Ferry docs attached, asked why the Ferry client retries auth twice before signing the user out: the four Ferry documents it drew on are listed under the question, and the answer starts from the auth design notes with the retry loop sketched in Rust](./docs/assets/screenshot-documents.webp)
 
 A collection's PDFs are read on your machine. Indexing sends a document's text
 to the provider that embeds the collection, so you are asked before the first
@@ -143,8 +153,8 @@ newsletters. Describe what you're writing and the assistant proposes an
 outline (the sections, what each must say, a target length) that you edit and
 approve. Then it writes the draft section by section into a Markdown editor
 beside the chat. It can draw on the web, your document collections or a
-finished Research report, linking each fact to its source and marking anything
-it can't source as a TODO instead of making it up. Ask for a change and only
+finished Research report; the assistant is told to link each fact to its source
+and to mark anything it can't source as a TODO. Ask for a change and only
 that part is rewritten, or select text for Rewrite, Shorter, Clearer and more.
 Text you write yourself stays word for word, History keeps every version, and
 a draft exports as Markdown or HTML.
@@ -167,8 +177,6 @@ a connector's list shows something new, such as an issue or a message. Turning
 automatic runs on first lists everything the workflow will be allowed to do on
 its own, for you to approve, and a run that needs more pauses and asks. A run
 that is waiting for you carries on after you restart Conduit.
-
-![A "Weekly Ferry team brief" workflow on the canvas: two pages fetched and summarised side by side, then combined, every step finished; on the right, the latest run's result](./docs/assets/screenshot-workflows.png)
 
 A workflow opens as a **canvas**: a node for each step, with its status shown
 live while it runs. Edit on the canvas too: add steps from a menu, drag them
@@ -208,8 +216,6 @@ redacted and size-capped, and a tool asks before it runs unless its server marks
 it read-only; you can remember an approval for one chat or always, and review
 those approvals on the Connectors page.
 
-![A chat that used the DeepWiki connector to explain how tauri-apps/tauri passes IPC messages between the webview and Rust](./docs/assets/screenshot-connectors.png)
-
 A server's prompts and resources are reachable from the composer too, not only
 its tools: the prompt picker fills in a prompt's arguments, and the resource
 picker attaches a document to the next message.
@@ -233,7 +239,7 @@ reopens on the one you used last. `Ctrl+1` to `Ctrl+9` (`⌘` on macOS) jump to
 the areas (`Ctrl+/` lists which is which), and the command palette (`Ctrl+K`)
 has a "Go to" entry for each.
 
-![Home: the ask box with quick starts, two memory suggestions that need you, a fresh workflow result, and the deck, chat and draft to pick up](./docs/assets/screenshot-home.png)
+![Home: the ask box with quick starts, Needs you with a workflow agent waiting to send something and four memory suggestions to review, and the deck, app, chats and draft to pick up where you left off](./docs/assets/screenshot-home.webp)
 
 ### Every model, and the web
 
@@ -249,7 +255,7 @@ Exa, which needs no key, or a service you choose (Tavily, Brave or your own
 SearXNG), with a link in Settings to get a key. Allowed and blocked domain lists
 narrow it, and sources show with the answer and in the inspector.
 
-![A web search answer about Rust 1.90 with a search row (6 sources) and inline citations](./docs/assets/screenshot-search.png)
+![A web search answer about the latest stable Rust release, with a web_search row (6 sources) and inline links to the Rust blog](./docs/assets/screenshot-search.webp)
 
 The **+** in the composer attaches files (images and documents) and adds web
 search, a workspace folder the assistant can read and edit, document
@@ -264,7 +270,7 @@ have `{{variables}}` you fill in when you insert it into the composer. Its
 **Skills** tab holds `SKILL.md` skill packages: instructions and files the
 assistant loads for a chat when you add the skill.
 
-![The Library: a "Review this diff" prompt with a diff variable, next to "Explain this error" and "Draft release notes"](./docs/assets/screenshot-library.png)
+![The Library: a "Review this diff" prompt with a diff variable, next to "Explain this error" and "Draft release notes"](./docs/assets/screenshot-library.webp)
 
 ### Memory
 
@@ -272,9 +278,9 @@ assistant loads for a chat when you add the skill.
 propose something to remember during a chat, but a proposal waits for you and is
 never used until you save it. The list is yours to read, edit, pin as core or
 delete, and one switch stops saved memory being added to chats at once. Memory
-is encrypted on disk.
+is encrypted on disk when encryption at rest is on.
 
-![The Memory page: two suggestions waiting for review, a pinned core fact about Ferry's stack, a preference, and two notes](./docs/assets/screenshot-memory.png)
+![The Memory page: two suggestions waiting for review, a pinned core fact about Ferry's stack, a preference, and two notes](./docs/assets/screenshot-memory.webp)
 
 ### Image generation
 
@@ -283,7 +289,7 @@ the chat and shown in the side panel. Images are stored locally, not linked from
 the provider, so they don't vanish when a remote URL expires. Each image is
 billed, so Conduit asks once before the first one.
 
-![A flat logo for Ferry, a boat riding two sync arrows, generated in a chat and open in the side panel](./docs/assets/screenshot-image.png)
+![A flat logo for Ferry, a boat riding two sync arrows, generated in a chat and open in the side panel](./docs/assets/screenshot-image.webp)
 
 ### Pages and artifacts
 
@@ -303,7 +309,7 @@ colour you can pick per mode. The interface is available in English, German,
 Spanish, French, Japanese, Korean, Brazilian Portuguese and Simplified Chinese;
 dates, numbers and file sizes follow the language you pick.
 
-![The Apps page in light mode](./docs/assets/screenshot-apps-light.png)
+![The Apps page in dark mode](./docs/assets/screenshot-apps-dark.webp)
 
 ### And more
 
@@ -327,6 +333,8 @@ dates, numbers and file sizes follow the language you pick.
   can search.
 - **Settings search** and a keyboard shortcuts sheet (`Ctrl+/`, `⌘/` on macOS).
 - **White-label branding**: a name, mark and colours from a `brand.md`.
+
+![Usage & Cost in Settings for this month: an estimated $0.1294 across 574K input and 141K output tokens, a table of GLM 5.3 Flash and GLM 5.3 through OpenRouter with each model's tokens, cost and an Edit price button, a bar chart of cost per day, and the daily spend alert](./docs/assets/screenshot-usage.webp)
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
@@ -352,7 +360,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
   `Conduit-Updater/<version>`. Checking is manual by default; background
   checking and install-on-quit are opt-in, and Conduit never restarts itself.
 
-![Settings → Privacy & data: the trust boundary status, local-only mode, diagnostics export, where keys are stored, local data, and the artifact security switches](./docs/assets/screenshot-privacy.png)
+![Settings → Privacy & data: the trust boundary status, local-only mode, diagnostics export, where keys are stored, local data, and the artifact security switches](./docs/assets/screenshot-privacy.webp)
 
 ## Status
 

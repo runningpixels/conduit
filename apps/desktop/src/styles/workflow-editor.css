@@ -72,6 +72,14 @@
 .wfe-start { display: grid; gap: var(--sp-5); }
 .wfe-start-head { display: grid; gap: var(--sp-1); }
 .wfe-section { display: grid; gap: var(--sp-3); min-width: 0; }
+/* One column never wider than the panel: a wide control shrinks or wraps instead of
+   pushing everything past the panel's right edge. */
+.wfe-start,
+.wfe-section,
+.wfe-setting,
+.wfe-setting .app-settings-slot { grid-template-columns: minmax(0, 1fr); }
+/* A select is as wide as its longest option (a model's full name) unless told otherwise. */
+.wfe-start select { max-width: 100%; }
 .wfe-h { margin: 0; padding: 0; color: var(--ink); font-size: var(--fs-8xl); font-weight: 600; }
 .wfe-help { margin: 0; color: var(--ink-2); font-size: var(--fs-5xl); }
 .wfe-label { color: var(--ink); font-size: var(--fs-5xl); }

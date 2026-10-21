@@ -1,4 +1,58 @@
 /* The Agents page, and the helper editor / hand-off display that go with it. */
+/* Two sections: the user's own agents (the library), then the ones inside workflows. */
+.agents-section { display: grid; gap: var(--sp-3); margin: 0 0 var(--sp-6); }
+.agents-section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-3); }
+.agents-section-head h3 { margin: 0; font-size: var(--fs-8xl); font-weight: 700; }
+.agents-section-head p { margin: 0; color: var(--ink-2); font-size: var(--fs-2xl); }
+.agents-lib-empty { margin: 0; padding: var(--sp-4); border: 1px dashed var(--line); border-radius: var(--r-lg); color: var(--ink-2); line-height: 1.45; }
+div.agent-card:hover { background: var(--card); }
+.agent-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* The agent editor dialog (opens over the Agents page). */
+/* A fixed header and footer around a body that scrolls: the buttons and any
+   problems stay in view however long the tool lists get. */
+.app-inputs-dialog.agent-editor-dialog {
+  width: min(960px, calc(100vw - 48px));
+  max-width: none;
+  max-height: min(860px, calc(100vh - 48px));
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.agent-editor-head { padding: var(--sp-5) var(--sp-6) var(--sp-4); border-bottom: 1px solid var(--line-soft); }
+.agent-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  overflow-y: auto;
+}
+.agent-editor-col { display: grid; align-content: start; gap: var(--sp-4); min-width: 0; }
+.agent-editor-h { margin: 0; color: var(--ink-3); font-size: var(--fs-md); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.agent-editor-dialog textarea { resize: vertical; min-height: 180px; }
+.agent-editor-tokens input { max-width: 200px; }
+/* Each group of choices is a quiet card; its title matches the field labels. */
+.agent-editor-group { padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
+.agent-editor-group > .wf-tools { gap: var(--sp-1); }
+.agent-editor-dialog .wf-tools legend,
+.agent-editor-dialog .wf-connector-name { color: var(--ink-2); font-size: var(--fs-md); font-weight: 600; }
+.agent-editor-dialog fieldset.agent-editor-group > legend { float: left; width: 100%; margin-bottom: var(--sp-2); }
+.agent-editor-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--sp-1) var(--sp-3); }
+.agent-editor-dialog .wf-check { align-items: flex-start; }
+.agent-editor-dialog .wf-check input { margin-top: 3px; }
+.agent-editor-dialog .wf-error { margin: 0; }
+.agent-editor-foot {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--line-soft);
+  background: var(--card);
+}
+.agent-editor-foot .app-details-actions { margin: 0; }
+.agent-editor-problems { margin: 0; padding-left: 1.2em; color: var(--err); font-size: var(--fs-xl); }
+@media (max-width: 760px) {
+  .agent-editor-body { grid-template-columns: minmax(0, 1fr); }
+}
 /* Cards like Apps: a tile and name, what it is doing, what it may use, and
  * the last 30 days as three numbers. The whole card opens its workflow. */
 .agents-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin: 0 0 var(--sp-5); }
@@ -129,8 +183,13 @@
   border-radius: var(--r-md);
   min-width: 0;
 }
-.wfe-helper-head { display: flex; gap: var(--sp-2); }
-.wfe-helper-head .mem-input { flex: 1; min-width: 0; }
+/* The name keeps a usable width; in a narrow panel the buttons wrap below it. */
+.wfe-helper-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.wfe-helper-head .mem-input { flex: 1 1 12rem; min-width: 10rem; }
+.wfe-helper-title { flex: 1 1 12rem; min-width: 10rem; display: grid; gap: 2px; overflow-wrap: break-word; }
+.wfe-helper-library > p { margin: 0; }
+.wfe-helper-add { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.wfe-helper-pick { width: auto; max-width: 100%; }
 
 .wf-handoffs { display: grid; gap: var(--sp-1); margin: var(--sp-2) 10px; }
 .wf-handoff-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }

@@ -59,7 +59,9 @@ pub struct WorkflowDefinition {
 pub struct AgentDef {
     /// Listed by the agents that may hand it work. Lowercase letters, digits, `_`.
     pub id: String,
-    /// What the user (and the agent handing it work) calls it.
+    /// What the user (and the agent handing it work) calls it. Empty in a
+    /// reference to one of the user's agents until it is filled in.
+    #[serde(default)]
     pub name: String,
     /// What it is for and how it works; plain text, not a template (it gets
     /// its run values through the task it is handed).
@@ -78,6 +80,12 @@ pub struct AgentDef {
     /// [`DEFAULT_HELPER_TOKENS`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u64>,
+    /// Set when this helper is one of the user's agents (`agents::library`):
+    /// it is stored as just `{ id, library }` (the same id twice) and the rest
+    /// is filled in from the library whenever the workflow is checked or run,
+    /// so editing the agent changes it everywhere it is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub library: Option<String>,
 }
 
 /// Most helpers a workflow may have, and most one agent may hand work to.
@@ -657,6 +665,7 @@ const HELPER_KEYS: &[&str] = &[
     "tools",
     "agents",
     "maxTokens",
+    "library",
 ];
 const TRIGGER_KEYS: &[&str] = &["kind", "url", "everyMinutes"];
 const CONNECTOR_TRIGGER_KEYS: &[&str] = &["kind", "connector", "tool", "arguments", "everyMinutes"];
@@ -1645,6 +1654,71 @@ fn check_handoffs(who: &str, listed: &[String], known: &[AgentDef], problems: &m
     }
 }
 
+/// How a helper is named in a problem: `Helper "Researcher"`, by id until it
+/// has a name.
+pub fn helper_who(helper: &AgentDef) -> String {
+    let label = if helper.name.trim().is_empty() {
+        helper.id.as_str()
+    } else {
+        helper.name.trim()
+    };
+    format!("Helper \"{label}\"")
+}
+
+/// A helper's id is well formed. Shared with the agent library, whose agents
+/// are held to the same rules.
+pub fn check_helper_id(helper: &AgentDef, problems: &mut Vec<String>) {
+    if !is_id(&helper.id) {
+        problems.push(format!(
+            "Helper id \"{}\" should use lowercase letters, digits and _.",
+            helper.id
+        ));
+    }
+}
+
+/// A helper's own settings: name, instructions, model, token limit and tools.
+/// Shared with the agent library, whose agents are held to the same rules.
+pub fn check_helper_fields(helper: &AgentDef, problems: &mut Vec<String>) {
+    let who = helper_who(helper);
+    if helper.name.trim().is_empty() {
+        problems.push(format!("{who} needs a name."));
+    } else if helper.name.trim().chars().count() > MAX_HELPER_NAME_CHARS {
+        problems.push(format!(
+            "{who}: keep the name under {MAX_HELPER_NAME_CHARS} characters."
+        ));
+    }
+    if helper.instructions.trim().is_empty() {
+        problems.push(format!(
+            "{who} needs instructions: what it's for and how to work."
+        ));
+    }
+    if let Some(model) = &helper.model {
+        check_model(model, &format!("{who}'s model"), problems);
+    }
+    if let Some(limit) = helper.max_tokens {
+        if !(MIN_HELPER_TOKENS..=MAX_HELPER_TOKENS).contains(&limit) {
+            problems.push(format!(
+                "{who}: a task can use {MIN_HELPER_TOKENS} to {MAX_HELPER_TOKENS} tokens."
+            ));
+        }
+    }
+    check_agent_tools(&who, &helper.tools, problems);
+}
+
+/// A reference to one of the user's agents that [`agents::library::resolve`]
+/// found nothing for: it still has nothing but its id.
+///
+/// [`agents::library::resolve`]: crate::agents::library::resolve
+fn is_missing_library_agent(helper: &AgentDef) -> bool {
+    helper.library.is_some()
+        && helper.name.trim().is_empty()
+        && helper.instructions.trim().is_empty()
+}
+
+fn missing_library_agent(id: &str) -> String {
+    format!("\u{201c}{id}\u{201d} is one of your agents, but it no longer exists.")
+}
+
 /// The helpers' own settings, the steps that hand them work, and that work is
 /// never handed round in a circle or further than [`MAX_HANDOFF_DEPTH`].
 fn check_helpers(def: &WorkflowDefinition, problems: &mut Vec<String>) {
@@ -1657,44 +1731,24 @@ fn check_helpers(def: &WorkflowDefinition, problems: &mut Vec<String>) {
     }
     let mut ids = HashSet::new();
     for helper in helpers {
-        let label = if helper.name.trim().is_empty() {
-            helper.id.as_str()
-        } else {
-            helper.name.trim()
-        };
-        let who = format!("Helper \"{label}\"");
-        if !is_id(&helper.id) {
-            problems.push(format!(
-                "Helper id \"{}\" should use lowercase letters, digits and _.",
-                helper.id
-            ));
-        }
+        let who = helper_who(helper);
+        check_helper_id(helper, problems);
         if !ids.insert(helper.id.as_str()) {
             problems.push(format!("Two helpers are called \"{}\".", helper.id));
         }
-        if helper.name.trim().is_empty() {
-            problems.push(format!("{who} needs a name."));
-        } else if helper.name.trim().chars().count() > MAX_HELPER_NAME_CHARS {
-            problems.push(format!(
-                "{who}: keep the name under {MAX_HELPER_NAME_CHARS} characters."
-            ));
-        }
-        if helper.instructions.trim().is_empty() {
-            problems.push(format!(
-                "{who} needs instructions: what it's for and how to work."
-            ));
-        }
-        if let Some(model) = &helper.model {
-            check_model(model, &format!("{who}'s model"), problems);
-        }
-        if let Some(limit) = helper.max_tokens {
-            if !(MIN_HELPER_TOKENS..=MAX_HELPER_TOKENS).contains(&limit) {
+        // One of the user's agents that no longer exists has nothing else to check.
+        if let Some(library) = &helper.library {
+            if library != &helper.id {
                 problems.push(format!(
-                    "{who}: a task can use {MIN_HELPER_TOKENS} to {MAX_HELPER_TOKENS} tokens."
+                    "{who} refers to the agent \u{201c}{library}\u{201d} under another id."
                 ));
             }
+            if is_missing_library_agent(helper) {
+                problems.push(missing_library_agent(&helper.id));
+                continue;
+            }
         }
-        check_agent_tools(&who, &helper.tools, problems);
+        check_helper_fields(helper, problems);
         check_handoffs(&who, &helper.agents, helpers, problems);
         if helper.agents.contains(&helper.id) {
             problems.push(format!("{who} can't hand work to itself."));

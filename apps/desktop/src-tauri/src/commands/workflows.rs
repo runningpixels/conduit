@@ -8,6 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
 
+use crate::agents::library;
 use crate::artifact_network::AddressPolicy;
 use crate::db::repository::conversations;
 use crate::db::repository::workflows::{
@@ -42,19 +43,30 @@ fn checked_name(name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-/// Parse and validate a definition sent by the renderer.
-fn checked_definition(definition: &Value) -> Result<(), String> {
-    definition::check_value(definition)
+/// Parse and validate a definition sent by the renderer, with the user's
+/// agents it refers to filled in (the definition itself is saved as sent).
+async fn checked_definition(state: &AppState, definition: &Value) -> Result<(), String> {
+    let resolved = library::resolve_value(&state.db, &state.encryption, definition).await?;
+    definition::check_value(&resolved)
+}
+
+/// The problems of a definition as one line each.
+fn validate_definition(definition: Value) -> Vec<String> {
+    match definition::check_value(&definition) {
+        Ok(()) => Vec::new(),
+        Err(problems) => problems.lines().map(str::to_string).collect(),
+    }
 }
 
 /// Everything wrong with a definition, in plain English; empty when it can
 /// be saved and run. The editor calls this as the user edits.
 #[tauri::command]
-pub fn validate_workflow(definition: Value) -> Vec<String> {
-    match checked_definition(&definition) {
-        Ok(()) => Vec::new(),
-        Err(problems) => problems.lines().map(str::to_string).collect(),
-    }
+pub async fn validate_workflow(
+    state: State<'_, AppState>,
+    definition: Value,
+) -> Result<Vec<String>, String> {
+    let resolved = library::resolve_value(&state.db, &state.encryption, &definition).await?;
+    Ok(validate_definition(resolved))
 }
 
 /// Draft a workflow from a description with the chat's model. Nothing is
@@ -132,7 +144,7 @@ pub async fn create_workflow(
     definition: Value,
 ) -> Result<WorkflowRecord, String> {
     let name = checked_name(&name)?;
-    checked_definition(&definition)?;
+    checked_definition(&state, &definition).await?;
     repo::create(
         &state.db,
         &state.encryption,
@@ -153,7 +165,7 @@ pub async fn update_workflow(
     definition: Value,
 ) -> Result<WorkflowRecord, String> {
     let name = checked_name(&name)?;
-    checked_definition(&definition)?;
+    checked_definition(&state, &definition).await?;
     repo::update(
         &state.db,
         &state.encryption,
@@ -472,14 +484,14 @@ mod tests {
     #[test]
     fn validate_workflow_lists_each_problem_or_nothing() {
         let ok = json!({ "steps": [{ "id": "a", "type": "template", "template": "hi" }] });
-        assert!(validate_workflow(ok).is_empty());
+        assert!(validate_definition(ok).is_empty());
         let bad = json!({ "steps": [
             { "id": "a", "type": "template", "template": "{{steps.b.text}}" },
             { "id": "a", "type": "template", "template": "x" }
         ]});
-        let problems = validate_workflow(bad);
+        let problems = validate_definition(bad);
         assert_eq!(problems.len(), 2, "{problems:?}");
-        assert!(validate_workflow(json!({ "steps": "nope" }))[0].contains("can't be read"));
+        assert!(validate_definition(json!({ "steps": "nope" }))[0].contains("can't be read"));
     }
 
     #[test]
@@ -488,17 +500,17 @@ mod tests {
             { "id": "fetch", "type": "fetch_page", "urls": ["https://a.test"], "on_error": "skip" }
         ]});
         assert_eq!(
-            validate_workflow(wrong_case),
+            validate_definition(wrong_case),
             vec!["Step \"fetch\": unknown setting \"on_error\" \u{2014} did you mean \"onError\"?"]
         );
         let bad_type = json!({ "steps": [{ "id": "a", "type": "launch_rockets" }] });
-        let problems = validate_workflow(bad_type);
+        let problems = validate_definition(bad_type);
         assert!(
             problems[0].contains("\"launch_rockets\" isn't a step type. Use one of: fetch_page")
         );
         let escaped =
             json!({ "steps": [{ "id": "a", "type": "template", "template": "{{ \"x\" }}" }] });
-        assert!(validate_workflow(escaped)[0].contains("put a backslash before it"));
+        assert!(validate_definition(escaped)[0].contains("put a backslash before it"));
     }
 }
 
@@ -519,8 +531,11 @@ async fn workflow_permissions(state: &AppState, id: &str) -> Result<WorkflowPerm
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "That workflow no longer exists.".to_string())?;
-    let def: definition::WorkflowDefinition = serde_json::from_value(workflow.definition)
+    let mut def: definition::WorkflowDefinition = serde_json::from_value(workflow.definition)
         .map_err(|e| format!("The workflow definition can't be read: {e}"))?;
+    // The user's agents it uses count as its helpers: what they may do is
+    // approved with the rest.
+    library::resolve(&state.db, &state.encryption, &mut def).await?;
     let settings = state.settings()?;
     let backend = search_backend(&settings);
     // The live provider registry, as a run uses it: a step whose chosen
@@ -801,6 +816,10 @@ pub struct AgentEntry {
     pub kind: String,
     /// The step's or the helper's id.
     pub agent_id: String,
+    /// For a helper that is one of the user's agents: its library id (the
+    /// same as `agent_id`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub library: Option<String>,
     /// A helper's name; empty for a step (the page names it).
     pub name: String,
     /// A helper's instructions, or the step's instruction.
@@ -829,16 +848,20 @@ pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentEntry>, 
     let activity = repo::agent_activity(pool, &state.encryption, &since)
         .await
         .map_err(|e| e.to_string())?;
+    let library_agents = library::load(pool, &state.encryption).await?;
     let mut out = Vec::new();
     for summary in repo::list(pool).await.map_err(|e| e.to_string())? {
         let Ok(Some(record)) = repo::get(pool, &state.encryption, &summary.id).await else {
             continue;
         };
-        let Ok(def) =
+        let Ok(mut def) =
             serde_json::from_value::<definition::WorkflowDefinition>(record.definition.clone())
         else {
             continue;
         };
+        if def.agents.iter().any(|h| h.library.is_some()) {
+            library::resolve_with(&library_agents, &mut def);
+        }
         let name_of = |id: &String| {
             def.agents
                 .iter()
@@ -861,6 +884,10 @@ pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentEntry>, 
                 workflow_name: record.name.clone(),
                 kind: kind.to_string(),
                 agent_id: agent_id.to_string(),
+                library: (kind == "helper")
+                    .then(|| def.agents.iter().find(|h| h.id == agent_id))
+                    .flatten()
+                    .and_then(|h| h.library.clone()),
                 name,
                 about,
                 model,

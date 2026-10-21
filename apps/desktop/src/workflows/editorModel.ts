@@ -166,9 +166,16 @@ export function helpersOf(def: Pick<WorkflowDefinition, 'agents'>): readonly Age
   return def.agents ?? [];
 }
 
-/// Helper names by id.
-export function helperNames(def: Pick<WorkflowDefinition, 'agents'>): Record<string, string> {
-  return Object.fromEntries(helpersOf(def).map((h) => [h.id, h.name || h.id]));
+/// Helper names by id. A helper that is one of the user's agents is saved as just
+/// `{ id, library }`, so its name comes from `library` (names by library id); an
+/// unknown id shows as itself.
+export function helperNames(
+  def: Pick<WorkflowDefinition, 'agents'>,
+  library: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+  return Object.fromEntries(
+    helpersOf(def).map((h) => [h.id, h.name || (h.library ? library[h.library] : undefined) || h.id]),
+  );
 }
 
 /// `def` with its helpers set; an empty list removes the key.
@@ -187,6 +194,54 @@ export function newHelper(helpers: readonly AgentDef[], name: string): AgentDef 
 /// `def` with helper `id` replaced by `next` (the id stays as it was).
 export function updateHelper(def: WorkflowDefinition, id: string, fn: (h: AgentDef) => AgentDef): WorkflowDefinition {
   return withHelpers(def, helpersOf(def).map((h) => (h.id === id ? { ...fn(h), id } : h)));
+}
+
+/// A helper that is one of the user's agents, as it is saved: just the two ids. (The
+/// backend fills in the rest, so name and instructions are missing until it does.)
+export function libraryRef(id: string): AgentDef {
+  return { id, library: id } as AgentDef;
+}
+
+/// `def` with one more of the user's agents as a helper: saved as just `{ id, library }`.
+/// Nothing changes when it is already a helper or the workflow has all it may.
+export function withLibraryHelper(def: WorkflowDefinition, agentId: string): WorkflowDefinition {
+  const helpers = helpersOf(def);
+  if (helpers.length >= MAX_HELPERS || helpers.some((h) => h.id === agentId)) return def;
+  return withHelpers(def, [...helpers, libraryRef(agentId)]);
+}
+
+/// `def` with helper `id` (one of the user's agents) swapped for an inline copy of
+/// `agent`: same id, no `library`, now editable here. Agents it hands work to that the
+/// workflow doesn't have yet come in as the user's agents, so its hand-offs still work.
+export function detachLibraryHelper(def: WorkflowDefinition, id: string, agent: AgentDef): WorkflowDefinition {
+  const { library: _drop, ...copy } = agent;
+  const swapped = helpersOf(def).map((h) => (h.id === id ? { ...copy, id } : h));
+  const missing = (agent.agents ?? []).filter((x) => !swapped.some((h) => h.id === x));
+  return withHelpers(def, [
+    ...swapped,
+    ...missing.map(libraryRef),
+  ]);
+}
+
+function renameHelperInSteps(steps: readonly WorkflowStep[], from: string, to: string): WorkflowStep[] {
+  return steps.map((step) => {
+    if (step.type === 'for_each') return { ...step, steps: renameHelperInSteps(step.steps, from, to) };
+    if (step.type === 'agent' && step.agents?.includes(from)) {
+      return { ...step, agents: step.agents.map((x) => (x === from ? to : x)) };
+    }
+    return step;
+  });
+}
+
+/// `def` after helper `oldId` was saved to the user's agents as `newId` (the library may
+/// have changed the id): the id is renamed in every step's and helper's hand-offs and the helper
+/// becomes `{ id: newId, library: newId }`.
+export function toLibraryRef(def: WorkflowDefinition, oldId: string, newId: string): WorkflowDefinition {
+  const helpers = helpersOf(def).map((h): AgentDef => {
+    if (h.id === oldId) return libraryRef(newId);
+    return h.agents?.includes(oldId) ? { ...h, agents: h.agents.map((x) => (x === oldId ? newId : x)) } : h;
+  });
+  return { ...withHelpers(def, helpers), steps: renameHelperInSteps(def.steps, oldId, newId) };
 }
 
 function stripHelperFromSteps(steps: readonly WorkflowStep[], id: string): WorkflowStep[] {

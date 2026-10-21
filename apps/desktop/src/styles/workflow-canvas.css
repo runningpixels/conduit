@@ -133,7 +133,9 @@
 .wfc-controls { display: flex; gap: 4px; }
 .wfc-toolbar { display: flex; align-items: flex-start; gap: var(--sp-2); }
 /* The page layout: the canvas fills its container, the panel sits beside it. */
-.wfc.is-fill { display: grid; grid-template-columns: minmax(0, 1fr) 420px; height: 100%; min-height: 480px; border: 0; border-radius: 0; }
+/* The panel's width: the layout's default (`--wfc-panel-d`) unless the user dragged the
+   bar between them (`--wfc-panel-w`, set on the element). */
+.wfc.is-fill { --wfc-panel-d: 420px; display: grid; grid-template-columns: minmax(0, 1fr) var(--wfc-panel-w, var(--wfc-panel-d)); height: 100%; min-height: 480px; border: 0; border-radius: 0; }
 .wfc.is-fill .wfc-canvas { height: 100%; }
 .wfc.is-fill .wfc-panel { position: static; width: auto; max-height: none; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: none; background: var(--bg-side); padding: var(--sp-5); font-size: var(--fs-5xl); }
 .wfc.is-fill.is-expanded { grid-template-rows: minmax(0, 1fr); }
@@ -164,15 +166,33 @@
 }
 .wfc-close { float: right; margin: -4px -4px 0 var(--sp-2); }
 /* Editing: the step form is a column beside the canvas, not over it. */
-.wfc.is-editing { display: grid; grid-template-columns: minmax(0, 1fr) 380px; }
+.wfc.is-editing { --wfc-panel-d: 380px; display: grid; grid-template-columns: minmax(0, 1fr) var(--wfc-panel-w, var(--wfc-panel-d)); }
 .wfc.is-editing .wfc-inspector { position: static; width: auto; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: none; max-height: 1100px; }
 /* Full screen: everything below the title bar. */
 .wfc.is-expanded { position: fixed; top: var(--titlebar-h); right: 0; bottom: 0; left: 0; z-index: 900; border-radius: 0; }
 .wfc.is-expanded:not(.is-editing) { display: grid; grid-template-rows: minmax(0, 1fr); }
 .wfc.is-expanded .wfc-canvas { height: 100%; }
-.wfc.is-editing.is-expanded { grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) 420px; }
+.wfc.is-editing.is-expanded { --wfc-panel-d: 420px; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) var(--wfc-panel-w, var(--wfc-panel-d)); }
+/* The bar between canvas and panel: drag to resize. It sits over the panel's left edge. */
+.wfc-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--wfc-panel-w, var(--wfc-panel-d)) - 4px);
+  z-index: 6;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.wfc-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background var(--tap); }
+.wfc-resizer:hover::after,
+.wfc-resizer.is-dragging::after,
+.wfc-resizer:focus-visible::after { background: var(--accent); }
+.wfc-resizer:focus-visible { outline: none; }
 .wfc.is-editing.is-expanded .wfc-inspector { max-height: none; }
 @media (max-width: 1100px) {
+  /* Stacked: the panel is below the canvas, full width, so there's nothing to drag. */
+  .wfc-resizer { display: none; }
   .wfc.is-editing { grid-template-columns: 1fr; }
   .wfc.is-editing .wfc-inspector { border-left: 0; border-top: 1px solid var(--line); }
 }

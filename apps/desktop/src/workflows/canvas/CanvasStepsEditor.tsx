@@ -11,6 +11,7 @@
 
 import { folderName } from '../WorkflowViewParts';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useLibraryAgents } from '../../agents/useLibraryAgents';
 import { useT } from '../../i18n';
 import type { WorkflowDefinition } from '../../ipc/contracts';
 import { refLabel } from '../refLabel';
@@ -48,6 +49,7 @@ export interface CanvasStepsEditorProps {
 
 export function CanvasStepsEditor({ definition, onChange, renderCard, start, onChooseView, problems, labels }: CanvasStepsEditorProps) {
   const t = useT();
+  const { names: libNames } = useLibraryAgents();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [wire, setWire] = useState<Wire | null>(null);
   const [flow, setFlow] = useState<FlowWire | null>(null);
@@ -67,7 +69,7 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
   const selectedStep = selected ? flat.find((s) => s.id === selected) : undefined;
   const summary = (id: string) => {
     const step = flat.find((s) => s.id === id);
-    return step ? describeStep(step, t, inputLabels, connectorNames, definition.steps, helperNames(definition)) : id;
+    return step ? describeStep(step, t, inputLabels, connectorNames, definition.steps, helperNames(definition, libNames)) : id;
   };
 
   const add = useCallback(

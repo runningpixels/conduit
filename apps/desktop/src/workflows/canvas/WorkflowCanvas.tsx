@@ -11,7 +11,7 @@
 import { StepActions } from '../StepActions';
 import { StepComputer } from '../StepComputer';
 import '@xyflow/react/dist/style.css';
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Handle,
@@ -27,12 +27,14 @@ import {
   type Node,
   type NodeProps,
 } from '@xyflow/react';
+import { useLibraryAgents } from '../../agents/useLibraryAgents';
 import { useT, type Translate } from '../../i18n';
 import { useFormatters } from '../../i18n/formatters';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowStep } from '../../ipc/contracts';
 import { computerText, describeStep, handsToText, type InputLabels } from '../describeStep';
 import { helperNames } from '../editorModel';
 import { STEP_TYPE_KEY } from '../stepTypes';
+import { PanelResizer, usePanelWidth } from './PanelResizer';
 import { START_ID, buildCanvas, problemsByStep, runStatuses, type CanvasEdge, type CanvasNode, type NodeRun, type NodeStatus } from './canvasModel';
 
 /** Written out, so the stylesheet's dead-rule check can see them. */
@@ -412,6 +414,7 @@ function Canvas({
 }: WorkflowCanvasProps) {
   const fill = panel !== undefined;
   const t = useT();
+  const { names: libNames } = useLibraryAgents();
   const box = useRef<HTMLDivElement>(null);
   const [ownSelected, setOwnSelected] = useState<string | null>(null);
   const selectedId = controlledId !== undefined ? controlledId : ownSelected;
@@ -448,7 +451,7 @@ function Canvas({
               waitingYou:
                 computerWaitKey.split('|').includes(n.id) && showWaiting.current ? () => showWaiting.current?.(n.id) : null,
               flags: [
-                handsToText(step, t, helperNames(definition)),
+                handsToText(step, t, helperNames(definition, libNames)),
                 computerText(step, t) && computerFolder
                   ? t('workspace.workflows.step.usesComputerIn', { folder: computerFolder })
                   : computerText(step, t),
@@ -488,7 +491,7 @@ function Canvas({
           ariaLabel: step ? `${data.kind}: ${data.line}` : data.kind,
         };
       }),
-    [graph, statuses, problemSteps, selectedId, editor, fill, t, labels, connectorNames, definition, computerFolder, computerWaitKey],
+    [graph, statuses, problemSteps, selectedId, editor, fill, t, labels, connectorNames, definition, computerFolder, computerWaitKey, libNames],
   );
 
   // React Flow keeps what it measured on its own node objects; rebuilding them
@@ -583,6 +586,11 @@ function Canvas({
   }, [expanded]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const signature = graph.nodes.map((n) => n.id).join('|');
+  // The panel sits beside the canvas (not over it) when editing or filling the
+  // page; there the user can drag it wider or narrower.
+  const layout = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = usePanelWidth();
+  const besidePanel = Boolean(editor) || (fill && Boolean(panel));
 
   const flowApi = useReactFlow();
   const onNodeDragStop = editor?.onNodeDragStop
@@ -598,7 +606,11 @@ function Canvas({
     : undefined;
 
   const drawing = (
-    <div className={`wfc${editor ? ' is-editing' : ''}${fill ? ' is-fill' : ''}${expanded ? ' is-expanded' : ''}${className ? ` ${className}` : ''}`}>
+    <div
+      ref={layout}
+      className={`wfc${editor ? ' is-editing' : ''}${fill ? ' is-fill' : ''}${expanded ? ' is-expanded' : ''}${className ? ` ${className}` : ''}`}
+      style={besidePanel && panelWidth !== null ? ({ '--wfc-panel-w': `${panelWidth}px` } as CSSProperties) : undefined}
+    >
       <div className="wfc-canvas" ref={box} style={expanded || fill ? undefined : { height }} aria-label={t('workspace.workflows.canvas.ariaLabel')} role="group">
         <ReactFlow
           nodes={nodes}
@@ -668,6 +680,7 @@ function Canvas({
           ) : null}
         </ReactFlow>
       </div>
+      {besidePanel ? <PanelResizer container={layout} width={panelWidth} onChange={setPanelWidth} /> : null}
       {panel ? (
         <aside className="wfc-inspector wfc-panel" aria-label={t('workspace.workflows.canvas.inspector')}>
           {panel(
@@ -748,6 +761,7 @@ function RunInspector({
   problems: string[];
 }) {
   const t = useT();
+  const { names: libNames } = useLibraryAgents();
   if (!node?.step) return <p className="wfc-empty">{t('workspace.workflows.canvas.selectHint')}</p>;
   const step: WorkflowStep = node.step;
   const uses = wireLines(graph, node.id, 'in');
@@ -757,7 +771,7 @@ function RunInspector({
   return (
     <div className="wfc-inspect">
       <span className="wfc-kind">{t(STEP_TYPE_KEY[step.type])}</span>
-      <p className="wfc-inspect-line">{describeStep(step, t, labels, connectorNames, definition.steps, helperNames(definition))}</p>
+      <p className="wfc-inspect-line">{describeStep(step, t, labels, connectorNames, definition.steps, helperNames(definition, libNames))}</p>
       <span className="wf-muted wfc-inspect-id">{node.id}</span>
       {problems.map((p) => (
         <p key={p} className="wf-error">

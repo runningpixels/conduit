@@ -788,6 +788,23 @@ export interface AgentDef {
   agents?: string[];
   /** 1000..=300000; 120000 when absent. */
   maxTokens?: number;
+  /**
+   * Set when this helper is one of the user's agents (`LibraryAgent`): the
+   * saved definition holds only `{ id, library }` (id === library) and the
+   * rest comes from the library whenever the workflow runs. `resolve_workflow_agents`
+   * returns it filled in.
+   */
+  library?: string;
+}
+
+/** One of the user's agents (Rust `agents::library::LibraryAgent`). */
+export interface LibraryAgent {
+  /** Its definition; `agents` are ids of other library agents. Never has `library`. */
+  agent: AgentDef;
+  createdAt: string;
+  updatedAt: string;
+  /** Workflows whose helpers refer to it (directly or through another agent). */
+  usedBy: { workflowId: string; workflowName: string }[];
 }
 
 /** One hand-off in an agent step's output. */
@@ -806,6 +823,8 @@ export interface AgentEntry {
   workflowName: string;
   kind: 'step' | 'helper';
   agentId: string;
+  /** For a helper that is one of the user's agents: its library id (=== agentId). */
+  library?: string;
   /** The helper's name; empty for a step. */
   name: string;
   /** The helper's instructions, or the step's prompt. */

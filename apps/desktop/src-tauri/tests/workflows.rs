@@ -776,7 +776,10 @@ impl Harness {
             .await
             .unwrap()
             .unwrap();
-        let def: WorkflowDefinition = serde_json::from_value(workflow.definition).unwrap();
+        let mut def: WorkflowDefinition = serde_json::from_value(workflow.definition).unwrap();
+        conduit_desktop::agents::library::resolve(&self.state.db, &self.state.encryption, &mut def)
+            .await
+            .unwrap();
         let titles = permissions::collection_titles(&self.state.db, &def).await;
         let title = |id: &str| titles.get(id).cloned();
         let names = permissions::connector_names(&self.state.db, &def).await;
@@ -7365,6 +7368,163 @@ async fn helpers_that_hand_work_round_in_a_circle_are_refused_on_save() {
     }))
     .unwrap_err();
     assert!(problems.contains("in a circle"), "{problems}");
+}
+
+// ── The user's agents as helpers ────────────────────────────────────────────
+
+/// Save `agent` (an `AgentDef` as JSON) to the user's agents.
+async fn save_agent(h: &Harness, agent: Value) {
+    conduit_desktop::agents::library::create(
+        &h.state.db,
+        &h.state.encryption,
+        serde_json::from_value(agent).unwrap(),
+    )
+    .await
+    .unwrap();
+}
+
+/// A workflow whose agent step may hand tasks to the user's `researcher`.
+fn with_the_researcher() -> Value {
+    with_a_helper(json!({ "id": "researcher", "library": "researcher" }))
+}
+
+fn asks_the_researcher() -> EchoModel {
+    EchoModel {
+        tool_calls: vec![("ask_researcher", json!({ "task": "Find the capital" }))],
+        offered_only: true,
+        ..EchoModel::default()
+    }
+}
+
+#[tokio::test]
+async fn a_helper_that_is_one_of_the_users_agents_runs_with_its_instructions_and_follows_edits() {
+    let h = Harness::new(asks_the_researcher()).await;
+    save_agent(
+        &h,
+        json!({ "id": "researcher", "name": "Researcher", "instructions": "Find facts on the web.", "tools": ["calculator"] }),
+    )
+    .await;
+    let id = h.save(with_the_researcher()).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = detail.steps[0].output.as_ref().unwrap();
+    assert_eq!(out["toolCalls"], json!(["ask_researcher"]));
+    assert_eq!(out["handoffs"][0]["agent"], "researcher");
+    let requests = h.model.requests.lock().unwrap().clone();
+    let helper = &requests[1];
+    assert!(helper
+        .system_prompt
+        .as_deref()
+        .unwrap()
+        .contains("You are Researcher. Find facts on the web."));
+    assert_eq!(helper.tool_definitions.len(), 1, "its calculator");
+
+    // The workflow keeps the reference, not a copy.
+    let stored = repo::get(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        stored.definition["agents"],
+        json!([{ "id": "researcher", "library": "researcher" }])
+    );
+
+    // An edit to the agent reaches the next run.
+    conduit_desktop::agents::library::update(
+        &h.state.db,
+        &h.state.encryption,
+        serde_json::from_value(json!({ "id": "researcher", "name": "Scout", "instructions": "Look things up quickly." })).unwrap(),
+    )
+    .await
+    .unwrap();
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let requests = h.model.requests.lock().unwrap().clone();
+    let helper = &requests[4];
+    assert!(helper
+        .system_prompt
+        .as_deref()
+        .unwrap()
+        .contains("You are Scout. Look things up quickly."));
+    assert!(helper.tool_definitions.is_empty());
+}
+
+#[tokio::test]
+async fn an_agent_that_no_longer_exists_is_reported_and_the_run_does_not_start() {
+    let h = Harness::new(asks_the_researcher()).await;
+    let id = h.save(with_the_researcher()).await;
+    let definition = with_the_researcher();
+    let resolved = conduit_desktop::agents::library::resolve_value(
+        &h.state.db,
+        &h.state.encryption,
+        &definition,
+    )
+    .await
+    .unwrap();
+    let problems = conduit_desktop::workflows::definition::check_value(&resolved).unwrap_err();
+    assert_eq!(
+        problems,
+        "\u{201c}researcher\u{201d} is one of your agents, but it no longer exists."
+    );
+    let runner = h.manual_runner();
+    let error = runner
+        .run(&id, &HashMap::new(), "manual")
+        .await
+        .unwrap_err();
+    assert!(error.contains("no longer exists"), "{error}");
+}
+
+#[tokio::test]
+async fn permissions_for_a_helper_from_the_users_agents_are_keyed_on_the_helper() {
+    let h = Harness::new(EchoModel::default()).await;
+    save_agent(
+        &h,
+        json!({ "id": "researcher", "name": "Researcher", "instructions": "Do sums.", "tools": ["calculator"] }),
+    )
+    .await;
+    let id = h.save(with_the_researcher()).await;
+    let required = h.required(&id).await;
+    assert!(
+        required.contains(&Permission::AgentTools {
+            step_id: "helper:researcher".into(),
+            tools: vec!["calculator".into()],
+        }),
+        "{required:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_helper_an_agent_hands_work_to_is_reachable_through_the_workflow() {
+    let h = Harness::new(EchoModel::default()).await;
+    save_agent(
+        &h,
+        json!({ "id": "writer", "name": "Writer", "instructions": "Write it up.", "tools": ["web_search"] }),
+    )
+    .await;
+    save_agent(
+        &h,
+        json!({ "id": "lead_writer", "name": "Lead writer", "instructions": "Plan it.", "agents": ["writer"] }),
+    )
+    .await;
+    let id = h
+        .save(json!({
+            "agents": [{ "id": "lead_writer", "library": "lead_writer" }],
+            "steps": [{ "id": "go", "type": "agent", "prompt": "Go", "agents": ["lead_writer"] }]
+        }))
+        .await;
+    let required = h.required(&id).await;
+    assert!(
+        required.contains(&Permission::AgentTools {
+            step_id: "helper:writer".into(),
+            tools: vec!["web_search".into()],
+        }),
+        "the agent it hands work to is added: {required:?}"
+    );
 }
 
 // ── Using the computer ──────────────────────────────────────────────────────

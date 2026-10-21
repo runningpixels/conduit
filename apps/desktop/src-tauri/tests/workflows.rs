@@ -7316,8 +7316,30 @@ async fn an_agent_hands_a_task_to_a_helper_and_hears_its_answer() {
     assert!(of("helper").current_task.is_none());
 }
 
-#[tokio::test]
-async fn a_helper_that_uses_up_its_tokens_fails_and_the_agent_carries_on() {
+/// Run `test` on a thread with the app's 16 MiB stack (`main.rs`): a helper
+/// that calls a tool inside an agent's turn nests deeper than a test thread's
+/// default stack allows in a debug build.
+fn on_the_apps_stack(test: impl std::future::Future<Output = ()> + Send + 'static) {
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(test)
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn a_helper_past_its_tokens_gets_one_round_to_answer() {
+    on_the_apps_stack(a_helper_past_its_tokens_gets_one_round_to_answer_body());
+}
+
+async fn a_helper_past_its_tokens_gets_one_round_to_answer_body() {
     let model = EchoModel {
         tool_calls: vec![
             ("ask_researcher", json!({ "task": "Work out 6*7" })),
@@ -7341,20 +7363,21 @@ async fn a_helper_that_uses_up_its_tokens_fails_and_the_agent_carries_on() {
     };
     let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
     assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    // Past its limit after the calculator, it gets one round to answer (the
+    // cut-off when that round calls a tool instead is in tests/agent_chat.rs:
+    // chat and workflows share `handoff::TokenGuard`).
     let handoff = &detail.steps[0].output.as_ref().unwrap()["handoffs"][0];
+    assert!(handoff["error"].is_null(), "{handoff}");
     assert!(
-        handoff["error"]
-            .as_str()
-            .is_some_and(|e| e.contains("limit of 1000 tokens")),
+        handoff["answer"].as_str().is_some_and(|a| !a.is_empty()),
         "{handoff}"
     );
-    assert_eq!(handoff["tokens"], 5_000);
     let activity = repo::agent_activity(&h.state.db, &h.state.encryption, "2000-01-01T00:00:00Z")
         .await
         .unwrap();
     let helper = activity.iter().find(|a| a.kind == "helper").unwrap();
-    assert_eq!(helper.failed, 1);
-    assert_eq!(helper.tokens, 5_000);
+    assert_eq!(helper.failed, 0);
+    assert!(helper.tokens > 1_000, "{}", helper.tokens);
 }
 
 #[tokio::test]

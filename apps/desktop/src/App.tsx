@@ -3950,6 +3950,7 @@ export default function App() {
                 hasCredential={hasCredential}
                 onInsertPrompt={(text) => chatViewRef.current?.insertPrompt(text)}
                 onOpenDocuments={openDocuments}
+                onOpenAgents={() => navigateTo('agents')}
                 onBrandChange={(config, logo) => {
                   setBrandConfig(config);
                   setBrandLogo(logo);

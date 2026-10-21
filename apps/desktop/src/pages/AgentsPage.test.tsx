@@ -68,12 +68,14 @@ const writer: LibraryAgent = {
     { workflowId: 'w1', workflowName: 'Weekly report' },
     { workflowId: 'w2', workflowName: 'Digest' },
   ],
+  chat: { tasks: 0, failed: 0, tokens: 0, lastActive: null, currentTask: null, currentConversationId: null },
 };
 const researcher: LibraryAgent = {
   agent: { id: 'researcher', name: 'Researcher', instructions: 'Find facts', tools: [] },
   createdAt: '2026-10-01T00:00:00Z',
   updatedAt: '2026-10-01T00:00:00Z',
   usedBy: [],
+  chat: { tasks: 0, failed: 0, tokens: 0, lastActive: null, currentTask: null, currentConversationId: null },
 };
 
 beforeEach(() => {
@@ -202,6 +204,24 @@ describe('AgentsPage', () => {
     // The workflow copies are not listed a second time under "In workflows".
     expect(screen.getAllByRole('button', { name: 'Weekly report' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Writer' })).toBeNull();
+  });
+
+  it('adds chat work to the card: tasks, tokens, working on and last active', async () => {
+    const chatWriter = {
+      ...writer,
+      chat: { tasks: 3, failed: 1, tokens: 3000, lastActive: '2026-10-20T10:00:00Z', currentTask: 'Summarise the thread', currentConversationId: 'c9' },
+    };
+    ipc.listLibraryAgents.mockResolvedValue([chatWriter]);
+    ipc.listAgents.mockResolvedValue([
+      { ...helper, agentId: 'writer', library: 'writer', name: 'Writer', tasks: 4, failed: 0, tokens: 1500, currentTask: null },
+    ]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    const mine = screen.getByRole('group', { name: 'Writer' });
+    expect(within(mine).getByText('Working on: Summarise the thread')).toBeTruthy();
+    // 4 + 3 tasks, 1500 + 3000 tokens.
+    expect(within(mine).getByText('7')).toBeTruthy();
+    expect(within(mine).getByText('5K')).toBeTruthy();
   });
 
   it('opens the editor from New agent and Edit', async () => {

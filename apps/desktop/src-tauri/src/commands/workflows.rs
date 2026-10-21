@@ -803,7 +803,7 @@ pub fn preview_command_rule(rule: String) -> CommandRulePreview {
 }
 
 /// Days of work the Agents page totals.
-const AGENT_ACTIVITY_DAYS: i64 = 30;
+pub(super) const AGENT_ACTIVITY_DAYS: i64 = 30;
 
 /// An agent on the Agents page: an agent step or a helper of a workflow, and
 /// what it has been doing.

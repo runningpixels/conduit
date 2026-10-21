@@ -556,6 +556,11 @@ pub struct AgentGuardrails {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub finish_after_document_write: Option<bool>,
+    /// Ids of the library agents the chat assistant may hand work to (each
+    /// becomes an `ask_<id>` tool). Off by default.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<String>>", optional)]
+    pub handoff_agents: Vec<String>,
 }
 
 impl AgentGuardrails {
@@ -579,6 +584,7 @@ impl Default for AgentGuardrails {
             max_steps: default_agent_max_steps(),
             wall_clock_budget_secs: default_agent_wall_clock_secs(),
             finish_after_document_write: None,
+            handoff_agents: Vec::new(),
         }
     }
 }
@@ -925,6 +931,41 @@ pub enum ProviderEvent {
         tool_call_id: String,
         title: String,
         fields: Vec<AskUserField>,
+    },
+    // ---------------------------------------------------------------------
+    // Hand-offs in chat (`agents::handoff`). `tool_call_id` is the lead's
+    // `ask_<id>` call. Adapters never produce these.
+    // ---------------------------------------------------------------------
+    /// An agent took on a task handed to it.
+    HandoffStarted {
+        request_id: String,
+        tool_call_id: String,
+        agent_id: String,
+        name: String,
+        task: String,
+        /// "provider/model" it runs on.
+        model: String,
+    },
+    /// One of the helper's own events. A helper's helper nests another one.
+    Handoff {
+        request_id: String,
+        tool_call_id: String,
+        event: Box<ProviderEvent>,
+    },
+    /// The helper answered, failed or was stopped.
+    HandoffFinished {
+        request_id: String,
+        tool_call_id: String,
+        /// `done`, `failed` or `stopped`.
+        status: String,
+        #[ts(type = "number")]
+        tokens: u64,
+        #[ts(optional)]
+        error: Option<String>,
+        /// What it answered. Its streamed text isn't kept, so a reloaded
+        /// chat shows the answer from here.
+        #[ts(optional)]
+        answer: Option<String>,
     },
 }
 

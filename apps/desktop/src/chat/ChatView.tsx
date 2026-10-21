@@ -88,6 +88,7 @@ import { composeSystemPrompt, joinExtraSystemSections, mergeGenerationControls, 
 import type { KnowledgeRef, TurnAttachment } from './composerTypes';
 import { UserTurnAttachments } from './UserTurnAttachments';
 import { UserTurnKnowledgeRefs } from './UserTurnKnowledgeRefs';
+import { UserTurnAgent } from './UserTurnAgent';
 import { KnowledgeCitations } from './KnowledgeCitations';
 import { modelAcceptsImages } from './modelAcceptsImages';
 import {
@@ -516,6 +517,7 @@ export function buildProviderRequest(
         conversationId,
         role: turn.role as MessageRole,
         parts,
+        ...(turn.agent ? { metadata: { agent: turn.agent } } : {}),
         createdAt: now,
       };
     });
@@ -862,6 +864,8 @@ interface HandleSendOverride {
   /** M3 (t1-8, D9): retry / edit-and-resend keep the original turn's `#`
    *  references rather than dropping them. */
   knowledgeRefs?: KnowledgeRef[];
+  /** The library agent this turn is sent to (retry / edit keep the original's). */
+  agent?: { id: string; name: string };
   /** Document intent for an app-authored prompt, whatever language it is in. */
   intent?: DocumentTurnIntent;
   /** One-off generation controls for this send, over the conversation's own
@@ -1067,6 +1071,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [composerKnowledgeRefs, setComposerKnowledgeRefs] = useState<KnowledgeRef[]>([]);
   const composerKnowledgeRefsRef = useRef<KnowledgeRef[]>([]);
   composerKnowledgeRefsRef.current = composerKnowledgeRefs;
+  /** `@`-picked agent for the next message, cleared on send like the `#` references. */
+  const [composerAgent, setComposerAgent] = useState<{ id: string; name: string } | null>(null);
+  const composerAgentRef = useRef<{ id: string; name: string } | null>(null);
+  composerAgentRef.current = composerAgent;
+  useEffect(() => setComposerAgent(null), [conversationId]);
   const [knowledgeReloadToken, setKnowledgeReloadToken] = useState(0);
   // Named documents/collections a just-sent turn's retrieval could not use --
   // refused by the reinjection gate, or a whole collection unsearchable this
@@ -1695,17 +1704,22 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     searchBackend: SearchBackend | null,
     intent?: DocumentTurnIntent,
     imageOverride?: boolean,
+    /** An agent turn: the backend keeps only what the agent lists, so offer
+     *  every document / image tool rather than guess from the wording. */
+    everyIntent = false,
   ): Promise<ToolDefinition[]> {
     const connectorTools = await loadConnectorToolDefinitions();
-    const builtinTools = selectTurnTools(
-      prompt,
-      // t0-8 M4: override the raw persisted flag with the effective (session
-      // OR persisted) consent -- `activeProvider` already comes through from
-      // `settings` unchanged.
-      { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() },
-      intent,
-      imageOverride,
-    );
+    // t0-8 M4: override the raw persisted flag with the effective (session
+    // OR persisted) consent -- `activeProvider` already comes through from
+    // `settings` unchanged.
+    const toolSettings = { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() };
+    const builtinTools = everyIntent
+      ? dedupeToolsByName(
+          (['create', 'edit', 'general'] as const).flatMap((each) =>
+            selectTurnTools(prompt, toolSettings, each, true),
+          ),
+        )
+      : selectTurnTools(prompt, toolSettings, intent, imageOverride);
     // Local web_search only when this turn resolved to local — never alongside
     // ProviderRequest.web_search (same name). Hosted turns still get web_fetch,
     // and so does a normal chat's turn that does not search, whenever web
@@ -1978,12 +1992,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // D9: an override (retry / edit-and-resend) carries the original turn's
     // references; a fresh send reads whatever the `#` picker has queued.
     const knowledgeRefs = override?.knowledgeRefs ?? composerKnowledgeRefsRef.current;
+    // Only an ordinary chat sends to an agent (a deck or draft chat has its own tools).
+    const agent = deck || draft || compact ? undefined : override ? override.agent : composerAgentRef.current ?? undefined;
     const userTurn: ChatTurn = {
       id: crypto.randomUUID(),
       role: 'user',
       content: trimmed,
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(knowledgeRefs.length > 0 ? { knowledgeRefs } : {}),
+      ...(agent ? { agent } : {}),
     };
     const history = [...(override?.history ?? turns), userTurn];
     // The first message of a new chat: was it an idea? (on this device only)
@@ -2037,6 +2054,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       searchBackend,
       documentScope.toolIntent,
       pickedIdea?.needs.includes('imageGen'),
+      Boolean(agent),
     );
     const followUpArtifact = await resolveFollowUpArtifactContext(
       priorHistory,
@@ -2074,6 +2092,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     setSkippedResources(resourceBlock.skipped);
     if (attachedResourcesRef.current.length > 0) setAttachedResources([]);
     if (composerKnowledgeRefsRef.current.length > 0) setComposerKnowledgeRefs([]);
+    if (composerAgentRef.current) setComposerAgent(null);
     // Same "belongs to this turn only" rule for knowledge retrieval: named
     // documents the reinjection gate refused, and whole collections that
     // could not be searched, are two different problems (one document's text
@@ -2311,6 +2330,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }
       },
       (event) => applyRuntimeEventToActiveStream(request.requestId, conversationId, event),
+      agent ? { agent: agent.id } : undefined,
       ).catch((error) => {
         // Pre-stream rejection (bad model/key/connection) — the invoke rejects
         // before any event. Surface it and resolve so the finally block
@@ -3091,6 +3111,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const preservedAttachments = editedTurn?.attachments;
     // D9: retry / edit-and-resend reuse the stored references.
     const preservedKnowledgeRefs = editedTurn?.knowledgeRefs;
+    const preservedAgent = editedTurn?.agent;
     setEditBusy(true);
     setEditConfirm(null);
     try {
@@ -3112,6 +3133,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         history: nextTurns,
         attachments: preservedAttachments,
         knowledgeRefs: preservedKnowledgeRefs,
+        agent: preservedAgent,
         generationControls,
       });
     } catch (error) {
@@ -3332,6 +3354,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                         {turn.attachments && turn.attachments.length > 0 ? (
                           <UserTurnAttachments attachments={turn.attachments} />
                         ) : null}
+                        {turn.agent ? <UserTurnAgent agent={turn.agent} /> : null}
                         {turn.knowledgeRefs && turn.knowledgeRefs.length > 0 ? (
                           <UserTurnKnowledgeRefs refs={turn.knowledgeRefs} />
                         ) : null}
@@ -3745,6 +3768,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onAddKnowledgeRef={handleAddKnowledgeRef}
         onRemoveKnowledgeRef={handleRemoveKnowledgeRef}
         onRefreshKnowledgeCapabilities={() => setKnowledgeReloadToken((n) => n + 1)}
+        selectedAgent={composerAgent}
+        onSelectAgent={deck || draft || compact ? undefined : setComposerAgent}
         mcpPrompts={mcpPrompts}
         mcpResources={mcpResources}
         attachedResources={attachedResources}

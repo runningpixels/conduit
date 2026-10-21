@@ -4,11 +4,12 @@ import { ChatProse } from './ChatProse';
 import { TurnModelLine } from './TurnModelLine';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { streamStalled } from './documentWriteScan';
-import type {
-  AssistantStreamState,
-  ContentBlockState,
-  ToolCallState,
-  TurnSegment,
+import {
+  allToolCalls,
+  type AssistantStreamState,
+  type ContentBlockState,
+  type ToolCallState,
+  type TurnSegment,
 } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
@@ -16,6 +17,7 @@ import { inlineArtifactIds } from './inlineArtifact';
 import { CheckIcon, ChevronRight, CopyIcon, ForkIcon, RetryIcon, TrashIcon } from '../icons';
 import { InterruptedBanner } from './InterruptedBanner';
 import { ToolCallBlock } from './ToolCallBlock';
+import { HandoffBlock } from './HandoffBlock';
 import { AskUserBlock } from './AskUserBlock';
 import { SearchCallGroup } from './SearchCallGroup';
 import { isWebSearchToolCall } from './SearchCallBlock';
@@ -106,6 +108,7 @@ const NO_SLIDE_IDS: readonly string[] = [];
  *  the reader watches (a document still being written) stay inline; every
  *  other call folds into the turn's compact step line. */
 export function toolCallStaysInline(tc: ToolCallState, streaming: boolean): boolean {
+  if (tc.handoff) return true;
   if (tc.sideEffecting && tc.consent === 'pending') return true;
   return (
     streaming &&
@@ -365,7 +368,7 @@ export function AssistantMessage({
   const tokenCount = Math.round((text.length + argumentChars + reasoningChars) / 4);
   // `elapsed` ticks every second while streaming, so this re-evaluates on its own.
   const stalled = state.streaming && streamStalled(state.lastEventAt, Date.now());
-  const awaitingApproval = state.toolCalls.some((tc) => tc.sideEffecting && tc.consent === 'pending');
+  const awaitingApproval = allToolCalls(state).some((tc) => tc.sideEffecting && tc.consent === 'pending');
   const waitingOnReader = Boolean(state.askUser) || awaitingApproval;
 
   const producingText = state.blocks.some(
@@ -408,7 +411,18 @@ export function AssistantMessage({
 
   const showActions = !!messageId && isLast && !state.streaming;
 
+  function renderCall(call: ToolCallState, key: string): ReactNode {
+    return call.handoff ? (
+      <HandoffBlock key={key} toolCall={call} conversationId={conversationId} />
+    ) : (
+      <ToolCallBlock key={key} toolCall={call} conversationId={conversationId} />
+    );
+  }
+
   function renderToolItem(calls: ToolCallState[], key: string): ReactNode {
+    if (calls.some((c) => c.handoff)) {
+      return <div key={key}>{calls.map((c) => renderCall(c, c.toolCallId))}</div>;
+    }
     const hostedSearch = useHostedSearchUi && calls.every(isWebSearchToolCall);
     if (hostedSearch) {
       return (
@@ -564,7 +578,7 @@ export function AssistantMessage({
     }
     if (compact) {
       for (const call of item.calls.filter((c) => toolCallStaysInline(c, state.streaming))) {
-        body.push(<ToolCallBlock key={`${item.key}-${call.toolCallId}`} toolCall={call} conversationId={conversationId} />);
+        body.push(renderCall(call, `${item.key}-${call.toolCallId}`));
       }
       const folded = item.calls.filter((c) => !toolCallStaysInline(c, state.streaming));
       if (folded.length > 0) details.push(renderToolItem(folded, item.key));
@@ -578,7 +592,7 @@ export function AssistantMessage({
     const inline = item.calls.filter((c) => toolCallStaysInline(c, state.streaming));
     const folded = item.calls.filter((c) => !toolCallStaysInline(c, state.streaming));
     for (const call of inline) {
-      body.push(<ToolCallBlock key={`${item.key}-${call.toolCallId}`} toolCall={call} conversationId={conversationId} />);
+      body.push(renderCall(call, `${item.key}-${call.toolCallId}`));
     }
     if (folded.length > 0 && stepsOpen && !onOpenActivity) {
       body.push(renderToolItem(folded, item.key));

@@ -805,6 +805,17 @@ export interface LibraryAgent {
   updatedAt: string;
   /** Workflows whose helpers refer to it (directly or through another agent). */
   usedBy: { workflowId: string; workflowName: string }[];
+  /** Its work in chat (`@` turns and hand-offs), last 30 days. */
+  chat: LibraryAgentChatActivity;
+}
+
+export interface LibraryAgentChatActivity {
+  tasks: number;
+  failed: number;
+  tokens: number;
+  lastActive: string | null;
+  currentTask: string | null;
+  currentConversationId: string | null;
 }
 
 /** One hand-off in an agent step's output. */

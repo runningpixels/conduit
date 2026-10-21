@@ -109,6 +109,8 @@ interface SettingsSheetProps {
   onInsertPrompt?: (body: string) => void;
   /** t1-8: hand off to the Documents sheet, where the knowledge base now lives. */
   onOpenDocuments?: () => void;
+  /** Opens the Agents page (the Agent section links to it when there are none). */
+  onOpenAgents?: () => void;
   /** Optional coherence hook into App.tsx's own brand state: called after
    *  every successful save/import/reset/logo change so the sidebar
    *  wordmark/logo and the theme-change re-apply effect (App.tsx) update
@@ -244,6 +246,7 @@ export function SettingsSheet({
   hasCredential,
   onInsertPrompt,
   onOpenDocuments,
+  onOpenAgents,
   onBrandChange,
   variant = 'sheet',
 }: SettingsSheetProps) {
@@ -568,7 +571,7 @@ export function SettingsSheet({
                 )}
               </div>
               <GenerationControlsSection settings={settings} onUpdate={save} onStatus={onStatus} />
-              <AgentSection settings={settings} onUpdate={save} onStatus={onStatus} />
+              <AgentSection settings={settings} onUpdate={save} onStatus={onStatus} onOpenAgents={onOpenAgents} />
             </>
           )}
 

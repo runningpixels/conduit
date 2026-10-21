@@ -34,15 +34,17 @@ function busyFirst(entries: readonly AgentEntry[]): AgentEntry[] {
   return [...entries].sort((a, b) => Number(b.currentTask !== null) - Number(a.currentTask !== null));
 }
 
-/// What the workflows' copies of one of the user's agents did: their tasks and tokens added up.
+/// What one of the user's agents did, in workflows and in chat: their tasks and tokens added up.
 function activityOf(agent: LibraryAgent, entries: readonly AgentEntry[]) {
   const mine = entries.filter((e) => e.library === agent.agent.id);
+  const chat = agent.chat;
+  const latest = (a: string | null, b: string | null | undefined) => (b && (!a || b > a) ? b : a);
   return {
-    working: mine.find((e) => e.currentTask !== null)?.currentTask ?? null,
-    lastActive: mine.reduce<string | null>((latest, e) => (e.lastActive && (!latest || e.lastActive > latest) ? e.lastActive : latest), null),
-    tasks: mine.reduce((n, e) => n + e.tasks, 0),
-    failed: mine.reduce((n, e) => n + e.failed, 0),
-    tokens: mine.reduce((n, e) => n + e.tokens, 0),
+    working: mine.find((e) => e.currentTask !== null)?.currentTask ?? chat?.currentTask ?? null,
+    lastActive: latest(mine.reduce<string | null>((acc, e) => latest(acc, e.lastActive), null), chat?.lastActive),
+    tasks: mine.reduce((n, e) => n + e.tasks, 0) + (chat?.tasks ?? 0),
+    failed: mine.reduce((n, e) => n + e.failed, 0) + (chat?.failed ?? 0),
+    tokens: mine.reduce((n, e) => n + e.tokens, 0) + (chat?.tokens ?? 0),
   };
 }
 

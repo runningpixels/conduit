@@ -291,5 +291,8 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         ProviderEvent::ToolExecutionStarted { .. } => "toolExecutionStarted",
         ProviderEvent::ToolExecutionFinished { .. } => "toolExecutionFinished",
         ProviderEvent::AskUserRequested { .. } => "askUserRequested",
+        ProviderEvent::HandoffStarted { .. } => "handoffStarted",
+        ProviderEvent::Handoff { .. } => "handoff",
+        ProviderEvent::HandoffFinished { .. } => "handoffFinished",
     }
 }

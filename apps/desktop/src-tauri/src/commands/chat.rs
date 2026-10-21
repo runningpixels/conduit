@@ -99,29 +99,18 @@ pub async fn start_chat_stream(
     request: ProviderRequest,
     channel: Channel<ProviderEvent>,
     runtime_channel: Channel<provider_core::schema::ConnectorRuntimeEvent>,
+    agent: Option<String>,
 ) -> Result<StreamHandle, String> {
-    if request.tool_definitions.is_empty() {
-        let _ = runtime_channel;
-        // A reply without tools doesn't take the conversation's turn, but it
-        // must not land in the middle of one that has it (a workflow
-        // updating this deck or draft).
-        if let Some(holder) = stream_manager.turn_holder(&request.conversation_id) {
-            return Err(holder.busy_message(&crate::stream_manager::TurnOwner::Chat));
-        }
-        stream_manager
-            .start_chat_stream(state.inner(), request, channel)
-            .await
-    } else {
-        stream_manager
-            .run_agent_turn(
-                state.inner(),
-                runtime.inner(),
-                request,
-                channel,
-                runtime_channel,
-            )
-            .await
-    }
+    crate::agents::handoff::start_chat_turn(
+        stream_manager.inner(),
+        state.inner(),
+        runtime.inner(),
+        request,
+        channel,
+        runtime_channel,
+        agent,
+    )
+    .await
 }
 
 #[tauri::command]

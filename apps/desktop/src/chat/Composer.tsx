@@ -161,6 +161,12 @@ export interface ComposerProps {
   draftSources?: ComposerDraftSources;
   /// The chat has no messages yet: offer starter chips under the composer.
   showStarters?: boolean;
+  /// Replaces the prompt's placeholder ("Tell Researcher what to do…").
+  placeholder?: string;
+  /// Sending goes here instead of `onSend`: the text is for a running helper
+  /// (the agent view), so Send stays a plain send while the chat streams and
+  /// attachments are not taken.
+  sendOverride?: () => void;
 }
 
 export interface ComposerDraftSources {
@@ -230,6 +236,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   compactThresholdPercent,
   draftSources,
   showStarters = false,
+  placeholder,
+  sendOverride,
 }, ref) {
   const t = useT();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -667,6 +675,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   function sendWithAttachments() {
+    if (sendOverride) {
+      if (prompt.trim()) sendOverride();
+      return;
+    }
     if (pendingAttachments.some((item) => item.status === 'uploading')) return;
     // Sending before the active model's answer arrives could drop a document.
     if (deliveryPending(pendingAttachments, deliveryKey)) return;
@@ -1345,7 +1357,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           onPaste={(event) => void handlePaste(event)}
-          placeholder={brand().tagline ?? t('chat.composer.placeholderTools')}
+          placeholder={placeholder ?? brand().tagline ?? t('chat.composer.placeholderTools')}
           rows={1}
           aria-label={t('chat.composer.prompt.ariaLabel')}
           aria-expanded={slashMenuOpen || hashTrigger || atTrigger ? true : undefined}
@@ -1587,7 +1599,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onSelectModel={onSelectModel}
             disabled={streaming}
           />
-          {streaming ? (
+          {streaming && !sendOverride ? (
             <>
               {canSend && (
                 <button
@@ -1617,7 +1629,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-label={t('chat.composer.send.label')}
               title={t('chat.composer.send.label')}
               onClick={sendWithAttachments}
-              disabled={!canSend}
+              disabled={sendOverride ? prompt.trim() === '' : !canSend}
             >
               <SendIcon />
             </button>

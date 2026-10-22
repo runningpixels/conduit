@@ -1283,6 +1283,25 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   border: 2px solid var(--bg-rail);
   box-sizing: content-box;
 }
+/* How many things run there now (agents at work): a small number pill where the dot sits. */
+.rail-count {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--signal);
+  color: var(--bg-rail);
+  border: 2px solid var(--bg-rail);
+  box-sizing: border-box;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 html[data-density="compact"] { --rail-btn-h: 46px; }
 
 /* A short window: the rail tightens before it scrolls. The brand keeps only
@@ -1426,6 +1445,7 @@ html[data-density="compact"] { --rail-btn-h: 46px; }
 .more-row-icon svg { width: 22px; height: 22px; }
 .more-row[aria-current="page"] .more-row-icon { color: var(--accent); }
 .more-row-icon .rail-dot { top: -3px; right: -4px; border-color: var(--card); }
+.more-row-icon .rail-count { top: -6px; right: -10px; border-color: var(--card); }
 .more-row-label { min-width: 0; overflow-wrap: anywhere; }
 @keyframes overlay-in-up {
   from { opacity: 0; transform: translateY(16px); }

@@ -124,6 +124,25 @@ describe('hand-off events', () => {
     expect(handoff.inner.toolCalls[0].startedAt).toBe(Date.parse(at(2)));
   });
 
+  it("gives a helper's tool calls their finish time on replay, so they read as done", () => {
+    const at = (s: number) => new Date(Date.UTC(2026, 9, 21, 8, 0, s)).toISOString();
+    const state = rebuildAssistantStreamStateFromLog('r', {
+      toolFinishedAt: { inner1: at(4) },
+      events: [
+        { event: toolStart('tc1', 'ask_researcher'), at: at(0) },
+        { event: started('tc1'), at: at(1) },
+        { event: inner('tc1', toolStart('inner1', 'web_search')), at: at(2) },
+        { event: inner('tc1', toolStart('inner2', 'fetch')), at: at(3) },
+        { event: finished('tc1'), at: at(9) },
+      ],
+    });
+    const [done, unfinished] = state.toolCalls[0].handoff!.inner.toolCalls;
+    expect(done.endedAt).toBe(Date.parse(at(4)));
+    expect(done.status).toBeUndefined();
+    // No finish time: still settled as cut off, as before.
+    expect(unfinished.status).toBe('cancelled');
+  });
+
   it('replays a hand-off that never finished as stopped', () => {
     const state = rebuildAssistantStreamStateFromLog('r', {
       toolFinishedAt: {},

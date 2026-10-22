@@ -505,9 +505,8 @@
   to { background-position: 170% 0; }
 }
 .tool-chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; transition: transform var(--tap); }
-/* Child combinators: a hand-off's open card must not open the cards inside it. */
-.tool[data-open="true"] > .tool-head .tool-chev,
-.tool[data-open="true"] > .handoff-top > .tool-head .tool-chev { transform: rotate(90deg); }
+/* Child combinator: an open card must not open the cards inside it. */
+.tool[data-open="true"] > .tool-head .tool-chev { transform: rotate(90deg); }
 .tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-tool-expand) var(--ease-tap); }
 .tool[data-open="true"] > .tool-body { grid-template-rows: 1fr; }
 .tool-body > div { overflow: hidden; min-height: 0; }
@@ -2380,9 +2379,142 @@
 }
 .turn-agent-chip svg { width: 12px; height: 12px; flex: none; }
 
-/* A hand-off to an agent: the tool card, with the agent's own work inside. */
-.handoff-inner { font-family: var(--font-ui); }
-.handoff-inner > .tool { margin-top: var(--sp-3); margin-bottom: 0; }
+/* A hand-off to an agent: one line in the reply (agent, task, status, numbers),
+   which opens the agent's own view. Narrow, the status and numbers go below. */
+.handoff-waiting { margin: 0 0 var(--sp-2); color: var(--ink-3); font-family: var(--font-ui); font-size: var(--fs-md); }
+.handoff-line { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-2); font-family: var(--font-ui); }
+.handoff-line-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 2px var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--tap), border-color var(--tap);
+}
+.handoff-line-main:hover { background: var(--card-hi); border-color: var(--line); }
+.handoff-line[data-approval] .handoff-line-main { border-color: var(--accent-line); }
+.handoff-line-icon { display: grid; place-items: center; color: var(--accent-text); }
+.handoff-line-icon svg, .handoff-line-chev { width: 14px; height: 14px; }
+.handoff-line-name { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.handoff-line-task { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.handoff-line-status, .handoff-line-nums { white-space: nowrap; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.handoff-line-status[data-status="running"] { color: var(--signal-text); }
+.handoff-line-status[data-status="waiting"] { color: var(--accent-text); }
+.handoff-line-status[data-status="failed"] { color: var(--err); }
+.handoff-line-chev { color: var(--ink-3); }
+.handoff-line-review { flex: none; }
+@container thread (max-width: 520px) {
+  .handoff-line-main { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+  .handoff-line-icon { grid-area: 1 / 1; }
+  .handoff-line-name { grid-area: 1 / 2; }
+  .handoff-line-task { grid-area: 1 / 3; }
+  .handoff-line-chev { grid-area: 1 / 4; }
+  .handoff-line-status { grid-area: 2 / 2; }
+  .handoff-line-nums { grid-area: 2 / 3 / 3 / 5; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* The agent view: one helper's own transcript in place of the thread. The
+   breadcrumb stays at the top and the main chat's strip at the bottom. */
+.agent-view { display: grid; gap: var(--sp-3); min-width: 0; font-family: var(--font-ui); }
+.agent-view-crumbs {
+  position: sticky;
+  /* Negative top: stick to the thread's edge, not below its padding. */
+  top: calc(-1 * var(--sp-5));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg);
+}
+@media (max-width: 720px) {
+  .agent-view-crumbs { top: calc(-1 * var(--sp-4)); }
+  .thread .agent-view-main { bottom: calc(-1 * var(--sp-3)); }
+}
+.agent-view-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+  cursor: pointer;
+}
+.agent-view-back:hover { background: var(--card-hi); color: var(--ink); }
+.agent-view-back svg, .agent-view-sep { width: 14px; height: 14px; flex: none; }
+.agent-view-crumbs ol { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; margin: 0; padding: 0; list-style: none; }
+.agent-view-crumbs li { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.agent-view-crumbs li:first-child { flex: none; }
+.agent-view-crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px var(--sp-1);
+  border-radius: var(--r-xs);
+  color: var(--ink-3);
+  font-size: var(--fs-2xl);
+  cursor: pointer;
+}
+.agent-view-crumb:hover { color: var(--ink); }
+.agent-view-crumb[aria-current="page"] { color: var(--ink); cursor: default; }
+.agent-view-sep { color: var(--ink-3); }
+.agent-view-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); min-width: 0; }
+.agent-view-icon { display: grid; place-items: center; color: var(--accent-text); }
+.agent-view-icon svg { width: 18px; height: 18px; }
+.agent-view-name { margin: 0; color: var(--ink); font-size: var(--fs-8xl); font-weight: 600; overflow-wrap: anywhere; }
+.agent-view-model, .agent-view-nums, .agent-view-status { color: var(--ink-3); font-size: var(--fs-2xl); font-variant-numeric: tabular-nums; }
+.agent-view-model { min-width: 0; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-view-status[data-status="running"] { color: var(--signal-text); }
+.agent-view-status[data-status="failed"] { color: var(--err); }
+.agent-view-stop { margin-left: auto; }
+.agent-view-task { padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line-soft); border-radius: var(--r); }
+.agent-view-body { min-width: 0; }
+.agent-view-note {
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-1) var(--sp-3);
+  border-left: 2px solid var(--accent-line);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.agent-view-main {
+  position: sticky;
+  /* Negative bottom: stick to the thread's edge, not above its padding. */
+  bottom: calc(-1 * var(--sp-4));
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--tap);
+}
+.agent-view-main:hover { background: var(--card-hi); }
+.agent-view-main-text { min-width: 0; overflow-wrap: anywhere; }
+.agent-view-main-back { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--accent-text); white-space: nowrap; }
+.agent-view-main-back svg { width: 14px; height: 14px; }
 .handoff-task summary { display: grid; gap: 2px; cursor: pointer; list-style: none; }
 .handoff-task summary::-webkit-details-marker { display: none; }
 .handoff-task-label { color: var(--ink-3); font-size: var(--fs-sm); }
@@ -2576,12 +2708,3 @@ html[data-reduce-motion="on"] .research-spinner { animation: none; }
 .helper-totals-model { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; overflow-wrap: anywhere; }
 .helper-totals-nums { font-variant-numeric: tabular-nums; }
 .helper-totals-sum { border-top: 1px solid var(--line-soft); padding-top: var(--sp-1); color: var(--ink-2); }
-
-/* A hand-off's head and controls stay at the top of the thread while its
-   body scrolls past. `clip` rounds the corners like `hidden` without making
-   the card a scroll container, which would stop the head sticking. */
-.tool.handoff { overflow: clip; }
-/* Negative top: stick to the thread's edge, not below its padding. */
-.handoff-top { position: sticky; top: calc(-1 * var(--sp-5)); z-index: 2; background: var(--bg); }
-@media (max-width: 720px) { .handoff-top { top: calc(-1 * var(--sp-4)); } }
-.tool.handoff .tool.handoff .handoff-top { position: static; }

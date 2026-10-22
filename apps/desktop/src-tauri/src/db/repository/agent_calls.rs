@@ -238,6 +238,103 @@ pub async fn list_agent_calls(
     Ok(out)
 }
 
+/// An agent call as the page hears of it when it starts or ends (event
+/// `agent-call-changed`) and lists the running ones.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCallChange {
+    pub id: String,
+    /// `step`, `helper` or `chat`.
+    pub kind: String,
+    pub agent_id: String,
+    /// What the user calls it; the agent's id until a name is filled in.
+    pub name: String,
+    pub task: String,
+    /// `running`, `done`, `failed` or `stopped`.
+    pub status: String,
+    pub error: Option<String>,
+    pub conversation_id: Option<String>,
+    pub run_id: Option<String>,
+    pub workflow_id: Option<String>,
+    pub parent_id: Option<String>,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+}
+
+/// The call `id`, or every running call (newest first) when `id` is `None`.
+/// `name` is the agent's id (see `agents::calls` for names).
+pub async fn agent_call_changes(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    id: Option<&str>,
+) -> Result<Vec<AgentCallChange>, DbError> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT id, kind, agent_id, task, status, error, conversation_id, run_id, workflow_id, \
+         parent_id, started_at, finished_at FROM agent_calls \
+         WHERE (?1 IS NOT NULL AND id = ?1) OR (?1 IS NULL AND status = 'running') \
+         ORDER BY started_at DESC, rowid DESC",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let agent_id: String = row.try_get("agent_id")?;
+        let task: Option<String> = row.try_get("task")?;
+        out.push(AgentCallChange {
+            id: row.try_get("id")?,
+            kind: row.try_get("kind")?,
+            name: agent_id.clone(),
+            agent_id,
+            task: match task {
+                Some(stored) => enc.decrypt(&stored)?,
+                None => String::new(),
+            },
+            status: row.try_get("status")?,
+            error: row.try_get("error")?,
+            conversation_id: row.try_get("conversation_id")?,
+            run_id: row.try_get("run_id")?,
+            workflow_id: row.try_get("workflow_id")?,
+            parent_id: row.try_get("parent_id")?,
+            started_at: row.try_get("started_at")?,
+            finished_at: row.try_get("finished_at")?,
+        });
+    }
+    Ok(out)
+}
+
+/// The requests of the helpers `request_id`'s turn handed work to, and of
+/// theirs in turn: the children of the turn's own agent row, and (when the
+/// turn ran without an agent) helpers of the conversation that started
+/// between `from` and `to`.
+pub async fn helper_request_ids(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    request_id: &str,
+    from: &str,
+    to: &str,
+) -> Result<Vec<String>, DbError> {
+    let ids: Vec<Option<String>> = sqlx::query_scalar(
+        "WITH RECURSIVE tree(id, request_id) AS ( \
+           SELECT id, request_id FROM agent_calls \
+            WHERE conversation_id = ?1 AND ( \
+              parent_id IN (SELECT id FROM agent_calls WHERE request_id = ?2 AND kind = 'chat') \
+              OR (parent_id IS NULL AND kind = 'helper' AND started_at >= ?3 AND started_at <= ?4)) \
+           UNION ALL \
+           SELECT c.id, c.request_id FROM agent_calls c JOIN tree t ON c.parent_id = t.id) \
+         SELECT request_id FROM tree",
+    )
+    .bind(conversation_id)
+    .bind(request_id)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await?;
+    Ok(ids.into_iter().flatten().collect())
+}
+
 /// Agent tasks left running when the app last closed: none of them is still
 /// going (a run that carries on starts its step again).
 pub async fn fail_interrupted_agent_calls(pool: &SqlitePool) -> Result<(), DbError> {

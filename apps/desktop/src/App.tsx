@@ -22,6 +22,7 @@ import {
   listConversations,
   getConversation,
   notifyWorkflowRun,
+  notifyUser,
   listConversationFolders,
   listConnectorGrants,
   listProviderDescriptors,
@@ -141,6 +142,9 @@ import { ConfirmDialog } from '@conduit/ui';
 import { AppsPage } from './pages/AppsPage';
 import { AppsHomePage } from './pages/AppsHomePage';
 import { AgentsPage } from './pages/AgentsPage';
+import { useRunningAgentCalls } from './agents/runningAgentCalls';
+import { announceAgentCall } from './agents/agentCallNotices';
+import type { AgentCallChange } from './ipc/contracts';
 import { InboxPage } from './pages/InboxPage';
 import type { AppSummary, StarterAppInfo } from './ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from './apps/AppDetailsDialog';
@@ -3264,6 +3268,42 @@ export default function App() {
     [openSettings, studio, writingStudio, activeDeck, activeDraft, leaveDeckChat, contextTab],
   );
 
+  // ── Agents at work ───────────────────────────────────────────────────────
+  // One list of the running agent calls feeds the rail's count, the Agents
+  // page's "Running now" and the toasts when a chat's helper finishes.
+  /** A helper's view for ChatView to open once that chat has loaded. */
+  const [pendingAgentView, setPendingAgentView] = useState<{
+    conversationId: string;
+    callId: string;
+    nonce: number;
+  } | null>(null);
+  /** The helper whose view is open in the chat, if any: it gets no toast. */
+  const watchedAgentRef = useRef<{ conversationId: string; callId: string } | null>(null);
+  const destinationRef = useRef(destination);
+  destinationRef.current = destination;
+  const openAgentView = useCallback(
+    (conversationId: string, callId: string) => {
+      // Chats first: leaving a deck's chat picks a chat of its own.
+      navigateTo('chats');
+      if (activeConversationId !== conversationId || activeDeck || activeDraft) handleSelectConversation(conversationId);
+      setPendingAgentView({ conversationId, callId, nonce: Date.now() });
+    },
+    [activeConversationId, activeDeck, activeDraft, handleSelectConversation, navigateTo],
+  );
+  const openAgentViewRef = useRef(openAgentView);
+  openAgentViewRef.current = openAgentView;
+  const runningAgents = useRunningAgentCalls((change: AgentCallChange) => {
+    const watched = watchedAgentRef.current;
+    announceAgentCall(change, {
+      t,
+      watching: destinationRef.current === 'chats' && watched?.callId === change.id,
+      focused: document.hasFocus(),
+      pushToast,
+      openAgentView: (conversationId, callId) => openAgentViewRef.current(conversationId, callId),
+      notify: (title, body) => void Promise.resolve().then(() => notifyUser(title, body)).catch(() => {}),
+    });
+  });
+
   // ── Home ─────────────────────────────────────────────────────────────────
   /** Chats, with an empty chat open (the current one if it is empty), and the
    *  text sent into it if there is any. */
@@ -3669,6 +3709,7 @@ export default function App() {
         destination={destination}
         onNavigate={navigateTo}
         dots={{ workflows: workflowsUnread && destination !== 'workflows', inbox: waitingCount > 0 && destination !== 'inbox' }}
+        counts={{ agents: runningAgents.length }}
         logoSrc={brandLogo ?? undefined}
         effectiveTheme={effectiveTheme}
         onToggleTheme={handleToggleTheme}
@@ -3891,6 +3932,11 @@ export default function App() {
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
             onTranscriptChange={setTranscript}
             onRunStatusChange={setRunStatus}
+            pendingAgentView={pendingAgentView}
+            onPendingAgentViewConsumed={() => setPendingAgentView(null)}
+            onAgentViewChange={(view) => {
+              watchedAgentRef.current = view;
+            }}
             ideaGallery={activeDeck || activeDraft || ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
             yourApps={activeDeck || activeDraft ? [] : savedApps}
             onOpenApp={openSavedApp}
@@ -4034,6 +4080,9 @@ export default function App() {
             )}
             {destination === 'agents' && (
               <AgentsPage
+                running={runningAgents}
+                chatTitle={(id) => conversations.find((c) => c.id === id)?.title || null}
+                onOpenAgent={openAgentView}
                 onOpenWorkflow={(workflowId, runId) => {
                   setWorkflowsFocus({ workflowId, runId, showRun: runId !== undefined, nonce: Date.now() });
                   setDestination('workflows');

@@ -4,6 +4,36 @@
 .agents-section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-3); }
 .agents-section-head h3 { margin: 0; font-size: var(--fs-8xl); font-weight: 700; }
 .agents-section-head p { margin: 0; color: var(--ink-2); font-size: var(--fs-2xl); }
+
+/* "Running now": one row per agent at work, in chats and workflow runs. */
+.agents-running-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
+.agents-running-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "name task where time";
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  font-size: var(--fs-5xl);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--tap);
+}
+.agents-running-row:hover { background: var(--card-hi); }
+.agents-running-name { grid-area: name; font-weight: 600; white-space: nowrap; }
+.agents-running-task { grid-area: task; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.agents-running-where { grid-area: where; min-width: 0; max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); }
+.agents-running-time { grid-area: time; white-space: nowrap; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .agents-running-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name time" "task task" "where where";
+  }
+  .agents-running-where { max-width: none; }
+}
 .agents-lib-empty { margin: 0; padding: var(--sp-4); border: 1px dashed var(--line); border-radius: var(--r-lg); color: var(--ink-2); line-height: 1.45; }
 div.agent-card:hover { background: var(--card); }
 .agent-actions { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -211,11 +241,15 @@ div.agent-card:hover { background: var(--card); }
   border-left: 2px solid var(--line-soft);
 }
 .agent-tree-node { display: grid; gap: 2px; font-size: var(--fs-5xl); min-width: 0; }
-.agent-tree-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
-.agent-tree-name { font-weight: 600; overflow-wrap: anywhere; }
+.agent-tree-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); }
+/* Name, badge, model and status keep to one line; the name and model shorten
+   first. The basis is how narrow it gets before the numbers drop below. */
+.agent-tree-head { display: flex; align-items: baseline; gap: var(--sp-2); flex: 1 1 13rem; min-width: 0; }
+.agent-tree-head > * { flex: none; white-space: nowrap; }
+.agent-tree-name { font-weight: 600; flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
 .agent-tree-model, .agent-tree-nums { color: var(--ink-2); font-weight: var(--muted-weight); font-variant-numeric: tabular-nums; }
 .agent-tree-nums { margin-left: auto; white-space: nowrap; }
-.agent-tree-model { overflow-wrap: anywhere; }
+.agent-tree-head > .agent-tree-model { flex: 0 10 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .agent-tree-status { color: var(--ink-2); }
 .agent-tree-status[data-status="running"] { color: var(--accent-text); }
 .agent-tree-status[data-status="failed"] { color: var(--err); }

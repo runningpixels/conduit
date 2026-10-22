@@ -131,6 +131,7 @@ import type {
   AgentDef,
   LibraryAgent,
   AgentCallRow,
+  AgentCallChange,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -2024,6 +2025,16 @@ export async function stopAgentCall(callId: string): Promise<void> {
 /** Sends a running helper a new instruction. */
 export async function redirectAgentCall(callId: string, text: string): Promise<void> {
   await invokeCommand('redirect_agent_call', { callId, text });
+}
+
+/** Agent calls running now, in chat and in workflow runs. */
+export async function listRunningAgentCalls(): Promise<AgentCallChange[]> {
+  return invokeCommand<AgentCallChange[]>('list_running_agent_calls');
+}
+
+/** Shows an OS notification. */
+export async function notifyUser(title: string, body: string): Promise<void> {
+  await invokeCommand('notify_user', { title, body });
 }
 
 /** The agent tree of a workflow run: one row per step, helper and nested helper. */

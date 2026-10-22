@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AppSettings, GenerationControls, MessageRole, ProviderRequest } from '@conduit/config-schema';
 import {
   buildPromptArguments,
@@ -22,6 +22,8 @@ import {
   getActiveTurn,
   compactConversation,
   steerChatStream,
+  notifyUser,
+  redirectAgentCall,
   discoverConnector,
   getArtifact,
   getConnectorRuntimeStates,
@@ -111,7 +113,17 @@ import {
   markInterrupted,
   toolCallAwaitsRuntimeFinish,
   type AssistantStreamState,
+  type HandoffState,
 } from './streamState';
+import { AgentView, type MainChatState } from './AgentView';
+import {
+  findHandoffPath,
+  OVERLAY_SELECTOR,
+  pendingHelperApprovals,
+  resolveAgentPath,
+  runningHandoffs,
+  type AgentViewTarget,
+} from './agentViewModel';
 import { localizeAgentPhase } from './agentPhaseLabel';
 import { isWebSearchToolCall } from './SearchCallBlock';
 import {
@@ -372,6 +384,13 @@ interface ChatViewProps {
   /// collapsed summary line for the thinking and tool calls. Hides the idea
   /// gallery and the new-chat greeting.
   compact?: boolean;
+  /// Open a helper's agent view once this chat has loaded (a toast's Open, the
+  /// Agents page): the hand-off recorded as agent call `callId`, at any depth.
+  pendingAgentView?: { conversationId: string; callId: string; nonce: number } | null;
+  onPendingAgentViewConsumed?: () => void;
+  /// The helper whose agent view is open (its agent call id), or null on the
+  /// main thread: the shell does not toast about the agent being watched.
+  onAgentViewChange?: (view: { conversationId: string; callId: string } | null) => void;
 }
 
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
@@ -936,6 +955,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   documentsOpen = false,
     convoProviders = {},
     compact = false,
+    pendingAgentView = null,
+    onPendingAgentViewConsumed,
+    onAgentViewChange,
   },
   ref,
 ) {
@@ -1110,6 +1132,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const compactionRef = useRef<ConversationCompaction | null>(null);
   compactionRef.current = compaction;
   const threadRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  /** The conversation whose messages `turns` holds (set when a load lands). */
+  const loadedConversationRef = useRef<string | null>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const stuckRef = useRef(true);
   const stickPrefRef = useRef<Record<string, boolean>>({});
@@ -1345,6 +1370,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             null;
           const visible = excludeLiveAssistantTurns(nextTurns, liveRequestId);
           setTurns(visible);
+          loadedConversationRef.current = conversationId;
           if (reattach) {
             activeRequestRef.current = {
               requestId: reattach.requestId,
@@ -1662,6 +1688,195 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       setShowJumpPill(true);
     }
   }, [turns, activeStream, activeRequestId]);
+
+  // ── The agent view ─────────────────────────────────────────────────────
+  // One helper's own transcript in place of the thread, found again in the
+  // turn's state on every render so it stays live. The turn is the live one
+  // or a saved one; while a finished live turn is being saved it is briefly
+  // in neither, so the last state found stands in.
+  const [agentView, setAgentView] = useState<AgentViewTarget | null>(null);
+  const agentViewRef = useRef(agentView);
+  agentViewRef.current = agentView;
+  /** What the user told each running helper from the composer, by agent call id. */
+  const [redirectNotes, setRedirectNotes] = useState<Record<string, string[]>>({});
+  const [redirectError, setRedirectError] = useState<string | null>(null);
+  /** The main thread's scroll position when the view opened, restored on the way back. */
+  const mainScrollRef = useRef<{ top: number; stuck: boolean } | null>(null);
+  const lastAgentTurnRef = useRef<AssistantStreamState | null>(null);
+  const agentViewTurn = (() => {
+    if (!agentView) return null;
+    if (activeStream?.requestId === agentView.requestId) return activeStream;
+    const saved =
+      turns.find((turn) => turn.id === agentView.turnKey && turn.streamState)?.streamState ??
+      turns.find((turn) => turn.streamState?.requestId === agentView.requestId)?.streamState;
+    if (saved) return saved;
+    const last = lastAgentTurnRef.current;
+    return last?.requestId === agentView.requestId ? last : null;
+  })();
+  lastAgentTurnRef.current = agentViewTurn;
+  const agentLevels = agentView && agentViewTurn ? resolveAgentPath(agentViewTurn, agentView.path) : null;
+  const viewedHelper: HandoffState | null = agentLevels ? agentLevels[agentLevels.length - 1].handoff : null;
+  const agentViewKey = agentView && agentLevels ? `${agentView.requestId}:${agentView.path.join('/')}` : '';
+
+  useEffect(() => {
+    setAgentView(null);
+    mainScrollRef.current = null;
+    setRedirectError(null);
+  }, [conversationId]);
+
+  /** Open a helper's view (or another level of it). The main thread's scroll is kept. */
+  const openAgentView = useCallback((target: AgentViewTarget) => {
+    const el = threadRef.current;
+    if (!agentViewRef.current && el) mainScrollRef.current = { top: el.scrollTop, stuck: stuckRef.current };
+    setRedirectError(null);
+    setAgentView(target);
+  }, []);
+
+  /** Show the path's first `depth` levels; 0 is the main thread. */
+  const navigateAgentView = useCallback((depth: number) => {
+    setRedirectError(null);
+    setAgentView((view) => (view && depth > 0 ? { ...view, path: view.path.slice(0, depth) } : null));
+  }, []);
+  const agentViewBack = useCallback(() => {
+    navigateAgentView(Math.max(0, (agentViewRef.current?.path.length ?? 0) - 1));
+  }, [navigateAgentView]);
+
+  // A view that opens starts at the live end of a running helper, at the top
+  // of a finished one; going back puts the thread where it was.
+  useLayoutEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    if (agentViewKey) {
+      const live = viewedHelper?.status === 'running';
+      stuckRef.current = live;
+      setStuckToBottom(live);
+      setShowJumpPill(false);
+      if (live) scrollThreadToBottom(el);
+      else el.scrollTop = 0;
+      return;
+    }
+    const saved = mainScrollRef.current;
+    if (!saved) return;
+    mainScrollRef.current = null;
+    stuckRef.current = saved.stuck;
+    setStuckToBottom(saved.stuck);
+    if (conversationId) stickPrefRef.current[conversationId] = saved.stuck;
+    if (saved.stuck) scrollThreadToBottom(el);
+    else el.scrollTop = saved.top;
+    // Only a change of view moves the thread; the helper is read as it is then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentViewKey]);
+
+  // Esc goes back a level, unless it belongs to something else: a field with
+  // text in it, or an open dialog or menu. Taken in the capture phase so the
+  // shell's own Escape (stop the reply, close a panel) never sees it.
+  useEffect(() => {
+    if (!agentViewKey || !paneActive) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+      const target = event.target instanceof Node ? event.target : null;
+      const pane = sectionRef.current;
+      if (target && target !== document.body && pane && !pane.contains(target)) return;
+      const focused = document.activeElement;
+      if (
+        (focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement) &&
+        focused.value.trim() !== ''
+      ) {
+        return;
+      }
+      if (document.querySelector(OVERLAY_SELECTOR)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      agentViewBack();
+    }
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [agentViewKey, paneActive, agentViewBack]);
+
+  // The shell asked for a helper's view (a toast's Open, the Agents page):
+  // once this chat's turns have loaded, find the hand-off by its call id.
+  useEffect(() => {
+    if (!pendingAgentView || pendingAgentView.conversationId !== conversationId) return;
+    if (threadLoading || loadedConversationRef.current !== conversationId) return;
+    onPendingAgentViewConsumed?.();
+    const { callId } = pendingAgentView;
+    const livePath = activeStream ? findHandoffPath(activeStream, callId) : null;
+    if (activeStream && livePath) {
+      openAgentView({ turnKey: 'live', requestId: activeStream.requestId, path: livePath });
+      return;
+    }
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      const state = turns[i].streamState;
+      const path = state ? findHandoffPath(state, callId) : null;
+      if (state && path) {
+        openAgentView({ turnKey: turns[i].id, requestId: state.requestId, path });
+        return;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAgentView, conversationId, threadLoading, turns, activeStream]);
+
+  // Tell the shell which helper is being watched.
+  const viewedCallId = viewedHelper?.callId ?? '';
+  const onAgentViewChangeRef = useRef(onAgentViewChange);
+  onAgentViewChangeRef.current = onAgentViewChange;
+  useEffect(() => {
+    onAgentViewChangeRef.current?.(conversationId && viewedCallId ? { conversationId, callId: viewedCallId } : null);
+  }, [conversationId, viewedCallId]);
+
+  // A helper of the live turn wants an approval: say so once per tool call,
+  // with a way to its view (and on the desktop when the window is elsewhere).
+  const approvalsToldRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!activeStream) return;
+    for (const approval of pendingHelperApprovals(activeStream)) {
+      if (approvalsToldRef.current.has(approval.toolCallId)) continue;
+      approvalsToldRef.current.add(approval.toolCallId);
+      const view = agentViewRef.current;
+      const watching =
+        view?.requestId === activeStream.requestId && view.path.join('/') === approval.path.join('/');
+      if (watching) continue;
+      const brief = t('chat.agentView.toastApproval', { name: approval.name });
+      const requestId = activeStream.requestId;
+      const forConversation = conversationId;
+      onStatusRef.current({
+        ...makeStatus(brief, 'warning', 'chat', approval.task),
+        action: {
+          label: t('chat.agentView.review'),
+          run: () => {
+            if (currentConversationIdRef.current !== forConversation) return;
+            openAgentView({ turnKey: 'live', requestId, path: approval.path });
+          },
+        },
+      });
+      if (!document.hasFocus()) void Promise.resolve().then(() => notifyUser(brief, approval.task)).catch(() => {});
+    }
+  }, [activeStream, conversationId, openAgentView, t]);
+
+  /** The composer's text goes to the helper being watched, which carries on with it. */
+  async function sendToHelper(helper: HandoffState) {
+    const text = prompt.trim();
+    if (!text) return;
+    try {
+      await redirectAgentCall(helper.callId, text);
+      setRedirectNotes((notes) => ({ ...notes, [helper.callId]: [...(notes[helper.callId] ?? []), text] }));
+      setPrompt('');
+      setRedirectError(null);
+    } catch {
+      setRedirectError(t('chat.handoff.controlFailed', { name: helper.name }));
+    }
+  }
+  const redirectTarget = viewedHelper?.status === 'running' && viewedHelper.callId ? viewedHelper : null;
+  const liveMain = activeStream?.streaming ? activeStream : null;
+  const liveHelpers = liveMain ? runningHandoffs(liveMain) : 0;
+  const mainChatState: MainChatState = liveMain
+    ? liveHelpers > 0
+      ? { kind: 'waiting', count: liveHelpers }
+      : { kind: 'working' }
+    : { kind: 'replied' };
 
   // Derive agent loop phase from stream state + pending calls.
   useEffect(() => {
@@ -3207,6 +3422,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   return (
     <>
     <section
+      ref={sectionRef}
       className="tab-pane"
       data-pane="chat"
       data-active={paneActive ? 'true' : 'false'}
@@ -3227,182 +3443,264 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       <ChatErrorBoundary>
       <div className="thread scroll" ref={threadRef}>
         <div className="thread-inner">
-          {threadLoading && (
-            <div className="thread-skeleton" aria-busy="true" aria-label={t('chat.view.aria.loadingConversation')}>
-              <div className="skel-msg">
-                <div className="skel-av" />
-                <div className="skel-lines">
-                  <div className="skel-line w-90" />
-                  <div className="skel-line w-75" />
-                  <div className="skel-line w-40" />
+          {agentLevels ? (
+            <AgentView
+              key={agentViewKey}
+              levels={agentLevels}
+              main={mainChatState}
+              conversationId={conversationId}
+              notes={redirectNotes[viewedHelper?.callId ?? ''] ?? []}
+              sendError={redirectError}
+              onNavigate={navigateAgentView}
+              onBack={agentViewBack}
+              onOpenHandoff={(toolCallId) =>
+                setAgentView((view) => (view ? { ...view, path: [...view.path, toolCallId] } : view))
+              }
+              artifacts={artifacts}
+              fileStateMap={fileStateMap}
+              onPromoteArtifact={onPromoteArtifact}
+              onOpenArtifact={onOpenArtifact}
+              onStatus={onStatus}
+            />
+          ) : (
+            <>
+            {threadLoading && (
+              <div className="thread-skeleton" aria-busy="true" aria-label={t('chat.view.aria.loadingConversation')}>
+                <div className="skel-msg">
+                  <div className="skel-av" />
+                  <div className="skel-lines">
+                    <div className="skel-line w-90" />
+                    <div className="skel-line w-75" />
+                    <div className="skel-line w-40" />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-          {threadEmpty && compact && (
-            <p className="deck-chat-empty">{t('chat.compact.empty')}</p>
-          )}
-          {threadEmpty && !compact && (
-            <div className="welcome">
-              <h1>
-                <BotGlyph className="brand-mark" aria-hidden="true" />
-                {t('chat.view.welcomeTitle')}
-              </h1>
-              {/* "Work in a folder" is the composer's first starter chip. */}
-            </div>
-          )}
-          {!threadLoading && compactedTurns.length > 0 && (
-            <div className="compaction-block">
-              <button
-                type="button"
-                className="compaction-toggle"
-                aria-expanded={showCompactedOriginals}
-                onClick={() => setShowCompactedOriginals((v) => !v)}
-              >
-                {t('chat.view.compaction.toggleLabel')}
-                <span className="compaction-toggle-meta">
-                  {showCompactedOriginals
-                    ? t('chat.view.compaction.hideOriginals')
-                    : t('chat.view.compaction.showCount', { count: compactedTurns.length })}
-                </span>
-              </button>
-              {showCompactedOriginals && compaction?.summaryText ? (
-                <p className="compaction-summary">{compaction.summaryText}</p>
-              ) : null}
-            </div>
-          )}
-          {!threadLoading && displayTurns.flatMap((turn, turnIndex) => {
-            // Day separator (V9 §4): rendered only where the calendar day
-            // actually changes, so it marks a boundary instead of captioning
-            // every turn. Never above the first turn — there is no boundary
-            // between a thread and its own beginning.
-            const prevTurn = turnIndex > 0 ? displayTurns[turnIndex - 1] : undefined;
-            const dayRule =
-              turn.createdAt &&
-              prevTurn?.createdAt &&
-              !sameCalendarDay(prevTurn.createdAt, turn.createdAt) ? (
-                <div className="day-rule" key={`day-${turn.id}`}>
-                  <span>{dayRuleLabel(turn.createdAt, { locale: fmt.locale, t })}</span>
-                </div>
-              ) : null;
-            // Returned as a flat pair so the rule is a sibling of the turn
-            // rather than nested inside it — a separator that lived in the turn
-            // would inherit its left rule and indent. Both halves carry keys.
-            const withDay = (node: ReactNode) => (dayRule ? [dayRule, node] : node);
-
-            // A message the app sent for the user ("Build slides"): a short
-            // note in the thread, not a bubble of text they never typed.
-            const appLabel = turn.role === 'user' ? appPromptLabel(turn.content) : null;
-            if (turn.role === 'user' && turn.workflowName && !appLabel) {
-              return withDay(
-                <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
-                  <p className="app-note-text">{t('chat.turn.fromWorkflow', { name: turn.workflowName })}</p>
-                </article>,
-              );
-            }
-            if (appLabel) {
-              return withDay(
-                <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
-                  <p className="app-note-text">{appLabel}</p>
-                </article>,
-              );
-            }
-
-            if (turn.role === 'user') {
-              const isEditing = editingTurnId === turn.id;
-              return withDay(
-                <article
-                  key={turn.id}
-                  className="turn user"
-                  data-message-id={turn.id}
-                  data-role-label={t('chat.turn.roleLabel.user')}
+            )}
+            {threadEmpty && compact && (
+              <p className="deck-chat-empty">{t('chat.compact.empty')}</p>
+            )}
+            {threadEmpty && !compact && (
+              <div className="welcome">
+                <h1>
+                  <BotGlyph className="brand-mark" aria-hidden="true" />
+                  {t('chat.view.welcomeTitle')}
+                </h1>
+                {/* "Work in a folder" is the composer's first starter chip. */}
+              </div>
+            )}
+            {!threadLoading && compactedTurns.length > 0 && (
+              <div className="compaction-block">
+                <button
+                  type="button"
+                  className="compaction-toggle"
+                  aria-expanded={showCompactedOriginals}
+                  onClick={() => setShowCompactedOriginals((v) => !v)}
                 >
-                  {isEditing ? (
-                    <div className="bubble bubble-editing">
-                      <textarea
-                        ref={editTextareaRef}
-                        className="bubble-edit"
-                        value={editDraft}
-                        onChange={(e) => setEditDraft(e.target.value)}
-                        onKeyDown={handleEditKeyDown}
-                        disabled={editBusy}
-                        aria-label={t('chat.view.aria.editMessage')}
-                        rows={2}
-                      />
-                      <div className="turn-actions" style={{ opacity: 1, pointerEvents: 'auto' }}>
-                        <button
-                          type="button"
-                          className="act"
-                          disabled={editBusy || !editDraft.trim()}
-                          onClick={() => requestSubmitInlineEdit()}
-                        >
-                          {t('chat.view.inlineEdit.send')}
-                        </button>
-                        <button
-                          type="button"
-                          className="act"
+                  {t('chat.view.compaction.toggleLabel')}
+                  <span className="compaction-toggle-meta">
+                    {showCompactedOriginals
+                      ? t('chat.view.compaction.hideOriginals')
+                      : t('chat.view.compaction.showCount', { count: compactedTurns.length })}
+                  </span>
+                </button>
+                {showCompactedOriginals && compaction?.summaryText ? (
+                  <p className="compaction-summary">{compaction.summaryText}</p>
+                ) : null}
+              </div>
+            )}
+            {!threadLoading && displayTurns.flatMap((turn, turnIndex) => {
+              // Day separator (V9 §4): rendered only where the calendar day
+              // actually changes, so it marks a boundary instead of captioning
+              // every turn. Never above the first turn — there is no boundary
+              // between a thread and its own beginning.
+              const prevTurn = turnIndex > 0 ? displayTurns[turnIndex - 1] : undefined;
+              const dayRule =
+                turn.createdAt &&
+                prevTurn?.createdAt &&
+                !sameCalendarDay(prevTurn.createdAt, turn.createdAt) ? (
+                  <div className="day-rule" key={`day-${turn.id}`}>
+                    <span>{dayRuleLabel(turn.createdAt, { locale: fmt.locale, t })}</span>
+                  </div>
+                ) : null;
+              // Returned as a flat pair so the rule is a sibling of the turn
+              // rather than nested inside it — a separator that lived in the turn
+              // would inherit its left rule and indent. Both halves carry keys.
+              const withDay = (node: ReactNode) => (dayRule ? [dayRule, node] : node);
+
+              // A message the app sent for the user ("Build slides"): a short
+              // note in the thread, not a bubble of text they never typed.
+              const appLabel = turn.role === 'user' ? appPromptLabel(turn.content) : null;
+              if (turn.role === 'user' && turn.workflowName && !appLabel) {
+                return withDay(
+                  <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
+                    <p className="app-note-text">{t('chat.turn.fromWorkflow', { name: turn.workflowName })}</p>
+                  </article>,
+                );
+              }
+              if (appLabel) {
+                return withDay(
+                  <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
+                    <p className="app-note-text">{appLabel}</p>
+                  </article>,
+                );
+              }
+
+              if (turn.role === 'user') {
+                const isEditing = editingTurnId === turn.id;
+                return withDay(
+                  <article
+                    key={turn.id}
+                    className="turn user"
+                    data-message-id={turn.id}
+                    data-role-label={t('chat.turn.roleLabel.user')}
+                  >
+                    {isEditing ? (
+                      <div className="bubble bubble-editing">
+                        <textarea
+                          ref={editTextareaRef}
+                          className="bubble-edit"
+                          value={editDraft}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          onKeyDown={handleEditKeyDown}
                           disabled={editBusy}
-                          onClick={cancelInlineEdit}
-                        >
-                          {t('common.actions.cancel')}
-                        </button>
+                          aria-label={t('chat.view.aria.editMessage')}
+                          rows={2}
+                        />
+                        <div className="turn-actions" style={{ opacity: 1, pointerEvents: 'auto' }}>
+                          <button
+                            type="button"
+                            className="act"
+                            disabled={editBusy || !editDraft.trim()}
+                            onClick={() => requestSubmitInlineEdit()}
+                          >
+                            {t('chat.view.inlineEdit.send')}
+                          </button>
+                          <button
+                            type="button"
+                            className="act"
+                            disabled={editBusy}
+                            onClick={cancelInlineEdit}
+                          >
+                            {t('common.actions.cancel')}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="bubble">
-                        {turn.attachments && turn.attachments.length > 0 ? (
-                          <UserTurnAttachments attachments={turn.attachments} />
-                        ) : null}
-                        {turn.agent ? <UserTurnAgent agent={turn.agent} /> : null}
-                        {turn.knowledgeRefs && turn.knowledgeRefs.length > 0 ? (
-                          <UserTurnKnowledgeRefs refs={turn.knowledgeRefs} />
-                        ) : null}
-                        {turn.content.trim() ? (
-                          <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
-                        ) : null}
-                        {turnCitations[turn.id] ? (
-                          <KnowledgeCitations citations={turnCitations[turn.id]} />
-                        ) : null}
-                      </div>
-                      {turn.interrupted && <InterruptedBanner visible />}
-                      <div className="turn-actions">
-                        <button
-                          type="button"
-                          className="act"
-                          disabled={!!activeRequestId || editBusy}
-                          onClick={() => handleEditUserTurn(turn)}
-                        >
-                          <PencilIcon />
-                          {t('common.actions.edit')}
-                        </button>
-                        <button
-                          type="button"
-                          className="act"
-                          onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
-                          title={t('chat.view.aria.forkAtMessage')}
-                        >
-                          <ForkIcon />
-                          {t('common.actions.fork')}
-                        </button>
-                        <button
-                          type="button"
-                          className="act"
-                          onClick={() => void handleCopyText(turn.content)}
-                        >
-                          <CopyIcon />
-                          {t('common.actions.copy')}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </article>
-              );
-            }
-            const info = turnModelInfo[turn.id];
-            const provider = info?.provider ?? settings.activeProvider;
-            const model = info?.model ?? settings.activeModel;
-            if (turn.researchRunId) {
+                    ) : (
+                      <>
+                        <div className="bubble">
+                          {turn.attachments && turn.attachments.length > 0 ? (
+                            <UserTurnAttachments attachments={turn.attachments} />
+                          ) : null}
+                          {turn.agent ? <UserTurnAgent agent={turn.agent} /> : null}
+                          {turn.knowledgeRefs && turn.knowledgeRefs.length > 0 ? (
+                            <UserTurnKnowledgeRefs refs={turn.knowledgeRefs} />
+                          ) : null}
+                          {turn.content.trim() ? (
+                            <p dangerouslySetInnerHTML={{ __html: escapeHtml(turn.content) }} />
+                          ) : null}
+                          {turnCitations[turn.id] ? (
+                            <KnowledgeCitations citations={turnCitations[turn.id]} />
+                          ) : null}
+                        </div>
+                        {turn.interrupted && <InterruptedBanner visible />}
+                        <div className="turn-actions">
+                          <button
+                            type="button"
+                            className="act"
+                            disabled={!!activeRequestId || editBusy}
+                            onClick={() => handleEditUserTurn(turn)}
+                          >
+                            <PencilIcon />
+                            {t('common.actions.edit')}
+                          </button>
+                          <button
+                            type="button"
+                            className="act"
+                            onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                            title={t('chat.view.aria.forkAtMessage')}
+                          >
+                            <ForkIcon />
+                            {t('common.actions.fork')}
+                          </button>
+                          <button
+                            type="button"
+                            className="act"
+                            onClick={() => void handleCopyText(turn.content)}
+                          >
+                            <CopyIcon />
+                            {t('common.actions.copy')}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </article>
+                );
+              }
+              const info = turnModelInfo[turn.id];
+              const provider = info?.provider ?? settings.activeProvider;
+              const model = info?.model ?? settings.activeModel;
+              if (turn.researchRunId) {
+                return withDay(
+                  <article
+                    key={turn.id}
+                    className="turn assistant"
+                    data-provider={providerHueId(provider)}
+                    data-message-id={turn.id}
+                    data-role-label={t('chat.turn.roleLabel.assistant')}
+                  >
+                    <ResearchRunCard
+                      runId={turn.researchRunId}
+                      onOpenArtifact={onOpenArtifact}
+                      onStatus={(message) => onStatus(makeStatus(message, 'error', 'chat'))}
+                      onWriteFromReport={draft || deck ? undefined : onWriteFromReport}
+                    />
+                  </article>,
+                );
+              }
+              if (turn.streamState) {
+                return withDay(
+                  <AssistantMessage
+                    key={turn.id}
+                    compact={compact}
+                    deckSlideIds={deckSlideIds}
+                    turnId={turn.id}
+                    onOpenActivity={onOpenActivity}
+                    onOpenHandoff={(toolCallId) =>
+                      openAgentView({
+                        turnKey: turn.id,
+                        requestId: turn.streamState?.requestId ?? '',
+                        path: [toolCallId],
+                      })
+                    }
+                    state={turn.streamState}
+                    provider={provider}
+                    modelId={model}
+                    time={info?.time}
+                    switchedFrom={info?.switchedFrom}
+                    showModelLine={info?.showModelLine ?? false}
+                    messageId={turn.id}
+                    artifacts={artifacts}
+                    fileStateMap={fileStateMap}
+                    onPromoteArtifact={onPromoteArtifact}
+                    onOpenArtifact={onOpenArtifact}
+                    onStatus={onStatus}
+                    isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
+                    onRetry={() => void retryLastPrompt()}
+                    onRetryWithoutLimit={effectiveMaxTokens ? () => void retryLastPromptWithoutLimit() : undefined}
+                    onContinueBuilding={() =>
+                      void handleSend({
+                        text: t('chat.documentBuild.continuePrompt'),
+                        history: turnsRef.current,
+                        intent: 'edit',
+                      })
+                    }
+                    onDelete={() => void handleRemoveLastAssistantTurn()}
+                    onCopy={() => void handleCopyText(turn.content)}
+                    onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                    conversationId={conversationId}
+                  />
+                );
+              }
               return withDay(
                 <article
                   key={turn.id}
@@ -3411,199 +3709,150 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   data-message-id={turn.id}
                   data-role-label={t('chat.turn.roleLabel.assistant')}
                 >
-                  <ResearchRunCard
-                    runId={turn.researchRunId}
-                    onOpenArtifact={onOpenArtifact}
-                    onStatus={(message) => onStatus(makeStatus(message, 'error', 'chat'))}
-                    onWriteFromReport={draft || deck ? undefined : onWriteFromReport}
-                  />
-                </article>,
-              );
-            }
-            if (turn.streamState) {
-              return withDay(
-                <AssistantMessage
-                  key={turn.id}
-                  compact={compact}
-                  deckSlideIds={deckSlideIds}
-                  turnId={turn.id}
-                  onOpenActivity={onOpenActivity}
-                  state={turn.streamState}
-                  provider={provider}
-                  modelId={model}
-                  time={info?.time}
-                  switchedFrom={info?.switchedFrom}
-                  showModelLine={info?.showModelLine ?? false}
-                  messageId={turn.id}
-                  artifacts={artifacts}
-                  fileStateMap={fileStateMap}
-                  onPromoteArtifact={onPromoteArtifact}
-                  onOpenArtifact={onOpenArtifact}
-                  onStatus={onStatus}
-                  isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
-                  onRetry={() => void retryLastPrompt()}
-                  onRetryWithoutLimit={effectiveMaxTokens ? () => void retryLastPromptWithoutLimit() : undefined}
-                  onContinueBuilding={() =>
-                    void handleSend({
-                      text: t('chat.documentBuild.continuePrompt'),
-                      history: turnsRef.current,
-                      intent: 'edit',
-                    })
-                  }
-                  onDelete={() => void handleRemoveLastAssistantTurn()}
-                  onCopy={() => void handleCopyText(turn.content)}
-                  onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
-                  conversationId={conversationId}
-                />
-              );
-            }
-            return withDay(
-              <article
-                key={turn.id}
-                className="turn assistant"
-                data-provider={providerHueId(provider)}
-                data-message-id={turn.id}
-                data-role-label={t('chat.turn.roleLabel.assistant')}
-              >
-                {info?.showModelLine && (
-                  <TurnModelLine
-                    provider={provider}
-                    model={model}
-                    time={info?.time}
-                    switchedFrom={info?.switchedFrom}
-                  />
-                )}
-                <ChatMessageContent
-                  content={turn.content}
-                  messageId={turn.id}
-                  artifacts={artifacts}
-                  fileStateMap={fileStateMap}
-                  onPromoteArtifact={onPromoteArtifact}
-                  onOpenArtifact={onOpenArtifact}
-                  onStatus={onStatus}
-                />
-                <InterruptedBanner
-                  visible={Boolean(turn.interrupted)}
-                  onRetry={() => void retryLastPrompt()}
-                />
-                <AssistantArtifactStrip
-                  messageId={turn.id}
-                  artifacts={artifacts}
-                  fileStateMap={fileStateMap}
-                  excludeArtifactIds={inlineArtifactIds(
-                    detectArtifactCandidates(turn.content),
-                    artifacts,
-                    turn.id,
+                  {info?.showModelLine && (
+                    <TurnModelLine
+                      provider={provider}
+                      model={model}
+                      time={info?.time}
+                      switchedFrom={info?.switchedFrom}
+                    />
                   )}
-                  onOpenArtifact={onOpenArtifact}
-                  onStatus={onStatus}
-                />
-                <div className="turn-actions">
-                  <button
-                    type="button"
-                    className="act"
-                    onClick={() => void handleCopyText(turn.content)}
-                  >
-                    <CopyIcon />
-                    {t('common.actions.copy')}
-                  </button>
-                  {/* Retry re-runs the *last* question, so it is offered on
-                      the last reply only (it used to show on every reply
-                      and delete the last one whichever was clicked). */}
-                  {turn.id === visibleTurns[visibleTurns.length - 1]?.id && !activeRequestId && (
+                  <ChatMessageContent
+                    content={turn.content}
+                    messageId={turn.id}
+                    artifacts={artifacts}
+                    fileStateMap={fileStateMap}
+                    onPromoteArtifact={onPromoteArtifact}
+                    onOpenArtifact={onOpenArtifact}
+                    onStatus={onStatus}
+                  />
+                  <InterruptedBanner
+                    visible={Boolean(turn.interrupted)}
+                    onRetry={() => void retryLastPrompt()}
+                  />
+                  <AssistantArtifactStrip
+                    messageId={turn.id}
+                    artifacts={artifacts}
+                    fileStateMap={fileStateMap}
+                    excludeArtifactIds={inlineArtifactIds(
+                      detectArtifactCandidates(turn.content),
+                      artifacts,
+                      turn.id,
+                    )}
+                    onOpenArtifact={onOpenArtifact}
+                    onStatus={onStatus}
+                  />
+                  <div className="turn-actions">
                     <button
                       type="button"
                       className="act"
-                      title={t('chat.assistant.actions.retryTitle')}
-                      onClick={() => void retryLastPrompt()}
+                      onClick={() => void handleCopyText(turn.content)}
                     >
-                      <RetryIcon />
-                      {t('common.actions.retry')}
+                      <CopyIcon />
+                      {t('common.actions.copy')}
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className="act"
-                    onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
-                  >
-                    <ForkIcon />
-                    {t('common.actions.fork')}
+                    {/* Retry re-runs the *last* question, so it is offered on
+                        the last reply only (it used to show on every reply
+                        and delete the last one whichever was clicked). */}
+                    {turn.id === visibleTurns[visibleTurns.length - 1]?.id && !activeRequestId && (
+                      <button
+                        type="button"
+                        className="act"
+                        title={t('chat.assistant.actions.retryTitle')}
+                        onClick={() => void retryLastPrompt()}
+                      >
+                        <RetryIcon />
+                        {t('common.actions.retry')}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="act"
+                      onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                    >
+                      <ForkIcon />
+                      {t('common.actions.fork')}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+            {activeStream && (
+              <AssistantMessage
+                compact={compact}
+                deckSlideIds={deckSlideIds}
+                turnId={activeStream.requestId}
+                onOpenActivity={onOpenActivity}
+                onOpenHandoff={(toolCallId) =>
+                  openAgentView({ turnKey: 'live', requestId: activeStream.requestId, path: [toolCallId] })
+                }
+                state={{
+                  ...activeStream,
+                  agentPhase: (() => {
+                    const phase =
+                      agentPhase ?? (activeStream.agentPhase && localizeAgentPhase(activeStream.agentPhase, t));
+                    // While the model builds a document in parts, say how much is
+                    // left — the open document refreshes after every patch, and
+                    // its placeholders are the sections still to write.
+                    const building = activeStream.toolCalls.some(
+                      (tc) => isDocumentContentTool(tc.name) && tc.arguments?.more_to_write === true,
+                    );
+                    const sectionsLeft = building
+                      ? placeholderSections(activeArtifact?.contentText).length
+                      : 0;
+                    const base =
+                      phase && sectionsLeft > 0
+                        ? {
+                            ...phase,
+                            detail: [
+                              phase.detail,
+                              t('chat.documentBuild.sectionsLeft', { count: sectionsLeft }),
+                            ]
+                              .filter(Boolean)
+                              .join(' · '),
+                          }
+                        : phase;
+                    if (queuedForConversation.length === 0 || !base) {
+                      return queuedForConversation.length > 0
+                        ? {
+                            label: t('chat.view.agentPhase.queuedOnly', {
+                              count: queuedForConversation.length,
+                            }),
+                            round: 0,
+                            totalRounds: 0,
+                            subPhase: 'thinking',
+                          }
+                        : base;
+                    }
+                    return {
+                      ...base,
+                      label: t('chat.view.agentPhase.queuedWithBase', {
+                        base: base.label,
+                        count: queuedForConversation.length,
+                      }),
+                    };
+                  })(),
+                }}
+                outputLimit={activeTurnOutputLimit}
+                provider={liveTurnInfo.provider}
+                modelId={liveTurnInfo.model}
+                switchedFrom={liveTurnInfo.switchedFrom}
+                showModelLine={liveTurnInfo.showModelLine}
+                conversationId={conversationId}
+                documentWriteHeld={activeTurnDocumentWriteHeld}
+              />
+            )}
+            {!threadLoading && threadNote && (
+              <article className="turn app-note" role="status">
+                <p className="app-note-text">{threadNote}</p>
+                {threadAction ? (
+                  <button type="button" className="act" onClick={threadAction.onClick}>
+                    {threadAction.label}
                   </button>
-                </div>
+                ) : null}
               </article>
-            );
-          })}
-          {activeStream && (
-            <AssistantMessage
-              compact={compact}
-              deckSlideIds={deckSlideIds}
-              turnId={activeStream.requestId}
-              onOpenActivity={onOpenActivity}
-              state={{
-                ...activeStream,
-                agentPhase: (() => {
-                  const phase =
-                    agentPhase ?? (activeStream.agentPhase && localizeAgentPhase(activeStream.agentPhase, t));
-                  // While the model builds a document in parts, say how much is
-                  // left — the open document refreshes after every patch, and
-                  // its placeholders are the sections still to write.
-                  const building = activeStream.toolCalls.some(
-                    (tc) => isDocumentContentTool(tc.name) && tc.arguments?.more_to_write === true,
-                  );
-                  const sectionsLeft = building
-                    ? placeholderSections(activeArtifact?.contentText).length
-                    : 0;
-                  const base =
-                    phase && sectionsLeft > 0
-                      ? {
-                          ...phase,
-                          detail: [
-                            phase.detail,
-                            t('chat.documentBuild.sectionsLeft', { count: sectionsLeft }),
-                          ]
-                            .filter(Boolean)
-                            .join(' · '),
-                        }
-                      : phase;
-                  if (queuedForConversation.length === 0 || !base) {
-                    return queuedForConversation.length > 0
-                      ? {
-                          label: t('chat.view.agentPhase.queuedOnly', {
-                            count: queuedForConversation.length,
-                          }),
-                          round: 0,
-                          totalRounds: 0,
-                          subPhase: 'thinking',
-                        }
-                      : base;
-                  }
-                  return {
-                    ...base,
-                    label: t('chat.view.agentPhase.queuedWithBase', {
-                      base: base.label,
-                      count: queuedForConversation.length,
-                    }),
-                  };
-                })(),
-              }}
-              outputLimit={activeTurnOutputLimit}
-              provider={liveTurnInfo.provider}
-              modelId={liveTurnInfo.model}
-              switchedFrom={liveTurnInfo.switchedFrom}
-              showModelLine={liveTurnInfo.showModelLine}
-              conversationId={conversationId}
-              documentWriteHeld={activeTurnDocumentWriteHeld}
-            />
-          )}
-          {!threadLoading && threadNote && (
-            <article className="turn app-note" role="status">
-              <p className="app-note-text">{threadNote}</p>
-              {threadAction ? (
-                <button type="button" className="act" onClick={threadAction.onClick}>
-                  {threadAction.label}
-                </button>
-              ) : null}
-            </article>
+            )}
+            </>
           )}
         </div>
       </div>
@@ -3695,7 +3944,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         attachDropActive={attachDropActive}
         prompt={prompt}
         onPromptChange={setPrompt}
-        onSend={(attachments) => void handleSend(undefined, attachments)}
+        onSend={(attachments) => {
+          // From a finished helper's view the message is for the chat: back to it.
+          if (agentView) navigateAgentView(0);
+          void handleSend(undefined, attachments);
+        }}
+        placeholder={redirectTarget ? t('chat.agentView.tellPlaceholder', { name: redirectTarget.name }) : undefined}
+        sendOverride={redirectTarget ? () => void sendToHelper(redirectTarget) : undefined}
         onStop={() => void handleCancel()}
         streaming={activeRequestId != null}
         queuedMessages={queuedForConversation}

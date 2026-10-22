@@ -7622,6 +7622,52 @@ async fn a_runs_agents_come_back_as_a_tree_with_their_names_and_tokens() {
 }
 
 #[tokio::test]
+async fn a_runs_agents_announce_when_they_start_and_end() {
+    let h = Harness::new(asks_the_researcher()).await;
+    let id = h
+        .save(with_a_helper(json!({
+            "id": "researcher", "name": "Researcher", "instructions": "Find facts on the web."
+        })))
+        .await;
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let sink = heard.clone();
+    h.state
+        .agent_calls
+        .set_listener(move |change| sink.lock().unwrap().push(change.clone()));
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+
+    let heard = heard.lock().unwrap().clone();
+    let of = |kind: &str, status: &str| {
+        heard
+            .iter()
+            .find(|c| c.kind == kind && c.status == status)
+            .unwrap_or_else(|| panic!("no {kind} {status} in {heard:?}"))
+            .clone()
+    };
+    assert_eq!(heard.len(), 4, "{heard:?}");
+    let (step, helper) = (of("step", "running"), of("helper", "running"));
+    for row in [&step, &helper] {
+        assert_eq!(row.run_id.as_deref(), Some(detail.run.id.as_str()));
+        assert!(row.workflow_id.is_some());
+        assert_eq!(row.conversation_id, None);
+    }
+    assert_eq!(step.name, "lead");
+    assert_eq!(helper.name, "Researcher");
+    assert_eq!(helper.task, "Find the capital");
+    assert_eq!(helper.parent_id.as_deref(), Some(step.id.as_str()));
+    assert_eq!(of("step", "done").id, step.id);
+    let ended = of("helper", "done");
+    assert_eq!(ended.id, helper.id);
+    assert!(ended.finished_at.is_some());
+}
+
+#[tokio::test]
 async fn stopping_a_workflow_helper_tells_its_agent_which_carries_on() {
     let model = EchoModel {
         hang_helpers: true,

@@ -187,8 +187,22 @@ pub fn validate_agent_guardrails(
         )
         .with("max", MAX_HANDOFF_AGENTS.to_string()));
     }
+    if !(MIN_PARALLEL_HELPERS..=MAX_PARALLEL_HELPERS).contains(&guardrails.parallel_helpers) {
+        return Err(AppError::new(
+            "error.validation.agentParallelHelpers",
+            format!(
+                "between {MIN_PARALLEL_HELPERS} and {MAX_PARALLEL_HELPERS} agents can work at the same time"
+            ),
+        )
+        .with("min", MIN_PARALLEL_HELPERS.to_string())
+        .with("max", MAX_PARALLEL_HELPERS.to_string()));
+    }
     Ok(())
 }
+
+/// How many helpers may work at the same time, at least and at most.
+pub const MIN_PARALLEL_HELPERS: u8 = 1;
+pub const MAX_PARALLEL_HELPERS: u8 = 4;
 
 /// Most library agents the chat assistant may be given.
 pub const MAX_HANDOFF_AGENTS: usize = 20;

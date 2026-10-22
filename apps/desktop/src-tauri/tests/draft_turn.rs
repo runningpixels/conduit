@@ -299,6 +299,7 @@ impl Studio {
                 wall_clock_budget_secs,
                 finish_after_document_write: None,
                 handoff_agents: Vec::new(),
+                parallel_helpers: 3,
             },
             local_only: true,
             ..AppSettings::default()

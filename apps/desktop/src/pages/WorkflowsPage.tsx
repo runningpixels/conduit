@@ -26,6 +26,8 @@ import { readWorkflowView, writeWorkflowView, type WorkflowViewPref } from '../s
 import { MoreMenu, SummaryChips, WorkflowTabs, tabPanelId, tabButtonId, type WorkflowTab } from '../workflows/WorkflowViewParts';
 import { ActionCard } from '../workflows/ActionCard';
 import { AgentHandoffs } from '../workflows/AgentHandoffs';
+import { AgentTree, rowsOfStep, usageOfRows } from '../workflows/AgentTree';
+import { HelperTotals } from '../agents/HelperTotals';
 import { StepComputer } from '../workflows/StepComputer';
 import { ReviewCard } from '../workflows/ReviewCard';
 import { useWorkflowActionEvents } from '../workflows/workflowRunEvents';
@@ -56,6 +58,7 @@ import {
   listWorkflowQuestions,
   listWorkflowReviews,
   listProviderDescriptors,
+  listAgentCalls,
   listWorkflowRuns,
   listWorkflows,
   rerunWorkflowFrom,
@@ -71,6 +74,7 @@ import type {
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
+  AgentCallRow,
   WorkflowAction,
   WorkflowQuestion,
   WorkflowReview,
@@ -160,8 +164,8 @@ export type WorkflowDraftRequest =
 /// Where Home, a toast or the rail sends the page: a workflow (with its waiting
 /// panel in view), or the Results list on a run.
 export type WorkflowsFocus =
-  | { workflowId: string; runId?: string; nonce?: number; view?: undefined }
-  | { view: 'results'; runId?: string; nonce?: number; workflowId?: undefined };
+  | { workflowId: string; runId?: string; /** Open that run's details, not just its waiting panel. */ showRun?: boolean; nonce?: number; view?: undefined }
+  | { view: 'results'; runId?: string; nonce?: number; workflowId?: undefined; showRun?: undefined };
 
 function errorText(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
@@ -242,6 +246,26 @@ function WorkflowsPageBody({
   const [openRun, setOpenRun] = useState<WorkflowRunDetail | null>(null);
   const openRunRef = useRef<WorkflowRunDetail | null>(null);
   openRunRef.current = openRun;
+  /// The agent tree of the run on show: the rows, and which run they belong to.
+  const [agentCalls, setAgentCalls] = useState<{ runId: string; rows: AgentCallRow[] } | null>(null);
+  const openRunId = openRun?.run.id ?? null;
+  const openRunStatus = openRun?.run.status ?? null;
+  useEffect(() => {
+    if (!openRunId) {
+      setAgentCalls(null);
+      return;
+    }
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => listAgentCalls(openRunId))
+      .then((rows) => {
+        if (!cancelled) setAgentCalls({ runId: openRunId, rows: Array.isArray(rows) ? rows : [] });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [openRunId, openRunStatus]);
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<Mode>(startNew ? { kind: 'new' } : { kind: 'view' });
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -450,10 +474,14 @@ function WorkflowsPageBody({
       void refreshResults();
     } else {
       setView('workflows');
+      if (focus.showRun && focus.runId) {
+        if (focus.workflowId === selectedId) void openRunInTab(focus.runId);
+        else pendingRunRef.current = focus.runId;
+      }
       setSelectedId(focus.workflowId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus?.view, focus?.workflowId, focus?.runId, focus?.nonce]);
+  }, [focus?.view, focus?.workflowId, focus?.runId, focus?.showRun, focus?.nonce]);
 
   /// Mark runs as seen: at once in what is on screen, then in the backend.
   function markSeen(runIds: string[]) {
@@ -674,7 +702,10 @@ function WorkflowsPageBody({
           // `running`, which stops this effect and would drop the run's last
           // detail, leaving the canvas on "Running…".
           const detail = target ? await getWorkflowRun(target) : null;
+          // The agent tree follows the same poll; a missing tree never hides the run.
+          const calls = target ? await Promise.resolve().then(() => listAgentCalls(target)).catch(() => null) : null;
           if (cancelled) return;
+          if (target && Array.isArray(calls)) setAgentCalls({ runId: target, rows: calls });
           // A read that started mid-run can land after `run()` has shown the
           // finished run; never go back from finished to running.
           if (detail) setOpenRun((prev) => (prev && prev.run.id === detail.run.id && !isLive(prev.run.status) && isLive(detail.run.status) ? prev : detail));
@@ -1493,6 +1524,7 @@ function WorkflowsPageBody({
                   {waiting(openRun.run.id)}
                   <RunDetail
                     detail={openRun}
+                    agentCalls={agentCalls && agentCalls.runId === openRun.run.id ? agentCalls.rows : undefined}
                     steps={record.definition.steps}
                     labels={inputLabels}
                     helpers={helperNames(record.definition, libNames)}
@@ -1904,8 +1936,11 @@ function RunDetail({
   onRestoreDocument,
   canRerun = false,
   onRerunFrom,
+  agentCalls,
 }: {
   detail: WorkflowRunDetail;
+  /// The run's agent tree rows; absent (or empty) for old runs, which show their recorded hand-offs.
+  agentCalls?: AgentCallRow[];
   /// The workflow's steps and input names, so each row can say what its step does.
   steps?: WorkflowStep[];
   labels?: InputLabels;
@@ -1962,11 +1997,15 @@ function RunDetail({
           ))}
         </div>
       ) : null}
+      {agentCalls && agentCalls.length > 0 ? (
+        <HelperTotals nodes={usageOfRows(agentCalls)} title={t('workspace.workflows.runDetail.agentTotals')} />
+      ) : null}
       <ul className="wf-run-steps">
         {detail.steps.map((step) => (
           <RunStepRow
             key={step.id}
             step={step}
+            agentRows={agentCalls ? rowsOfStep(agentCalls, step) : undefined}
             description={(() => {
               const def = findStep(steps, step.stepId);
               return def ? describeStep(def, t, labels, connectorNames, steps, helpers) : null;
@@ -1996,6 +2035,7 @@ function RunStepRow({
   onRestoreDocument,
   onRerun,
   canRerun = false,
+  agentRows,
 }: {
   step: WorkflowRunStep;
   /// What the step does (its line on the workflow page); its id when unknown.
@@ -2008,6 +2048,8 @@ function RunStepRow({
   /// Offered on top-level steps: run again from here.
   onRerun?: () => void;
   canRerun?: boolean;
+  /// The agent tree rows of this step; shown instead of the recorded hand-offs when there are some.
+  agentRows?: AgentCallRow[];
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -2057,7 +2099,7 @@ function RunStepRow({
         <StepModelLine output={step.output} />
         <StepActions output={step.output} />
         <StepComputer output={step.output} />
-        <AgentHandoffs output={step.output} />
+        {agentRows && agentRows.length > 0 ? <AgentTree rows={agentRows} /> : <AgentHandoffs output={step.output} />}
         {onRerun ? (
           <button
             type="button"

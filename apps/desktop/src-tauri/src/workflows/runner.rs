@@ -61,7 +61,8 @@ use async_trait::async_trait;
 use futures::stream::{FuturesUnordered, StreamExt};
 
 use provider_core::schema::{
-    Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent, ProviderRequest,
+    HandoffTokens, Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent,
+    ProviderRequest,
 };
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -93,7 +94,7 @@ use crate::event_sink;
 use crate::research::{FetchedPage, ResearchIo, SearchHit};
 use crate::state::AppState;
 use crate::stream_manager::{
-    StepToolCall, StepTools, StreamManager, TurnGuard, TurnOptions, TurnOwner,
+    HelperRunsAlone, StepToolCall, StepTools, StreamManager, TurnGuard, TurnOptions, TurnOwner,
 };
 use crate::time::now_iso8601;
 use crate::web_page;
@@ -159,6 +160,18 @@ struct AgentTurn<'t> {
     /// What outside content the agent has read (it starts with what its task
     /// carries in).
     taint: &'t computer::Taint,
+    /// A helper's turn, which Stop (this token) and Redirect reach while it
+    /// works, and whose rounds queue for their provider
+    /// ([`TurnOptions::queue_rounds`]).
+    helper_stop: Option<&'t CancellationToken>,
+}
+
+/// What one agent's turn came to: its answer and the tools it called, and
+/// the tokens it used either way.
+struct Worked {
+    result: Result<(String, Vec<String>), String>,
+    tokens: u64,
+    usage: HandoffTokens,
 }
 
 const SUMMARIZE_SYSTEM: &str = "You are one step of an automated workflow the user set up. \
@@ -542,6 +555,7 @@ impl Runner<'_> {
             stop: self.stop.child_token(),
             waits: Mutex::new(Waits::default()),
             wait_gate: tokio::sync::Mutex::new(()),
+            ask_gates: Mutex::new(HashMap::new()),
             agent_gate: tokio::sync::Mutex::new(()),
             tokens: Mutex::new(0),
             over_budget: Mutex::new(None),
@@ -730,6 +744,17 @@ struct ConnectorTools<'e, 'a> {
     computer: Option<ComputerAccess>,
     /// The outside content this agent has read so far.
     taint: &'e computer::Taint,
+    /// A helper's Stop: its waits for the user end with it, and the helpers
+    /// it hands work to stop with it.
+    stop: Option<CancellationToken>,
+}
+
+/// Done once `stop` is cancelled; never without one.
+async fn stopped(stop: Option<&CancellationToken>) {
+    match stop {
+        Some(stop) => stop.cancelled().await,
+        None => std::future::pending().await,
+    }
 }
 
 /// What an agent that uses the computer works with.
@@ -874,6 +899,7 @@ impl ConnectorTools<'_, '_> {
             self.row.as_deref(),
             self.team,
             &handed,
+            self.stop.as_ref(),
         ))
         .await;
         if handed.describe().is_some() {
@@ -1080,7 +1106,7 @@ impl ConnectorTools<'_, '_> {
                 };
                 let started = Instant::now();
                 let asked = exec
-                    .ask_user(self.step_id, |window| PendingAction {
+                    .ask_user(self.step_id, self.stop.as_ref(), |window| PendingAction {
                         run_id: exec.run_id.to_string(),
                         workflow_id: exec.workflow_id.to_string(),
                         workflow_name: exec.workflow_name.to_string(),
@@ -1319,7 +1345,7 @@ impl ConnectorTools<'_, '_> {
         };
         let started = Instant::now();
         let asked = exec
-            .ask_user(self.step_id, |window| PendingAction {
+            .ask_user(self.step_id, self.stop.as_ref(), |window| PendingAction {
                 run_id: exec.run_id.to_string(),
                 workflow_id: exec.workflow_id.to_string(),
                 workflow_name: exec.workflow_name.to_string(),
@@ -1516,7 +1542,7 @@ impl ConnectorTools<'_, '_> {
             };
             let started = Instant::now();
             let asked = exec
-                .ask_user(self.step_id, |window| PendingAction {
+                .ask_user(self.step_id, self.stop.as_ref(), |window| PendingAction {
                     run_id: exec.run_id.to_string(),
                     workflow_id: exec.workflow_id.to_string(),
                     workflow_name: exec.workflow_name.to_string(),
@@ -1658,6 +1684,7 @@ impl ConnectorTools<'_, '_> {
                 &offered.target,
                 &offered.tool,
                 arguments.clone(),
+                self.stop.as_ref(),
             )
             .await;
         let waited = started.elapsed();
@@ -1741,6 +1768,19 @@ impl StepTools for ConnectorTools<'_, '_> {
             self.taint.saw_tool(name);
         }
     }
+
+    fn is_helper(&self, name: &str) -> bool {
+        self.helpers.iter().any(|(n, _)| n == name)
+    }
+
+    fn helper_runs_alone<'s>(&'s self, name: &'s str) -> HelperRunsAlone<'s> {
+        Box::pin(async move {
+            match self.helpers.iter().find(|(n, _)| n == name) {
+                Some((_, helper)) if !helper.alongside => self.exec.acts(helper).await,
+                _ => false,
+            }
+        })
+    }
 }
 
 struct Exec<'a> {
@@ -1769,6 +1809,10 @@ struct Exec<'a> {
     /// Held while the run's status changes for a wait, so `paused` and
     /// `running` are written in the order the waits began and ended.
     wait_gate: tokio::sync::Mutex<()>,
+    /// One wait for the user at a time per step, by step id: a step's waits
+    /// are recorded on its row and found by (run, step), so two helpers of
+    /// one step asking at once ask one after the other.
+    ask_gates: Mutex<HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>,
     /// One agent turn at a time: a conversation takes one agent turn at a
     /// time, and every model step of a workflow shares its conversation.
     agent_gate: tokio::sync::Mutex<()>,
@@ -2654,6 +2698,7 @@ impl Exec<'_> {
         target: &crate::connector_runtime::workflow_tools::Target,
         tool: &mcp_runtime::protocol::McpTool,
         arguments: Value,
+        helper_stop: Option<&CancellationToken>,
     ) -> Result<Checked, String> {
         let state = self.runner.state;
         let pool = &state.db;
@@ -2671,7 +2716,7 @@ impl Exec<'_> {
             });
         }
         let asked = self
-            .ask_user(step_id, |window| PendingAction {
+            .ask_user(step_id, helper_stop, |window| PendingAction {
                 run_id: self.run_id.to_string(),
                 workflow_id: self.workflow_id.to_string(),
                 workflow_name: self.workflow_name.to_string(),
@@ -2775,11 +2820,35 @@ impl Exec<'_> {
             .await
     }
 
+    /// `step_id`'s turn to wait for the user, held until its wait has ended:
+    /// helpers of one step that ask at the same time ask one after the other.
+    /// A stop (of the run, or of the helper asking) wins while it waits.
+    async fn turn_to_ask(
+        &self,
+        step_id: &str,
+        helper_stop: Option<&CancellationToken>,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, String> {
+        let gate = self
+            .ask_gates
+            .lock()
+            .map_err(|_| "Lock poisoned.".to_string())?
+            .entry(step_id.to_string())
+            .or_default()
+            .clone();
+        tokio::select! {
+            turn = gate.lock_owned() => Ok(turn),
+            _ = self.stop.cancelled() => Err(STOPPED.to_string()),
+            () = stopped(helper_stop) => Err(handoff::STOPPED_BY_YOU.to_string()),
+        }
+    }
+
     /// Show the user `pending` (built for the wait's window) and wait for
     /// their answer; nobody answering in time, or nowhere to ask, is `Nobody`.
+    /// `helper_stop` is the Stop of the helper asking, which ends the wait too.
     async fn ask_user(
         &self,
         step_id: &str,
+        helper_stop: Option<&CancellationToken>,
         pending: impl FnOnce(&WaitWindow) -> PendingAction,
     ) -> Result<Asked, String> {
         let Some(waiting) = self.runner.actions else {
@@ -2787,6 +2856,7 @@ impl Exec<'_> {
                 "Nobody could check this action here, so it wasn't sent.".to_string(),
             ));
         };
+        let _turn = self.turn_to_ask(step_id, helper_stop).await?;
         let window = self.wait_window(
             step_id,
             self.runner
@@ -2800,12 +2870,16 @@ impl Exec<'_> {
         let answer = tokio::select! {
             answer = reply => answer.ok(),
             _ = self.stop.cancelled() => None,
+            () = stopped(helper_stop) => None,
             _ = tokio::time::sleep(window.left) => None,
         };
         waiting.clear(self.run_id, step_id);
         self.end_wait(step_id).await?;
         if self.stop.is_cancelled() {
             return Err(STOPPED.to_string());
+        }
+        if helper_stop.is_some_and(CancellationToken::is_cancelled) {
+            return Err(handoff::STOPPED_BY_YOU.to_string());
         }
         Ok(match answer {
             Some(answer) => Asked::Answer(answer),
@@ -2833,6 +2907,16 @@ impl Exec<'_> {
             return Ok(());
         }
         let pool = &self.runner.state.db;
+        let _turn = self.turn_to_ask(step_id, None).await?;
+        // Allowed while it waited its turn (a helper beside it asked first).
+        if unattended
+            .approved
+            .lock()
+            .map(|a| a.contains(&permission))
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
         let window = self.wait_window(step_id, unattended.wait);
         let review = PendingReview {
             run_id: self.run_id.to_string(),
@@ -2894,6 +2978,7 @@ impl Exec<'_> {
             .runner
             .questions
             .ok_or("Questions can't be asked here.")?;
+        let _turn = self.turn_to_ask(step_id, None).await?;
         let window = self.wait_window(
             step_id,
             self.runner
@@ -3321,7 +3406,7 @@ impl Exec<'_> {
             system.push_str("\n\n");
             system.push_str(COMPUTER_SYSTEM);
         }
-        let (result, tokens) = self
+        let worked = self
             .agent_turn(AgentTurn {
                 step_id,
                 key: step_id.to_string(),
@@ -3336,10 +3421,12 @@ impl Exec<'_> {
                 token_limit: None,
                 team: &team,
                 taint: &taint,
+                helper_stop: None,
             })
             .await;
-        self.finish_agent(row, tokens, result.as_ref().err()).await;
-        let (reply, called) = result?;
+        self.finish_agent(row, &worked, false).await;
+        let tokens = worked.tokens;
+        let (reply, called) = worked.result?;
         let mut output = json!({ "text": reply, "toolCalls": called, "tokens": tokens });
         let used = team.computer.into_inner().unwrap_or_default();
         if !used.is_empty() {
@@ -3370,6 +3457,7 @@ impl Exec<'_> {
         parent: Option<&str>,
         team: &Team,
         taint: &computer::Taint,
+        parent_stop: Option<&CancellationToken>,
     ) -> (Result<String, String>, u64) {
         let model = match self.resolve_choice(helper.model.as_ref()) {
             Ok(model) => model,
@@ -3426,7 +3514,10 @@ impl Exec<'_> {
             .map(|more| format!("\n\n{more}"))
             .collect::<String>()
         );
-        let (result, tokens) = self
+        // Stop on its node ends this helper alone (and the helpers it hands
+        // work to); the agent that handed it the task hears so and carries on.
+        let stop = parent_stop.map_or_else(CancellationToken::new, CancellationToken::child_token);
+        let worked = self
             .agent_turn(AgentTurn {
                 step_id,
                 key: format!("{step_id}/{}", helper.id),
@@ -3441,31 +3532,41 @@ impl Exec<'_> {
                 token_limit: Some(helper.token_limit()),
                 team,
                 taint,
+                helper_stop: Some(&stop),
             })
             .await;
         if let Err(e) = conversations::delete(pool, &conversation).await {
             tracing::warn!(error = %e, "could not delete a helper's conversation");
         }
-        self.finish_agent(row, tokens, result.as_ref().err()).await;
-        (result.map(|(reply, _)| reply), tokens)
+        let stopped = stop.is_cancelled() || self.stop.is_cancelled();
+        self.finish_agent(row, &worked, stopped).await;
+        let result = if stop.is_cancelled() && !self.stop.is_cancelled() {
+            Err(handoff::STOPPED_BY_YOU.to_string())
+        } else {
+            worked.result.map(|(reply, _)| reply)
+        };
+        (result, worked.tokens)
     }
 
     /// One agent's turn in `turn.conversation`: its answer and the tools it
     /// called, and the tokens it used either way. With a token limit, the
     /// turn is cut off once it uses more.
-    async fn agent_turn(
-        &self,
-        turn: AgentTurn<'_>,
-    ) -> (Result<(String, Vec<String>), String>, u64) {
-        let used = std::sync::Arc::new(AtomicU64::new(0));
+    async fn agent_turn(&self, turn: AgentTurn<'_>) -> Worked {
+        let used = std::sync::Arc::new(handoff::TokenGuard::new(
+            turn.token_limit.unwrap_or(u64::MAX),
+        ));
         let result = self.agent_turn_counted(turn, &used).await;
-        (result, used.load(Ordering::SeqCst))
+        Worked {
+            result,
+            tokens: used.used(),
+            usage: used.split(),
+        }
     }
 
     async fn agent_turn_counted(
         &self,
         turn: AgentTurn<'_>,
-        used: &std::sync::Arc<AtomicU64>,
+        guard: &std::sync::Arc<handoff::TokenGuard>,
     ) -> Result<(String, Vec<String>), String> {
         let state = self.runner.state;
         let connectors = self
@@ -3490,7 +3591,7 @@ impl Exec<'_> {
             offered: self.offer_connector_tools(turn.tools).await?,
             helpers,
             chain: turn.chain,
-            row: turn.row,
+            row: turn.row.clone(),
             team: turn.team,
             computer: if uses_computer {
                 Some(self.computer_access()?)
@@ -3498,6 +3599,7 @@ impl Exec<'_> {
                 None
             },
             taint: turn.taint,
+            stop: turn.helper_stop.cloned(),
         };
         if uses_computer {
             definitions.extend(computer::tool_definitions());
@@ -3517,18 +3619,25 @@ impl Exec<'_> {
             turn.model,
         )?;
         let request_id = request.request_id.clone();
-        // The events, and the tokens they report as they come: past the
-        // limit, the guard lets it answer, then ends the turn.
+        let pool = &state.db;
+        if let Some(row) = &turn.row {
+            if let Err(e) = Box::pin(repo::set_agent_call_request(pool, row, &request_id)).await {
+                tracing::warn!(run = %self.run_id, error = %e, "could not record an agent's request");
+            }
+        }
+        // The events, and the tokens they report as they come (recorded on
+        // its row after each round): past the limit, the guard lets it
+        // answer, then ends the turn.
         let events = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let guard = std::sync::Arc::new(handoff::TokenGuard::new(
-            turn.token_limit.unwrap_or(u64::MAX),
-        ));
         let sink = {
             let events = events.clone();
-            let used = used.clone();
             let guard = guard.clone();
+            let (pool, row) = (pool.clone(), turn.row.clone());
             event_sink::EventSink::from_fn(move |event: ProviderEvent| {
-                used.store(guard.see(&event), Ordering::SeqCst);
+                let used = guard.see(&event);
+                if let (ProviderEvent::Usage { .. }, Some(row)) = (&event, &row) {
+                    repo::record_agent_call_usage_soon(&pool, row, used, guard.split());
+                }
                 if let Ok(mut events) = events.lock() {
                     events.push(event);
                 }
@@ -3545,9 +3654,26 @@ impl Exec<'_> {
             TurnOptions {
                 step_tools: Some(&step_tools),
                 wrap_up: Some(&guard.wrap),
+                queue_rounds: turn.helper_stop.is_some(),
                 ..TurnOptions::default()
             },
         );
+        // A helper's Stop and Redirect reach it while it works.
+        let _control = match (turn.helper_stop, &turn.row) {
+            (Some(stop), Some(row)) => Some(self.runner.streams.register_helper(
+                row,
+                &request_id,
+                stop.clone(),
+            )),
+            _ => None,
+        };
+        let stopped_by_you = async {
+            match turn.helper_stop {
+                Some(stop) => stop.cancelled().await,
+                None => std::future::pending().await,
+            }
+        };
+        let helper = turn.helper_stop.is_some();
         let limited = async {
             tokio::pin!(stream);
             tokio::select! {
@@ -3556,23 +3682,28 @@ impl Exec<'_> {
                     // Cancelled while the turn is still polled: it may be
                     // holding a database connection the cancel needs.
                     let _ = tokio::join!(
-                        self.runner
-                            .streams
-                            .cancel_stream(state, &request_id, Some(turn.conversation)),
+                        Box::pin(self.cancel_turn(&request_id, turn.conversation, helper)),
                         &mut stream
                     );
                     Err(handoff::token_limit_message(
                         turn.token_limit.unwrap_or_default(),
                     ))
                 }
+                () = stopped_by_you => {
+                    let _ = tokio::join!(
+                        Box::pin(self.cancel_turn(&request_id, turn.conversation, true)),
+                        &mut stream
+                    );
+                    Err(handoff::STOPPED_BY_YOU.to_string())
+                }
             }
         };
         if let Err(error) = self
-            .until_done_in(turn.conversation, &request_id, limited)
+            .until_done_in(turn.conversation, &request_id, limited, helper)
             .await
         {
             // What it used still counts toward the run's tokens.
-            if let Some(reason) = self.count_tokens(used.load(Ordering::SeqCst)) {
+            if let Some(reason) = self.count_tokens(guard.used()) {
                 return Err(reason);
             }
             return Err(error);
@@ -3606,6 +3737,7 @@ impl Exec<'_> {
             parent_id: parent,
             task: &cap_text(task, MAX_MODEL_TEXT_CHARS),
             model: Some(&model),
+            request_id: None,
         };
         match repo::start_agent_call(&state.db, &state.encryption, &call).await {
             Ok(id) => Some(id),
@@ -3616,13 +3748,57 @@ impl Exec<'_> {
         }
     }
 
-    async fn finish_agent(&self, row: Option<String>, tokens: u64, error: Option<&String>) {
+    /// Record how an agent's turn ended; `stopped` when the user or the run
+    /// stopped it.
+    async fn finish_agent(&self, row: Option<String>, worked: &Worked, stopped: bool) {
         let Some(row) = row else { return };
         let pool = &self.runner.state.db;
-        if let Err(e) = repo::finish_agent_call(pool, &row, tokens, error.map(String::as_str)).await
-        {
+        let end = repo::AgentCallEnd {
+            tokens: worked.tokens,
+            usage: worked.usage,
+            error: worked.result.as_ref().err().map(String::as_str),
+            stopped: stopped || self.stop.is_cancelled(),
+        };
+        if let Err(e) = repo::finish_agent_call(pool, &row, &end).await {
             tracing::warn!(run = %self.run_id, error = %e, "could not record how an agent's task ended");
         }
+    }
+
+    /// Whether `helper` acts outside ([`handoff::acts`]), its connector tools
+    /// looked up as its turn would look them up; one that can't be counts as
+    /// acting.
+    async fn acts(&self, helper: &AgentDef) -> bool {
+        use crate::connector_runtime::{consent::is_read_only, workflow_tools};
+
+        let state = self.runner.state;
+        let mut read_only = HashMap::new();
+        if let Some(connectors) = self.runner.connectors {
+            for (connector_id, tool_name) in helper
+                .tools
+                .iter()
+                .filter_map(|t| definition::connector_tool_entry(t))
+            {
+                let Ok(target) = workflow_tools::resolve(state, connector_id).await else {
+                    continue;
+                };
+                let declared = self
+                    .unless_stopped(workflow_tools::tool_info(
+                        state, connectors, &target, tool_name,
+                    ))
+                    .await;
+                if let Ok(tool) = declared {
+                    read_only.insert(
+                        (connector_id.to_string(), tool_name.to_string()),
+                        is_read_only(&tool),
+                    );
+                }
+            }
+        }
+        handoff::acts(helper, |connector, tool| {
+            read_only
+                .get(&(connector.to_string(), tool.to_string()))
+                .copied()
+        })
     }
 
     /// The connector tools an agent step lists (`"<connector id>/<tool>"`),
@@ -3963,7 +4139,7 @@ impl Exec<'_> {
                 ));
             }
             let (arguments, asked) = match self
-                .check_action(&step.id, &target, &info, arguments.clone())
+                .check_action(&step.id, &target, &info, arguments.clone(), None)
                 .await?
             {
                 Checked::Send { arguments, asked } => (arguments, asked),
@@ -4323,27 +4499,38 @@ impl Exec<'_> {
         request_id: &str,
         stream: impl Future<Output = Result<T, String>>,
     ) -> Result<(), String> {
-        self.until_done_in(self.conversation_id, request_id, stream)
+        self.until_done_in(self.conversation_id, request_id, stream, false)
             .await
     }
 
-    /// [`Self::until_done`] for a stream in `conversation` (a helper's own).
+    /// Cancel the model stream `request_id` in `conversation` the proper way.
+    /// A helper's (`helper`) touches no other turn.
+    async fn cancel_turn(&self, request_id: &str, conversation: &str, helper: bool) {
+        let streams = self.runner.streams;
+        let state = self.runner.state;
+        let _ = if helper {
+            streams.cancel_helper_stream(state, request_id).await
+        } else {
+            streams
+                .cancel_stream(state, request_id, Some(conversation))
+                .await
+        };
+    }
+
+    /// [`Self::until_done`] for a stream in `conversation` (a helper's own,
+    /// when `helper`).
     async fn until_done_in<T>(
         &self,
         conversation: &str,
         request_id: &str,
         stream: impl Future<Output = Result<T, String>>,
+        helper: bool,
     ) -> Result<(), String> {
-        let state = self.runner.state;
         tokio::pin!(stream);
         tokio::select! {
             result = &mut stream => { result?; Ok(()) }
             _ = self.out_of_time() => {
-                let _ = self
-                    .runner
-                    .streams
-                    .cancel_stream(state, request_id, Some(conversation))
-                    .await;
+                Box::pin(self.cancel_turn(request_id, conversation, helper)).await;
                 let _ = stream.await;
                 Err(self.check_time().unwrap_or_else(|| self.time_limit_reason()))
             }
@@ -4351,11 +4538,7 @@ impl Exec<'_> {
                 // Retried: a stop in the first moment can land before the
                 // stream is registered, when there is nothing to cancel yet.
                 loop {
-                    let _ = self
-                        .runner
-                        .streams
-                        .cancel_stream(state, request_id, Some(conversation))
-                        .await;
+                    Box::pin(self.cancel_turn(request_id, conversation, helper)).await;
                     tokio::select! {
                         _ = &mut stream => break,
                         _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}

@@ -190,6 +190,7 @@ async fn settings_and_db_survive_in_place_reopen() {
             wall_clock_budget_secs: 600,
             finish_after_document_write: None,
             handoff_agents: Vec::new(),
+            parallel_helpers: 3,
         }),
         branding_enabled: None,
         workspace_tools_enabled: None,

@@ -561,6 +561,11 @@ pub struct AgentGuardrails {
     #[serde(default)]
     #[ts(as = "Option<Vec<String>>", optional)]
     pub handoff_agents: Vec<String>,
+    /// How many helpers handed work in one round may work at the same time
+    /// (1 to 4), in chat and in workflows.
+    #[serde(default = "default_parallel_helpers")]
+    #[ts(as = "Option<u8>", optional)]
+    pub parallel_helpers: u8,
 }
 
 impl AgentGuardrails {
@@ -578,6 +583,10 @@ fn default_agent_wall_clock_secs() -> u32 {
     300
 }
 
+fn default_parallel_helpers() -> u8 {
+    3
+}
+
 impl Default for AgentGuardrails {
     fn default() -> Self {
         Self {
@@ -585,6 +594,7 @@ impl Default for AgentGuardrails {
             wall_clock_budget_secs: default_agent_wall_clock_secs(),
             finish_after_document_write: None,
             handoff_agents: Vec::new(),
+            parallel_helpers: default_parallel_helpers(),
         }
     }
 }
@@ -945,6 +955,13 @@ pub enum ProviderEvent {
         task: String,
         /// "provider/model" it runs on.
         model: String,
+        /// Its `agent_calls` row, which Stop and Redirect name; empty when
+        /// it couldn't be recorded (and in logs from before it was sent).
+        #[serde(default)]
+        call_id: String,
+        /// The request id of the helper's own turn.
+        #[serde(default)]
+        helper_request_id: String,
     },
     /// One of the helper's own events. A helper's helper nests another one.
     Handoff {
@@ -966,7 +983,62 @@ pub enum ProviderEvent {
         /// chat shows the answer from here.
         #[ts(optional)]
         answer: Option<String>,
+        /// `tokens` by kind, for its cost.
+        #[serde(default)]
+        usage: HandoffTokens,
     },
+    /// The tokens a helper has used so far, sent after each of its rounds.
+    /// Shown live only; `HandoffFinished` carries the final count.
+    HandoffUsage {
+        request_id: String,
+        tool_call_id: String,
+        #[ts(type = "number")]
+        tokens: u64,
+        usage: HandoffTokens,
+    },
+}
+
+/// A helper's model tokens by kind, as the price of each is set.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/handoff_tokens.ts"
+)]
+pub struct HandoffTokens {
+    #[ts(type = "number")]
+    pub input_tokens: u64,
+    #[ts(type = "number")]
+    pub output_tokens: u64,
+    #[ts(type = "number")]
+    pub cache_read_tokens: u64,
+    #[ts(type = "number")]
+    pub cache_write_tokens: u64,
+}
+
+impl HandoffTokens {
+    /// One round's tokens, as its provider reported them.
+    pub fn of(usage: &ProviderUsage) -> Self {
+        Self {
+            input_tokens: usage.input_tokens.unwrap_or(0),
+            output_tokens: usage.output_tokens.unwrap_or(0),
+            cache_read_tokens: usage.cache_read_tokens.unwrap_or(0),
+            cache_write_tokens: usage.cache_write_tokens.unwrap_or(0),
+        }
+    }
+}
+
+impl std::ops::Add for HandoffTokens {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            input_tokens: self.input_tokens + other.input_tokens,
+            output_tokens: self.output_tokens + other.output_tokens,
+            cache_read_tokens: self.cache_read_tokens + other.cache_read_tokens,
+            cache_write_tokens: self.cache_write_tokens + other.cache_write_tokens,
+        }
+    }
 }
 
 /// One field in an [`ProviderEvent::AskUserRequested`] form (max 4 per call).

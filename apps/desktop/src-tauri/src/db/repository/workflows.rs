@@ -15,7 +15,8 @@ use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
 
 // Agent calls moved to `agent_calls` (migration 0043); these paths still work.
 pub use super::agent_calls::{
-    agent_activity, finish_agent_call, start_agent_call, AgentActivity, AgentCallStart,
+    agent_activity, finish_agent_call, record_agent_call_usage_soon, set_agent_call_request,
+    start_agent_call, AgentActivity, AgentCallEnd, AgentCallStart,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

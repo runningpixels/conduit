@@ -17,7 +17,7 @@ import { inlineArtifactIds } from './inlineArtifact';
 import { CheckIcon, ChevronRight, CopyIcon, ForkIcon, RetryIcon, TrashIcon } from '../icons';
 import { InterruptedBanner } from './InterruptedBanner';
 import { ToolCallBlock } from './ToolCallBlock';
-import { HandoffBlock } from './HandoffBlock';
+import { HandoffBlock, HandoffTotals } from './HandoffBlock';
 import { AskUserBlock } from './AskUserBlock';
 import { SearchCallGroup } from './SearchCallGroup';
 import { isWebSearchToolCall } from './SearchCallBlock';
@@ -755,6 +755,7 @@ export function AssistantMessage({
           {t('chat.assistant.cutOff')}
         </p>
       )}
+      {state.toolCalls.some((tc) => tc.handoff) && <HandoffTotals state={state} />}
       {messageId && onOpenArtifact && (
         <AssistantArtifactStrip
           messageId={messageId}

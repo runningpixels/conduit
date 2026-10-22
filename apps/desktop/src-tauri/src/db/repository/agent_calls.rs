@@ -1,14 +1,20 @@
-//! Agents at work, in workflows and in chat (migration 0043).
+//! Agents at work, in workflows and in chat (migrations 0043 and 0044).
 //!
 //! One row each time an agent takes on a task: an agent step of a run, a
 //! helper it handed a task to, or a chat turn run as a library agent. The
-//! Agents page reads the totals back.
+//! Agents page reads the totals back, and a run's agent tree its rows.
 
+use provider_core::schema::HandoffTokens;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
+
+/// A token count as SQLite keeps it.
+fn stored(tokens: u64) -> i64 {
+    i64::try_from(tokens).unwrap_or(i64::MAX)
+}
 
 /// Who an [`start_agent_call`] row is about.
 pub struct AgentCallStart<'a> {
@@ -26,6 +32,8 @@ pub struct AgentCallStart<'a> {
     pub task: &'a str,
     /// The "provider/model" it runs on.
     pub model: Option<&'a str>,
+    /// The request of its own turn, when it is known already.
+    pub request_id: Option<&'a str>,
 }
 
 /// Record that an agent started on a task; returns the row id to finish it
@@ -38,8 +46,8 @@ pub async fn start_agent_call(
     let id = Uuid::new_v4().to_string();
     sqlx::query(
         "INSERT INTO agent_calls (id, run_id, workflow_id, step_id, conversation_id, kind, \
-         agent_id, parent_id, task, model, status, started_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)",
+         agent_id, parent_id, task, model, request_id, status, started_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)",
     )
     .bind(&id)
     .bind(call.run_id)
@@ -51,30 +59,183 @@ pub async fn start_agent_call(
     .bind(call.parent_id)
     .bind(enc.encrypt(call.task)?)
     .bind(call.model)
+    .bind(call.request_id)
     .bind(now_iso8601())
     .execute(pool)
     .await?;
     Ok(id)
 }
 
-/// Record how an agent's task ended: `error` is `None` when it answered.
-pub async fn finish_agent_call(
+/// Note the request of the agent's own turn, which Redirect steers.
+pub async fn set_agent_call_request(
+    pool: &SqlitePool,
+    id: &str,
+    request_id: &str,
+) -> Result<(), DbError> {
+    sqlx::query("UPDATE agent_calls SET request_id = ? WHERE id = ?")
+        .bind(request_id)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// The tokens a running agent has used so far (after each of its rounds). A
+/// row that has already finished keeps its final count.
+pub async fn record_agent_call_usage(
     pool: &SqlitePool,
     id: &str,
     tokens: u64,
-    error: Option<&str>,
+    usage: &HandoffTokens,
 ) -> Result<(), DbError> {
     sqlx::query(
-        "UPDATE agent_calls SET status = ?, error = ?, tokens = ?, finished_at = ? WHERE id = ?",
+        "UPDATE agent_calls SET tokens = ?, input_tokens = ?, output_tokens = ?, \
+         cache_read_tokens = ?, cache_write_tokens = ? WHERE id = ? AND status = 'running'",
     )
-    .bind(if error.is_some() { "failed" } else { "done" })
-    .bind(error)
-    .bind(i64::try_from(tokens).unwrap_or(i64::MAX))
+    .bind(stored(tokens))
+    .bind(stored(usage.input_tokens))
+    .bind(stored(usage.output_tokens))
+    .bind(stored(usage.cache_read_tokens))
+    .bind(stored(usage.cache_write_tokens))
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// [`record_agent_call_usage`] without waiting for it: called from a turn's
+/// event sink, once per round. A late write can't undo the finish (see
+/// there), so the order doesn't matter.
+pub fn record_agent_call_usage_soon(
+    pool: &SqlitePool,
+    id: &str,
+    tokens: u64,
+    usage: HandoffTokens,
+) {
+    let (pool, id) = (pool.clone(), id.to_string());
+    tokio::spawn(async move {
+        if let Err(e) = record_agent_call_usage(&pool, &id, tokens, &usage).await {
+            tracing::warn!(error = %e, "could not record an agent's tokens");
+        }
+    });
+}
+
+/// How an agent's task ended.
+pub struct AgentCallEnd<'a> {
+    pub tokens: u64,
+    pub usage: HandoffTokens,
+    /// `None` when it answered (or was stopped).
+    pub error: Option<&'a str>,
+    /// The user stopped it, or the work it was part of was stopped.
+    pub stopped: bool,
+}
+
+/// Record how an agent's task ended: `done`, `failed` or `stopped`.
+pub async fn finish_agent_call(
+    pool: &SqlitePool,
+    id: &str,
+    end: &AgentCallEnd<'_>,
+) -> Result<(), DbError> {
+    let status = match (end.stopped, end.error) {
+        (true, _) => "stopped",
+        (false, Some(_)) => "failed",
+        (false, None) => "done",
+    };
+    sqlx::query(
+        "UPDATE agent_calls SET status = ?, error = ?, tokens = ?, input_tokens = ?, \
+         output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ?, finished_at = ? \
+         WHERE id = ?",
+    )
+    .bind(status)
+    .bind(end.error)
+    .bind(stored(end.tokens))
+    .bind(stored(end.usage.input_tokens))
+    .bind(stored(end.usage.output_tokens))
+    .bind(stored(end.usage.cache_read_tokens))
+    .bind(stored(end.usage.cache_write_tokens))
     .bind(now_iso8601())
     .bind(id)
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// One agent's work in a run, for its agent tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCallRow {
+    pub id: String,
+    /// The row of the agent that handed it the task.
+    pub parent_id: Option<String>,
+    /// `step`, `helper` or `chat`.
+    pub kind: String,
+    pub step_id: Option<String>,
+    pub agent_id: String,
+    /// What the user calls it; the agent's id until a name is filled in.
+    pub name: String,
+    pub task: String,
+    /// "provider/model".
+    pub model: Option<String>,
+    /// `running`, `done`, `failed` or `stopped`.
+    pub status: String,
+    pub error: Option<String>,
+    pub tokens: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+}
+
+/// Every agent call of `run_id`, in the order they started; `name` is the
+/// agent's id (see `agents::library::agent_calls_of_run` for names).
+pub async fn list_agent_calls(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_id: &str,
+) -> Result<Vec<AgentCallRow>, DbError> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT id, parent_id, kind, step_id, agent_id, task, model, status, error, tokens, \
+         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, started_at, \
+         finished_at FROM agent_calls WHERE run_id = ? ORDER BY started_at, rowid",
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+    let count = |row: &sqlx::sqlite::SqliteRow, column: &str| -> Result<u64, DbError> {
+        Ok(u64::try_from(row.try_get::<i64, _>(column)?).unwrap_or(0))
+    };
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let agent_id: String = row.try_get("agent_id")?;
+        let task: Option<String> = row.try_get("task")?;
+        out.push(AgentCallRow {
+            id: row.try_get("id")?,
+            parent_id: row.try_get("parent_id")?,
+            kind: row.try_get("kind")?,
+            step_id: row.try_get("step_id")?,
+            name: agent_id.clone(),
+            agent_id,
+            task: match task {
+                Some(stored) => enc.decrypt(&stored)?,
+                None => String::new(),
+            },
+            model: row.try_get("model")?,
+            status: row.try_get("status")?,
+            error: row.try_get("error")?,
+            tokens: count(row, "tokens")?,
+            input_tokens: count(row, "input_tokens")?,
+            output_tokens: count(row, "output_tokens")?,
+            cache_read_tokens: count(row, "cache_read_tokens")?,
+            cache_write_tokens: count(row, "cache_write_tokens")?,
+            started_at: row.try_get("started_at")?,
+            finished_at: row.try_get("finished_at")?,
+        });
+    }
+    Ok(out)
 }
 
 /// Agent tasks left running when the app last closed: none of them is still

@@ -10,13 +10,14 @@
 //!   events appear in the lead's turn as `Handoff*` events.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use provider_core::schema::{
-    ConnectorRuntimeEvent, Message, MessagePart, MessagePartKind, MessageRole, ProviderEvent,
-    ProviderRequest, ToolDefinition,
+    ConnectorRuntimeEvent, HandoffTokens, Message, MessagePart, MessagePartKind, MessageRole,
+    PermissionLevel, ProviderEvent, ProviderRequest, ToolDefinition,
 };
 use serde_json::{json, Value};
 use tokio::time::Instant;
@@ -50,6 +51,9 @@ pub const CEILING_MESSAGE: &str =
 
 /// What a stopped hand-off answers.
 const STOPPED: &str = "Stopped before it finished.";
+
+/// What the lead hears from a helper the user stopped (Stop on its node).
+pub const STOPPED_BY_YOU: &str = "Stopped by you.";
 
 /// Added to the assistant's (or an agent's) system prompt when it may hand
 /// work to agents.
@@ -126,6 +130,27 @@ pub fn check_handoff(
         ));
     }
     Ok(())
+}
+
+/// Whether `helper` acts outside, so it works alone rather than beside other
+/// helpers: it uses the computer, a built-in tool that isn't read-only, or a
+/// connector tool that isn't. `connector_read_only` says whether a connector
+/// tool (connector id, tool) only reads; one it can't tell (`None`) counts as
+/// acting.
+pub fn acts(helper: &AgentDef, connector_read_only: impl Fn(&str, &str) -> Option<bool>) -> bool {
+    let builtins = agent_tools::builtin_tool_definitions();
+    helper.tools.iter().any(|tool| {
+        if tool == computer::COMPUTER_TOOL {
+            return true;
+        }
+        if let Some((connector, name)) = connector_tool_entry(tool) {
+            return connector_read_only(connector, name) != Some(true);
+        }
+        builtins
+            .iter()
+            .find(|d| &d.name == tool)
+            .is_some_and(|d| d.permission_level != Some(PermissionLevel::ReadOnly))
+    })
 }
 
 /// Past this many of its `limit` tokens, an agent is told to answer with what
@@ -255,6 +280,13 @@ impl TokenGuard {
     pub fn used(&self) -> u64 {
         self.tally.lock().map_or(0, |tally| tally.total())
     }
+
+    /// [`Self::used`] by kind.
+    pub fn split(&self) -> HandoffTokens {
+        self.tally
+            .lock()
+            .map_or_else(|_| HandoffTokens::default(), |tally| tally.split())
+    }
 }
 
 /// Model tokens a chat turn has used, from its events. An agent turn reports
@@ -266,6 +298,9 @@ pub struct UsageTally {
     base: u64,
     /// The round in progress.
     round: u64,
+    /// The same by kind.
+    base_split: HandoffTokens,
+    round_split: HandoffTokens,
 }
 
 impl UsageTally {
@@ -275,6 +310,8 @@ impl UsageTally {
             ProviderEvent::MessageStart { .. } => {
                 self.base += self.round;
                 self.round = 0;
+                self.base_split = self.base_split + self.round_split;
+                self.round_split = HandoffTokens::default();
             }
             ProviderEvent::Usage { usage, .. } => {
                 let total = usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
@@ -285,6 +322,7 @@ impl UsageTally {
                     && (total == self.base + self.round || total == self.base);
                 if !repeats {
                     self.round = total;
+                    self.round_split = HandoffTokens::of(usage);
                 }
             }
             _ => {}
@@ -294,6 +332,12 @@ impl UsageTally {
 
     pub fn total(&self) -> u64 {
         self.base + self.round
+    }
+
+    /// [`Self::total`] by kind (input and output add up to it; cache reads
+    /// and writes are what the provider reported of them).
+    pub fn split(&self) -> HandoffTokens {
+        self.base_split + self.round_split
     }
 }
 
@@ -417,7 +461,9 @@ fn text_request(conversation: &str, model_id: &str, system: &str, text: &str) ->
 /// calls around them are what a reloaded chat replays.
 fn live_only(event: &ProviderEvent) -> bool {
     match event {
-        ProviderEvent::ContentDelta { .. } | ProviderEvent::ReasoningDelta { .. } => true,
+        ProviderEvent::ContentDelta { .. }
+        | ProviderEvent::ReasoningDelta { .. }
+        | ProviderEvent::HandoffUsage { .. } => true,
         ProviderEvent::Handoff { event, .. } => live_only(event),
         _ => false,
     }
@@ -451,12 +497,84 @@ impl Relay {
             event: Box::new(event),
         })
     }
+
+    /// The tokens the helper has used so far, after one of its rounds.
+    fn usage(&self, tokens: u64, usage: HandoffTokens) {
+        let _ = self.emit(ProviderEvent::HandoffUsage {
+            request_id: self.request_id.clone(),
+            tool_call_id: self.tool_call_id.clone(),
+            tokens,
+            usage,
+        });
+    }
+}
+
+/// Where a helper's turn is recorded and shown.
+struct HelperRun<'r> {
+    /// Its row in `agent_calls`, when it was recorded.
+    row: Option<&'r str>,
+    /// Its turn's request id.
+    request_id: &'r str,
+    relay: &'r Arc<Relay>,
 }
 
 /// What one hand-off came to.
 struct Handed {
     result: Result<String, String>,
     tokens: u64,
+    usage: HandoffTokens,
+}
+
+/// Whether each connector tool `tools` lists (`"<connector id>/<tool>"`)
+/// only reads, by (connector id, tool), as the running connector declares
+/// it now. A tool whose connector isn't running, or doesn't answer in time,
+/// is left out: it can't be told apart from one that acts.
+async fn connector_read_only(
+    state: &AppState,
+    runtime: &ConnectorRuntimeManager,
+    tools: &[String],
+) -> HashMap<(String, String), bool> {
+    use crate::connector_runtime::consent;
+
+    let mut out = HashMap::new();
+    let wanted: Vec<(&str, &str)> = tools
+        .iter()
+        .filter_map(|t| connector_tool_entry(t))
+        .collect();
+    if wanted.is_empty() {
+        return out;
+    }
+    let Ok(catalog) = stream_manager::build_connector_tool_catalog(state).await else {
+        return out;
+    };
+    for def in &catalog.tool_definitions {
+        let (Some(binding), Some(connector)) =
+            (catalog.bindings.get(&def.name), def.tenant_scope.as_deref())
+        else {
+            continue;
+        };
+        if !wanted
+            .iter()
+            .any(|(c, t)| *c == connector && *t == binding.tool_name)
+        {
+            continue;
+        }
+        let Some(active) = runtime.active_connector(&binding.connector_version_id) else {
+            continue;
+        };
+        let declared = tokio::time::timeout(
+            Duration::from_secs(5),
+            consent::classify_live(&active, &binding.tool_name),
+        )
+        .await;
+        if let Ok(Ok(tool)) = declared {
+            out.insert(
+                (connector.to_string(), binding.tool_name.clone()),
+                consent::is_read_only(&tool),
+            );
+        }
+    }
+    out
 }
 
 /// The agents one chat turn (or one agent working in it) may hand work to,
@@ -503,6 +621,23 @@ impl<'a> ChatHandoff<'a> {
     /// Whether `name` is one of the `ask_` tools the lead was given.
     pub fn offers(&self, name: &str) -> bool {
         self.helper_for(name).is_some()
+    }
+
+    /// Whether the helper `name` hands work to must work alone: it acts
+    /// outside ([`acts`]) and may not work alongside other agents.
+    pub async fn runs_alone(&self, name: &str) -> bool {
+        let Some(helper) = self.helper_for(name) else {
+            return false;
+        };
+        if helper.alongside {
+            return false;
+        }
+        let read_only = connector_read_only(self.state, self.runtime, &helper.tools).await;
+        acts(helper, |connector, tool| {
+            read_only
+                .get(&(connector.to_string(), tool.to_string()))
+                .copied()
+        })
     }
 
     /// The `ask_` tools to offer the lead's model.
@@ -579,6 +714,7 @@ impl<'a> ChatHandoff<'a> {
         let fail = |error: String| Handed {
             result: Err(error),
             tokens: 0,
+            usage: HandoffTokens::default(),
         };
         let model = match resolve_model(self.state, self.streams, helper.model.as_ref()) {
             Ok(model) => model,
@@ -596,6 +732,7 @@ impl<'a> ChatHandoff<'a> {
         }
         let model_label = format!("{}/{}", model.provider, model.model);
         let task_text = cap_text(task, MAX_MODEL_TEXT_CHARS);
+        let helper_request_id = Uuid::new_v4().to_string();
         let call = agent_calls::AgentCallStart {
             run_id: None,
             workflow_id: None,
@@ -606,6 +743,7 @@ impl<'a> ChatHandoff<'a> {
             parent_id: self.lead_row.as_deref(),
             task: &task_text,
             model: Some(&model_label),
+            request_id: Some(&helper_request_id),
         };
         let row = match agent_calls::start_agent_call(pool, &self.state.encryption, &call).await {
             Ok(id) => Some(id),
@@ -662,6 +800,8 @@ impl<'a> ChatHandoff<'a> {
                 name: name.clone(),
                 task: task_text.clone(),
                 model: model_label.clone(),
+                call_id: row.clone().unwrap_or_default(),
+                helper_request_id: helper_request_id.clone(),
             });
             let (handed, stopped) = self
                 .work_on(
@@ -669,8 +809,11 @@ impl<'a> ChatHandoff<'a> {
                     &model,
                     &hidden,
                     task,
-                    row.as_deref(),
-                    &relay,
+                    HelperRun {
+                        row: row.as_deref(),
+                        request_id: &helper_request_id,
+                        relay: &relay,
+                    },
                     cancel,
                 )
                 .await;
@@ -678,15 +821,19 @@ impl<'a> ChatHandoff<'a> {
                 tracing::warn!(error = %e, "could not delete a helper's conversation");
             }
             if let Some(row) = &row {
-                let error = handed.result.as_ref().err().map(String::as_str);
-                if let Err(e) =
-                    agent_calls::finish_agent_call(pool, row, handed.tokens, error).await
-                {
+                let end = agent_calls::AgentCallEnd {
+                    tokens: handed.tokens,
+                    usage: handed.usage,
+                    error: handed.result.as_ref().err().map(String::as_str),
+                    stopped,
+                };
+                if let Err(e) = agent_calls::finish_agent_call(pool, row, &end).await {
                     tracing::warn!(error = %e, "could not record how an agent's task ended");
                 }
             }
             let (status, error) = match (&handed.result, stopped) {
-                (_, true) => ("stopped", Some(STOPPED.to_string())),
+                (Err(e), true) => ("stopped", Some(e.clone())),
+                (Ok(_), true) => ("stopped", Some(STOPPED.to_string())),
                 (Ok(_), false) => ("done", None),
                 (Err(e), false) => ("failed", Some(e.clone())),
             };
@@ -697,6 +844,7 @@ impl<'a> ChatHandoff<'a> {
                 tokens: handed.tokens,
                 error,
                 answer: handed.result.as_ref().ok().cloned(),
+                usage: handed.usage,
             });
             finished.cancel();
             handed
@@ -723,18 +871,21 @@ impl<'a> ChatHandoff<'a> {
     }
 
     /// The helper's turn in `hidden`: its answer and the tokens it used, and
-    /// whether it was stopped.
-    #[allow(clippy::too_many_arguments)]
+    /// whether it was stopped (with its lead, or by the user on its own).
     async fn work_on(
         &self,
         helper: &AgentDef,
         model: &Resolved,
         hidden: &str,
         task: &str,
-        row: Option<&str>,
-        relay: &Arc<Relay>,
+        run: HelperRun<'_>,
         cancel: &CancellationToken,
     ) -> (Handed, bool) {
+        let HelperRun {
+            row,
+            request_id: helper_request_id,
+            relay,
+        } = run;
         let mut definitions: Vec<ToolDefinition> = agent_tools::builtin_tool_definitions()
             .into_iter()
             .filter(|d| d.name != agent_tools::ASK_USER_TOOL && helper.tools.contains(&d.name))
@@ -750,10 +901,11 @@ impl<'a> ChatHandoff<'a> {
             helper.instructions.trim()
         );
         let mut request = text_request(hidden, &model.model, "", task);
-        let helper_request_id = request.request_id.clone();
+        let helper_request_id = helper_request_id.to_string();
 
         // The sink of the helper's turn: forwards to the lead, counts tokens
-        // and keeps the events to read the answer from.
+        // (shown and recorded after each round) and keeps the events to read
+        // the answer from.
         let limit = helper.token_limit();
         let guard = Arc::new(TokenGuard::new(limit));
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -761,8 +913,17 @@ impl<'a> ChatHandoff<'a> {
             let guard = guard.clone();
             let events = events.clone();
             let relay = relay.clone();
+            let pool = self.state.db.clone();
+            let row = row.map(str::to_string);
             EventSink::from_fn(move |event: ProviderEvent| {
-                guard.see(&event);
+                let used = guard.see(&event);
+                if matches!(event, ProviderEvent::Usage { .. }) {
+                    let split = guard.split();
+                    relay.usage(used, split);
+                    if let Some(row) = &row {
+                        agent_calls::record_agent_call_usage_soon(&pool, row, used, split);
+                    }
+                }
                 if let Ok(mut kept) = events.lock() {
                     kept.push(event.clone());
                 }
@@ -814,9 +975,16 @@ impl<'a> ChatHandoff<'a> {
                 handoff: nested.as_ref(),
                 ceiling: Some(self.ceiling),
                 wrap_up: Some(&guard.wrap),
+                queue_rounds: true,
                 ..TurnOptions::default()
             },
         );
+        // Stop and Redirect reach it while it works.
+        let stop = CancellationToken::new();
+        let _control = row.map(|row| {
+            self.streams
+                .register_helper(row, &helper_request_id, stop.clone())
+        });
         tokio::pin!(stream);
         let ended = tokio::select! {
             result = &mut stream => result.map(|_| ()),
@@ -828,17 +996,23 @@ impl<'a> ChatHandoff<'a> {
                 self.wind_down(&mut stream, &helper_request_id, hidden).await;
                 Err(STOPPED.to_string())
             }
+            () = stop.cancelled() => {
+                self.wind_down(&mut stream, &helper_request_id, hidden).await;
+                Err(STOPPED_BY_YOU.to_string())
+            }
             () = tokio::time::sleep_until(self.ceiling) => {
                 self.wind_down(&mut stream, &helper_request_id, hidden).await;
                 Err(CEILING_MESSAGE.to_string())
             }
         };
         let tokens = guard.used();
-        let stopped = cancel.is_cancelled();
+        let usage = guard.split();
+        let stopped = cancel.is_cancelled() || stop.is_cancelled();
         // Over its tokens, but it answered in the round it had left: the answer stands.
         let answered_anyway = || events.lock().ok().and_then(|kept| finished_answer(&kept));
         let result = match ended {
-            _ if stopped => Err(STOPPED.to_string()),
+            _ if cancel.is_cancelled() => Err(STOPPED.to_string()),
+            _ if stop.is_cancelled() => Err(STOPPED_BY_YOU.to_string()),
             _ if guard.over.is_cancelled() => {
                 answered_anyway().ok_or_else(|| token_limit_message(limit))
             }
@@ -856,23 +1030,40 @@ impl<'a> ChatHandoff<'a> {
                     }
                 }),
         };
-        (Handed { result, tokens }, stopped)
+        (
+            Handed {
+                result,
+                tokens,
+                usage,
+            },
+            stopped,
+        )
     }
 
-    /// Cancel a helper's stream and wait for it to end. Retried: a stop in
-    /// the first moment can land before the stream is registered.
+    /// Cancel a helper's stream and wait for it to end, touching no other
+    /// turn: only the approvals asked in its `conversation` are denied (one
+    /// waiting would hold the turn up). Retried: a stop in the first moment
+    /// can land before the stream is registered.
     async fn wind_down<F>(&self, stream: &mut F, request_id: &str, conversation: &str)
     where
         F: std::future::Future + Unpin,
     {
+        let mut ended = false;
         loop {
-            let cancelling = self
-                .streams
-                .cancel_stream(self.state, request_id, Some(conversation));
+            self.runtime.deny_pending_in(conversation);
+            let cancelling = self.streams.cancel_helper_stream(self.state, request_id);
             tokio::pin!(cancelling);
-            tokio::select! {
-                _ = &mut *stream => return,
-                _ = &mut cancelling => {}
+            // Both polled until the cancel is done: the stream may hold the
+            // database connection the cancel needs, and a cancel dropped in
+            // the middle of its write loses the connection.
+            loop {
+                tokio::select! {
+                    _ = &mut *stream, if !ended => ended = true,
+                    _ = &mut cancelling => break,
+                }
+            }
+            if ended {
+                return;
             }
             tokio::select! {
                 _ = &mut *stream => return,
@@ -995,6 +1186,7 @@ pub async fn start_chat_turn(
                 parent_id: None,
                 task: &task,
                 model: Some(&model_label),
+                request_id: Some(&request.request_id),
             };
             match agent_calls::start_agent_call(&state.db, &state.encryption, &call).await {
                 Ok(id) => Some(id),
@@ -1035,11 +1227,15 @@ pub async fn start_chat_turn(
     // What the turn used and how it ended, for the agent's row.
     let used = Arc::new(Mutex::new(UsageTally::default()));
     let failed: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let sink = if row.is_some() {
+    let sink = if let Some(row) = row.clone() {
         let (used, failed, channel) = (used.clone(), failed.clone(), channel.clone());
+        let pool = state.db.clone();
         EventSink::from_fn(move |event: ProviderEvent| {
             if let Ok(mut used) = used.lock() {
-                used.see(&event);
+                let tokens = used.see(&event);
+                if matches!(event, ProviderEvent::Usage { .. }) {
+                    agent_calls::record_agent_call_usage_soon(&pool, &row, tokens, used.split());
+                }
             }
             if let ProviderEvent::Error { error, .. } = &event {
                 if let Ok(mut failed) = failed.lock() {
@@ -1073,14 +1269,16 @@ pub async fn start_chat_turn(
             Err(e) => Some(e.clone()),
             Ok(_) => failed.lock().ok().and_then(|f| f.clone()),
         };
-        if let Err(e) = agent_calls::finish_agent_call(
-            &state.db,
-            &row,
-            used.lock().map_or(0, |used| used.total()),
-            error.as_deref(),
-        )
-        .await
-        {
+        let (tokens, usage) = used.lock().map_or((0, HandoffTokens::default()), |used| {
+            (used.total(), used.split())
+        });
+        let end = agent_calls::AgentCallEnd {
+            tokens,
+            usage,
+            error: error.as_deref(),
+            stopped: false,
+        };
+        if let Err(e) = agent_calls::finish_agent_call(&state.db, &row, &end).await {
             tracing::warn!(error = %e, "could not record how an agent's task ended");
         }
     }

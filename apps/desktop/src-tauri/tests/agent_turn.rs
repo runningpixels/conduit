@@ -610,6 +610,7 @@ fn guardrails(max_steps: u32, wall_clock_budget_secs: u32) -> AgentGuardrails {
         wall_clock_budget_secs,
         finish_after_document_write: None,
         handoff_agents: Vec::new(),
+        parallel_helpers: 3,
     }
 }
 

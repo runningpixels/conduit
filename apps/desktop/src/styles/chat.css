@@ -506,7 +506,8 @@
 }
 .tool-chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; transition: transform var(--tap); }
 /* Child combinators: a hand-off's open card must not open the cards inside it. */
-.tool[data-open="true"] > .tool-head .tool-chev { transform: rotate(90deg); }
+.tool[data-open="true"] > .tool-head .tool-chev,
+.tool[data-open="true"] > .handoff-top > .tool-head .tool-chev { transform: rotate(90deg); }
 .tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-tool-expand) var(--ease-tap); }
 .tool[data-open="true"] > .tool-body { grid-template-rows: 1fr; }
 .tool-body > div { overflow: hidden; min-height: 0; }
@@ -2534,3 +2535,53 @@ html[data-reduce-motion="on"] .research-spinner { animation: none; }
   .composer-plus-btn { width: 40px; }
   .idea-gallery-filter { padding: 8px 14px; }
 }
+
+/* Agents working for the assistant: the provider chip, Stop/Redirect, and the
+ * per-model totals under a message. They share the tool card's narrow layout. */
+.provider-badge {
+  flex: none;
+  min-width: 0;
+  max-width: 10em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+}
+.helper-controls {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 13px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-ui);
+}
+.helper-controls-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.helper-redirect { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.helper-redirect input { flex: 1 1 12em; min-width: 0; }
+.helper-error { margin: 0; color: var(--err); font-size: var(--fs-md); overflow-wrap: anywhere; }
+.helper-totals {
+  display: grid;
+  gap: var(--sp-1);
+  margin-top: var(--sp-3);
+  color: var(--ink-3);
+  font-size: var(--fs-md);
+}
+.helper-totals-title { margin: 0; color: var(--ink-2); font-weight: 500; }
+.helper-totals-list { display: grid; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
+.helper-totals-line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--sp-1) var(--sp-3); }
+.helper-totals-model { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; overflow-wrap: anywhere; }
+.helper-totals-nums { font-variant-numeric: tabular-nums; }
+.helper-totals-sum { border-top: 1px solid var(--line-soft); padding-top: var(--sp-1); color: var(--ink-2); }
+
+/* A hand-off's head and controls stay at the top of the thread while its
+   body scrolls past. `clip` rounds the corners like `hidden` without making
+   the card a scroll container, which would stop the head sticking. */
+.tool.handoff { overflow: clip; }
+/* Negative top: stick to the thread's edge, not below its padding. */
+.handoff-top { position: sticky; top: calc(-1 * var(--sp-5)); z-index: 2; background: var(--bg); }
+@media (max-width: 720px) { .handoff-top { top: calc(-1 * var(--sp-4)); } }
+.tool.handoff .tool.handoff .handoff-top { position: static; }

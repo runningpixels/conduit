@@ -214,6 +214,12 @@ impl ConnectorRuntimeManager {
         consent::deny_all_pending(&self.pending, &self.pending_metas);
     }
 
+    /// Deny only the consent prompts raised in `conversation_id` (a helper's
+    /// own conversation, stopped or redirected while its siblings work on).
+    pub fn deny_pending_in(&self, conversation_id: &str) {
+        consent::deny_pending_in(&self.pending, &self.pending_metas, conversation_id);
+    }
+
     /// Look up an active connector for command-driven calls (M4.4/M4.5).
     pub fn active_connector(&self, version_id: &str) -> Option<Arc<ActiveConnector>> {
         self.active

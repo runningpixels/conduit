@@ -123,3 +123,35 @@ describe('AgentEditorDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('AgentEditorDialog alongside', () => {
+  it('saves "can work alongside other agents" and explains it', async () => {
+    ipc.createLibraryAgent.mockImplementation(async (agent) => ({ ...stamp, agent: { ...agent, id: 'editor' } }));
+    render(<AgentEditorDialog agent={null} library={[]} onClose={() => {}} onSaved={() => {}} />);
+    await settle();
+    expect(screen.getByText(/otherwise work one at a time/)).toBeTruthy();
+    const box = screen.getByRole('checkbox', { name: 'Can work alongside other agents' });
+    expect((box as HTMLInputElement).checked).toBe(false);
+    fireEvent.change(screen.getByPlaceholderText('Name, like Researcher'), { target: { value: 'Editor' } });
+    fireEvent.change(screen.getByPlaceholderText('What this agent does and how'), { target: { value: 'Tighten the text.' } });
+    fireEvent.click(box);
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Add agent' }));
+    await settle();
+    expect(ipc.createLibraryAgent).toHaveBeenCalledWith(expect.objectContaining({ alongside: true }));
+  });
+
+  it('starts ticked for an agent that has it and leaves it out when cleared', async () => {
+    ipc.updateLibraryAgent.mockImplementation(async (agent) => ({ ...stamp, agent }));
+    const agent = { ...writer, agent: { ...writer.agent, alongside: true } };
+    render(<AgentEditorDialog agent={agent} library={[agent]} onClose={() => {}} onSaved={() => {}} />);
+    await settle();
+    const box = screen.getByRole('checkbox', { name: 'Can work alongside other agents' });
+    expect((box as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(box);
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await settle();
+    expect(ipc.updateLibraryAgent.mock.calls[0][0]).not.toHaveProperty('alongside');
+  });
+});

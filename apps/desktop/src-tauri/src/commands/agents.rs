@@ -1,12 +1,49 @@
 //! IPC for the agent library: the user's agents, defined once and used as
 //! helpers in any workflow. See `crate::agents`.
 
+use provider_core::schema::AppError;
 use serde_json::Value;
 use tauri::State;
 
 use crate::agents::library::{self, LibraryAgent};
+use crate::db::repository::agent_calls::AgentCallRow;
 use crate::state::AppState;
+use crate::stream_manager::StreamManager;
 use crate::workflows::definition::AgentDef;
+
+/// Stop one helper at work (agent call `call_id`), in chat or in a workflow
+/// run. The agent that handed it the task hears "Stopped by you." and
+/// carries on.
+#[tauri::command]
+pub async fn stop_agent_call(
+    stream_manager: State<'_, StreamManager>,
+    call_id: String,
+) -> Result<(), AppError> {
+    stream_manager.stop_agent_call(&call_id)
+}
+
+/// Steer one helper at work (agent call `call_id`) with `text`, as a chat
+/// turn is steered.
+#[tauri::command]
+pub async fn redirect_agent_call(
+    stream_manager: State<'_, StreamManager>,
+    call_id: String,
+    text: String,
+) -> Result<(), AppError> {
+    stream_manager.redirect_agent_call(&call_id, &text)
+}
+
+/// A workflow run's agents (its agent steps, the helpers they handed work
+/// to, and theirs), in the order they started, for its agent tree.
+#[tauri::command]
+pub async fn list_agent_calls(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<Vec<AgentCallRow>, AppError> {
+    library::agent_calls_of_run(&state.db, &state.encryption, &run_id)
+        .await
+        .map_err(AppError::from)
+}
 
 /// The user's agents, by name, with the workflows that use each.
 #[tauri::command]

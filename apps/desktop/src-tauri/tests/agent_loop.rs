@@ -728,6 +728,7 @@ fn validate_agent_guardrails_accepts_minimum_values() {
         wall_clock_budget_secs: 30,
         finish_after_document_write: None,
         handoff_agents: Vec::new(),
+        parallel_helpers: 1,
     };
     validation::validate_agent_guardrails(&guardrails).expect("minimum values should pass");
 }
@@ -739,6 +740,7 @@ fn validate_agent_guardrails_accepts_maximum_values() {
         wall_clock_budget_secs: 1800,
         finish_after_document_write: None,
         handoff_agents: Vec::new(),
+        parallel_helpers: 4,
     };
     validation::validate_agent_guardrails(&guardrails).expect("maximum values should pass");
 }

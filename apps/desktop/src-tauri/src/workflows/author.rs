@@ -1061,6 +1061,8 @@ fn clear_personal_choices(definition: &mut Value, connectors: &[KnownConnector])
             }
             helper.remove("model");
             helper.remove("maxTokens");
+            // Letting an agent that acts work beside others is the user's call.
+            helper.remove("alongside");
             found.agent_tools |= keep_known_tools(helper, connectors);
             found.folder |= uses_computer(helper);
         }

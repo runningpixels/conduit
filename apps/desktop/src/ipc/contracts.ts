@@ -788,6 +788,8 @@ export interface AgentDef {
   agents?: string[];
   /** 1000..=300000; 120000 when absent. */
   maxTokens?: number;
+  /** Can work alongside other agents even though its tools change things. */
+  alongside?: boolean;
   /**
    * Set when this helper is one of the user's agents (`LibraryAgent`): the
    * saved definition holds only `{ id, library }` (id === library) and the
@@ -816,6 +818,28 @@ export interface LibraryAgentChatActivity {
   lastActive: string | null;
   currentTask: string | null;
   currentConversationId: string | null;
+}
+
+/** One row of a run's agent tree (`list_agent_calls`): a step, a helper or a chat hand-off. */
+export interface AgentCallRow {
+  id: string;
+  parentId?: string | null;
+  kind: 'step' | 'helper' | 'chat';
+  stepId?: string | null;
+  agentId: string;
+  name: string;
+  task: string;
+  /** "provider/model" */
+  model?: string | null;
+  status: 'running' | 'done' | 'failed' | 'stopped';
+  error?: string | null;
+  tokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  startedAt: string;
+  finishedAt?: string | null;
 }
 
 /** One hand-off in an agent step's output. */

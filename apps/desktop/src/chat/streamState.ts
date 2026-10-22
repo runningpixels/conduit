@@ -96,6 +96,12 @@ export interface HandoffState {
   model: string;
   status: 'running' | 'done' | 'failed' | 'stopped';
   tokens: number;
+  /** The token split behind `tokens`: live while running, final once finished. */
+  usage: HandoffUsage;
+  /** The `agent_calls` row id, for Stop and Redirect; empty when none was recorded. */
+  callId: string;
+  /** The helper's own request id. */
+  helperRequestId: string;
   error?: string;
   /** What it answered, from the finish event: a reloaded turn has no streamed text. */
   answer?: string;
@@ -104,7 +110,38 @@ export interface HandoffState {
   inner: AssistantStreamState;
 }
 
-type HandoffEvent = Extract<ProviderEvent, { kind: 'handoffStarted' | 'handoff' | 'handoffFinished' }>;
+/** A helper's tokens by kind, as the backend reports them. */
+export interface HandoffUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+export const NO_HANDOFF_USAGE: HandoffUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+};
+
+/** Tokens from an event or log; a missing or partial split (old logs) reads as zeros. */
+function handoffUsageOf(raw: unknown): HandoffUsage {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const n = (v: unknown) =>
+    typeof v === 'bigint' ? Number(v) : typeof v === 'number' && Number.isFinite(v) ? v : 0;
+  return {
+    inputTokens: n(r.inputTokens),
+    outputTokens: n(r.outputTokens),
+    cacheReadTokens: n(r.cacheReadTokens),
+    cacheWriteTokens: n(r.cacheWriteTokens),
+  };
+}
+
+type HandoffEvent = Extract<
+  ProviderEvent,
+  { kind: 'handoffStarted' | 'handoff' | 'handoffFinished' | 'handoffUsage' }
+>;
 
 /** Chronological turn timeline for UI (kept alongside detail arrays). */
 export type TurnSegment =
@@ -393,7 +430,12 @@ function reduceProviderEvent(
   event: ProviderEvent,
   now = Date.now(),
 ): AssistantStreamState {
-  if (event.kind === 'handoffStarted' || event.kind === 'handoff' || event.kind === 'handoffFinished') {
+  if (
+    event.kind === 'handoffStarted' ||
+    event.kind === 'handoff' ||
+    event.kind === 'handoffFinished' ||
+    event.kind === 'handoffUsage'
+  ) {
     return reduceHandoffEvent(state, event, now);
   }
   switch (event.kind) {
@@ -794,9 +836,19 @@ function reduceHandoffEvent(
         model: event.model,
         status: 'running',
         tokens: 0,
+        usage: NO_HANDOFF_USAGE,
+        callId: event.callId ?? '',
+        helperRequestId: event.helperRequestId ?? '',
         startedAt: now,
         inner: createAssistantStreamState(state.requestId, null),
       }));
+    case 'handoffUsage':
+      // Live totals after each of the helper's rounds; a late one never reopens a finished helper.
+      return update((handoff) =>
+        handoff && handoff.status === 'running'
+          ? { ...handoff, tokens: event.tokens, usage: handoffUsageOf(event.usage) }
+          : handoff,
+      );
     case 'handoff':
       return update((handoff) =>
         handoff
@@ -813,6 +865,7 @@ function reduceHandoffEvent(
                   ? event.status
                   : 'failed',
               tokens: event.tokens,
+              usage: event.usage ? handoffUsageOf(event.usage) : handoff.usage,
               error: event.error ?? undefined,
               answer: event.answer ?? undefined,
               endedAt: now,
@@ -868,6 +921,16 @@ function mapToolCallsDeep(
         : mapped;
     }),
   };
+}
+
+/** The name of the last tool call of this turn that has not finished, if any. */
+export function currentTool(state: AssistantStreamState): string | null {
+  for (let i = state.toolCalls.length - 1; i >= 0; i -= 1) {
+    const tc = state.toolCalls[i];
+    if (tc.handoff) continue;
+    if (tc.endedAt === undefined && !SETTLED_STATUSES.includes(tc.status as ToolCallStatus)) return tc.name;
+  }
+  return null;
 }
 
 /** Every tool call in the turn, including those inside hand-offs. */

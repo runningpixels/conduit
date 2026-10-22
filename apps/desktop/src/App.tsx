@@ -4034,11 +4034,15 @@ export default function App() {
             )}
             {destination === 'agents' && (
               <AgentsPage
-                onOpenWorkflow={(workflowId) => {
-                  setWorkflowsFocus({ workflowId, nonce: Date.now() });
+                onOpenWorkflow={(workflowId, runId) => {
+                  setWorkflowsFocus({ workflowId, runId, showRun: runId !== undefined, nonce: Date.now() });
                   setDestination('workflows');
                 }}
                 onOpenWorkflows={() => navigateTo('workflows')}
+                onOpenConversation={(id) => {
+                  handleSelectConversation(id);
+                  navigateTo('chats');
+                }}
               />
             )}
             {destination === 'slides' && (

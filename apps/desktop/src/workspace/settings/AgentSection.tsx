@@ -16,6 +16,9 @@ const MIN_STEPS = 1;
 const MAX_STEPS = 50;
 const MIN_WALL_CLOCK_SECS = 30;
 const MAX_WALL_CLOCK_SECS = 1800;
+const MIN_PARALLEL_HELPERS = 1;
+const MAX_PARALLEL_HELPERS = 4;
+const DEFAULT_PARALLEL_HELPERS = 3;
 
 function formatMinutes(secs: number): string {
   if (secs < 60) return `${secs}s`;
@@ -129,6 +132,27 @@ export function AgentSection({ settings, onUpdate, onStatus, onOpenAgents }: Age
               min: MIN_WALL_CLOCK_SECS,
               maxFormatted: formatMinutes(MAX_WALL_CLOCK_SECS),
             })}
+          </span>
+        </label>
+
+        <label htmlFor="agent-parallel-helpers" style={{ display: 'grid', gap: 4, fontSize: 'var(--fs-3xl)' }}>
+          {t('settings.agent.parallelHelpers.label')}
+          <select
+            id="agent-parallel-helpers"
+            value={agent.parallelHelpers ?? DEFAULT_PARALLEL_HELPERS}
+            onChange={(e) => patchAgent({ parallelHelpers: Number.parseInt(e.target.value, 10) })}
+            style={{ maxWidth: 120 }}
+          >
+            {Array.from({ length: MAX_PARALLEL_HELPERS - MIN_PARALLEL_HELPERS + 1 }, (_, i) => MIN_PARALLEL_HELPERS + i).map(
+              (n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ),
+            )}
+          </select>
+          <span style={{ fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
+            {t('settings.agent.parallelHelpers.hint')}
           </span>
         </label>
 

@@ -399,6 +399,10 @@ fn main() {
             delete_library_agent,
             validate_library_agent,
             resolve_workflow_agents,
+            // Helpers at work: stop or redirect one, and a run's agent tree.
+            stop_agent_call,
+            redirect_agent_call,
+            list_agent_calls,
             preview_command_rule,
             suggest_command_rules,
             get_workflow,

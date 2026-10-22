@@ -250,6 +250,23 @@ export function AgentEditorDialog({
                 </div>
               </fieldset>
             ) : null}
+            <label className="wf-check agent-editor-alongside">
+              <input
+                type="checkbox"
+                checked={draft.alongside === true}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  set((d) => {
+                    const next = { ...d };
+                    if (on) next.alongside = true;
+                    else delete next.alongside;
+                    return next;
+                  });
+                }}
+              />
+              {t('shell.agents.editor.alongside')}
+            </label>
+            <p className="wf-muted">{t('shell.agents.editor.alongsideHint')}</p>
           </section>
         </div>
 

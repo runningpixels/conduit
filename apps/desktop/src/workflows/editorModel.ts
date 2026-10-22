@@ -169,13 +169,28 @@ export function helpersOf(def: Pick<WorkflowDefinition, 'agents'>): readonly Age
 /// Helper names by id. A helper that is one of the user's agents is saved as just
 /// `{ id, library }`, so its name comes from `library` (names by library id); an
 /// unknown id shows as itself.
+/// An agent step that runs as one of the user's agents is listed too, under `step:<step id>`
+/// (see [`stepAgentName`]).
 export function helperNames(
-  def: Pick<WorkflowDefinition, 'agents'>,
+  def: Pick<WorkflowDefinition, 'agents'> & Partial<Pick<WorkflowDefinition, 'steps'>>,
   library: Readonly<Record<string, string>> = {},
 ): Record<string, string> {
-  return Object.fromEntries(
+  const names: Record<string, string> = Object.fromEntries(
     helpersOf(def).map((h) => [h.id, h.name || (h.library ? library[h.library] : undefined) || h.id]),
   );
+  const walk = (steps: readonly WorkflowStep[]) => {
+    for (const step of steps) {
+      if (step.type === 'agent' && step.agent) names[`step:${step.id}`] = library[step.agent] || step.agent;
+      if (step.type === 'for_each') walk(step.steps);
+    }
+  };
+  walk(def.steps ?? []);
+  return names;
+}
+
+/// The name of the user's agent a step runs as, from [`helperNames`]; null for any other step.
+export function stepAgentName(stepId: string, names: Readonly<Record<string, string>> = {}): string | null {
+  return names[`step:${stepId}`] ?? null;
 }
 
 /// `def` with its helpers set; an empty list removes the key.

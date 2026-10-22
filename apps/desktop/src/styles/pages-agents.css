@@ -265,3 +265,31 @@ div.agent-card:hover { background: var(--card); }
 .agent-tree .helper-controls { padding: var(--sp-1) 0; border-top: 0; }
 .agent-status-link { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 button.agent-status-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+
+/* A library card's routines: one row each, what it does and when, with its controls. */
+.agent-routines-block { display: grid; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--line-soft); }
+.agent-routines-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
+.agent-routines-title { font-size: var(--fs-3xl); font-weight: 600; color: var(--ink-2); }
+.agent-routines-add { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-3xl); cursor: pointer; }
+.agent-routines-add:hover { text-decoration: underline; text-underline-offset: 2px; }
+.agent-routines { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
+.agent-routine { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-width: 0; }
+.agent-routine-text { display: grid; gap: 1px; min-width: 0; font-size: var(--fs-3xl); }
+.agent-routine-name { font-weight: 600; overflow-wrap: anywhere; }
+.agent-routine-when,
+.agent-routine-last { color: var(--ink-3); overflow-wrap: anywhere; }
+.agent-routine-last.is-bad { color: var(--err); }
+.agent-routine-actions { display: flex; flex-shrink: 0; gap: 4px; }
+
+/* The routine dialog: one column, narrower than the agent editor. */
+.app-inputs-dialog.routine-dialog { width: min(560px, calc(100vw - 32px)); max-width: none; }
+.routine-dialog-body { display: grid; gap: var(--sp-4); padding: var(--sp-5) var(--sp-6); }
+.routine-dialog .agent-editor-foot { padding: var(--sp-4) var(--sp-6); }
+.routine-folder { display: grid; gap: var(--sp-1); }
+.routine-folder-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.routine-output { display: grid; gap: var(--sp-1); }
+/* "When" and its time or hours: labels on one line, fields on the next, the same height. */
+.routine-when { display: grid; grid-template-columns: repeat(auto-fit, minmax(10em, 1fr)); grid-template-rows: auto auto; gap: var(--sp-1) var(--sp-2); }
+.routine-when > .wf-field { display: grid; grid-template-rows: subgrid; grid-row: span 2; gap: var(--sp-1); }
+.routine-when > .wf-field > select,
+.routine-when > .wf-field > input { align-self: stretch; box-sizing: border-box; }

@@ -23,6 +23,7 @@ use crate::workflows::{
     author::{self, DraftRequest, DraftResult},
     computer, definition,
     permissions::{self, Decision, PendingReview, PermissionView, Reviews},
+    routines,
     runner::{search_backend, Resume, RunBudget, Runner},
     schedule::ScheduleSpec,
     scheduler::{next_run, show_notification, RunningWorkflows, SchedulerWake},
@@ -453,6 +454,49 @@ pub async fn set_workflow_schedule(
         .map_err(|e| e.to_string())?;
     wake.poke();
     Ok(Some(saved))
+}
+
+/// A routine just made, and what it needs approved before it runs on its own.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineCreated {
+    pub workflow: WorkflowRecord,
+    pub permissions: WorkflowPermissions,
+}
+
+/// Make a routine: one of the user's agents doing `task` on a schedule or
+/// trigger (see `workflows::routines`). Its schedule is saved off; the
+/// renderer shows `permissions`, and on approval turns it on with
+/// `approve_workflow_permissions` and `set_workflow_schedule`.
+#[tauri::command]
+pub async fn create_routine(
+    state: State<'_, AppState>,
+    request: routines::RoutineRequest,
+) -> Result<RoutineCreated, String> {
+    let workflow = routines::create(&state, &request).await?;
+    let permissions = workflow_permissions(&state, &workflow.id).await?;
+    Ok(RoutineCreated {
+        workflow,
+        permissions,
+    })
+}
+
+/// Every routine, or only those of the agent `agent_id`.
+#[tauri::command]
+pub async fn list_routines(
+    state: State<'_, AppState>,
+    agent_id: Option<String>,
+) -> Result<Vec<routines::RoutineSummary>, String> {
+    routines::list(&state, agent_id.as_deref()).await
+}
+
+/// Turn a routine into an ordinary workflow, keeping what it does.
+#[tauri::command]
+pub async fn convert_routine_to_workflow(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    routines::convert_to_workflow(&state, &id).await
 }
 
 /// Longest notification title / body accepted from the renderer.
@@ -886,9 +930,19 @@ pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentEntry>, 
         else {
             continue;
         };
-        if def.agents.iter().any(|h| h.library.is_some()) {
+        if library::refers_to_library(&def) {
             library::resolve_with(&library_agents, &mut def);
         }
+        // The user's agents that steps run as are listed with those steps,
+        // not again as helpers (unless a step hands them work too).
+        let reachable: Vec<String> = permissions::reachable_helpers(&def)
+            .into_iter()
+            .map(|h| h.id.clone())
+            .collect();
+        let only_run_as: Vec<String> = definition::step_agents(&def)
+            .into_iter()
+            .filter(|id| !reachable.contains(id))
+            .collect();
         let name_of = |id: &String| {
             def.agents
                 .iter()
@@ -898,6 +952,7 @@ pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentEntry>, 
         };
         let mut push = |kind: &str,
                         agent_id: &str,
+                        library: Option<String>,
                         name: String,
                         about: String,
                         model: Option<definition::ModelChoice>,
@@ -911,10 +966,7 @@ pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentEntry>, 
                 workflow_name: record.name.clone(),
                 kind: kind.to_string(),
                 agent_id: agent_id.to_string(),
-                library: (kind == "helper")
-                    .then(|| def.agents.iter().find(|h| h.id == agent_id))
-                    .flatten()
-                    .and_then(|h| h.library.clone()),
+                library,
                 name,
                 about,
                 model,
@@ -944,13 +996,21 @@ pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentEntry>, 
                 prompt,
                 tools,
                 agents,
+                agent,
                 ..
             } = &step.action
             {
+                // A step run as one of the user's agents is recorded under
+                // that agent's id, and its work counts on the agent's card.
+                let (agent_id, name) = match agent {
+                    Some(id) => (id.as_str(), name_of(id)),
+                    None => (step.id.as_str(), String::new()),
+                };
                 push(
                     "step",
-                    &step.id,
-                    String::new(),
+                    agent_id,
+                    agent.clone(),
+                    name,
                     prompt.clone(),
                     step.model.clone(),
                     tools.clone(),
@@ -958,10 +1018,11 @@ pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentEntry>, 
                 );
             }
         }
-        for helper in &def.agents {
+        for helper in def.agents.iter().filter(|h| !only_run_as.contains(&h.id)) {
             push(
                 "helper",
                 &helper.id,
+                helper.library.clone(),
                 helper.name.trim().to_string(),
                 helper.instructions.clone(),
                 helper.model.clone(),

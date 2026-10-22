@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { WorkflowReview } from '../ipc/contracts';
+import type { WorkflowPermissionView, WorkflowReview } from '../ipc/contracts';
 import { permissionText, reviewText } from './permissionText';
+import { helperNames } from './editorModel';
 
 const t = (id: string, values?: Record<string, unknown>) =>
   values ? `${id.split('.').pop()} ${JSON.stringify(values)}` : (id.split('.').pop() ?? id);
@@ -100,5 +101,18 @@ describe('permissionText for a helper', () => {
     expect(permissionText(p, t, { researcher: 'Researcher' })).toContain('helperTools {"helper":"Researcher"');
     expect(permissionText(p, t)).toContain('helperTools {"helper":"researcher"');
     expect(permissionText({ ...p, stepId: 'agent' }, t)).toContain('agentTools {"step":"agent"');
+  });
+});
+
+describe('a step that runs as one of your agents', () => {
+  it('is named by the agent, in the approval and in a review', () => {
+    const names = helperNames(
+      { steps: [{ id: 'work', type: 'agent', agent: 'researcher', prompt: 'Brief me' }] },
+      { researcher: 'Researcher' },
+    );
+    const p: WorkflowPermissionView = { kind: 'agentTools', stepId: 'work', tools: ['web_fetch'], label: null, local: null };
+    expect(permissionText(p, t, names)).toBe('agentToolsAs {"agent":"Researcher","tools":"webFetch"}');
+    // A plain agent step keeps its id.
+    expect(permissionText({ ...p, stepId: 'think' }, t, names)).toBe('agentTools {"step":"think","tools":"webFetch"}');
   });
 });

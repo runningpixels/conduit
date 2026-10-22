@@ -14,6 +14,7 @@ import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { providerHueId } from '../lib/providerIdentity';
 import { useT } from '../i18n';
 import { TurnBody, proseCarriesCaret } from './TurnBody';
+import { ScheduleThisButton } from './ScheduleThisButton';
 
 export { groupToolCalls, synthesizeSegments, toolCallStaysInline } from './TurnBody';
 
@@ -62,6 +63,8 @@ interface AssistantMessageProps {
   conversationId?: string | null;
   /// Fork the conversation at this message.
   onFork?: () => void;
+  /// A reply one of the user's agents gave: "Schedule this…" opens the routine form.
+  onSchedule?: { name: string; run: () => void };
   /// Whether this is the last persisted turn (gates retry/delete affordances).
   isLast?: boolean;
   /// Live turn only: this model delivers documents all at once and this turn
@@ -127,6 +130,7 @@ export function AssistantMessage({
   onDelete,
   onCopy,
   onFork,
+  onSchedule,
   isLast = true,
   conversationId = null,
   documentWriteHeld = false,
@@ -314,7 +318,7 @@ export function AssistantMessage({
         />
       )}
 
-      {(onCopy || showActions || onFork || state.usage) && (
+      {(onCopy || showActions || onFork || onSchedule || state.usage) && (
       <div className="turn-actions">
         {onCopy ? (
           <button
@@ -364,6 +368,7 @@ export function AssistantMessage({
             {t('common.actions.fork')}
           </button>
         )}
+        {onSchedule ? <ScheduleThisButton name={onSchedule.name} onClick={onSchedule.run} /> : null}
         {showActions && onDelete && (
           <button
             type="button"

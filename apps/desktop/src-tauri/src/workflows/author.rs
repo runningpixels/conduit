@@ -187,6 +187,7 @@ const SPECS: &[Spec] = &[
             opt("input", "text (template)", "text to work on"),
             opt("tools", "list of text", "tools it may use: names from the agent tool list below, and connector tools from CONNECTORS written \"<connector id>/<tool>\""),
             opt("agents", "list of text", "ids of HELPERS it may hand tasks to"),
+            opt("agent", "text", "the id of one of the user's own agents (when the user has some) this step runs as: its instructions lead the turn, and its tools and helpers are used when the step lists none (it needs no HELPERS entry)"),
             opt("model", "never set", MODEL_NOTE),
         ],
         outputs: "text (its answer), toolCalls (the tools it called), actions (what it sent through connectors, when it did), handoffs (the tasks it handed to helpers)",
@@ -518,7 +519,8 @@ fn agents_text(agents: &[AgentDef]) -> String {
         return String::new();
     }
     let mut out = String::from(
-        "\nYOUR AGENTS the user already has, by id, with their tools and what they are for. To use one as a helper, add {\"id\": \"<id>\", \"library\": \"<id>\"} to HELPERS and nothing else for it (no name, instructions or tools); an agent step then lists that id in its \"agents\" like any helper. Prefer one of these over a new helper that would do the same job.\n",
+        "\nYOUR AGENTS the user already has, by id, with their tools and what they are for. To use one as a helper, add {\"id\": \"<id>\", \"library\": \"<id>\"} to HELPERS and nothing else for it (no name, instructions or tools); an agent step then lists that id in its \"agents\" like any helper. Prefer one of these over a new helper that would do the same job.\n\
+When one of these agents can do the whole job and it needs no fixed order of steps, no branches and no approvals along the way, make it a single agent step with \"agent\" set to that agent's id and the job as its \"prompt\", followed by the steps that keep or send the result. Use separate steps when the job needs them.\n",
     );
     for agent in agents.iter().take(MAX_LISTED_AGENTS) {
         let tools = if agent.tools.is_empty() {
@@ -1827,6 +1829,9 @@ mod tests {
         assert!(text
             .contains("- \"researcher\" (Researcher; web_search): Find out what you are asked.\n"));
         assert!(text.contains("{\"id\": \"<id>\", \"library\": \"<id>\"}"));
+        // A job one agent can do alone is one step run as that agent.
+        assert!(text.contains("make it a single agent step with \"agent\" set to that agent's id"));
+        assert!(catalog_text().contains("this step runs as"));
     }
 
     #[test]

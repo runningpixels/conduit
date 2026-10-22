@@ -98,6 +98,9 @@ import type {
   WorkflowResult,
   WorkflowSchedule,
   ScheduleSpec,
+  RoutineCreated,
+  RoutineRequest,
+  RoutineSummary,
   WorkflowSummary,
   WorkflowPermissions,
   WorkflowReview,
@@ -2163,6 +2166,24 @@ export async function setWorkflowSchedule(
   enabled: boolean,
 ): Promise<WorkflowSchedule | null> {
   return invokeCommand<WorkflowSchedule | null>('set_workflow_schedule', { id, spec, enabled });
+}
+
+/**
+ * Make a routine: one of the user's agents doing a task on a schedule or trigger. Its schedule is saved off;
+ * approve `permissions` with `approveWorkflowPermissions`, then turn it on with `setWorkflowSchedule`.
+ */
+export async function createRoutine(request: RoutineRequest): Promise<RoutineCreated> {
+  return invokeCommand<RoutineCreated>('create_routine', { request });
+}
+
+/** Every routine, or only those of one agent. */
+export async function listRoutines(agentId?: string): Promise<RoutineSummary[]> {
+  return invokeCommand<RoutineSummary[]>('list_routines', { agentId: agentId ?? null });
+}
+
+/** Turn a routine into an ordinary workflow, keeping what it does. */
+export async function convertRoutineToWorkflow(id: string): Promise<void> {
+  await invokeCommand('convert_routine_to_workflow', { id });
 }
 
 /** Show a desktop notification (text already translated) for a finished scheduled run. */

@@ -43,6 +43,7 @@ import {
   researchStepSummary,
 } from '../workflows/stepSummary';
 import {
+  convertRoutineToWorkflow,
   createWorkflow,
   deleteWorkflow,
   draftWorkflow,
@@ -87,7 +88,7 @@ import type {
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, stepLabels, type InputLabels } from '../workflows/describeStep';
 import { LibraryAgentsProvider, useLibraryAgents } from '../agents/useLibraryAgents';
-import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder, usesComputer } from '../workflows/editorModel';
+import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, stepAgentName, triggerNeedsFolder, usesComputer } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { ResultView } from '../workflows/ResultView';
 import { runsAfterLine } from '../workflows/runsAfter';
@@ -278,6 +279,8 @@ function WorkflowsPageBody({
   }, [draftOpen]);
   /// The left column shows the workflows or the Results inbox. Component state only.
   const [view, setView] = useState<'workflows' | 'results'>(focus?.view === 'results' ? 'results' : 'workflows');
+  /// Routines show in the list too. Component state only.
+  const [showRoutines, setShowRoutines] = useState(false);
   const [results, setResults] = useState<WorkflowResult[]>([]);
   const [selectedResultId, setSelectedResultId] = useState<string | null>(
     focus?.view === 'results' ? (focus.runId ?? null) : null,
@@ -427,7 +430,12 @@ function WorkflowsPageBody({
     try {
       const next = await listWorkflows();
       setSummaries(next);
-      setSelectedId((current) => (current && next.some((w) => w.id === current) ? current : (next[0]?.id ?? null)));
+      // Routines are hidden from the list by default, so a workflow opens first.
+      setSelectedId((current) =>
+        current && next.some((w) => w.id === current)
+          ? current
+          : ((next.find((w) => !w.routine) ?? next[0])?.id ?? null),
+      );
     } catch (e) {
       onStatus(t('workspace.workflows.status.loadFailed', { error: errorText(e) }));
     } finally {
@@ -900,6 +908,28 @@ function WorkflowsPageBody({
     });
   }
 
+  /// A routine becomes an ordinary workflow (same steps, schedule and runs) and opens in the editor.
+  async function convert() {
+    if (!record) return;
+    setBusy(true);
+    try {
+      await convertRoutineToWorkflow(record.id);
+      onStatus(t('workspace.workflows.routines.converted', { name: record.name }));
+      await refreshList();
+      setEditError(null);
+      setMode({
+        kind: 'draft',
+        workflowId: record.id,
+        draft: { name: record.name, description: record.description ?? '', definition: record.definition },
+        json: null,
+      });
+    } catch (e) {
+      onStatus(t('workspace.workflows.status.actionFailed', { error: errorText(e) }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove() {
     if (!record || !window.confirm(t('workspace.workflows.delete.confirm', { name: record.name }))) return;
     setBusy(true);
@@ -995,9 +1025,28 @@ function WorkflowsPageBody({
     </div>
   );
 
+  // Routines (an agent on a schedule, made from the Agents page) are listed only on request,
+  // except the one open now.
+  const routineCount = summaries.filter((w) => w.routine).length;
+  const listed = summaries.filter((w) => showRoutines || !w.routine || w.id === selectedId);
+  const routinesToggle =
+    routineCount > 0 ? (
+      <button
+        type="button"
+        className="btn ghost wf-routines-toggle"
+        aria-pressed={showRoutines}
+        onClick={() => setShowRoutines((on) => !on)}
+      >
+        {showRoutines
+          ? t('workspace.workflows.routines.hide')
+          : t('workspace.workflows.routines.show', { count: routineCount })}
+      </button>
+    ) : null;
+
   const resultsHeader = (
     <>
       {toggle}
+      {effectiveView === 'workflows' ? routinesToggle : null}
       {effectiveView === 'results' && unreadCount > 0 ? (
         <button type="button" className="btn ghost wf-mark-all" onClick={markAllSeen}>
           {t('workspace.workflows.results.markAll')}
@@ -1024,7 +1073,7 @@ function WorkflowsPageBody({
     );
   });
 
-  const list = summaries.map((w) => (
+  const listItems = listed.map((w) => (
     <PageListItem
       key={w.id}
       selected={mode.kind === 'view' && w.id === selectedId}
@@ -1033,10 +1082,11 @@ function WorkflowsPageBody({
         setSelectedId(w.id);
       }}
       title={
-        isExample('workflow', w.id) ? (
+        isExample('workflow', w.id) || w.routine ? (
           <>
             {w.name}
-            <ExampleChip />
+            {isExample('workflow', w.id) ? <ExampleChip /> : null}
+            {w.routine ? <span className="wf-routine-chip">{t('workspace.workflows.routines.chip')}</span> : null}
           </>
         ) : (
           w.name
@@ -1056,6 +1106,7 @@ function WorkflowsPageBody({
       }
     />
   ));
+  const list = listItems;
 
   const newButton = (
     <button type="button" className="btn primary" onClick={() => setMode({ kind: 'new' })} disabled={busy}>
@@ -1170,6 +1221,7 @@ function WorkflowsPageBody({
     const workflowInputs = record.definition.inputs ?? [];
     const inputLabels = stepLabels(record.definition);
     const nextRunAt = summaries.find((w) => w.id === record.id)?.nextRunAt;
+    const isRoutine = summaries.find((w) => w.id === record.id)?.routine === true;
     // The newest run that ended with something to show (or failed, or was
     // stopped), else the newest that ended at all: a workflow that saves
     // nothing still has runs.
@@ -1403,6 +1455,11 @@ function WorkflowsPageBody({
             {record.description ? <p className="wfv-description">{record.description}</p> : null}
           </div>
           <div className="wfv-actions">
+            {isRoutine ? (
+              <button type="button" className="btn" disabled={busy || running} onClick={() => void convert()}>
+                {t('workspace.workflows.routines.convert')}
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn"
@@ -2006,6 +2063,7 @@ function RunDetail({
             key={step.id}
             step={step}
             agentRows={agentCalls ? rowsOfStep(agentCalls, step) : undefined}
+            title={stepAgentName(step.stepId, helpers) ?? undefined}
             description={(() => {
               const def = findStep(steps, step.stepId);
               return def ? describeStep(def, t, labels, connectorNames, steps, helpers) : null;
@@ -2036,6 +2094,7 @@ function RunStepRow({
   onRerun,
   canRerun = false,
   agentRows,
+  title,
 }: {
   step: WorkflowRunStep;
   /// What the step does (its line on the workflow page); its id when unknown.
@@ -2050,6 +2109,8 @@ function RunStepRow({
   canRerun?: boolean;
   /// The agent tree rows of this step; shown instead of the recorded hand-offs when there are some.
   agentRows?: AgentCallRow[];
+  /** What the step goes by instead of its id: the user's agent it ran as. */
+  title?: string;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -2057,8 +2118,8 @@ function RunStepRow({
   // The step's name leads; what it does sits under it, and the rest is small print.
   const name =
     step.iteration != null
-      ? t('workspace.workflows.runDetail.iteration', { step: step.stepId, n: step.iteration + 1 })
-      : step.stepId;
+      ? t('workspace.workflows.runDetail.iteration', { step: title ?? step.stepId, n: step.iteration + 1 })
+      : (title ?? step.stepId);
   const dataSummary =
     dataStepSummary(step, t, (bytes) => fmt.size(bytes)) ??
     researchStepSummary(step, t) ??

@@ -386,3 +386,16 @@ html[data-theme="dark"] .wf-view-btn.active { background: var(--card-hi); filter
   .wf-narrow { max-width: 100%; }
   .inbox-item-head { flex-wrap: wrap; }
 }
+
+/* Routines in the workflow list: a chip on the row, and the toggle that shows them. */
+.wf-routine-chip {
+  margin-left: var(--sp-2);
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  font-size: var(--fs-3xl);
+  font-weight: 500;
+}
+.wf-routines-toggle { justify-self: start; font-size: var(--fs-3xl); }
+.wf-runs-as { margin: 0; }

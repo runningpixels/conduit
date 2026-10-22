@@ -11,8 +11,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentEditorDialog } from '../agents/AgentEditorDialog';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
-import { createLibraryAgent, deleteLibraryAgent, listAgents, listLibraryAgents } from '../ipc/client';
-import type { AgentCallChange, AgentEntry, LibraryAgent } from '../ipc/contracts';
+import { RoutineDialog } from '../agents/RoutineDialog';
+import { libraryNames } from '../agents/useLibraryAgents';
+import {
+  createLibraryAgent,
+  deleteLibraryAgent,
+  listAgents,
+  listLibraryAgents,
+  listRoutines,
+  setWorkflowSchedule,
+} from '../ipc/client';
+import type { AgentCallChange, AgentEntry, LibraryAgent, RoutineSummary } from '../ipc/contracts';
+import { formatNextRun } from '../workflows/ScheduleSection';
 import { useNow } from '../agents/useNow';
 import { PageFrame } from '../shell/PageFrame';
 import { destinationIcon } from '../shell/Rail';
@@ -30,7 +40,19 @@ export function stepName(instruction: string): string {
 /// How often the list is read while the page is shown.
 export const AGENTS_REFRESH_MS = 3000;
 
-type Filter = 'all' | 'working' | 'helpers';
+type Filter = 'all' | 'working' | 'helpers' | 'routines';
+
+/// When a routine runs, in words: "On weekdays at 08:00", "Every 4 hours", "When a file arrives".
+export function routineWhenText(routine: RoutineSummary, t: ReturnType<typeof useT>): string {
+  const spec = routine.schedule;
+  if (spec?.kind === 'trigger' || routine.trigger) {
+    return routine.trigger?.kind === 'feed' ? t('shell.agents.routines.onFeed') : t('shell.agents.routines.onFolder');
+  }
+  if (spec?.kind === 'daily') return t('shell.agents.routines.dailyAt', { time: spec.time });
+  if (spec?.kind === 'weekdays') return t('shell.agents.routines.weekdaysAt', { time: spec.time });
+  if (spec?.kind === 'interval') return t('shell.agents.routines.everyHours', { count: spec.hours });
+  return t('shell.agents.routines.noSchedule');
+}
 
 /// Working agents first; otherwise the order `list_agents` gives.
 function busyFirst(entries: readonly AgentEntry[]): AgentEntry[] {
@@ -101,6 +123,10 @@ export function AgentsPage({
   /// The editor dialog; `agent` null makes a new one.
   const [editing, setEditing] = useState<{ agent: LibraryAgent | null } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  /// Every routine (an agent on a schedule); read with the lists, but a failure only leaves it empty.
+  const [routines, setRoutines] = useState<RoutineSummary[]>([]);
+  /// The agent being put on a schedule.
+  const [scheduling, setScheduling] = useState<LibraryAgent | null>(null);
   const now = useNow(running.length > 0);
   const stopped = useRef(false);
   const read = useCallback(() => {
@@ -115,6 +141,12 @@ export function AgentsPage({
       .catch(() => {
         if (!stopped.current) setFailed(true);
       });
+    Promise.resolve()
+      .then(() => listRoutines())
+      .then((list) => {
+        if (!stopped.current) setRoutines(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {});
   }, []);
   useEffect(() => {
     stopped.current = false;
@@ -164,23 +196,109 @@ export function AgentsPage({
   );
   /// Entries that belong to one workflow; the user's agents have their own cards.
   const all = useMemo(() => busyFirst((entries ?? []).filter((e) => !e.library)), [entries]);
-  const counts = {
+  const routinesOf = (agentId: string) => routines.filter((r) => r.agentId === agentId);
+  const routineIds = new Set(routines.map((r) => r.workflowId));
+  const counts: Record<Filter, number> = {
     all: all.length + mine.length,
     working: all.filter((e) => e.currentTask !== null).length + mine.filter((m) => m.working !== null).length,
     helpers: all.filter((e) => e.kind === 'helper').length + mine.length,
+    routines: routines.length,
   };
   const q = query.trim().toLocaleLowerCase();
   const shown = all.filter((e) => {
     if (filter === 'working' && e.currentTask === null) return false;
     if (filter === 'helpers' && e.kind !== 'helper') return false;
+    if (filter === 'routines') return false;
     if (!q) return true;
     return [nameOf(e).name, e.workflowName, e.about].some((s) => s.toLocaleLowerCase().includes(q));
   });
   const shownMine = mine.filter((m) => {
     if (filter === 'working' && m.working === null) return false;
+    if (filter === 'routines' && routinesOf(m.agent.agent.id).length === 0) return false;
     if (!q) return true;
-    return [m.agent.agent.name, m.agent.agent.instructions].some((s) => s.toLocaleLowerCase().includes(q));
+    return [m.agent.agent.name, m.agent.agent.instructions, ...routinesOf(m.agent.agent.id).map((r) => r.name)].some((s) =>
+      s.toLocaleLowerCase().includes(q),
+    );
   });
+
+  /// Pause or resume a routine: its schedule, switched off or on.
+  const setRoutineOn = (routine: RoutineSummary, on: boolean) => {
+    if (!routine.schedule) return;
+    setActionError(null);
+    setWorkflowSchedule(routine.workflowId, routine.schedule, on).then(read).catch(failedAction);
+  };
+
+  /// A card's routines: a heading with "Run on a schedule…", then for each when it runs, its next run or
+  /// that it is paused, its last result, and its controls.
+  const routineList = (lib: LibraryAgent, agentName: string, list: readonly RoutineSummary[]) => (
+    <div className="agent-routines-block">
+      <div className="agent-routines-head">
+        <span className="agent-routines-title">{t('shell.agents.routines.filter')}</span>
+        <button
+          type="button"
+          className="agent-routines-add"
+          aria-label={t('shell.agents.routines.scheduleLabel', { name: agentName })}
+          onClick={() => setScheduling(lib)}
+        >
+          <span aria-hidden="true">+ </span>
+          {t('shell.agents.routines.schedule')}
+        </button>
+      </div>
+      {list.length === 0 ? null : (
+      <ul className="agent-routines" aria-label={t('shell.agents.routines.listLabel', { name: agentName })}>
+        {list.map((r) => (
+          <li key={r.workflowId} className="agent-routine">
+            <span className="agent-routine-text">
+              <span className="agent-routine-name">{r.name}</span>
+              <span className="agent-routine-when">
+                {routineWhenText(r, t)}
+                {' · '}
+                {r.enabled
+                  ? r.nextRunAt
+                    ? t('shell.agents.routines.next', { when: formatNextRun(r.nextRunAt, fmt.locale) })
+                    : t('shell.agents.routines.on')
+                  : t('shell.agents.routines.paused')}
+              </span>
+              {r.lastRunAt ? (
+                <span className={r.lastRunStatus === 'failed' ? 'agent-routine-last is-bad' : 'agent-routine-last'}>
+                  {r.lastRunStatus === 'failed'
+                    ? t('shell.agents.routines.lastFailed', { when: fmt.timeAgo(r.lastRunAt) })
+                    : r.lastResultTitle
+                      ? t('shell.agents.routines.lastResult', { title: r.lastResultTitle, when: fmt.timeAgo(r.lastRunAt) })
+                      : t('shell.agents.routines.lastRun', { when: fmt.timeAgo(r.lastRunAt) })}
+                </span>
+              ) : null}
+            </span>
+            <span className="agent-routine-actions">
+              {r.schedule ? (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  aria-label={
+                    r.enabled
+                      ? t('shell.agents.routines.pauseLabel', { name: r.name })
+                      : t('shell.agents.routines.resumeLabel', { name: r.name })
+                  }
+                  onClick={() => setRoutineOn(r, !r.enabled)}
+                >
+                  {r.enabled ? t('shell.agents.routines.pause') : t('shell.agents.routines.resume')}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn ghost"
+                aria-label={t('shell.agents.routines.openLabel', { name: r.name })}
+                onClick={() => onOpenWorkflow(r.workflowId, r.lastRunId ?? undefined)}
+              >
+                {t('shell.agents.routines.open')}
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+      )}
+    </div>
+  );
   const filtering = q !== '' || filter !== 'all';
 
   const follow = (link: TaskLink) =>
@@ -290,7 +408,9 @@ export function AgentsPage({
             </span>
             <span className="agent-card-title">
               <span className="agent-name">{name}</span>
-              <span className="agent-sub">{t('shell.agents.usedIn', { count: lib.usedBy.length })}</span>
+              <span className="agent-sub">
+                {t('shell.agents.usedIn', { count: lib.usedBy.filter((u) => !routineIds.has(u.workflowId)).length })}
+              </span>
             </span>
           </span>
           {/* Never busy yet: the line under its name already says it isn't used. */}
@@ -298,6 +418,7 @@ export function AgentsPage({
           {about ? <span className="agent-about">{about}</span> : null}
           {traits(def.model, def.tools ?? [], handsTo)}
           {stats(m.tasks, m.failed, m.tokens)}
+          {routineList(lib, name, routinesOf(def.id))}
           <span className="agent-actions">
             <button
               type="button"
@@ -394,6 +515,7 @@ export function AgentsPage({
     ['all', t('shell.agents.filterAll')],
     ['working', t('shell.agents.filterWorking')],
     ['helpers', t('shell.agents.filterHelpers')],
+    ['routines', t('shell.agents.routines.filter')],
   ];
 
   return (
@@ -505,6 +627,17 @@ export function AgentsPage({
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
+            read();
+          }}
+        />
+      ) : null}
+      {scheduling ? (
+        <RoutineDialog
+          agent={scheduling.agent}
+          helperNames={libraryNames(library ?? [])}
+          onClose={() => setScheduling(null)}
+          onCreated={() => {
+            setScheduling(null);
             read();
           }}
         />

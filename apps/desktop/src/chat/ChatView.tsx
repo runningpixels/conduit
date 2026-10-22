@@ -91,6 +91,8 @@ import type { KnowledgeRef, TurnAttachment } from './composerTypes';
 import { UserTurnAttachments } from './UserTurnAttachments';
 import { UserTurnKnowledgeRefs } from './UserTurnKnowledgeRefs';
 import { UserTurnAgent } from './UserTurnAgent';
+import { RoutineDialog } from '../agents/RoutineDialog';
+import { ScheduleThisButton } from './ScheduleThisButton';
 import { KnowledgeCitations } from './KnowledgeCitations';
 import { modelAcceptsImages } from './modelAcceptsImages';
 import {
@@ -1005,6 +1007,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [editingTurnId, setEditingTurnId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [editBusy, setEditBusy] = useState(false);
+  /// "Schedule this…" on a message one of the user's agents answered: that agent and the message.
+  const [scheduling, setScheduling] = useState<{ agent: { id: string; name: string }; task: string } | null>(null);
   const [editConfirm, setEditConfirm] = useState<{
     messageId: string;
     text: string;
@@ -3183,6 +3187,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     compaction,
   );
   const displayTurns = showCompactedOriginals ? visibleTurns : keptTurns;
+  /// A reply to a message sent to one of the user's agents (`@Researcher …`): that agent and the
+  /// message, for "Schedule this…" in the reply's actions.
+  const scheduleOf = new Map<string, { agent: { id: string; name: string }; task: string }>();
+  {
+    let asked: { agent: { id: string; name: string }; task: string } | null = null;
+    for (const turn of visibleTurns) {
+      if (turn.role === 'user') asked = turn.agent ? { agent: turn.agent, task: turn.content } : null;
+      else if (asked) scheduleOf.set(turn.id, asked);
+    }
+  }
 
   // Per-turn provider/model for the conditional model line (§6.4).
   // Session-tracked turns win; hydrated turns fall back to the conversation's
@@ -3697,6 +3711,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     onDelete={() => void handleRemoveLastAssistantTurn()}
                     onCopy={() => void handleCopyText(turn.content)}
                     onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                    onSchedule={(() => {
+                      const asked = scheduleOf.get(turn.id);
+                      return asked ? { name: asked.agent.name, run: () => setScheduling(asked) } : undefined;
+                    })()}
                     conversationId={conversationId}
                   />
                 );
@@ -3773,6 +3791,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                       <ForkIcon />
                       {t('common.actions.fork')}
                     </button>
+                    {(() => {
+                      const asked = scheduleOf.get(turn.id);
+                      return asked ? <ScheduleThisButton name={asked.agent.name} onClick={() => setScheduling(asked)} /> : null;
+                    })()}
                   </div>
                 </article>
               );
@@ -4153,6 +4175,17 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           void commitMessageEdit(messageId, text);
         }}
       />
+      {scheduling ? (
+        <RoutineDialog
+          agent={scheduling.agent}
+          task={scheduling.task}
+          onClose={() => setScheduling(null)}
+          onCreated={() => {
+            onStatus(makeStatus(t('chat.view.status.routineCreated', { name: scheduling.agent.name }), 'success', 'chat'));
+            setScheduling(null);
+          }}
+        />
+      ) : null}
     </>
   );
 });

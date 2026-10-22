@@ -3,7 +3,7 @@
 
 import type { ConditionTest, WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import type { Translate } from '../i18n';
-import type { ValueRef } from './editorModel';
+import { stepAgentName, type ValueRef } from './editorModel';
 import { refLabel } from './refLabel';
 
 /// Longest quoted text (a prompt, a query) shown in a step's line.
@@ -120,6 +120,8 @@ export function computerText(step: WorkflowStep, t: Translate): string | null {
 /// `scope` is the workflow's top-level steps, so a loop can say which step it reads.
 /// `helperNames` lets an agent step say which helpers it hands work to;
 /// without it the line leaves them out (the canvas shows them as a chip).
+/// `agentNames` (a `helperNames` map; `helperNames` itself by default) names the user's
+/// agent an agent step runs as.
 export function describeStep(
   step: WorkflowStep,
   t: Translate,
@@ -127,11 +129,13 @@ export function describeStep(
   connectorNames: Record<string, string> = {},
   scope: readonly WorkflowStep[] = [],
   helperNames?: Record<string, string>,
+  agentNames: Record<string, string> | undefined = helperNames,
 ): string {
   const handsTo = helperNames ? handsToText(step, t, helperNames) : null;
   const computer = helperNames ? computerText(step, t) : null;
+  const runsAs = step.type === 'agent' && step.agent ? (stepAgentName(step.id, agentNames) ?? step.agent) : null;
   const line =
-    describeKind(step, t, labels, connectorNames, scope) + (handsTo ? ` · ${handsTo}` : '') + (computer ? ` · ${computer}` : '');
+    describeKind(step, t, labels, connectorNames, scope, runsAs) + (handsTo ? ` · ${handsTo}` : '') + (computer ? ` · ${computer}` : '');
   const only =
     (step.type === 'notify' || step.type === 'save_artifact') && step.onlyIfChanged
       ? `${line} (${t('workspace.workflows.step.onlyIfChanged')})`
@@ -147,6 +151,7 @@ function describeKind(
   labels: InputLabels,
   connectorNames: Record<string, string>,
   scope: readonly WorkflowStep[],
+  runsAs: string | null = null,
 ): string {
   const q = (text: string) => quote(text, t, labels);
   switch (step.type) {
@@ -200,7 +205,9 @@ function describeKind(
     case 'save_memory':
       return t('workspace.workflows.step.saveMemory', { text: q(step.text) });
     case 'agent':
-      return t('workspace.workflows.step.agent', { prompt: q(step.prompt) });
+      return runsAs
+        ? t('workspace.workflows.step.agentAs', { agent: runsAs, prompt: q(step.prompt) })
+        : t('workspace.workflows.step.agent', { prompt: q(step.prompt) });
     case 'edit_deck':
       return t('workspace.workflows.step.editDeck', { instructions: q(step.instructions) });
     case 'edit_draft':

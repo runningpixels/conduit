@@ -45,6 +45,9 @@ pub struct WorkflowSummary {
     pub last_run_at: Option<String>,
     /// When it next runs on its own, if it has a schedule that is on.
     pub next_run_at: Option<String>,
+    /// Made as a routine: one of the user's agents on a schedule or trigger
+    /// (`workflows::routines`), listed on its agent's card (migration 0045).
+    pub routine: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -241,6 +244,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<WorkflowSummary>, DbError> {
         Option<String>,
         Option<String>,
         Option<String>,
+        bool,
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT w.id, w.name, w.description, w.version, w.updated_at, \
@@ -249,7 +253,8 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<WorkflowSummary>, DbError> {
                 (SELECT r.started_at FROM workflow_runs r WHERE r.workflow_id = w.id \
                    ORDER BY r.started_at DESC LIMIT 1), \
                 (SELECT s.next_run_at FROM workflow_schedules s \
-                   WHERE s.workflow_id = w.id AND s.enabled = 1) \
+                   WHERE s.workflow_id = w.id AND s.enabled = 1), \
+                w.routine \
          FROM workflows w ORDER BY w.updated_at DESC",
     )
     .fetch_all(pool)
@@ -266,6 +271,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<WorkflowSummary>, DbError> {
                 last_run_status,
                 last_run_at,
                 next_run_at,
+                routine,
             )| {
                 WorkflowSummary {
                     id,
@@ -276,10 +282,25 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<WorkflowSummary>, DbError> {
                     last_run_status,
                     last_run_at,
                     next_run_at,
+                    routine,
                 }
             },
         )
         .collect())
+}
+
+/// Mark a workflow as a routine, or (`false`) as an ordinary workflow. The
+/// definition and version stay as they are.
+pub async fn set_routine(pool: &SqlitePool, id: &str, routine: bool) -> Result<(), DbError> {
+    let done = sqlx::query("UPDATE workflows SET routine = ? WHERE id = ?")
+        .bind(routine)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(DbError::Query(format!("no workflow {id}")));
+    }
+    Ok(())
 }
 
 /// Delete a workflow and its runs. Its conversation is the caller's to remove

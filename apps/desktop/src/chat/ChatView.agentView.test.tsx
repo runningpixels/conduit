@@ -129,9 +129,22 @@ vi.mock('../ipc/client', () => ({
   notifyUser: vi.fn(),
   approveConnectorToolCall: vi.fn(),
   denyConnectorToolCall: vi.fn(),
+  listLibraryAgents: vi.fn().mockResolvedValue([]),
+  createRoutine: vi.fn(),
+  approveWorkflowPermissions: vi.fn(),
+  setWorkflowSchedule: vi.fn(),
+  deleteWorkflow: vi.fn(),
 }));
 
-import { getMessageIdByRequest, notifyUser, redirectAgentCall, startChatStream } from '../ipc/client';
+import {
+  createRoutine,
+  getConversationMessages,
+  getMessageIdByRequest,
+  notifyUser,
+  redirectAgentCall,
+  setWorkflowSchedule,
+  startChatStream,
+} from '../ipc/client';
 
 const ev = (event: unknown) => event as ProviderEvent;
 
@@ -426,5 +439,83 @@ describe("a helper's approval", () => {
     // The approval card waits in the view.
     expect(document.querySelector('.consent')).not.toBeNull();
     focus.mockRestore();
+  });
+});
+
+describe('a reply one of your agents gave', () => {
+  it('offers "Schedule this…" in its actions, which opens the routine form with that agent, the message and a name', async () => {
+    vi.mocked(getConversationMessages).mockResolvedValue([
+      {
+        id: 'u1',
+        conversationId: 'conv-1',
+        role: 'user',
+        metadata: { agent: { id: 'researcher', name: 'Researcher' } },
+        parts: [
+          {
+            id: 'u1-p0',
+            messageId: 'u1',
+            index: 0,
+            kind: 'text',
+            content: 'Brief me on EU energy prices',
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'a1',
+        conversationId: 'conv-1',
+        role: 'assistant',
+        parts: [{ id: 'a1-p0', messageId: 'a1', index: 0, kind: 'text', content: 'Prices fell 3%.', createdAt: '2026-01-01T00:00:01Z' }],
+        createdAt: '2026-01-01T00:00:01Z',
+      },
+    ] as never);
+    vi.mocked(createRoutine).mockResolvedValue({
+      workflow: { id: 'wf-1' },
+      permissions: { required: [], missing: [], approvedAt: null },
+    } as never);
+    vi.mocked(setWorkflowSchedule).mockResolvedValue(null);
+    const onStatus = vi.fn();
+    render(chat({ onStatus }));
+    await screen.findByText('Prices fell 3%.');
+    // Once, in the reply's actions (not on the message).
+    const buttons = screen.getAllByRole('button', { name: 'Schedule this…' });
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].closest('.turn.assistant')).not.toBeNull();
+    fireEvent.click(buttons[0]);
+    const dialog = await screen.findByRole('dialog', { name: 'Run Researcher on a schedule' });
+    expect(within(dialog).getByLabelText('What to do each time')).toHaveValue('Brief me on EU energy prices');
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Brief me on EU energy prices');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(setWorkflowSchedule).toHaveBeenCalledWith('wf-1', { kind: 'weekdays', time: '08:00' }, true));
+    expect(createRoutine).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: 'researcher', task: 'Brief me on EU energy prices' }),
+    );
+    expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Researcher will do this on schedule.' }));
+    expect(screen.queryByRole('dialog', { name: 'Run Researcher on a schedule' })).toBeNull();
+  });
+
+  it('does not offer it on a reply from the assistant', async () => {
+    vi.mocked(getConversationMessages).mockResolvedValue([
+      {
+        id: 'u1',
+        conversationId: 'conv-1',
+        role: 'user',
+        parts: [
+          { id: 'u1-p0', messageId: 'u1', index: 0, kind: 'text', content: 'Hello', createdAt: '2026-01-01T00:00:00Z' },
+        ],
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'a1',
+        conversationId: 'conv-1',
+        role: 'assistant',
+        parts: [{ id: 'a1-p0', messageId: 'a1', index: 0, kind: 'text', content: 'Hi there.', createdAt: '2026-01-01T00:00:01Z' }],
+        createdAt: '2026-01-01T00:00:01Z',
+      },
+    ] as never);
+    render(chat());
+    await screen.findByText('Hi there.');
+    expect(screen.queryByRole('button', { name: 'Schedule this…' })).toBeNull();
   });
 });

@@ -7556,6 +7556,269 @@ async fn a_helper_an_agent_hands_work_to_is_reachable_through_the_workflow() {
     );
 }
 
+// ── A step run as one of the user's agents, and routines ────────────────────
+
+#[tokio::test]
+async fn a_step_run_as_one_of_the_users_agents_uses_its_instructions_model_tools_and_helpers() {
+    let model = EchoModel {
+        tool_calls: vec![("ask_writer", json!({ "task": "Write it up" }))],
+        offered_only: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new_with(model, false, &["openrouter"]).await;
+    save_agent(
+        &h,
+        json!({ "id": "writer", "name": "Writer", "instructions": "Write what you are given." }),
+    )
+    .await;
+    save_agent(
+        &h,
+        json!({
+            "id": "researcher", "name": "Researcher", "instructions": "Find facts on the web.",
+            "tools": ["calculator"], "agents": ["writer"],
+            "model": { "provider": "openrouter", "model": "or-model" }
+        }),
+    )
+    .await;
+    let definition = json!({
+        "steps": [{ "id": "go", "type": "agent", "agent": "researcher", "prompt": "Find the capital" }]
+    });
+    let id = h.save(definition.clone()).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = detail.steps[0].output.as_ref().unwrap();
+    assert_eq!(out["toolCalls"], json!(["ask_writer"]));
+    assert_eq!(out["model"]["model"], "or-model");
+
+    let requests = h.model.requests.lock().unwrap().clone();
+    let system = requests[0].system_prompt.clone().unwrap();
+    assert!(
+        system.starts_with("You are Researcher, one of the user's agents. Find facts on the web."),
+        "{system}"
+    );
+    assert!(!system.contains("You are one step of an automated workflow"));
+    let mut tools: Vec<&str> = requests[0]
+        .tool_definitions
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    tools.sort_unstable();
+    assert_eq!(tools, vec!["ask_writer", "calculator"]);
+    assert_eq!(calls(&h)[0], pair("openrouter", "or-model"));
+
+    // The workflow keeps only the reference.
+    let stored = repo::get(&h.state.db, &h.state.encryption, &id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.definition, definition);
+
+    // Its work is recorded under the agent, so it counts on the agent's card.
+    let rows = conduit_desktop::agents::library::agent_calls_of_run(
+        &h.state.db,
+        &h.state.encryption,
+        &detail.run.id,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        (
+            rows[0].kind.as_str(),
+            rows[0].agent_id.as_str(),
+            rows[0].name.as_str()
+        ),
+        ("step", "researcher", "Researcher")
+    );
+    assert_eq!(rows[0].step_id.as_deref(), Some("go"));
+    assert_eq!(rows[1].agent_id, "writer");
+    assert_eq!(rows[1].parent_id.as_deref(), Some(rows[0].id.as_str()));
+}
+
+#[tokio::test]
+async fn a_step_sets_its_own_tools_over_the_agents() {
+    let h = Harness::new(EchoModel::default()).await;
+    save_agent(
+        &h,
+        json!({ "id": "researcher", "name": "Researcher", "instructions": "Find facts.", "tools": ["calculator"] }),
+    )
+    .await;
+    let id = h
+        .save(json!({ "steps": [{
+            "id": "go", "type": "agent", "agent": "researcher", "prompt": "Go", "tools": ["current_time"]
+        }]}))
+        .await;
+    let required = h.required(&id).await;
+    assert!(
+        required.contains(&Permission::AgentTools {
+            step_id: "go".into(),
+            tools: vec!["current_time".into()],
+        }),
+        "{required:?}"
+    );
+    assert!(
+        !required
+            .iter()
+            .any(|p| matches!(p, Permission::AgentTools { step_id, .. } if step_id.starts_with("helper:"))),
+        "the agent it runs as is not also a helper: {required:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_step_run_as_an_agent_that_does_not_exist_is_reported() {
+    let h = Harness::new(EchoModel::default()).await;
+    let definition = json!({
+        "steps": [{ "id": "go", "type": "agent", "agent": "ghost", "prompt": "Go" }]
+    });
+    let resolved = conduit_desktop::agents::library::resolve_value(
+        &h.state.db,
+        &h.state.encryption,
+        &definition,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        conduit_desktop::workflows::definition::check_value(&resolved).unwrap_err(),
+        "\u{201c}ghost\u{201d} is one of your agents, but it no longer exists."
+    );
+    // Checked without the user's agents filled in, the step says so itself.
+    assert_eq!(
+        conduit_desktop::workflows::definition::check_value(&definition).unwrap_err(),
+        "Step \"go\" runs as \u{201c}ghost\u{201d}, which isn\u{2019}t one of your agents."
+    );
+    let id = h.save(definition).await;
+    let error = h
+        .manual_runner()
+        .run(&id, &HashMap::new(), "manual")
+        .await
+        .unwrap_err();
+    assert!(error.contains("no longer exists"), "{error}");
+}
+
+fn energy_brief(agent: &str) -> conduit_desktop::workflows::routines::RoutineRequest {
+    serde_json::from_value(json!({
+        "agentId": agent,
+        "name": "Energy brief",
+        "task": "Brief me on EU energy prices since yesterday",
+        "schedule": { "kind": "weekdays", "time": "08:00" },
+        "notify": false,
+        "output": "document"
+    }))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_routine_is_saved_as_a_flagged_workflow_with_its_schedule_off_until_approved() {
+    use conduit_desktop::workflows::routines;
+    let h = Harness::new(EchoModel::default()).await;
+    save_agent(
+        &h,
+        json!({ "id": "researcher", "name": "Researcher", "instructions": "Find facts." }),
+    )
+    .await;
+    let record = routines::create(&h.state, &energy_brief("researcher"))
+        .await
+        .unwrap();
+    assert_eq!(record.name, "Energy brief");
+    assert_eq!(
+        record.definition["steps"][0],
+        json!({ "id": "work", "type": "agent", "agent": "researcher",
+                "prompt": "Brief me on EU energy prices since yesterday" })
+    );
+    let summary = repo::list(&h.state.db)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == record.id)
+        .unwrap();
+    assert!(summary.routine);
+    let schedule = repo::get_schedule(&h.state.db, &record.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        schedule.spec,
+        json!({ "kind": "weekdays", "time": "08:00" })
+    );
+    assert!(!schedule.enabled);
+
+    // An agent that isn't there can't be given a routine.
+    let error = routines::create(&h.state, &energy_brief("ghost"))
+        .await
+        .unwrap_err();
+    assert!(error.contains("no longer exists"), "{error}");
+}
+
+#[tokio::test]
+async fn routines_are_listed_by_agent_with_their_last_result_and_turn_into_workflows() {
+    use conduit_desktop::workflows::routines;
+    let h = Harness::new(EchoModel::default()).await;
+    save_agent(
+        &h,
+        json!({ "id": "researcher", "name": "Researcher", "instructions": "Find facts." }),
+    )
+    .await;
+    let record = routines::create(&h.state, &energy_brief("researcher"))
+        .await
+        .unwrap();
+    // An ordinary workflow is not a routine.
+    h.save(json!({ "steps": [{ "id": "a", "type": "template", "template": "hi" }] }))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner
+        .run(&record.id, &HashMap::new(), "manual")
+        .await
+        .unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+
+    let listed = routines::list(&h.state, Some("researcher")).await.unwrap();
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    let routine = &listed[0];
+    assert_eq!(routine.workflow_id, record.id);
+    assert_eq!(routine.agent_id, "researcher");
+    assert_eq!(routine.task, "Brief me on EU energy prices since yesterday");
+    assert_eq!(
+        routine.schedule,
+        Some(json!({ "kind": "weekdays", "time": "08:00" }))
+    );
+    assert!(!routine.enabled);
+    assert_eq!(routine.last_run_id.as_deref(), Some(detail.run.id.as_str()));
+    assert_eq!(routine.last_run_status.as_deref(), Some("completed"));
+    let title = routine.last_result_title.clone().unwrap();
+    assert!(title.starts_with("Energy brief \u{2014} 20"), "{title}");
+    assert!(routines::list(&h.state, Some("writer"))
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(routines::list(&h.state, None).await.unwrap().len(), 1);
+
+    routines::convert_to_workflow(&h.state, &record.id)
+        .await
+        .unwrap();
+    assert!(routines::list(&h.state, None).await.unwrap().is_empty());
+    let summary = repo::list(&h.state.db)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == record.id)
+        .unwrap();
+    assert!(!summary.routine);
+    let kept = repo::get(&h.state.db, &h.state.encryption, &record.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.definition, record.definition);
+    assert_eq!(kept.version, record.version);
+}
+
 // ── Helpers side by side, stopped, and as a tree ────────────────────────────
 
 #[tokio::test]

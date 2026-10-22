@@ -15,7 +15,7 @@ import { useLibraryAgents } from '../../agents/useLibraryAgents';
 import { useT } from '../../i18n';
 import type { WorkflowDefinition } from '../../ipc/contracts';
 import { refLabel } from '../refLabel';
-import { STEP_TYPE_KEY } from '../stepTypes';
+import { stepKindText } from '../stepTypes';
 import { helperNames, type StepPath, type StepType } from '../editorModel';
 import { START_ID, buildCanvas, type CanvasNode } from './canvasModel';
 import { addPlace, addStep, connectFlow, connectReference, deleteStep, disconnectFlow, dropPlace, flowChoices, moveStepTo, pathOf, wireChoices, type TemplateField } from './canvasEdit';
@@ -137,7 +137,7 @@ export function CanvasStepsEditor({ definition, onChange, renderCard, start, onC
         <header className="wfe-step-head">
           <div className="wfe-step-line">
             <span className="wfe-kicker">
-              {t('workspace.workflows.editor.panel.stepKind', { n: node.path.map((i) => i + 1).join('.'), kind: t(STEP_TYPE_KEY[step.type]) })}
+              {t('workspace.workflows.editor.panel.stepKind', { n: node.path.map((i) => i + 1).join('.'), kind: stepKindText(step, t, libNames) })}
             </span>
             <button
               type="button"

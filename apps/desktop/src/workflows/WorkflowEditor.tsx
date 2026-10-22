@@ -601,6 +601,11 @@ function StepCard({
     case 'agent':
       body = (
         <>
+          {step.agent ? (
+            <p className="wf-muted wf-runs-as">
+              {t('workspace.workflows.editor.agent.runsAs', { name: libNames[step.agent] ?? step.agent })}
+            </p>
+          ) : null}
           <TextField
             label={t('workspace.workflows.editor.summarize.prompt')}
             value={step.prompt}

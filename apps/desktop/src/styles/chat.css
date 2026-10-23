@@ -60,6 +60,21 @@
 .turn.app-note::before,
 .turn.app-note::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .app-note-text { margin: 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-2xl); text-align: center; }
+/* A note that carries text for the model opens to show it. */
+.app-note-toggle {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit;
+}
+.app-note-toggle:hover { color: var(--ink); }
+.app-note-chevron { width: 14px; height: 14px; flex: none; transition: transform var(--tap); }
+.app-note-toggle[aria-expanded="true"] .app-note-chevron { transform: rotate(90deg); }
+.app-note-body {
+  margin: calc(-1 * var(--sp-3)) 0 var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-soft); border-radius: var(--r-sm);
+  color: var(--ink-2); font-size: var(--fs-md); line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
 .bubble {
   /* 72%, not 82%: at 82% a long message spans nearly the full column and the
      left/right rhythm that carries the speaker distinction disappears. */

@@ -39,7 +39,12 @@ export function revisionMessage(t: Translate, review: DocumentReview, title: str
       return change ? `${i + 1}. ${issue.problem.trim()} — ${change}` : `${i + 1}. ${issue.problem.trim()}`;
     })
     .join('\n');
-  const parts = [t('chat.review.prompt.revise', { name: review.reviewer, title }), issues];
+  // The issues first: the note opens to show this text (chat/AppNote.tsx).
+  const parts = [
+    t('chat.review.prompt.found', { name: review.reviewer, title }),
+    issues,
+    t('chat.review.prompt.fix'),
+  ];
   if (request.trim()) parts.push(t('chat.review.prompt.request', { request: request.trim() }));
   return appPrompt(
     t('chat.review.note', { name: review.reviewer, count: review.issues.length, title }),

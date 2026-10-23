@@ -53,4 +53,17 @@ isError: boolean,
 /**
  * Optional error message.
  */
-error?: string, } | { "kind": "askUserRequested", requestId: string, toolCallId: string, title: string, fields: Array<AskUserField>, };
+error?: string, } | { "kind": "askUserRequested", requestId: string, toolCallId: string, title: string, fields: Array<AskUserField>, } | { "kind": "handoffStarted", requestId: string, toolCallId: string, agentId: string, name: string, task: string, 
+/**
+ * "provider/model" it runs on.
+ */
+model: string, } | { "kind": "handoff", requestId: string, toolCallId: string, event: ProviderEvent, } | { "kind": "handoffFinished", requestId: string, toolCallId: string, 
+/**
+ * `done`, `failed` or `stopped`.
+ */
+status: string, tokens: number, error?: string, 
+/**
+ * What it answered. Its streamed text isn't kept, so a reloaded
+ * chat shows the answer from here.
+ */
+answer?: string, };

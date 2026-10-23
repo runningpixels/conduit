@@ -8,6 +8,7 @@
 //!             via `event_log`, so the provider-stream `view == fold(events)`
 //!             invariant stays scoped to provider streaming)
 
+pub mod agent_calls;
 pub mod agents;
 pub mod app_activity;
 pub mod app_inputs;

@@ -12,6 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::SqlitePool;
 
+use crate::db::repository::agent_calls::{self, ChatAgentActivity};
 use crate::db::repository::agents as repo;
 use crate::encryption::Encryption;
 use crate::workflows::definition::{
@@ -31,6 +32,71 @@ pub struct LibraryAgent {
     pub updated_at: String,
     /// Workflows whose helpers include it, directly or through another agent.
     pub used_by: Vec<UsedBy>,
+    /// What it has done in chat (turns run as it, tasks handed to it). Zeros
+    /// until [`with_chat_activity`] fills it in.
+    pub chat: ChatUse,
+}
+
+/// A library agent's work in chat, for its card on the Agents page.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatUse {
+    pub tasks: u64,
+    pub failed: u64,
+    pub tokens: u64,
+    pub last_active: Option<String>,
+    pub current_task: Option<String>,
+    pub current_conversation_id: Option<String>,
+}
+
+impl From<ChatAgentActivity> for ChatUse {
+    fn from(a: ChatAgentActivity) -> Self {
+        Self {
+            tasks: a.tasks,
+            failed: a.failed,
+            tokens: a.tokens,
+            last_active: a.last_active,
+            current_task: a.current_task,
+            current_conversation_id: a.current_conversation_id,
+        }
+    }
+}
+
+/// Fill in each agent's chat activity since `since` (an ISO time).
+pub async fn with_chat_activity(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    agents: &mut [LibraryAgent],
+    since: &str,
+) -> Result<(), String> {
+    let mut activity: HashMap<String, ChatAgentActivity> =
+        agent_calls::chat_agent_activity(pool, enc, since)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|a| (a.agent_id.clone(), a))
+            .collect();
+    for agent in agents {
+        if let Some(seen) = activity.remove(&agent.agent.id) {
+            agent.chat = seen.into();
+        }
+    }
+    Ok(())
+}
+
+/// Take `id` off the agents the chat assistant may hand work to; used when
+/// the agent is deleted.
+pub fn forget_handoff(state: &crate::state::AppState, id: &str) -> Result<(), String> {
+    let mut agent = state.settings()?.agent;
+    if !agent.handoff_agents.iter().any(|h| h == id) {
+        return Ok(());
+    }
+    agent.handoff_agents.retain(|h| h != id);
+    let mut patch: crate::state::SettingsPatch =
+        serde_json::from_str("{}").map_err(|e| e.to_string())?;
+    patch.agent = Some(agent);
+    state.update_settings(patch).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -431,6 +497,7 @@ async fn entry(
         agent: record.agent,
         created_at: record.created_at,
         updated_at: record.updated_at,
+        chat: ChatUse::default(),
     })
 }
 
@@ -446,6 +513,7 @@ pub async fn list(pool: &SqlitePool, enc: &Encryption) -> Result<Vec<LibraryAgen
             agent: r.agent,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            chat: ChatUse::default(),
         })
         .collect();
     out.sort_by_cached_key(|a| (a.agent.name.to_lowercase(), a.agent.id.clone()));

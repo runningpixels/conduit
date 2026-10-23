@@ -15,7 +15,8 @@ const ipc = vi.hoisted(() => ({
 }));
 vi.mock('../ipc/client', () => ipc);
 
-const stamp = { createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', usedBy: [] };
+const stamp = { createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', usedBy: [],
+  chat: { tasks: 0, failed: 0, tokens: 0, lastActive: null, currentTask: null, currentConversationId: null } };
 const writer: LibraryAgent = {
   agent: { id: 'writer', name: 'Writer', instructions: 'Write it up.', tools: [] },
   ...stamp,

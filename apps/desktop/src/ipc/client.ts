@@ -369,12 +369,19 @@ export async function startChatStream(
   request: ProviderRequest,
   onEvent: (event: ProviderEvent) => void,
   onRuntimeEvent?: (event: ConnectorRuntimeEvent) => void,
+  /** `agent`: run this turn as that library agent (an `@` message). */
+  options?: { agent?: string },
 ): Promise<StreamHandle> {
   const channel = new Channel<ProviderEvent>();
   channel.onmessage = onEvent;
   const runtimeChannel = new Channel<ConnectorRuntimeEvent>();
   if (onRuntimeEvent) runtimeChannel.onmessage = onRuntimeEvent;
-  return invokeCommand<StreamHandle>('start_chat_stream', { request, channel, runtimeChannel });
+  return invokeCommand<StreamHandle>('start_chat_stream', {
+    request,
+    channel,
+    runtimeChannel,
+    agent: options?.agent ?? null,
+  });
 }
 
 export async function cancelChatStream(request: CancelChatStreamRequest): Promise<void> {

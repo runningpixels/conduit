@@ -505,9 +505,10 @@
   to { background-position: 170% 0; }
 }
 .tool-chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; transition: transform var(--tap); }
-.tool[data-open="true"] .tool-chev { transform: rotate(90deg); }
+/* Child combinators: a hand-off's open card must not open the cards inside it. */
+.tool[data-open="true"] > .tool-head .tool-chev { transform: rotate(90deg); }
 .tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-tool-expand) var(--ease-tap); }
-.tool[data-open="true"] .tool-body { grid-template-rows: 1fr; }
+.tool[data-open="true"] > .tool-body { grid-template-rows: 1fr; }
 .tool-body > div { overflow: hidden; min-height: 0; }
 .tool-inner {
   padding: 4px 13px 12px;
@@ -2334,6 +2335,7 @@
 .composer-doc-picker li[role="option"] b { color: var(--ink); font-weight: 600; }
 .composer-doc-picker li[role="option"] small { color: var(--ink-2); font-weight: var(--muted-weight); }
 .composer-doc-picker li[data-active="true"] { background: var(--card-hi); }
+.composer-doc-picker li[role="option"] svg { width: 14px; height: 14px; flex: none; color: var(--ink-3); }
 /* The `/` tools menu shares the `#` picker's surface; its rows lead with the
  * tool's icon and end with "On" for a toggle that is on. */
 .composer-slash-menu li[role="option"] { align-items: center; }
@@ -2362,6 +2364,37 @@
   color: var(--ink-3);
   font-size: var(--fs-sm);
 }
+
+/* A user turn sent to one of the user's agents with @: the same chip, in the accent. */
+.turn-agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+}
+.turn-agent-chip svg { width: 12px; height: 12px; flex: none; }
+
+/* A hand-off to an agent: the tool card, with the agent's own work inside. */
+.handoff-inner { font-family: var(--font-ui); }
+.handoff-inner > .tool { margin-top: var(--sp-3); margin-bottom: 0; }
+.handoff-task summary { display: grid; gap: 2px; cursor: pointer; list-style: none; }
+.handoff-task summary::-webkit-details-marker { display: none; }
+.handoff-task-label { color: var(--ink-3); font-size: var(--fs-sm); }
+.handoff-task-text {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.handoff-task[open] .handoff-task-text { display: block; }
+.handoff-note { margin: var(--sp-3) 0 0; color: var(--ink-3); }
 
 /* An HTML preview whose own script threw (`HtmlArtifactRenderer`): pinned to
  * the bottom of the frame, above it, so a blank chart has a reason on screen

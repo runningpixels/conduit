@@ -11,7 +11,12 @@ use crate::workflows::definition::AgentDef;
 /// The user's agents, by name, with the workflows that use each.
 #[tauri::command]
 pub async fn list_library_agents(state: State<'_, AppState>) -> Result<Vec<LibraryAgent>, String> {
-    library::list(&state.db, &state.encryption).await
+    let mut agents = library::list(&state.db, &state.encryption).await?;
+    let since = (chrono::Utc::now()
+        - chrono::Duration::days(super::workflows::AGENT_ACTIVITY_DAYS))
+    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    library::with_chat_activity(&state.db, &state.encryption, &mut agents, &since).await?;
+    Ok(agents)
 }
 
 /// Save a new agent. An empty id is made from its name, and a taken one gets
@@ -37,7 +42,9 @@ pub async fn update_library_agent(
 /// many workflows were given one.
 #[tauri::command]
 pub async fn delete_library_agent(state: State<'_, AppState>, id: String) -> Result<u32, String> {
-    library::delete(&state.db, &state.encryption, &id).await
+    let changed = library::delete(&state.db, &state.encryption, &id).await?;
+    library::forget_handoff(&state, &id)?;
+    Ok(changed)
 }
 
 /// Everything wrong with an agent, in plain English; empty when it can be

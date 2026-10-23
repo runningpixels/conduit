@@ -145,6 +145,19 @@ describe('messageToDisplayTurn', () => {
     });
   });
 
+  it('hydrates the agent an @ message was sent to from message metadata', () => {
+    const turn = messageToDisplayTurn(
+      makeMessage({
+        role: 'user',
+        parts: [textPart('compare these')],
+        metadata: { agent: { id: 'researcher', name: 'Researcher' } },
+      }),
+    );
+    expect(turn?.agent).toEqual({ id: 'researcher', name: 'Researcher' });
+    const plain = messageToDisplayTurn(makeMessage({ role: 'user', parts: [textPart('hi')] }));
+    expect(plain?.agent).toBeUndefined();
+  });
+
   it('hydrates knowledgeReference parts into ChatTurn.knowledgeRefs (D8/D9 round trip)', () => {
     const turn = messageToDisplayTurn(
       makeMessage({

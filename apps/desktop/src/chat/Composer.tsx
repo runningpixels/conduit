@@ -4,12 +4,13 @@ import {
   attachmentDelivery,
   deleteAttachment,
   listKnowledgeDocuments,
+  listLibraryAgents,
   listProviderDescriptors,
   loadProviderCredentialReference,
   saveAttachment,
   saveDroppedAttachment,
 } from '../ipc/client';
-import { AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { AgentsIcon, AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
 import { researchUnavailableReasonId, webSearchUnavailableReasonId } from './researchAvailability';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
 import { ComposerMcpResources } from './ComposerMcpResources';
@@ -37,6 +38,8 @@ import { ComposerSkills } from './ComposerSkills';
 import { ComposerCollections } from './ComposerCollections';
 import { ComposerDocumentPicker, documentOptionId, type DocumentPickerOption } from './ComposerDocumentPicker';
 import { findHashTrigger, type HashTrigger } from './hashTrigger';
+import { findAtTrigger, type AtTrigger } from './atTrigger';
+import { ComposerAgentPicker, agentOptionId, type AgentPickerOption } from './ComposerAgentPicker';
 import type { KnowledgeCollection, SkillSummary } from '../ipc/contracts';
 import { previewText, type QueuedMessage } from './messageQueue';
 import { useT } from '../i18n';
@@ -133,6 +136,9 @@ export interface ComposerProps {
   onAddKnowledgeRef?: (ref: KnowledgeRef) => void;
   onRemoveKnowledgeRef?: (documentId: string) => void;
   onRefreshKnowledgeCapabilities?: () => void;
+  /** `@`-picked library agent the next message goes to. Passing the setter turns `@` on. */
+  selectedAgent?: { id: string; name: string } | null;
+  onSelectAgent?: (agent: { id: string; name: string } | null) => void;
   /** Prompts and resources advertised by the running connectors (t0-9). */
   mcpPrompts?: ConnectorPromptInfo[];
   mcpResources?: ConnectorResourceInfo[];
@@ -210,6 +216,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onAddKnowledgeRef,
   onRemoveKnowledgeRef,
   onRefreshKnowledgeCapabilities,
+  selectedAgent = null,
+  onSelectAgent,
   mcpPrompts = [],
   mcpResources = [],
   attachedResources = [],
@@ -248,6 +256,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // only then does Enter pick for a bare `#` (D11).
   const docPickerNavigatedRef = useRef(false);
   const [allDocuments, setAllDocuments] = useState<DocumentPickerOption[]>([]);
+  // The `@` agent trigger and its picker; same Enter rule as `#`.
+  const [atTrigger, setAtTrigger] = useState<AtTrigger | null>(null);
+  const [agentPickerActiveIndex, setAgentPickerActiveIndex] = useState(0);
+  const agentPickerNavigatedRef = useRef(false);
+  const [libraryAgents, setLibraryAgents] = useState<AgentPickerOption[] | null>(null);
   // The `/` tools menu: open while the message starts with a command word.
   const [slashTrigger, setSlashTrigger] = useState<SlashTrigger | null>(null);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
@@ -359,6 +372,34 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (next && !wasOpen) void loadAllDocuments();
   }
 
+  async function loadLibraryAgents() {
+    try {
+      const list = await Promise.resolve().then(() => listLibraryAgents());
+      setLibraryAgents(
+        (Array.isArray(list) ? list : []).map((entry) => ({
+          id: entry.agent.id,
+          name: entry.agent.name || entry.agent.id,
+          about: (entry.agent.instructions ?? '').trim().split('\n', 1)[0].slice(0, 120),
+        })),
+      );
+    } catch {
+      // Keep what the cache already had.
+    }
+  }
+
+  function updateAtTrigger(text: string, caret: number) {
+    if (!onSelectAgent || streaming || composingRef.current) {
+      if (atTrigger) setAtTrigger(null);
+      return;
+    }
+    const next = findAtTrigger(text, caret);
+    const wasOpen = atTrigger != null;
+    setAtTrigger(next);
+    setAgentPickerActiveIndex(0);
+    agentPickerNavigatedRef.current = false;
+    if (next && !wasOpen) void loadLibraryAgents();
+  }
+
   function updateSlashTrigger(text: string, caret: number) {
     if (streaming || composingRef.current) {
       if (slashTrigger) setSlashTrigger(null);
@@ -377,12 +418,38 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function updateTriggers(text: string, caret: number) {
     updateHashTrigger(text, caret);
+    updateAtTrigger(text, caret);
     updateSlashTrigger(text, caret);
   }
 
   const filteredDocumentOptions = hashTrigger
     ? allDocuments.filter((doc) => doc.title.toLowerCase().includes(hashTrigger.query.toLowerCase()))
     : [];
+
+  const filteredAgentOptions = atTrigger
+    ? (libraryAgents ?? []).filter((agent) => {
+        const q = atTrigger.query.toLowerCase();
+        return agent.name.toLowerCase().includes(q) || agent.id.toLowerCase().includes(q);
+      })
+    : [];
+
+  function pickAgent(option: AgentPickerOption) {
+    const trigger = atTrigger;
+    if (!trigger) return;
+    const caret = textareaRef.current?.selectionStart ?? trigger.start + 1 + trigger.query.length;
+    const before = prompt.slice(0, trigger.start);
+    const after = prompt.slice(caret);
+    setAtTrigger(null);
+    onPromptChange(before + after);
+    onSelectAgent?.({ id: option.id, name: option.name });
+    const caretAfter = before.length;
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(caretAfter, caretAfter);
+    });
+  }
 
   function pickDocument(option: DocumentPickerOption) {
     const trigger = hashTrigger;
@@ -455,6 +522,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setOpenPop(null);
     setSkillRemovalQueue([]);
     setHashTrigger(null);
+    setAtTrigger(null);
     setSlashTrigger(null);
   }, [conversationId]);
 
@@ -509,6 +577,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setPlusOpen(false);
     setOpenPop(null);
     setHashTrigger(null);
+    setAtTrigger(null);
     setSlashTrigger(null);
   }, [streaming]);
 
@@ -696,6 +765,33 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         return;
       }
       // Any other key edits the query text; onChange recomputes the trigger.
+    }
+
+    if (atTrigger) {
+      const count = filteredAgentOptions.length;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        agentPickerNavigatedRef.current = true;
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        setAgentPickerActiveIndex((i) => (count === 0 ? 0 : (i + step + count) % count));
+        return;
+      }
+      const isPlainEnter = event.key === 'Enter' && !event.shiftKey;
+      if (isPlainEnter || event.key === 'Tab') {
+        const picked = filteredAgentOptions[agentPickerActiveIndex] ?? filteredAgentOptions[0];
+        const chose = event.key === 'Tab' || atTrigger.query !== '' || agentPickerNavigatedRef.current;
+        if (picked && chose) {
+          event.preventDefault();
+          pickAgent(picked);
+          return;
+        }
+        setAtTrigger(null);
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setAtTrigger(null);
+        return;
+      }
     }
 
     const sendWith = readSendWith();
@@ -911,6 +1007,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Active context, shown above the input. Each chip's remove goes through the
   // same handler its popover uses; its body opens that popover.
   const chips: ContextChip[] = [];
+  if (onSelectAgent && selectedAgent) {
+    chips.push({
+      id: `agent:${selectedAgent.id}`,
+      label: selectedAgent.name,
+      icon: <AgentsIcon />,
+      title: t('chat.composer.agents.chipTitle', { name: selectedAgent.name }),
+      onRemove: () => onSelectAgent(null),
+      removeLabel: t('chat.composer.agents.removeChip', { name: selectedAgent.name }),
+    });
+  }
   if (onWorkspacePick && workspaceBound) {
     chips.push({
       id: 'workspace',
@@ -1242,16 +1348,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           placeholder={brand().tagline ?? t('chat.composer.placeholderTools')}
           rows={1}
           aria-label={t('chat.composer.prompt.ariaLabel')}
-          aria-expanded={slashMenuOpen || hashTrigger ? true : undefined}
+          aria-expanded={slashMenuOpen || hashTrigger || atTrigger ? true : undefined}
           aria-controls={
-            slashMenuOpen ? 'composer-slash-menu-list' : hashTrigger ? 'composer-doc-picker-list' : undefined
+            slashMenuOpen
+              ? 'composer-slash-menu-list'
+              : hashTrigger
+                ? 'composer-doc-picker-list'
+                : atTrigger
+                  ? 'composer-agent-picker-list'
+                  : undefined
           }
           aria-activedescendant={
             slashMenuOpen
               ? slashOptionId((slashOptions[slashActiveIndex] ?? slashOptions[0]).id)
               : hashTrigger && filteredDocumentOptions[docPickerActiveIndex]
                 ? documentOptionId(filteredDocumentOptions[docPickerActiveIndex].documentId)
-                : undefined
+                : atTrigger && filteredAgentOptions[agentPickerActiveIndex]
+                  ? agentOptionId(filteredAgentOptions[agentPickerActiveIndex].id)
+                  : undefined
           }
         />
         {slashMenuOpen ? (
@@ -1270,6 +1384,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             activeIndex={docPickerActiveIndex}
             onHover={setDocPickerActiveIndex}
             onPick={pickDocument}
+          />
+        ) : null}
+        {atTrigger ? (
+          <ComposerAgentPicker
+            id="composer-agent-picker-list"
+            options={filteredAgentOptions}
+            libraryEmpty={libraryAgents !== null && libraryAgents.length === 0}
+            activeIndex={agentPickerActiveIndex}
+            onHover={setAgentPickerActiveIndex}
+            onPick={pickAgent}
           />
         ) : null}
         <div className="composer-bar">

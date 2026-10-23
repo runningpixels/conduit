@@ -1186,6 +1186,56 @@ pub struct TurnOptions<'a> {
     /// tool except these (others are refused), and chat's remembered approvals
     /// don't apply.
     pub step_tools: Option<&'a dyn StepTools>,
+    /// The agents this turn may hand work to (`ask_<id>` tools), in chat.
+    /// Unlike `step_tools`, chat's remembered approvals still apply.
+    pub handoff: Option<&'a crate::agents::handoff::ChatHandoff<'a>>,
+    /// When the turn must end, whatever it is doing and however long it
+    /// waited for the user. Hand-offs inherit it.
+    pub ceiling: Option<tokio::time::Instant>,
+    /// An agent near its token limit: told once, between rounds, to answer.
+    pub wrap_up: Option<&'a WrapUp>,
+}
+
+/// What an agent is told, once, when `due` fires: to stop working and answer
+/// with what it has, rather than run out of tokens with nothing to show.
+pub struct WrapUp {
+    pub due: CancellationToken,
+}
+
+impl WrapUp {
+    pub const MESSAGE: &'static str = "You have used most of your token budget for this task. Don't call any more tools: answer now with what you have found, and say what you couldn't check.";
+
+    pub fn new() -> Self {
+        Self {
+            due: CancellationToken::new(),
+        }
+    }
+}
+
+impl Default for WrapUp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Done at `ceiling`; never done without one.
+async fn reached(ceiling: Option<tokio::time::Instant>) {
+    match ceiling {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
+}
+
+/// The error that ends a turn at its ceiling.
+fn ceiling_error(request_id: &str) -> ProviderEvent {
+    ProviderEvent::Error {
+        request_id: request_id.to_string(),
+        error: provider_core::schema::ProviderError {
+            provider_code: None,
+            message: crate::agents::handoff::CEILING_MESSAGE.to_string(),
+            retryable: false,
+        },
+    }
 }
 
 impl StreamManager {
@@ -1968,6 +2018,7 @@ impl StreamManager {
         user_wait_ms: &std::sync::atomic::AtomicU64,
         headless: bool,
         step_tools: Option<&dyn StepTools>,
+        handoff: Option<&crate::agents::handoff::ChatHandoff<'_>>,
     ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
@@ -2140,11 +2191,24 @@ impl StreamManager {
                 continue;
             }
 
-            if let Some(step_tools) = step_tools {
-                let offered = step_tools.offers(&tool_name);
-                if offered || !agent_tools::is_builtin_tool_name(&tool_name) {
-                    let (output, is_error) = if offered {
-                        let (result, waited) = step_tools.call(&tool_name, &call.arguments).await;
+            // A hand-off in chat: the agent works while this call waits, and
+            // the lead's clock stops for as long as it takes.
+            let handed = handoff.filter(|h| h.offers(&tool_name));
+            if handed.is_some() || step_tools.is_some() {
+                let offered = step_tools.is_some_and(|s| s.offers(&tool_name));
+                if handed.is_some() || offered || !agent_tools::is_builtin_tool_name(&tool_name) {
+                    let (output, is_error) = if handed.is_some() || offered {
+                        let (result, waited) = match (handed, step_tools) {
+                            (Some(handoff), _) => {
+                                handoff
+                                    .call(&tool_name, &call.tool_call_id, &call.arguments, cancel)
+                                    .await
+                            }
+                            (None, Some(step_tools)) => {
+                                step_tools.call(&tool_name, &call.arguments).await
+                            }
+                            (None, None) => unreachable!("offered by one of the two"),
+                        };
                         user_wait_ms.fetch_add(
                             waited.as_millis() as u64,
                             std::sync::atomic::Ordering::Relaxed,
@@ -3265,6 +3329,7 @@ impl StreamManager {
         // `REPEAT_READ_LIMIT`).
         let mut document_reads: HashMap<String, usize> = HashMap::new();
 
+        let mut wrapped_up = false;
         let mut next_step = 0usize;
         while next_step < step_limit {
             let step = next_step;
@@ -3278,6 +3343,13 @@ impl StreamManager {
                     request_id: request_id.clone(),
                     error: turn_time_limit_error(wall_clock_secs, building_document),
                 });
+                break;
+            }
+            if options
+                .ceiling
+                .is_some_and(|at| tokio::time::Instant::now() >= at)
+            {
+                terminal = Some(ceiling_error(&request_id));
                 break;
             }
 
@@ -3297,6 +3369,28 @@ impl StreamManager {
                 .await
                 {
                     warn!(request_id = %request_id, error = %e, "failed to apply steer");
+                }
+            }
+            // An agent near its token limit is told once to answer now. Its
+            // tools stay offered: some providers refuse a history of tool
+            // calls without them.
+            if let Some(wrap) = options.wrap_up {
+                if !wrapped_up && wrap.due.is_cancelled() {
+                    wrapped_up = true;
+                    if let Err(e) = Self::apply_steer_message(
+                        state,
+                        &conversation_id,
+                        &request_id,
+                        &mut current_request,
+                        WrapUp::MESSAGE,
+                        &channel,
+                        (step + 1) as u32,
+                        step_limit as u32,
+                    )
+                    .await
+                    {
+                        warn!(request_id = %request_id, error = %e, "failed to ask the agent to wrap up");
+                    }
                 }
             }
 
@@ -3356,6 +3450,11 @@ impl StreamManager {
                 // stream that sends nothing for `SSE_IDLE_TIMEOUT`, and output
                 // length by the request's `max_tokens`.
                 outcome = round_fut => outcome,
+                // The ceiling is the one limit that does cut a round off.
+                () = reached(options.ceiling) => {
+                    round_cancel.cancel();
+                    RoundOutcome { aborted: true, ..Default::default() }
+                }
             };
 
             if deadline.expired(tokio::time::Instant::now()) {
@@ -3809,6 +3908,7 @@ impl StreamManager {
                 &user_wait_ms,
                 options.headless,
                 options.step_tools,
+                options.handoff,
             );
             let mut steered_during_tools: Option<String> = None;
             let tally = tokio::select! {
@@ -4060,7 +4160,7 @@ impl StreamManager {
     }
 }
 
-async fn build_connector_tool_catalog(
+pub(crate) async fn build_connector_tool_catalog(
     state: &AppState,
 ) -> Result<crate::connector_runtime::catalog::ConnectorToolCatalog, String> {
     use crate::connector_runtime::catalog::{build_connector_tool_catalog, ConnectorToolSnapshot};
@@ -4175,7 +4275,7 @@ impl Default for StreamManager {
 /// and acknowledged — unless the user turned folder access off for this chat,
 /// in which case no folder applies at all. Mirrors `resolveActiveWorkspaceRoot`
 /// in `chat/agentTools.ts`.
-fn resolve_workspace_root(
+pub(crate) fn resolve_workspace_root(
     conversation: Option<&provider_core::schema::Conversation>,
     settings: &provider_core::schema::AppSettings,
 ) -> Option<String> {

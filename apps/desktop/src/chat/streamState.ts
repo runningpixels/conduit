@@ -83,7 +83,28 @@ export interface ToolCallState {
   status?: ToolCallStatus;
   /** Error message on a failed/cancelled call. */
   error?: string;
+  /** Set on an `ask_<agent>` call once the agent starts: the helper's own turn. */
+  handoff?: HandoffState;
 }
+
+/** One piece of work the assistant handed to a library agent, with that agent's
+ *  own turn (its text, tool calls and nested hand-offs) in `inner`. */
+export interface HandoffState {
+  agentId: string;
+  name: string;
+  task: string;
+  model: string;
+  status: 'running' | 'done' | 'failed' | 'stopped';
+  tokens: number;
+  error?: string;
+  /** What it answered, from the finish event: a reloaded turn has no streamed text. */
+  answer?: string;
+  startedAt: number;
+  endedAt?: number;
+  inner: AssistantStreamState;
+}
+
+type HandoffEvent = Extract<ProviderEvent, { kind: 'handoffStarted' | 'handoff' | 'handoffFinished' }>;
 
 /** Chronological turn timeline for UI (kept alongside detail arrays). */
 export type TurnSegment =
@@ -372,6 +393,9 @@ function reduceProviderEvent(
   event: ProviderEvent,
   now = Date.now(),
 ): AssistantStreamState {
+  if (event.kind === 'handoffStarted' || event.kind === 'handoff' || event.kind === 'handoffFinished') {
+    return reduceHandoffEvent(state, event, now);
+  }
   switch (event.kind) {
     case 'messageStart':
       return { ...state, streaming: true };
@@ -460,6 +484,17 @@ function reduceProviderEvent(
       // Phase 4: the provider stream no longer guesses side-effectfulness from
       // the tool name. `sideEffecting`/`consent` arrive later via
       // `ConnectorRuntimeEvent::consentRequested` (see applyConnectorRuntimeEvent).
+      // A hand-off that started first already made a placeholder for this call.
+      if (state.toolCalls.some((tc) => tc.toolCallId === event.toolCallId)) {
+        return {
+          ...state,
+          toolCalls: state.toolCalls.map((tc) =>
+            tc.toolCallId === event.toolCallId
+              ? { ...tc, toolId: event.toolId, name: event.name, startedAt: tc.startedAt ?? now }
+              : tc,
+          ),
+        };
+      }
       return {
         ...state,
         toolCalls: [
@@ -557,10 +592,14 @@ function reduceProviderEvent(
         errorCode: event.error.providerCode,
         streaming: false,
         agentPhase: undefined,
-        toolCalls: settleUnfinishedToolCalls(
-          state.toolCalls,
+        toolCalls: settleHandoffs(
+          settleUnfinishedToolCalls(
+            state.toolCalls,
+            'failed',
+            'The turn ended before this tool finished.',
+            now,
+          ),
           'failed',
-          'The turn ended before this tool finished.',
           now,
         ),
       };
@@ -714,6 +753,128 @@ function reduceProviderEvent(
   }
 }
 
+function reduceHandoffEvent(
+  state: AssistantStreamState,
+  event: HandoffEvent,
+  now: number,
+): AssistantStreamState {
+  const id = event.toolCallId;
+  let base = state;
+  if (!base.toolCalls.some((tc) => tc.toolCallId === id)) {
+    // The hand-off can be announced before the lead's tool call is.
+    const agentTool = event.kind === 'handoffStarted' ? `ask_${event.agentId}` : 'ask_agent';
+    base = {
+      ...base,
+      toolCalls: [
+        ...base.toolCalls,
+        {
+          toolCallId: id,
+          toolId: agentTool,
+          name: agentTool,
+          argumentsText: '',
+          complete: false,
+          startedAt: now,
+        },
+      ],
+      segments: [...withoutEmptyTextSegments(base), { kind: 'tool', toolCallId: id }],
+    };
+  }
+  const update = (fn: (handoff: HandoffState | undefined) => HandoffState | undefined) => ({
+    ...base,
+    toolCalls: base.toolCalls.map((tc) =>
+      tc.toolCallId === id ? { ...tc, handoff: fn(tc.handoff) } : tc,
+    ),
+  });
+  switch (event.kind) {
+    case 'handoffStarted':
+      return update(() => ({
+        agentId: event.agentId,
+        name: event.name,
+        task: event.task,
+        model: event.model,
+        status: 'running',
+        tokens: 0,
+        startedAt: now,
+        inner: createAssistantStreamState(state.requestId, null),
+      }));
+    case 'handoff':
+      return update((handoff) =>
+        handoff
+          ? { ...handoff, inner: reduceProviderEvent(handoff.inner, event.event, now) }
+          : handoff,
+      );
+    case 'handoffFinished':
+      return update((handoff) =>
+        handoff
+          ? {
+              ...handoff,
+              status:
+                event.status === 'done' || event.status === 'failed' || event.status === 'stopped'
+                  ? event.status
+                  : 'failed',
+              tokens: event.tokens,
+              error: event.error ?? undefined,
+              answer: event.answer ?? undefined,
+              endedAt: now,
+              inner: { ...handoff.inner, streaming: false },
+            }
+          : handoff,
+      );
+  }
+}
+
+/** Close hand-offs a dead turn left running, and everything running inside them. */
+function settleHandoffs(
+  calls: ToolCallState[],
+  status: 'failed' | 'stopped',
+  now = Date.now(),
+): ToolCallState[] {
+  return calls.map((tc) => {
+    const handoff = tc.handoff;
+    if (!handoff) return tc;
+    const innerCalls = settleHandoffs(
+      settleUnfinishedToolCalls(
+        handoff.inner.toolCalls,
+        status === 'stopped' ? 'cancelled' : 'failed',
+        status === 'stopped' ? 'Stopped before this tool finished.' : 'The turn ended before this tool finished.',
+        now,
+      ),
+      status,
+      now,
+    );
+    return {
+      ...tc,
+      handoff: {
+        ...handoff,
+        status: handoff.status === 'running' ? status : handoff.status,
+        endedAt: handoff.endedAt ?? now,
+        inner: { ...handoff.inner, streaming: false, toolCalls: innerCalls },
+      },
+    };
+  });
+}
+
+/** Run `fn` over this state's tool calls and, recursively, those inside hand-offs. */
+function mapToolCallsDeep(
+  state: AssistantStreamState,
+  fn: (tc: ToolCallState) => ToolCallState,
+): AssistantStreamState {
+  return {
+    ...state,
+    toolCalls: state.toolCalls.map((tc) => {
+      const mapped = fn(tc);
+      return mapped.handoff
+        ? { ...mapped, handoff: { ...mapped.handoff, inner: mapToolCallsDeep(mapped.handoff.inner, fn) } }
+        : mapped;
+    }),
+  };
+}
+
+/** Every tool call in the turn, including those inside hand-offs. */
+export function allToolCalls(state: AssistantStreamState): ToolCallState[] {
+  return state.toolCalls.flatMap((tc) => [tc, ...(tc.handoff ? allToolCalls(tc.handoff.inner) : [])]);
+}
+
 /** A saved turn as `get_request_event_log` returns it: each event with the
  *  time it was saved, and when each finished tool call finished. */
 export interface RequestEventLog {
@@ -777,10 +938,14 @@ function replayEvents(
   return {
     ...state,
     streaming: false,
-    toolCalls: settleUnfinishedToolCalls(
-      toolCalls,
-      'failed',
-      'The turn ended before this tool finished.',
+    toolCalls: settleHandoffs(
+      settleUnfinishedToolCalls(
+        toolCalls,
+        'failed',
+        'The turn ended before this tool finished.',
+        clock,
+      ),
+      'stopped',
       clock,
     ),
   };
@@ -793,10 +958,13 @@ export function markInterrupted(state: AssistantStreamState): AssistantStreamSta
     streaming: false,
     finishReason: 'cancelled',
     agentPhase: undefined,
-    toolCalls: settleUnfinishedToolCalls(
-      state.toolCalls,
-      'cancelled',
-      'Stopped before this tool finished.',
+    toolCalls: settleHandoffs(
+      settleUnfinishedToolCalls(
+        state.toolCalls,
+        'cancelled',
+        'Stopped before this tool finished.',
+      ),
+      'stopped',
     ),
   };
 }
@@ -826,42 +994,36 @@ function reduceConnectorRuntimeEvent(
   switch (event.kind) {
     case 'consentRequested': {
       const prompt = event.prompt;
-      return {
-        ...state,
-        toolCalls: state.toolCalls.map((tc) =>
-          tc.toolCallId === prompt.toolCallId
-            ? {
-                ...tc,
-                sideEffecting: true,
-                consent: 'pending',
-                consentPrompt: prompt,
-              }
-            : tc,
-        ),
-      };
+      return mapToolCallsDeep(state, (tc) =>
+        tc.toolCallId === prompt.toolCallId
+          ? {
+              ...tc,
+              sideEffecting: true,
+              consent: 'pending',
+              consentPrompt: prompt,
+            }
+          : tc,
+      );
     }
     case 'toolCallFinished': {
       const denied = event.status === 'cancelled';
-      return {
-        ...state,
-        toolCalls: state.toolCalls.map((tc) =>
-          tc.toolCallId === event.tool_call_id
-            ? {
-                ...tc,
-                complete: true,
-                status: event.status,
-                error: event.error,
-                endedAt: Date.now(),
-                consent:
-                  tc.consent === 'pending'
-                    ? denied
-                      ? 'denied'
-                      : 'approved'
-                    : tc.consent,
-              }
-            : tc,
-        ),
-      };
+      return mapToolCallsDeep(state, (tc) =>
+        tc.toolCallId === event.tool_call_id
+          ? {
+              ...tc,
+              complete: true,
+              status: event.status,
+              error: event.error,
+              endedAt: Date.now(),
+              consent:
+                tc.consent === 'pending'
+                  ? denied
+                    ? 'denied'
+                    : 'approved'
+                  : tc.consent,
+            }
+          : tc,
+      );
     }
     case 'connectorStarted':
     case 'connectorHealthChanged':

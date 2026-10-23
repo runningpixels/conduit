@@ -23,4 +23,9 @@ wallClockBudgetSecs: number,
  * it, keep the default. Read it through
  * [`AgentGuardrails::finishes_after_document_write`].
  */
-finishAfterDocumentWrite?: boolean, };
+finishAfterDocumentWrite?: boolean, 
+/**
+ * Ids of the library agents the chat assistant may hand work to (each
+ * becomes an `ask_<id>` tool). Off by default.
+ */
+handoffAgents?: Array<string>, };

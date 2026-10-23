@@ -25,6 +25,8 @@ export interface ChatTurn {
   /** The provider and model a workflow resolved for this message (`metadata.workflow.model`):
    *  the chat's model line shows what actually ran instead of the current setting. */
   workflowModel?: { provider: string; model: string };
+  /** The library agent a user turn was addressed to with `@` (`metadata.agent`). */
+  agent?: { id: string; name: string };
 }
 
 const DISPLAY_PART_KINDS = new Set(['text', 'reasoning']);
@@ -99,6 +101,18 @@ export function workflowModelOf(
   return typeof provider === 'string' && provider && typeof model === 'string' && model ? { provider, model } : undefined;
 }
 
+/** The library agent an `@` turn ran as (`metadata.agent = {id, name}`), if any. */
+export function agentOf(
+  metadata: Record<string, unknown> | undefined | null,
+): { id: string; name: string } | undefined {
+  const agent = metadata?.agent;
+  if (!agent || typeof agent !== 'object') return undefined;
+  const { id, name } = agent as Record<string, unknown>;
+  return typeof id === 'string' && id.trim() && typeof name === 'string'
+    ? { id: id.trim(), name }
+    : undefined;
+}
+
 /** Map a persisted message to a chat-thread turn, or skip non-displayable roles. */
 export function messageToDisplayTurn(message: Message): ChatTurn | null {
   if (message.role === 'tool' || message.role === 'system' || message.role === 'developer') {
@@ -119,6 +133,7 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
 
   const workflowName = message.role === 'user' ? workflowNameOf(message.metadata) : undefined;
   const workflowModel = workflowModelOf(message.metadata);
+  const agent = message.role === 'user' ? agentOf(message.metadata) : undefined;
 
   return {
     id: message.id,
@@ -131,6 +146,7 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
     ...(researchRunId ? { researchRunId } : {}),
     ...(workflowName ? { workflowName } : {}),
     ...(workflowModel ? { workflowModel } : {}),
+    ...(agent ? { agent } : {}),
   };
 }
 

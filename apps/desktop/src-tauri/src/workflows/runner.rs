@@ -75,12 +75,12 @@ use super::ask::{PendingQuestion, Questions};
 use super::data;
 use super::definition::{
     self, AgentDef, ArtifactFormat, ModelChoice, OnError, SaveMode, Step, StepAction,
-    MAX_HANDOFFS_PER_STEP, MAX_HANDOFF_DEPTH,
 };
 use super::exports;
 use super::models::{self, Resolved};
 use super::permissions::{self, Decision, PendingReview, Permission, Reviews};
 use super::{computer, extract, template};
+use crate::agents::handoff::{self, helper_definition, helper_tool_name};
 use crate::artifact_network::AddressPolicy;
 use crate::db::repository::artifacts::{self, ArtifactContent};
 use crate::db::repository::conversations;
@@ -723,7 +723,7 @@ struct ConnectorTools<'e, 'a> {
     helpers: Vec<(String, &'e AgentDef)>,
     /// The helpers above this agent, which it may not hand work back to.
     chain: Vec<String>,
-    /// This agent's row in `workflow_agent_calls`, when it was recorded.
+    /// This agent's row in `agent_calls`, when it was recorded.
     row: Option<String>,
     team: &'e Team,
     /// The computer, when this agent may use it.
@@ -833,40 +833,6 @@ impl Team {
     }
 }
 
-/// What a helper is called as a tool.
-fn helper_tool_name(id: &str) -> String {
-    format!("ask_{id}")
-}
-
-/// How a helper looks to the agent that may hand it tasks.
-fn helper_definition(name: &str, helper: &AgentDef) -> provider_core::schema::ToolDefinition {
-    let about = cap_text(helper.instructions.trim(), 400);
-    provider_core::schema::ToolDefinition {
-        tool_id: name.to_string(),
-        name: name.to_string(),
-        description: format!(
-            "Hand a task to {}, a helper: {about} It knows nothing but the task you give it, \
-             so say everything it needs. It answers in words.",
-            helper.name.trim()
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "task": {
-                    "type": "string",
-                    "description": "What to do, with everything the helper needs to know."
-                }
-            },
-            "required": ["task"]
-        }),
-        kind: None,
-        host_config: None,
-        permission_level: Some(mcp_runtime::protocol::PermissionLevel::ReadOnly),
-        display_group: None,
-        tenant_scope: None,
-    }
-}
-
 impl ConnectorTools<'_, '_> {
     /// Hand `arguments.task` to `helper`. The time it takes is returned as
     /// waited, so the agent that handed it on isn't cut short for it; the
@@ -876,8 +842,6 @@ impl ConnectorTools<'_, '_> {
         helper: &AgentDef,
         arguments: &Value,
     ) -> (Result<Value, String>, Duration) {
-        use std::sync::atomic::Ordering;
-
         let task = arguments["task"]
             .as_str()
             .map(str::trim)
@@ -889,27 +853,8 @@ impl ConnectorTools<'_, '_> {
             );
         }
         let name = helper.name.trim();
-        if self.chain.iter().any(|id| id == &helper.id) {
-            return (
-                Err(format!(
-                    "{name} handed you this work; do it yourself rather than hand it back."
-                )),
-                Duration::ZERO,
-            );
-        }
-        if self.chain.len() >= MAX_HANDOFF_DEPTH {
-            return (
-                Err("This work can't be handed on any further; do it yourself.".to_string()),
-                Duration::ZERO,
-            );
-        }
-        if self.team.handed.fetch_add(1, Ordering::SeqCst) >= MAX_HANDOFFS_PER_STEP {
-            return (
-                Err(format!(
-                    "This step has handed out {MAX_HANDOFFS_PER_STEP} tasks already; finish with what you have."
-                )),
-                Duration::ZERO,
-            );
+        if let Err(refused) = handoff::check_handoff(&self.chain, helper, &self.team.handed) {
+            return (Err(refused), Duration::ZERO);
         }
         let started = Instant::now();
         let mut chain = self.chain.clone();
@@ -3363,7 +3308,7 @@ impl Exec<'_> {
             format!("{prompt}\n\n<input>\n{input}\n</input>")
         };
         let row = self
-            .record_agent(step_id, "step", step_id, None, prompt)
+            .record_agent(step_id, "step", step_id, None, prompt, model)
             .await;
         let team = Team::default();
         let taint = computer::Taint::starting_with(carried_in);
@@ -3462,7 +3407,7 @@ impl Exec<'_> {
             tracing::warn!(error = %e, "could not hide a helper's conversation");
         }
         let row = self
-            .record_agent(step_id, "helper", &helper.id, parent, task)
+            .record_agent(step_id, "helper", &helper.id, parent, task, &model)
             .await;
         let system = format!(
             "{HELPER_SYSTEM}\n\nYou are {}. {}{}",
@@ -3573,22 +3518,17 @@ impl Exec<'_> {
         )?;
         let request_id = request.request_id.clone();
         // The events, and the tokens they report as they come: past the
-        // limit, `over` ends the turn.
+        // limit, the guard lets it answer, then ends the turn.
         let events = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let over = CancellationToken::new();
+        let guard = std::sync::Arc::new(handoff::TokenGuard::new(
+            turn.token_limit.unwrap_or(u64::MAX),
+        ));
         let sink = {
             let events = events.clone();
             let used = used.clone();
-            let over = over.clone();
-            let limit = turn.token_limit;
+            let guard = guard.clone();
             event_sink::EventSink::from_fn(move |event: ProviderEvent| {
-                if let ProviderEvent::Usage { usage, .. } = &event {
-                    let more = usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
-                    let total = used.fetch_add(more, Ordering::SeqCst) + more;
-                    if limit.is_some_and(|limit| total > limit) {
-                        over.cancel();
-                    }
-                }
+                used.store(guard.see(&event), Ordering::SeqCst);
                 if let Ok(mut events) = events.lock() {
                     events.push(event);
                 }
@@ -3604,6 +3544,7 @@ impl Exec<'_> {
             turn.model.chosen.then_some(turn.model.provider.as_str()),
             TurnOptions {
                 step_tools: Some(&step_tools),
+                wrap_up: Some(&guard.wrap),
                 ..TurnOptions::default()
             },
         );
@@ -3611,7 +3552,7 @@ impl Exec<'_> {
             tokio::pin!(stream);
             tokio::select! {
                 result = &mut stream => result.map(|_| ()),
-                _ = over.cancelled() => {
+                _ = guard.cut.cancelled() => {
                     // Cancelled while the turn is still polled: it may be
                     // holding a database connection the cancel needs.
                     let _ = tokio::join!(
@@ -3620,9 +3561,8 @@ impl Exec<'_> {
                             .cancel_stream(state, &request_id, Some(turn.conversation)),
                         &mut stream
                     );
-                    Err(format!(
-                        "It used up its limit of {} tokens before answering.",
-                        turn.token_limit.unwrap_or_default()
+                    Err(handoff::token_limit_message(
+                        turn.token_limit.unwrap_or_default(),
                     ))
                 }
             }
@@ -3652,16 +3592,20 @@ impl Exec<'_> {
         agent_id: &str,
         parent: Option<&str>,
         task: &str,
+        model: &Resolved,
     ) -> Option<String> {
         let state = self.runner.state;
+        let model = format!("{}/{}", model.provider, model.model);
         let call = repo::AgentCallStart {
-            run_id: self.run_id,
-            workflow_id: self.workflow_id,
-            step_id,
+            run_id: Some(self.run_id),
+            workflow_id: Some(self.workflow_id),
+            step_id: Some(step_id),
+            conversation_id: None,
             kind,
             agent_id,
             parent_id: parent,
             task: &cap_text(task, MAX_MODEL_TEXT_CHARS),
+            model: Some(&model),
         };
         match repo::start_agent_call(&state.db, &state.encryption, &call).await {
             Ok(id) => Some(id),
@@ -4172,6 +4116,7 @@ impl Exec<'_> {
                         held: Some(&turn),
                         // An update calls no connector tool.
                         step_tools: Some(&NoTools),
+                        ..TurnOptions::default()
                     },
                 ),
             )
@@ -4434,32 +4379,15 @@ impl Exec<'_> {
         events: &[ProviderEvent],
         allow_empty: bool,
     ) -> Result<(String, Vec<String>), String> {
-        let mut reply = String::new();
-        let mut called = Vec::new();
-        let mut used = 0;
-        for event in events {
-            match event {
-                ProviderEvent::ContentDelta { content, .. } => reply.push_str(content),
-                // Text before a tool call is working, not the answer.
-                ProviderEvent::ToolCallStart { name, .. } => {
-                    reply.clear();
-                    called.push(name.clone());
-                }
-                ProviderEvent::Error { error, .. } => return Err(error.message.clone()),
-                ProviderEvent::Usage { usage, .. } => {
-                    used += usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
-                }
-                _ => {}
-            }
-        }
-        if let Some(reason) = self.count_tokens(used) {
+        let read = handoff::read_events(events)?;
+        if let Some(reason) = self.count_tokens(read.used) {
             return Err(reason);
         }
-        let reply = reply.trim().to_string();
+        let reply = read.text.trim().to_string();
         if reply.is_empty() && !allow_empty {
             return Err("The model returned nothing.".to_string());
         }
-        Ok((reply, called))
+        Ok((reply, read.called))
     }
 
     /// A failed try may be repeated: not once the run is stopped or out of budget.
@@ -4885,11 +4813,11 @@ fn skipped_output(error: &str) -> Value {
 /// The same as one attached document in the chat, so a long page or a joined
 /// set of pages is cut the way the chat cuts it rather than overflowing the
 /// model's context.
-const MAX_MODEL_TEXT_CHARS: usize = crate::attachment_documents::DOCUMENT_TEXT_MAX_CHARS;
+pub(crate) const MAX_MODEL_TEXT_CHARS: usize = crate::attachment_documents::DOCUMENT_TEXT_MAX_CHARS;
 
 /// `text`, cut at a character boundary to `max` characters with a marker
 /// saying how much was left out.
-fn cap_text(text: &str, max: usize) -> String {
+pub(crate) fn cap_text(text: &str, max: usize) -> String {
     let Some((end, _)) = text.char_indices().nth(max) else {
         return text.to_string();
     };

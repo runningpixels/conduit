@@ -180,7 +180,27 @@ pub fn validate_agent_guardrails(
         .with("min", MIN_WALL_CLOCK_SECS.to_string())
         .with("max", MAX_WALL_CLOCK_SECS.to_string()));
     }
+    if guardrails.handoff_agents.len() > MAX_HANDOFF_AGENTS {
+        return Err(AppError::new(
+            "error.validation.agentHandoffMax",
+            format!("at most {MAX_HANDOFF_AGENTS} agents can be handed work from chat"),
+        )
+        .with("max", MAX_HANDOFF_AGENTS.to_string()));
+    }
     Ok(())
+}
+
+/// Most library agents the chat assistant may be given.
+pub const MAX_HANDOFF_AGENTS: usize = 20;
+
+/// Trim the agent ids, drop empty ones and repeats (keeping the first).
+pub fn clean_handoff_agents(ids: &mut Vec<String>) {
+    let mut seen = std::collections::HashSet::new();
+    *ids = std::mem::take(ids)
+        .into_iter()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty() && seen.insert(id.clone()))
+        .collect();
 }
 
 /// Validate persistent web search defaults on save. Domain lists must be bare

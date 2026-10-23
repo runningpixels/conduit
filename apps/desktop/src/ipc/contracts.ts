@@ -576,9 +576,16 @@ export interface MemoryItem {
   sourceWorkflow?: string;
   pinned: boolean;
   status: MemoryStatus;
+  /** `global` (the user's own memory) or `agent:<id>` (one of the user's agents' notes). */
+  scope: string;
+  /** Where an agent's note came from; absent for the user's own memory and notes added by hand. */
+  origin?: MemoryOrigin;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Where an agent wrote a note: a chat, a workflow run, or a run nobody was watching. */
+export type MemoryOrigin = 'chat' | 'run' | 'scheduled_run';
 
 /** One-level history-rail folder (t0-5). Empty folders stay as drop targets. */
 export interface ConversationFolder {
@@ -832,6 +839,10 @@ export interface AgentDef {
   maxTokens?: number;
   /** Can work alongside other agents even though its tools change things. */
   alongside?: boolean;
+  /** Keeps its own notes between runs (one of the user's agents only). Left out when false. */
+  memory?: boolean;
+  /** Ids of the collections of documents it may search. Left out when empty. */
+  knowledge?: string[];
   /**
    * Set when this helper is one of the user's agents (`LibraryAgent`): the
    * saved definition holds only `{ id, library }` (id === library) and the
@@ -851,6 +862,8 @@ export interface LibraryAgent {
   usedBy: { workflowId: string; workflowName: string }[];
   /** Its work in chat (`@` turns and hand-offs), last 30 days. */
   chat: LibraryAgentChatActivity;
+  /** How many notes it keeps (its `agent:<id>` memory). */
+  notes: number;
 }
 
 export interface LibraryAgentChatActivity {

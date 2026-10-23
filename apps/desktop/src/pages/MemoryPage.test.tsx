@@ -23,18 +23,22 @@ function item(overrides: Partial<MemoryItem>): MemoryItem {
     body: 'I prefer terse commit messages',
     pinned: false,
     status: 'active',
+    scope: 'global',
     createdAt: '2026-09-04T00:00:00Z',
     updatedAt: '2026-09-04T00:00:00Z',
     ...overrides,
   };
 }
 
-function renderPage(overrides: { settings?: AppSettings; onSettingsChange?: () => void; onStatus?: () => void } = {}) {
+function renderPage(
+  overrides: { settings?: AppSettings; onSettingsChange?: () => void; onStatus?: () => void; onOpenAgents?: () => void } = {},
+) {
   return render(
     <MemoryPage
       settings={overrides.settings ?? settings}
       onSettingsChange={overrides.onSettingsChange ?? vi.fn()}
       onStatus={overrides.onStatus ?? vi.fn()}
+      onOpenAgents={overrides.onOpenAgents}
     />,
   );
 }
@@ -142,6 +146,20 @@ describe('MemoryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(ipc.deleteMemoryItem).toHaveBeenCalledWith('m1'));
     expect(confirmSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('says agents keep their own notes and links to the Agents page', async () => {
+    const onOpenAgents = vi.fn();
+    renderPage({ onOpenAgents });
+    expect(await screen.findByText(/Your agents keep their own notes/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'See agents' }));
+    expect(onOpenAgents).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists only your own memory, not an agent's notes", async () => {
+    renderPage();
+    await waitFor(() => expect(ipc.listMemoryItems).toHaveBeenCalled());
+    expect(ipc.listMemoryItems.mock.calls.every((c) => c[1] === undefined)).toBe(true);
   });
 
   it('reports a failed action', async () => {

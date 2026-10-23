@@ -39,10 +39,13 @@ export function MemoryPage({
   settings,
   onSettingsChange,
   onStatus,
+  onOpenAgents,
 }: {
   settings: AppSettings;
   onSettingsChange: (s: AppSettings) => void;
   onStatus: (message: string) => void;
+  /// Go to the Agents page, where each agent's own notes are.
+  onOpenAgents?: () => void;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -205,6 +208,15 @@ export function MemoryPage({
             {t('settings.memory.page.off')}
           </p>
         ) : null}
+
+        <p className="wf-muted mem-agents-note">
+          {t('settings.memory.page.agentsNote')}{' '}
+          {onOpenAgents ? (
+            <button type="button" className="btn ghost" onClick={onOpenAgents}>
+              {t('settings.memory.page.agentsLink')}
+            </button>
+          ) : null}
+        </p>
 
         {composing ? (
           <section className="mem-composer" aria-label={t('settings.memory.page.add')}>

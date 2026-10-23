@@ -1367,6 +1367,10 @@ pub struct TurnOptions<'a> {
     /// The agents this turn may hand work to (`ask_<id>` tools), in chat.
     /// Unlike `step_tools`, chat's remembered approvals still apply.
     pub handoff: Option<&'a crate::agents::handoff::ChatHandoff<'a>>,
+    /// A turn of one of the user's agents: its own tools (`remember` and
+    /// `forget` for its notes, `search_documents` over its collections), run
+    /// before any built-in of the same name.
+    pub kit: Option<&'a crate::agents::kit::AgentKit>,
     /// When the turn must end, whatever it is doing and however long it
     /// waited for the user. Hand-offs inherit it.
     pub ceiling: Option<tokio::time::Instant>,
@@ -2309,6 +2313,58 @@ impl StreamManager {
         }
     }
 
+    /// Run one of an agent's own tools (`agents::kit`) and record its result
+    /// as a step tool's is recorded. Boxed where it is made: it runs inside
+    /// [`Self::execute_resolved_tool_calls`], whose frame is already large in
+    /// a debug build (see `agents::kit::Boxed`).
+    #[allow(clippy::too_many_arguments)]
+    fn run_kit_tool<'a>(
+        &'a self,
+        state: &'a AppState,
+        ctx: &'a agent_tools::AgentToolContext<'a>,
+        kit: &'a crate::agents::kit::AgentKit,
+        call: &'a CompletedToolCall,
+        tool_name: &'a str,
+        request_id: &'a str,
+        provider_channel: Option<&'a EventSink<ProviderEvent>>,
+    ) -> crate::agents::kit::Boxed<'a, ()> {
+        Box::pin(async move {
+            let adapters = |provider: &str| self.resolve_adapter(provider);
+            let (output, is_error) =
+                match kit.call(state, &adapters, tool_name, &call.arguments).await {
+                    Ok(output) => (output, false),
+                    Err(error) => (serde_json::json!({ "ok": false, "error": error }), true),
+                };
+            let recorded = agent_tools::finalize_tool_call(
+                ctx,
+                &call.tool_call_id,
+                request_id,
+                tool_name,
+                &call.arguments,
+                output,
+                is_error,
+            )
+            .await;
+            if let Err(error) = &recorded {
+                warn!(
+                    request_id = %request_id,
+                    tool_call_id = %call.tool_call_id,
+                    error = %error,
+                    "failed to record an agent tool's result"
+                );
+            }
+            if let Some(ch) = provider_channel {
+                let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                    request_id: request_id.to_string(),
+                    tool_call_id: call.tool_call_id.clone(),
+                    tool_name: tool_name.to_string(),
+                    is_error,
+                    error: recorded.ok().and_then(|exec| exec.record.error),
+                });
+            }
+        })
+    }
+
     /// Execute a batch of tool calls resolved from a provider round.
     /// This is the direct in-process invocation of the Phase 4 execution pipeline
     /// from the agent loop, preserving consent, redaction, and persistence.
@@ -2346,6 +2402,7 @@ impl StreamManager {
         headless: bool,
         step_tools: Option<&dyn StepTools>,
         handoff: Option<&crate::agents::handoff::ChatHandoff<'_>>,
+        kit: Option<&crate::agents::kit::AgentKit>,
         helper_turn: bool,
     ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
@@ -2564,6 +2621,21 @@ impl StreamManager {
                         }
                     }
                 }
+                continue;
+            }
+
+            // One of the agent's own tools (its notes, its collections).
+            if let Some(kit) = kit.filter(|k| k.offers(&tool_name)) {
+                self.run_kit_tool(
+                    state,
+                    &ctx,
+                    kit,
+                    call,
+                    &tool_name,
+                    request_id,
+                    provider_channel,
+                )
+                .await;
                 continue;
             }
 
@@ -4322,6 +4394,7 @@ impl StreamManager {
                 options.headless,
                 options.step_tools,
                 options.handoff,
+                options.kit,
                 options.queue_rounds,
             );
             let mut steered_during_tools: Option<String> = None;

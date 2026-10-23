@@ -1421,16 +1421,31 @@ export async function revealSkillsDir(): Promise<string> {
   return invokeCommand<string>('reveal_skills_dir');
 }
 
-export async function listMemoryItems(status?: 'pending' | 'active' | null): Promise<MemoryItem[]> {
-  return invokeCommand<MemoryItem[]>('list_memory_items', { status: status ?? null });
+/** The memory scope of one of the user's agents (its own notes). */
+export function agentMemoryScope(agentId: string): string {
+  return `agent:${agentId}`;
+}
+
+/** The user's memory, or with `scope` (`agentMemoryScope(id)`) one agent's notes. */
+export async function listMemoryItems(
+  status?: 'pending' | 'active' | null,
+  scope?: string | null,
+): Promise<MemoryItem[]> {
+  return invokeCommand<MemoryItem[]>('list_memory_items', { status: status ?? null, scope: scope ?? null });
 }
 
 export async function createMemoryItem(
   body: string,
   kind?: 'core' | 'note',
   pinned?: boolean,
+  scope?: string | null,
 ): Promise<MemoryItem> {
-  return invokeCommand<MemoryItem>('create_memory_item', { body, kind: kind ?? null, pinned: pinned ?? null });
+  return invokeCommand<MemoryItem>('create_memory_item', {
+    body,
+    kind: kind ?? null,
+    pinned: pinned ?? null,
+    scope: scope ?? null,
+  });
 }
 
 export async function updateMemoryItem(

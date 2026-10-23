@@ -82,6 +82,7 @@ use super::models::{self, Resolved};
 use super::permissions::{self, Decision, PendingReview, Permission, Reviews};
 use super::{computer, extract, template};
 use crate::agents::handoff::{self, helper_definition, helper_tool_name};
+use crate::agents::kit::{self, AgentKit};
 use crate::artifact_network::AddressPolicy;
 use crate::db::repository::artifacts::{self, ArtifactContent};
 use crate::db::repository::conversations;
@@ -172,6 +173,8 @@ struct AgentTurn<'t> {
     /// works, and whose rounds queue for their provider
     /// ([`TurnOptions::queue_rounds`]).
     helper_stop: Option<&'t CancellationToken>,
+    /// One of the user's agents' own notes and collections.
+    kit: Option<&'t AgentKit>,
 }
 
 /// What one agent's turn came to: its answer and the tools it called, and
@@ -3425,6 +3428,11 @@ impl Exec<'_> {
             format!("{prompt}\n\n<input>\n{input}\n</input>")
         };
         let agent_id = runs_as.map_or(step_id, |a| a.id.as_str());
+        // Its notes and collections, when it is one of the user's agents.
+        let kit = match runs_as {
+            Some(agent) => self.agent_kit(step_id, Some(&agent.id), agent).await?,
+            None => None,
+        };
         let row = self
             .record_agent(step_id, "step", agent_id, None, prompt, model)
             .await;
@@ -3446,6 +3454,9 @@ impl Exec<'_> {
             system.push_str("\n\n");
             system.push_str(COMPUTER_SYSTEM);
         }
+        if let Some(kit) = &kit {
+            kit.add_to_system(&mut system);
+        }
         let worked = self
             .agent_turn(AgentTurn {
                 step_id,
@@ -3458,10 +3469,13 @@ impl Exec<'_> {
                 model,
                 chain: Vec::new(),
                 row: row.clone(),
-                token_limit: None,
+                // One of the user's agents keeps its own limit, as it does
+                // as a helper; a plain step is held only by the run's budget.
+                token_limit: runs_as.map(AgentDef::token_limit),
                 team: &team,
                 taint: &taint,
                 helper_stop: None,
+                kit: kit.as_ref(),
             })
             .await;
         self.finish_agent(row, &worked, false).await;
@@ -3525,6 +3539,14 @@ impl Exec<'_> {
         if let Err(error) = allowed.await {
             return (Err(error), 0);
         }
+        // Its notes (one of the user's agents only) and collections.
+        let kit = match self
+            .agent_kit(step_id, helper.library.as_deref(), helper)
+            .await
+        {
+            Ok(kit) => kit,
+            Err(error) => return (Err(error), 0),
+        };
         let pool = &self.runner.state.db;
         let title = format!("{} \u{00b7} {}", self.workflow_name, helper.name.trim());
         let conversation = match conversations::create(pool, Some(&title)).await {
@@ -3537,7 +3559,7 @@ impl Exec<'_> {
         let row = self
             .record_agent(step_id, "helper", &helper.id, parent, task, &model)
             .await;
-        let system = format!(
+        let mut system = format!(
             "{HELPER_SYSTEM}\n\nYou are {}. {}{}",
             helper.name.trim(),
             helper.instructions.trim(),
@@ -3554,6 +3576,9 @@ impl Exec<'_> {
             .map(|more| format!("\n\n{more}"))
             .collect::<String>()
         );
+        if let Some(kit) = &kit {
+            kit.add_to_system(&mut system);
+        }
         // Stop on its node ends this helper alone (and the helpers it hands
         // work to); the agent that handed it the task hears so and carries on.
         let stop = parent_stop.map_or_else(CancellationToken::new, CancellationToken::child_token);
@@ -3573,6 +3598,7 @@ impl Exec<'_> {
                 team,
                 taint,
                 helper_stop: Some(&stop),
+                kit: kit.as_ref(),
             })
             .await;
         if let Err(e) = conversations::delete(pool, &conversation).await {
@@ -3651,6 +3677,11 @@ impl Exec<'_> {
                 .iter()
                 .map(|(name, helper)| helper_definition(name, helper)),
         );
+        if let Some(kit) = turn.kit {
+            let own = kit.definitions();
+            definitions.retain(|d| !own.iter().any(|o| o.name == d.name));
+            definitions.extend(own);
+        }
         let request = self.request_in(
             turn.conversation,
             &[(MessageRole::User, turn.text.to_string())],
@@ -3693,6 +3724,7 @@ impl Exec<'_> {
             turn.model.chosen.then_some(turn.model.provider.as_str()),
             TurnOptions {
                 step_tools: Some(&step_tools),
+                kit: turn.kit,
                 wrap_up: Some(&guard.wrap),
                 queue_rounds: turn.helper_stop.is_some(),
                 ..TurnOptions::default()
@@ -3752,6 +3784,44 @@ impl Exec<'_> {
             .lock()
             .map_err(|_| "the reply could not be read".to_string())?;
         self.read_reply(&events)
+    }
+
+    /// What `agent` brings to its turn in step `step_id`: its notes (kept
+    /// under `owner`, one of the user's agents' id) and its collections.
+    /// Searching them is a permission like a `search_documents` step's,
+    /// asked for before the turn so a run nobody watches never stops in it.
+    /// Boxed where it is made (see `agents::kit::Boxed`).
+    fn agent_kit<'s>(
+        &'s self,
+        step_id: &'s str,
+        owner: Option<&'s str>,
+        agent: &'s AgentDef,
+    ) -> kit::Boxed<'s, Result<Option<AgentKit>, String>> {
+        Box::pin(async move {
+            let state = self.runner.state;
+            let origin = kit::run_origin(self.runner.unattended.is_some());
+            let Some(kit) = AgentKit::load(state, owner, agent, origin).await? else {
+                return Ok(None);
+            };
+            let ids = kit.collection_ids();
+            if !ids.is_empty() {
+                let mut titles = HashMap::new();
+                for id in &ids {
+                    if let Ok(Some(collection)) =
+                        crate::db::repository::knowledge::get_collection(&state.db, id).await
+                    {
+                        titles.insert(id.clone(), collection.name);
+                    }
+                }
+                self.allow(
+                    step_id,
+                    permissions::search_documents(&ids, &|id| titles.get(id).cloned()),
+                    None,
+                )
+                .await?;
+            }
+            Ok(Some(kit))
+        })
     }
 
     /// Record that an agent started on a task, for the Agents page; `None`
@@ -4685,13 +4755,12 @@ impl Exec<'_> {
         let item = memory::create(
             &state.db,
             &state.encryption,
-            NewMemory {
-                kind: MemoryKind::Core,
-                body: text.to_string(),
-                source_conversation_id: Some(self.conversation_id.to_string()),
-                pinned: false,
-                status: MemoryStatus::Pending,
-            },
+            NewMemory::global(
+                MemoryKind::Core,
+                text,
+                Some(self.conversation_id.to_string()),
+                MemoryStatus::Pending,
+            ),
         )
         .await
         .map_err(|e| e.to_string())?;

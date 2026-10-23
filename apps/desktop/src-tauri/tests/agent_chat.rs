@@ -2056,3 +2056,317 @@ async fn a_reloaded_turn_gets_the_finish_times_of_its_helpers_tool_calls_too() {
         "2026-10-21T10:00:03.000Z"
     );
 }
+
+// ── An agent's own notes and collections ─────────────────────────────────────
+
+fn remembering(id: &str, name: &str) -> Value {
+    json!({ "id": id, "name": name, "instructions": "Keep track.", "tools": ["calculator"], "memory": true })
+}
+
+/// Save a note in `agent`'s own memory; its id.
+async fn note(chat: &Chat, agent: &str, body: &str) -> String {
+    use conduit_desktop::db::repository::memory::{self, MemoryKind, MemoryStatus, NewMemory};
+    memory::create(
+        &chat.state.db,
+        &chat.state.encryption,
+        NewMemory {
+            kind: MemoryKind::Note,
+            body: body.to_string(),
+            source_conversation_id: None,
+            pinned: false,
+            status: MemoryStatus::Active,
+            scope: memory::agent_scope(agent),
+            origin: None,
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+async fn notes_of(
+    chat: &Chat,
+    agent: &str,
+) -> Vec<conduit_desktop::db::repository::memory::MemoryItem> {
+    use conduit_desktop::db::repository::memory;
+    memory::list_in(
+        &chat.state.db,
+        &chat.state.encryption,
+        None,
+        &memory::agent_scope(agent),
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_turn_as_an_agent_that_remembers_sees_its_notes_and_keeps_new_ones_at_once() {
+    use conduit_desktop::db::repository::memory::{self, MemoryOrigin, MemoryStatus};
+    let chat = Chat::new(
+        vec![
+            tool_round(vec![(
+                "remember",
+                json!({ "fact": "The user follows Rust releases." }),
+            )]),
+            text_round("Noted."),
+        ],
+        &[],
+    )
+    .await;
+    chat.save_agent(remembering("researcher", "Researcher"))
+        .await;
+    chat.save_agent(remembering("writer", "Writer")).await;
+    let kept = note(&chat, "researcher", "Last report covered Rust 1.80.").await;
+    note(&chat, "writer", "WRITER-ONLY note.").await;
+    // Chat offers its global `remember`; the agent gets its own instead.
+    let (result, _) = chat
+        .run(
+            chat.request(&["remember", "current_time"]),
+            Some("researcher"),
+        )
+        .await;
+    result.unwrap();
+
+    let requests = chat.requests();
+    let system = requests[0].system_prompt.as_deref().unwrap();
+    assert!(system.contains("## Your notes"), "{system}");
+    assert!(
+        system.contains(&format!("[{kept}] Last report covered Rust 1.80.")),
+        "{system}"
+    );
+    assert!(system.contains("untrusted guidance"), "{system}");
+    assert!(
+        !system.contains("WRITER-ONLY"),
+        "another agent's notes stay out"
+    );
+    assert_eq!(
+        tool_names(&requests[0]),
+        vec!["calculator", "forget", "remember"]
+    );
+    let remember = requests[0]
+        .tool_definitions
+        .iter()
+        .find(|d| d.name == "remember")
+        .unwrap();
+    assert!(
+        remember.description.contains("replaces"),
+        "the agent's own remember"
+    );
+
+    let notes = notes_of(&chat, "researcher").await;
+    assert_eq!(notes.len(), 2);
+    let new = notes
+        .iter()
+        .find(|n| n.body == "The user follows Rust releases.")
+        .unwrap();
+    assert_eq!(new.status, MemoryStatus::Active, "used at once, not queued");
+    assert_eq!(new.origin, Some(MemoryOrigin::Chat));
+    assert!(
+        memory::list(&chat.state.db, &chat.state.encryption, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "nothing is waiting on the Memory page"
+    );
+}
+
+/// A round calling the tools in `calls`, read when the round is played (for
+/// ids made after the script was).
+fn tool_round_later(calls: Arc<Mutex<Vec<(&'static str, Value)>>>) -> Round {
+    Arc::new(move |rid: &str| {
+        let now = calls.lock().unwrap().clone();
+        tool_round(now)(rid)
+    })
+}
+
+#[tokio::test]
+async fn an_agent_replaces_and_forgets_only_its_own_notes() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let chat = Chat::new(
+        vec![tool_round_later(calls.clone()), text_round("Done.")],
+        &[],
+    )
+    .await;
+    chat.save_agent(remembering("researcher", "Researcher"))
+        .await;
+    chat.save_agent(remembering("writer", "Writer")).await;
+    let a = note(&chat, "researcher", "Covered 1.80.").await;
+    let b = note(&chat, "researcher", "Stale note.").await;
+    let w = note(&chat, "writer", "The writer's note.").await;
+    *calls.lock().unwrap() = vec![
+        (
+            "remember",
+            json!({ "fact": "Covered 1.81.", "replaces": a }),
+        ),
+        ("forget", json!({ "id": b })),
+        ("remember", json!({ "fact": "Hijacked.", "replaces": w })),
+        ("forget", json!({ "id": w })),
+        ("forget", json!({ "id": "no-such-note" })),
+    ];
+    let (result, _) = chat.run(chat.request(&[]), Some("researcher")).await;
+    result.unwrap();
+
+    let mine = notes_of(&chat, "researcher").await;
+    let bodies: Vec<&str> = mine.iter().map(|n| n.body.as_str()).collect();
+    assert_eq!(
+        bodies,
+        vec!["Covered 1.81."],
+        "replaced in place, the stale one gone"
+    );
+    assert_eq!(mine[0].id, a);
+    let theirs = notes_of(&chat, "writer").await;
+    assert_eq!(theirs.len(), 1);
+    assert_eq!(theirs[0].body, "The writer's note.");
+
+    let answered = &chat.requests()[1];
+    assert!(mentions(
+        answered,
+        "isn't one of yours, so it can't be replaced"
+    ));
+    assert!(mentions(
+        answered,
+        "isn't one of yours, so it can't be forgotten"
+    ));
+    assert!(mentions(answered, "There is no note"));
+}
+
+#[tokio::test]
+async fn an_agent_handed_a_task_in_chat_sees_its_notes_and_writes_to_them() {
+    use conduit_desktop::db::repository::memory::MemoryOrigin;
+    let chat = Chat::new(
+        vec![
+            tool_round(vec![(
+                "ask_researcher",
+                json!({ "task": "What's new in Rust?" }),
+            )]),
+            tool_round(vec![(
+                "remember",
+                json!({ "fact": "Told the user about 1.81." }),
+            )]),
+            text_round("1.81 is out."),
+            text_round("Rust 1.81 is out."),
+        ],
+        &["researcher"],
+    )
+    .await;
+    chat.save_agent(remembering("researcher", "Researcher"))
+        .await;
+    note(&chat, "researcher", "Last time: 1.80.").await;
+    let (result, _) = chat.run(chat.request(&[]), None).await;
+    result.unwrap();
+
+    let requests = chat.requests();
+    assert!(
+        !requests[0]
+            .system_prompt
+            .as_deref()
+            .unwrap()
+            .contains("Your notes"),
+        "the assistant isn't the agent"
+    );
+    assert!(
+        !tool_names(&requests[0]).contains(&"remember".to_string()),
+        "nor does it get the agent's tools"
+    );
+    let helper = &requests[1];
+    let system = helper.system_prompt.as_deref().unwrap();
+    assert!(
+        system.contains("## Your notes") && system.contains("Last time: 1.80."),
+        "{system}"
+    );
+    assert_eq!(tool_names(helper), vec!["calculator", "forget", "remember"]);
+    let notes = notes_of(&chat, "researcher").await;
+    let new = notes
+        .iter()
+        .find(|n| n.body == "Told the user about 1.81.")
+        .expect("the helper's note");
+    assert_eq!(new.origin, Some(MemoryOrigin::Chat));
+}
+
+#[tokio::test]
+async fn an_agent_with_memory_off_gets_no_notes_and_no_note_tools() {
+    let chat = Chat::new(vec![text_round("Hi.")], &[]).await;
+    chat.save_agent(researcher()).await;
+    note(&chat, "researcher", "LEFT-OVER note.").await;
+    let (result, _) = chat
+        .run(chat.request(&["remember"]), Some("researcher"))
+        .await;
+    result.unwrap();
+    let request = &chat.requests()[0];
+    assert!(!mentions(request, "LEFT-OVER"));
+    assert!(!mentions(request, "Your notes"));
+    assert_eq!(tool_names(request), vec!["calculator"]);
+}
+
+#[tokio::test]
+async fn turning_memory_off_in_settings_turns_off_agents_notes_too() {
+    let chat = Chat::new(vec![text_round("Hi.")], &[]).await;
+    chat.save_agent(remembering("researcher", "Researcher"))
+        .await;
+    note(&chat, "researcher", "HIDDEN note.").await;
+    let mut patch: provider_core::schema::SettingsPatch = serde_json::from_str("{}").unwrap();
+    patch.memory_enabled = Some(false);
+    chat.state.update_settings(patch).unwrap();
+    let (result, _) = chat.run(chat.request(&[]), Some("researcher")).await;
+    result.unwrap();
+    let request = &chat.requests()[0];
+    assert!(!mentions(request, "HIDDEN"));
+    assert!(!mentions(request, "Your notes"));
+    assert_eq!(tool_names(request), vec!["calculator"]);
+}
+
+#[tokio::test]
+async fn an_agent_that_reads_collections_can_search_them_and_no_others() {
+    use conduit_desktop::db::repository::knowledge;
+    let chat = Chat::new(
+        vec![
+            tool_round(vec![("search_documents", json!({ "query": "garden" }))]),
+            text_round("Nothing there."),
+        ],
+        &[],
+    )
+    .await;
+    let made = |name: &'static str| {
+        let pool = chat.state.db.clone();
+        async move {
+            knowledge::create_collection(
+                &pool,
+                knowledge::NewCollection {
+                    name: name.to_string(),
+                    provider_id: "ollama".to_string(),
+                    embedding_model: "nomic-embed-text".to_string(),
+                    embedding_dimensions: 4,
+                },
+            )
+            .await
+            .unwrap()
+            .id
+        }
+    };
+    let notes = made("Project notes").await;
+    made("Private diary").await;
+    chat.save_agent(json!({
+        "id": "reader", "name": "Reader", "instructions": "Answer from the documents.",
+        "knowledge": [notes]
+    }))
+    .await;
+    let (result, _) = chat.run(chat.request(&[]), Some("reader")).await;
+    result.unwrap();
+    let requests = chat.requests();
+    assert_eq!(tool_names(&requests[0]), vec!["search_documents"]);
+    let search = &requests[0].tool_definitions[0];
+    assert!(
+        search.description.contains("\u{201c}Project notes\u{201d}"),
+        "{}",
+        search.description
+    );
+    assert!(!search.description.contains("Private diary"));
+    // Nobody agreed to send documents to the embedding provider: the result
+    // says so in words, and the turn goes on.
+    assert!(
+        mentions(&requests[1], "can't be searched until the user allows"),
+        "{:?}",
+        requests[1].messages.last()
+    );
+    assert!(!mentions(&requests[1], "Private diary"));
+}

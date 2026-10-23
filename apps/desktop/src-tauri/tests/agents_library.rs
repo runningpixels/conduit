@@ -485,3 +485,184 @@ async fn a_starter_the_user_already_has_is_kept_as_it_is() {
     let writer = list.iter().find(|a| a.agent.id == "writer").unwrap();
     assert_eq!(writer.agent.name, "My writer");
 }
+
+// ── Memory and knowledge ─────────────────────────────────────────────────────
+
+async fn collection(pool: &SqlitePool, name: &str) -> String {
+    use conduit_desktop::db::repository::knowledge;
+    knowledge::create_collection(
+        pool,
+        knowledge::NewCollection {
+            name: name.to_string(),
+            provider_id: "ollama".to_string(),
+            embedding_model: "nomic-embed-text".to_string(),
+            embedding_dimensions: 4,
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+async fn note(pool: &SqlitePool, enc: &Encryption, agent: &str, body: &str) -> String {
+    use conduit_desktop::db::repository::memory::{self, MemoryKind, MemoryStatus, NewMemory};
+    memory::create(
+        pool,
+        enc,
+        NewMemory {
+            kind: MemoryKind::Note,
+            body: body.to_string(),
+            source_conversation_id: None,
+            pinned: false,
+            status: MemoryStatus::Active,
+            scope: memory::agent_scope(agent),
+            origin: None,
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+#[tokio::test]
+async fn an_agent_may_read_only_collections_that_exist() {
+    let (pool, enc) = setup().await;
+    let notes = collection(&pool, "Project notes").await;
+    let saved = add(
+        &pool,
+        &enc,
+        json!({ "id": "reader", "name": "Reader", "instructions": "Read.", "knowledge": [notes], "memory": true }),
+    )
+    .await;
+    assert_eq!(saved.agent.knowledge, vec![notes.clone()]);
+    assert!(saved.agent.memory);
+
+    let problems = library::validate(
+        &pool,
+        &enc,
+        agent(json!({ "id": "", "name": "Other", "instructions": "Read.", "knowledge": [notes, "gone"] })),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        problems,
+        vec!["\u{201c}Other\u{201d} reads \u{201c}gone\u{201d}, which isn\u{2019}t one of your collections of documents."]
+    );
+    let error = library::create(
+        &pool,
+        &enc,
+        agent(json!({ "id": "", "name": "Other", "instructions": "Read.", "knowledge": ["gone"] })),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        error.contains("isn\u{2019}t one of your collections"),
+        "{error}"
+    );
+    let twice = library::validate(
+        &pool,
+        &enc,
+        agent(json!({ "id": "x", "name": "Twice", "instructions": "Read.", "knowledge": [notes, notes] })),
+    )
+    .await
+    .unwrap();
+    assert!(
+        twice.iter().any(|p| p.contains("lists a collection twice")),
+        "{twice:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_saved_agent_without_memory_or_collections_has_neither_in_its_json() {
+    let (pool, enc) = setup().await;
+    let saved = add(
+        &pool,
+        &enc,
+        json!({ "id": "plain", "name": "Plain", "instructions": "Go." }),
+    )
+    .await;
+    let json = serde_json::to_value(&saved).unwrap();
+    assert!(json["agent"].get("memory").is_none(), "{json}");
+    assert!(json["agent"].get("knowledge").is_none(), "{json}");
+    assert_eq!(json["notes"], 0);
+}
+
+#[tokio::test]
+async fn resolving_a_reference_brings_its_memory_and_collections() {
+    let (pool, enc) = setup().await;
+    let notes = collection(&pool, "Project notes").await;
+    add(
+        &pool,
+        &enc,
+        json!({ "id": "reader", "name": "Reader", "instructions": "Read.", "knowledge": [notes], "memory": true }),
+    )
+    .await;
+    let resolved = library::resolve_value(
+        &pool,
+        &enc,
+        &using(json!([{ "id": "reader", "library": "reader" }])),
+    )
+    .await
+    .unwrap();
+    assert_eq!(resolved["agents"][0]["memory"], true);
+    assert_eq!(resolved["agents"][0]["knowledge"], json!([notes]));
+    assert!(
+        conduit_desktop::workflows::definition::check_value(&resolved).is_ok(),
+        "memory and knowledge are known settings of a helper"
+    );
+}
+
+#[tokio::test]
+async fn the_list_counts_each_agents_notes_and_deleting_an_agent_deletes_them() {
+    let (pool, enc) = setup().await;
+    add(
+        &pool,
+        &enc,
+        json!({ "id": "reader", "name": "Reader", "instructions": "Read.", "memory": true }),
+    )
+    .await;
+    add(
+        &pool,
+        &enc,
+        json!({ "id": "writer", "name": "Writer", "instructions": "Write.", "memory": true }),
+    )
+    .await;
+    note(&pool, &enc, "reader", "One.").await;
+    note(&pool, &enc, "reader", "Two.").await;
+    note(&pool, &enc, "writer", "Mine.").await;
+    let list = library::list(&pool, &enc).await.unwrap();
+    let count = |id: &str| list.iter().find(|a| a.agent.id == id).unwrap().notes;
+    assert_eq!((count("reader"), count("writer")), (2, 1));
+
+    let uses = save_workflow(
+        &pool,
+        &enc,
+        "Uses it",
+        using(json!([{ "id": "reader", "library": "reader" }])),
+    )
+    .await;
+    library::delete(&pool, &enc, "reader").await.unwrap();
+    use conduit_desktop::db::repository::memory;
+    assert_eq!(
+        memory::count_in(&pool, &memory::agent_scope("reader"))
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        memory::count_in(&pool, &memory::agent_scope("writer"))
+            .await
+            .unwrap(),
+        1
+    );
+    // The workflow's own copy doesn't remember: its notes are gone.
+    let full = workflow_repo::get(&pool, &enc, &uses)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        full.definition["agents"][0].get("memory").is_none(),
+        "{}",
+        full.definition
+    );
+}

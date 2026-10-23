@@ -249,6 +249,20 @@ describe('hand-offs in the main thread', () => {
   });
 });
 
+describe("an agent card's Ask", () => {
+  it('picks the agent in the composer once, and the message goes to it', async () => {
+    captureStream();
+    const onConsumed = vi.fn();
+    const view = render(chat({ pendingAgent: { id: 'researcher', name: 'Researcher' }, onPendingAgentConsumed: onConsumed }));
+    expect(await screen.findByTitle('This message goes to Researcher')).toBeInTheDocument();
+    expect(onConsumed).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByLabelText('Message the active provider')).toHaveFocus());
+    view.rerender(chat({ pendingAgent: null, onPendingAgentConsumed: onConsumed }));
+    await send('What changed in Rust?');
+    expect(vi.mocked(startChatStream).mock.calls[0][3]).toEqual({ agent: 'researcher' });
+  });
+});
+
 describe('the agent view', () => {
   async function openResearcher() {
     const stream = captureStream();

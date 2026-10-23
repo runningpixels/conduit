@@ -1065,6 +1065,10 @@ fn clear_personal_choices(definition: &mut Value, connectors: &[KnownConnector])
             helper.remove("maxTokens");
             // Letting an agent that acts work beside others is the user's call.
             helper.remove("alongside");
+            // Notes belong to the user's agents, and collections are chosen
+            // by the user, never written by the model.
+            helper.remove("memory");
+            helper.remove("knowledge");
             found.agent_tools |= keep_known_tools(helper, connectors);
             found.folder |= uses_computer(helper);
         }

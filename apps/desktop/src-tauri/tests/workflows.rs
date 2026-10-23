@@ -7425,8 +7425,16 @@ fn asks_the_researcher() -> EchoModel {
     }
 }
 
-#[tokio::test]
-async fn a_helper_that_is_one_of_the_users_agents_runs_with_its_instructions_and_follows_edits() {
+#[test]
+fn a_helper_that_is_one_of_the_users_agents_runs_with_its_instructions_and_follows_edits() {
+    on_the_apps_stack(
+        a_helper_that_is_one_of_the_users_agents_runs_with_its_instructions_and_follows_edits_body(
+        ),
+    );
+}
+
+async fn a_helper_that_is_one_of_the_users_agents_runs_with_its_instructions_and_follows_edits_body(
+) {
     let h = Harness::new(asks_the_researcher()).await;
     save_agent(
         &h,
@@ -7637,6 +7645,50 @@ async fn a_step_run_as_one_of_the_users_agents_uses_its_instructions_model_tools
     assert_eq!(rows[0].step_id.as_deref(), Some("go"));
     assert_eq!(rows[1].agent_id, "writer");
     assert_eq!(rows[1].parent_id.as_deref(), Some(rows[0].id.as_str()));
+}
+
+#[test]
+fn a_step_run_as_one_of_the_users_agents_keeps_to_its_token_limit() {
+    on_the_apps_stack(a_step_run_as_one_of_the_users_agents_keeps_to_its_token_limit_body());
+}
+
+async fn a_step_run_as_one_of_the_users_agents_keeps_to_its_token_limit_body() {
+    // A round of 5,000 tokens; the agent allows 1,000.
+    let model = EchoModel {
+        tool_calls: vec![("calculator", json!({ "expression": "1+1" }))],
+        offered_only: true,
+        usage: Some(5_000),
+        ..EchoModel::default()
+    };
+    let requests = model.requests.clone();
+    let h = Harness::new(model).await;
+    save_agent(
+        &h,
+        json!({
+            "id": "researcher", "name": "Researcher", "instructions": "Do sums.",
+            "tools": ["calculator"], "maxTokens": 1000
+        }),
+    )
+    .await;
+    let id = h
+        .save(json!({ "steps": [{ "id": "go", "type": "agent", "agent": "researcher", "prompt": "Add up" }]}))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    // Past its limit after the first round, the next one is told to answer
+    // now, as a helper is.
+    let requests = requests.lock().unwrap();
+    let last = requests.last().expect("the agent's rounds");
+    assert!(
+        format!("{:?}", last.messages).contains("most of your token budget"),
+        "{:?}",
+        last.messages
+    );
 }
 
 #[tokio::test]
@@ -7930,8 +7982,12 @@ async fn a_runs_agents_announce_when_they_start_and_end() {
     assert!(ended.finished_at.is_some());
 }
 
-#[tokio::test]
-async fn stopping_a_workflow_helper_tells_its_agent_which_carries_on() {
+#[test]
+fn stopping_a_workflow_helper_tells_its_agent_which_carries_on() {
+    on_the_apps_stack(stopping_a_workflow_helper_tells_its_agent_which_carries_on_body());
+}
+
+async fn stopping_a_workflow_helper_tells_its_agent_which_carries_on_body() {
     let model = EchoModel {
         hang_helpers: true,
         ..asks_the_researcher()
@@ -9141,4 +9197,294 @@ fn a_connector_trigger_is_checked_when_saved() {
     assert!(odd.contains("should be a set of named values"), "{odd}");
     assert!(odd.contains("every 15 to 1440 minutes"), "{odd}");
     assert!(odd.contains("Unknown setting \"url\""), "{odd}");
+}
+
+// ── An agent's own notes and collections in a run ────────────────────────────
+
+/// Save a note in `agent`'s own memory; its id.
+async fn agent_note(h: &Harness, agent: &str, body: &str) -> String {
+    use conduit_desktop::db::repository::memory::{self, MemoryKind, MemoryStatus, NewMemory};
+    memory::create(
+        &h.state.db,
+        &h.state.encryption,
+        NewMemory {
+            kind: MemoryKind::Note,
+            body: body.to_string(),
+            source_conversation_id: None,
+            pinned: false,
+            status: MemoryStatus::Active,
+            scope: memory::agent_scope(agent),
+            origin: None,
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+async fn agent_notes(
+    h: &Harness,
+    agent: &str,
+) -> Vec<conduit_desktop::db::repository::memory::MemoryItem> {
+    use conduit_desktop::db::repository::memory;
+    memory::list_in(
+        &h.state.db,
+        &h.state.encryption,
+        None,
+        &memory::agent_scope(agent),
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_scheduled_step_run_as_an_agent_reads_its_notes_and_its_new_note_is_kept_at_once() {
+    use conduit_desktop::db::repository::memory::{self, MemoryOrigin, MemoryStatus};
+    let model = EchoModel {
+        tool_calls: vec![(
+            "remember",
+            json!({ "fact": "Last report covered Rust 1.81." }),
+        )],
+        offered_only: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    save_agent(
+        &h,
+        json!({ "id": "researcher", "name": "Researcher", "instructions": "Report what's new.", "memory": true }),
+    )
+    .await;
+    let kept = agent_note(&h, "researcher", "Last report covered Rust 1.80.").await;
+    let id = h
+        .save(json!({
+            "steps": [{ "id": "go", "type": "agent", "agent": "researcher", "prompt": "What's new in Rust?" }]
+        }))
+        .await;
+    let required = h.required(&id).await;
+    assert!(
+        !required
+            .iter()
+            .any(|p| matches!(p, Permission::Documents { .. })),
+        "notes need no permission: {required:?}"
+    );
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.unattended_runner(required, CancellationToken::new())
+    };
+    let detail = runner.run(&id, &HashMap::new(), "schedule").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    assert!(h.reviews.list().is_empty(), "nothing was asked");
+
+    let requests = h.model.requests.lock().unwrap().clone();
+    let system = requests[0].system_prompt.clone().unwrap();
+    assert!(system.contains("## Your notes"), "{system}");
+    assert!(
+        system.contains(&format!("[{kept}] Last report covered Rust 1.80.")),
+        "{system}"
+    );
+    let tools = offered(&requests[0]);
+    assert!(
+        tools.contains(&"remember".to_string()) && tools.contains(&"forget".to_string()),
+        "{tools:?}"
+    );
+
+    let notes = agent_notes(&h, "researcher").await;
+    let new = notes
+        .iter()
+        .find(|n| n.body == "Last report covered Rust 1.81.")
+        .expect("the run's note");
+    assert_eq!(
+        new.status,
+        MemoryStatus::Active,
+        "the next run starts with it"
+    );
+    assert_eq!(new.origin, Some(MemoryOrigin::ScheduledRun));
+    assert!(memory::list(&h.state.db, &h.state.encryption, None)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn a_workflow_helper_that_is_one_of_the_users_agents_keeps_notes_from_a_run() {
+    on_the_apps_stack(
+        a_workflow_helper_that_is_one_of_the_users_agents_keeps_notes_from_a_run_body(),
+    );
+}
+
+async fn a_workflow_helper_that_is_one_of_the_users_agents_keeps_notes_from_a_run_body() {
+    use conduit_desktop::db::repository::memory::MemoryOrigin;
+    let model = EchoModel {
+        tool_calls: vec![
+            ("ask_researcher", json!({ "task": "Find the capital" })),
+            (
+                "remember",
+                json!({ "fact": "The user asked about capitals." }),
+            ),
+        ],
+        offered_only: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new(model).await;
+    save_agent(
+        &h,
+        json!({ "id": "researcher", "name": "Researcher", "instructions": "Find facts.", "memory": true }),
+    )
+    .await;
+    agent_note(&h, "researcher", "Prefers short answers.").await;
+    let id = h.save(with_the_researcher()).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let requests = h.model.requests.lock().unwrap().clone();
+    assert!(
+        !requests[0]
+            .system_prompt
+            .clone()
+            .unwrap()
+            .contains("Your notes"),
+        "the step itself isn't the agent"
+    );
+    assert!(!offered(&requests[0]).contains(&"remember".to_string()));
+    let helper = requests[1].system_prompt.clone().unwrap();
+    assert!(helper.contains("Prefers short answers."), "{helper}");
+    let notes = agent_notes(&h, "researcher").await;
+    let new = notes
+        .iter()
+        .find(|n| n.body == "The user asked about capitals.")
+        .expect("the helper's note");
+    assert_eq!(new.origin, Some(MemoryOrigin::Run));
+}
+
+#[tokio::test]
+async fn an_agent_searches_only_the_collections_it_reads_and_names_one_it_cannot() {
+    use conduit_desktop::db::repository::knowledge;
+    let model = EchoModel {
+        tool_calls: vec![(
+            "search_documents",
+            json!({ "query": "tomato garden", "topK": 3 }),
+        )],
+        offered_only: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new_tweaked(model, true, &[], |s| {
+        s.embedding_consent_providers = vec!["ollama".to_string()];
+    })
+    .await;
+    let readable = library(&h).await;
+    // Another collection with a garden in it, which the agent doesn't read.
+    let other = library(&h).await;
+    knowledge::rename_collection(&h.state.db, &other, "Private garden")
+        .await
+        .unwrap();
+    // One it reads but can't search: a cloud provider under local-only mode.
+    let cloud = knowledge::create_collection(
+        &h.state.db,
+        knowledge::NewCollection {
+            name: "Cloud notes".to_string(),
+            provider_id: "openai".to_string(),
+            embedding_model: "text-embedding-3-small".to_string(),
+            embedding_dimensions: 4,
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    save_agent(
+        &h,
+        json!({
+            "id": "reader", "name": "Reader", "instructions": "Answer from the documents.",
+            "knowledge": [readable, cloud]
+        }),
+    )
+    .await;
+    let id = h
+        .save(json!({
+            "steps": [{ "id": "go", "type": "agent", "agent": "reader", "prompt": "What about tomatoes?" }]
+        }))
+        .await;
+    let required = h.required(&id).await;
+    let documents = required
+        .iter()
+        .find_map(|p| match p {
+            Permission::Documents { collections } => Some(collections.clone()),
+            _ => None,
+        })
+        .expect("searching is approved like a documents step");
+    let mut titles: Vec<&str> = documents.iter().map(|c| c.title.as_str()).collect();
+    titles.sort_unstable();
+    assert_eq!(titles, vec!["Cloud notes", "Project notes"]);
+
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let out = detail.steps[0].output.as_ref().unwrap();
+    assert_eq!(out["toolCalls"], json!(["search_documents"]));
+
+    let requests = h.model.requests.lock().unwrap().clone();
+    assert_eq!(offered(&requests[0]), vec!["search_documents".to_string()]);
+    let result = serde_json::to_string(&requests[1].messages).unwrap();
+    assert!(result.contains("Garden notes (Project notes)"), "{result}");
+    assert!(!result.contains("Private garden"), "{result}");
+    assert!(
+        result.contains("\u{201c}Cloud notes\u{201d} can't be searched: local-only mode is on"),
+        "{result}"
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_reads_documents_unattended_without_approval_pauses_to_ask() {
+    let model = EchoModel {
+        tool_calls: vec![("search_documents", json!({ "query": "tomato" }))],
+        offered_only: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new_tweaked(model, true, &[], |s| {
+        s.embedding_consent_providers = vec!["ollama".to_string()];
+    })
+    .await;
+    let readable = library(&h).await;
+    save_agent(
+        &h,
+        json!({ "id": "reader", "name": "Reader", "instructions": "Read.", "knowledge": [readable] }),
+    )
+    .await;
+    let id = h
+        .save(json!({ "steps": [{ "id": "go", "type": "agent", "agent": "reader", "prompt": "Go" }] }))
+        .await;
+    let approved: Vec<Permission> = h
+        .required(&id)
+        .await
+        .into_iter()
+        .filter(|p| !matches!(p, Permission::Documents { .. }))
+        .collect();
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.unattended_runner(approved, CancellationToken::new())
+    };
+    let inputs = HashMap::new();
+    let run = runner.run(&id, &inputs, "schedule");
+    tokio::pin!(run);
+    let review = tokio::select! {
+        review = h.next_review() => review,
+        _ = &mut run => panic!("the run should wait for an answer"),
+    };
+    assert!(
+        matches!(review.permission.permission, Permission::Documents { .. }),
+        "{review:?}"
+    );
+    assert!(
+        h.model.requests.lock().unwrap().is_empty(),
+        "asked before the agent's turn began"
+    );
 }

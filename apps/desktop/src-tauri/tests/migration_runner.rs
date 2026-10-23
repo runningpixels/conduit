@@ -92,7 +92,7 @@ async fn all_tables_created_by_initial_migration() {
     // + 0036 workflow run results + 0037 example items
     // + 0038 workflow action rules + 0039 workflow run waits
     // + 0040 workflow agent calls + 0041 workflow command rules
-    // + 0042 agents + 0043 agent calls).
+    // + 0042 agents + 0043 agent calls + 0044 agent call usage).
     let (public,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
         .fetch_one(&pool)
         .await
@@ -103,7 +103,7 @@ async fn all_tables_created_by_initial_migration() {
             .await
             .unwrap();
     assert_eq!(public, internal, "schema_migrations out of sync");
-    assert_eq!(public, 41, "expected all shipped migrations applied");
+    assert_eq!(public, 42, "expected all shipped migrations applied");
 }
 
 #[tokio::test]

@@ -218,6 +218,37 @@ pub fn deny_all_pending(pending: &PendingConsents, metas: &PendingConsentMetas) 
     }
 }
 
+/// Drop the pending consents raised in `conversation_id` as Denied (a
+/// helper's turn stopped or redirected), leaving every other turn's alone.
+pub fn deny_pending_in(
+    pending: &PendingConsents,
+    metas: &PendingConsentMetas,
+    conversation_id: &str,
+) {
+    let ids: Vec<String> = match metas.lock() {
+        Ok(mut g) => {
+            let ids: Vec<String> = g
+                .iter()
+                .filter(|(_, meta)| meta.conversation_id.as_deref() == Some(conversation_id))
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in &ids {
+                g.remove(id);
+            }
+            ids
+        }
+        Err(_) => return,
+    };
+    let Ok(mut guard) = pending.lock() else {
+        return;
+    };
+    for id in ids {
+        if let Some(tx) = guard.remove(&id) {
+            let _ = tx.send(ConsentDecision::Denied);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +308,31 @@ mod tests {
         assert_eq!(rx.try_recv().unwrap(), ConsentDecision::Approved);
         // Second resolve fails (already resolved).
         assert!(resolve_consent(&pending, &metas, "tc", ConsentDecision::Denied).is_err());
+    }
+
+    #[test]
+    fn denying_one_conversations_prompts_leaves_the_others() {
+        let pending: PendingConsents = Arc::new(StdMutex::new(HashMap::new()));
+        let metas: PendingConsentMetas = Arc::new(StdMutex::new(HashMap::new()));
+        let mut receivers = Vec::new();
+        for (id, conversation) in [("mine", "helper"), ("theirs", "sibling")] {
+            let (tx, rx) = oneshot::channel();
+            pending.lock().unwrap().insert(id.into(), tx);
+            metas.lock().unwrap().insert(
+                id.into(),
+                PendingConsentMeta {
+                    connector_version_id: "v1".into(),
+                    tool_name: "post".into(),
+                    conversation_id: Some(conversation.into()),
+                    permission_level: PermissionLevel::SideEffectful,
+                },
+            );
+            receivers.push(rx);
+        }
+        deny_pending_in(&pending, &metas, "helper");
+        assert_eq!(receivers[0].try_recv().unwrap(), ConsentDecision::Denied);
+        assert!(receivers[1].try_recv().is_err(), "still waiting");
+        assert!(pending.lock().unwrap().contains_key("theirs"));
+        assert!(metas.lock().unwrap().contains_key("theirs"));
     }
 }

@@ -282,3 +282,54 @@ describe('AgentsPage', () => {
     expect(ipc.listAgents).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('AgentsPage task links', () => {
+  it('opens the run a workflow agent is working in, not just the workflow', async () => {
+    ipc.listAgents.mockResolvedValue([helper]);
+    const onOpenWorkflow = vi.fn();
+    render(<AgentsPage onOpenWorkflow={onOpenWorkflow} onOpenWorkflows={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('link', { name: 'Working on: Look up the launch date' }));
+    expect(onOpenWorkflow).toHaveBeenCalledTimes(1);
+    expect(onOpenWorkflow).toHaveBeenCalledWith('w1', 'r1');
+  });
+
+  it('still opens the workflow from the rest of the card', async () => {
+    ipc.listAgents.mockResolvedValue([helper]);
+    const onOpenWorkflow = vi.fn();
+    render(<AgentsPage onOpenWorkflow={onOpenWorkflow} onOpenWorkflows={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Researcher' }));
+    expect(onOpenWorkflow).toHaveBeenCalledWith('w1');
+  });
+
+  it('is plain text when the task has no run to open', async () => {
+    ipc.listAgents.mockResolvedValue([{ ...helper, currentRunId: null }]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText('Working on: Look up the launch date')).toBeTruthy();
+  });
+
+  it("opens the chat one of the user's agents is working in", async () => {
+    ipc.listAgents.mockResolvedValue([]);
+    ipc.listLibraryAgents.mockResolvedValue([
+      { ...researcher, chat: { ...researcher.chat, currentTask: 'Compare the plans', currentConversationId: 'c42' } },
+    ]);
+    const onOpenConversation = vi.fn();
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} onOpenConversation={onOpenConversation} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Working on: Compare the plans' }));
+    expect(onOpenConversation).toHaveBeenCalledWith('c42');
+  });
+
+  it("opens the run one of the user's agents is working in inside a workflow", async () => {
+    ipc.listAgents.mockResolvedValue([{ ...helper, library: 'researcher' }]);
+    ipc.listLibraryAgents.mockResolvedValue([researcher]);
+    const onOpenWorkflow = vi.fn();
+    render(<AgentsPage onOpenWorkflow={onOpenWorkflow} onOpenWorkflows={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Working on: Look up the launch date' }));
+    expect(onOpenWorkflow).toHaveBeenCalledWith('w1', 'r1');
+  });
+});

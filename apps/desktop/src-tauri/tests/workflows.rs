@@ -77,6 +77,8 @@ struct EchoModel {
     /// Call only the scripted tools a request offers, and report `usage`
     /// on those rounds too (agents handing tasks to helpers).
     offered_only: bool,
+    /// Like `hang`, for helpers' turns only.
+    hang_helpers: bool,
 }
 
 type Script = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
@@ -277,7 +279,11 @@ impl ProviderAdapter for EchoModel {
                 },
             ])));
         }
-        if self.hang {
+        let helper = request
+            .system_prompt
+            .as_deref()
+            .is_some_and(|s| s.starts_with("You are a helper"));
+        if self.hang || (self.hang_helpers && helper) {
             use futures::StreamExt;
             let start = ProviderEvent::MessageStart {
                 request_id: r.clone(),
@@ -7548,6 +7554,206 @@ async fn a_helper_an_agent_hands_work_to_is_reachable_through_the_workflow() {
         }),
         "the agent it hands work to is added: {required:?}"
     );
+}
+
+// ── Helpers side by side, stopped, and as a tree ────────────────────────────
+
+#[tokio::test]
+async fn a_runs_agents_come_back_as_a_tree_with_their_names_and_tokens() {
+    let model = EchoModel {
+        usage: Some(10),
+        ..asks_the_researcher()
+    };
+    let h = Harness::new(model).await;
+    save_agent(
+        &h,
+        json!({ "id": "researcher", "name": "Researcher", "instructions": "Find facts on the web." }),
+    )
+    .await;
+    let id = h.save(with_the_researcher()).await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+
+    let rows = conduit_desktop::agents::library::agent_calls_of_run(
+        &h.state.db,
+        &h.state.encryption,
+        &detail.run.id,
+    )
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    let (lead, helper) = (&rows[0], &rows[1]);
+    assert_eq!(
+        (
+            lead.kind.as_str(),
+            lead.agent_id.as_str(),
+            lead.name.as_str()
+        ),
+        ("step", "lead", "lead")
+    );
+    assert_eq!(lead.step_id.as_deref(), Some("lead"));
+    assert_eq!(lead.parent_id, None);
+    assert_eq!(lead.task, "Plan the trip");
+    assert_eq!(lead.status, "done");
+    assert_eq!(
+        (helper.kind.as_str(), helper.name.as_str()),
+        ("helper", "Researcher")
+    );
+    assert_eq!(helper.parent_id.as_deref(), Some(lead.id.as_str()));
+    assert_eq!(helper.task, "Find the capital");
+    assert_eq!(helper.model.as_deref(), Some("ollama/echo"));
+    assert_eq!(helper.status, "done");
+    assert!(helper.finished_at.is_some());
+    for row in &rows {
+        assert!(row.tokens > 0, "{row:?}");
+        assert_eq!(row.tokens, row.input_tokens + row.output_tokens, "{row:?}");
+    }
+    let requests: Vec<Option<String>> =
+        sqlx::query_scalar("SELECT request_id FROM agent_calls ORDER BY started_at, rowid")
+            .fetch_all(&h.state.db)
+            .await
+            .unwrap();
+    assert!(requests.iter().all(Option::is_some), "{requests:?}");
+}
+
+#[tokio::test]
+async fn stopping_a_workflow_helper_tells_its_agent_which_carries_on() {
+    let model = EchoModel {
+        hang_helpers: true,
+        ..asks_the_researcher()
+    };
+    let h = Harness::new(model).await;
+    let id = h
+        .save(with_a_helper(json!({
+            "id": "researcher", "name": "Researcher", "instructions": "Find facts on the web."
+        })))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "manual");
+    let stop = async {
+        // The helper is at work once its turn's request is on its row.
+        let mut call = None;
+        for _ in 0..500 {
+            call = sqlx::query_scalar::<_, String>(
+                "SELECT id FROM agent_calls WHERE kind = 'helper' AND request_id IS NOT NULL",
+            )
+            .fetch_optional(&h.state.db)
+            .await
+            .unwrap();
+            if call.is_some() && h.model.requests.lock().unwrap().len() >= 2 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let call = call.expect("the helper started");
+        h.streams.stop_agent_call(&call).unwrap();
+        call
+    };
+    let (detail, call) = tokio::join!(run, stop);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let handoff = &detail.steps[0].output.as_ref().unwrap()["handoffs"][0];
+    assert_eq!(handoff["error"], "Stopped by you.");
+    let lead = h.model.requests.lock().unwrap().last().cloned().unwrap();
+    assert!(serde_json::to_string(&lead)
+        .unwrap()
+        .contains("Stopped by you."));
+    let status: String = sqlx::query_scalar("SELECT status FROM agent_calls WHERE id = ?")
+        .bind(&call)
+        .fetch_one(&h.state.db)
+        .await
+        .unwrap();
+    assert_eq!(status, "stopped");
+    assert_eq!(
+        h.streams.stop_agent_call(&call).unwrap_err().code,
+        "error.agents.notWorking"
+    );
+}
+
+#[test]
+fn helpers_of_one_step_that_ask_at_once_ask_one_after_the_other() {
+    on_the_apps_stack(helpers_of_one_step_that_ask_at_once_ask_one_after_the_other_body());
+}
+
+async fn helpers_of_one_step_that_ask_at_once_ask_one_after_the_other_body() {
+    let model = EchoModel {
+        tool_calls: vec![
+            ("ask_first", json!({ "task": "one" })),
+            ("ask_second", json!({ "task": "two" })),
+        ],
+        offered_only: true,
+        ..EchoModel::default()
+    };
+    let h = Harness::new_with(model, false, &["openrouter"]).await;
+    let cloud = json!({ "provider": "openrouter", "model": "x" });
+    let id = h
+        .save(json!({
+            "agents": [
+                { "id": "first", "name": "First", "instructions": "Do one.", "model": cloud },
+                { "id": "second", "name": "Second", "instructions": "Do two.", "model": cloud },
+            ],
+            "steps": [{ "id": "lead", "type": "agent", "prompt": "Plan", "agents": ["first", "second"] }]
+        }))
+        .await;
+    // Both helpers' model needs the user's approval in a run nobody started.
+    let new_provider = Permission::Model {
+        provider: "openrouter".into(),
+    };
+    let approved: Vec<Permission> = h
+        .required(&id)
+        .await
+        .into_iter()
+        .filter(|p| *p != new_provider)
+        .collect();
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let mut unattended = Unattended::new(&h.reviews, approved);
+    unattended.wait = std::time::Duration::from_secs(5);
+    let runner = Runner {
+        connectors: Some(&connectors),
+        unattended: Some(unattended),
+        ..h.manual_runner()
+    };
+    let no_inputs = HashMap::new();
+    let run = runner.run(&id, &no_inputs, "schedule");
+    let answers = async {
+        for _ in 0..2 {
+            let review = h.next_review().await;
+            assert_eq!(review.permission.permission, new_provider);
+            // The other helper asks only once this question is answered.
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            assert_eq!(h.reviews.list().len(), 1, "one question at a time");
+            h.reviews
+                .answer(&review.run_id, Some(&review.step_id), Decision::AllowOnce);
+            for _ in 0..100 {
+                if h.reviews
+                    .list()
+                    .iter()
+                    .all(|r| r.requested_at != review.requested_at)
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }
+    };
+    let (detail, ()) = tokio::join!(run, answers);
+    let detail = detail.unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+    let handoffs = &detail.steps[0].output.as_ref().unwrap()["handoffs"];
+    assert_eq!(handoffs.as_array().unwrap().len(), 2);
+    for handoff in handoffs.as_array().unwrap() {
+        assert!(handoff["error"].is_null(), "{handoff}");
+    }
 }
 
 // ── Using the computer ──────────────────────────────────────────────────────

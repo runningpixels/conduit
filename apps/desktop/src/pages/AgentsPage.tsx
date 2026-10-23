@@ -34,13 +34,30 @@ function busyFirst(entries: readonly AgentEntry[]): AgentEntry[] {
   return [...entries].sort((a, b) => Number(b.currentTask !== null) - Number(a.currentTask !== null));
 }
 
+/// Where "Working on <task>" leads: the run it is part of, or the chat it is working in.
+type TaskLink = { kind: 'run'; workflowId: string; runId: string } | { kind: 'chat'; conversationId: string };
+
+/// The place to watch an entry's current task, when there is one.
+function runLink(entry: AgentEntry | undefined): TaskLink | null {
+  return entry?.currentTask != null && entry.currentRunId
+    ? { kind: 'run', workflowId: entry.workflowId, runId: entry.currentRunId }
+    : null;
+}
+
 /// What one of the user's agents did, in workflows and in chat: their tasks and tokens added up.
 function activityOf(agent: LibraryAgent, entries: readonly AgentEntry[]) {
   const mine = entries.filter((e) => e.library === agent.agent.id);
   const chat = agent.chat;
   const latest = (a: string | null, b: string | null | undefined) => (b && (!a || b > a) ? b : a);
+  const busyEntry = mine.find((e) => e.currentTask !== null);
+  const link: TaskLink | null =
+    runLink(busyEntry) ??
+    (!busyEntry && chat?.currentTask != null && chat.currentConversationId
+      ? { kind: 'chat', conversationId: chat.currentConversationId }
+      : null);
   return {
-    working: mine.find((e) => e.currentTask !== null)?.currentTask ?? chat?.currentTask ?? null,
+    link,
+    working: busyEntry?.currentTask ?? chat?.currentTask ?? null,
     lastActive: latest(mine.reduce<string | null>((acc, e) => latest(acc, e.lastActive), null), chat?.lastActive),
     tasks: mine.reduce((n, e) => n + e.tasks, 0) + (chat?.tasks ?? 0),
     failed: mine.reduce((n, e) => n + e.failed, 0) + (chat?.failed ?? 0),
@@ -51,9 +68,12 @@ function activityOf(agent: LibraryAgent, entries: readonly AgentEntry[]) {
 export function AgentsPage({
   onOpenWorkflow,
   onOpenWorkflows,
+  onOpenConversation,
 }: {
-  /// Open this workflow in the Workflows page.
-  onOpenWorkflow: (workflowId: string) => void;
+  /// Open this workflow in the Workflows page, on this run when one is given.
+  onOpenWorkflow: (workflowId: string, runId?: string) => void;
+  /// Open this chat conversation.
+  onOpenConversation?: (conversationId: string) => void;
   /// Go to the Workflows page (the empty "In workflows" section's button).
   onOpenWorkflows: () => void;
 }) {
@@ -148,11 +168,48 @@ export function AgentsPage({
   });
   const filtering = q !== '' || filter !== 'all';
 
-  /// What a card says it is doing, or when it was last busy.
-  const status = (working: string | null, lastActive: string | null) =>
+  const follow = (link: TaskLink) =>
+    link.kind === 'run' ? onOpenWorkflow(link.workflowId, link.runId) : onOpenConversation?.(link.conversationId);
+
+  /// What a card says it is doing, or when it was last busy. The task is a link to
+  /// where it is happening; inside a card that is itself a button it is a link role.
+  const status = (working: string | null, lastActive: string | null, link: TaskLink | null = null, nested = false) =>
     working !== null ? (
       <span className="agent-status is-busy" role="status" title={t('shell.agents.working', { task: working })}>
-        <span className="agent-status-text">{t('shell.agents.working', { task: working })}</span>
+        {link && (link.kind === 'run' || onOpenConversation) ? (
+          nested ? (
+            <span
+              className="agent-status-text agent-status-link"
+              role="link"
+              tabIndex={0}
+              title={t('shell.agents.openTask')}
+              onClick={(e) => {
+                e.stopPropagation();
+                follow(link);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  follow(link);
+                }
+              }}
+            >
+              {t('shell.agents.working', { task: working })}
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="agent-status-text agent-status-link"
+              title={t('shell.agents.openTask')}
+              onClick={() => follow(link)}
+            >
+              {t('shell.agents.working', { task: working })}
+            </button>
+          )
+        ) : (
+          <span className="agent-status-text">{t('shell.agents.working', { task: working })}</span>
+        )}
       </span>
     ) : (
       <span className="agent-status">
@@ -222,7 +279,7 @@ export function AgentsPage({
             </span>
           </span>
           {/* Never busy yet: the line under its name already says it isn't used. */}
-          {m.working !== null || m.lastActive ? status(m.working, m.lastActive) : null}
+          {m.working !== null || m.lastActive ? status(m.working, m.lastActive, m.link) : null}
           {about ? <span className="agent-about">{about}</span> : null}
           {traits(def.model, def.tools ?? [], handsTo)}
           {stats(m.tasks, m.failed, m.tokens)}
@@ -270,7 +327,7 @@ export function AgentsPage({
               <span className="agent-sub">{name === entry.workflowName ? kind : `${kind} · ${entry.workflowName}`}</span>
             </span>
           </span>
-          {status(entry.currentTask, entry.lastActive)}
+          {status(entry.currentTask, entry.lastActive, runLink(entry), true)}
           {named && entry.about.trim() ? <span className="agent-about">{entry.about.trim()}</span> : null}
           {traits(entry.model, entry.tools, entry.handsTo)}
           {stats(entry.tasks, entry.failed, entry.tokens)}

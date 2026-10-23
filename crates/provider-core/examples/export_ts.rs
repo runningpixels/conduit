@@ -23,12 +23,12 @@ use provider_core::schema::{
     DeckReplaceResult, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary,
     DraftBlock, DraftDetail, DraftExportFormat, DraftSnapshotCause, DraftSnapshotSummary,
     DraftSources, DraftStage, DraftSummary, GenerationControls, GrantScope, GrantStatus,
-    KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart,
-    MessagePartKind, MessageRole, ModelInfo, ModelPolicy, ModelPrice, ModelPriceOverride,
-    OutlineSection, PageLlmGrant, PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState,
-    PageStorageEntry, PageStorageUsage, PermissionLevel, PriceSource, PromptArguments,
-    ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
-    ReasoningEffort, ResearchBrief, ResearchBudget, ResearchDepth, ResearchMaterial,
+    HandoffTokens, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
+    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, ModelPrice,
+    ModelPriceOverride, OutlineSection, PageLlmGrant, PageLlmProviderGrant, PageLlmReply,
+    PageLlmRequest, PageLlmState, PageStorageEntry, PageStorageUsage, PermissionLevel, PriceSource,
+    PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest,
+    ProviderUsage, ReasoningEffort, ResearchBrief, ResearchBudget, ResearchDepth, ResearchMaterial,
     ResearchMaterialClaim, ResearchProgress, ResearchReportSummary, ResearchRun,
     ResearchRunUpdated, ResearchSource, ResearchSourceStatus, ResearchStatus, ResolvedModelPrice,
     ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState, ReturnTokenBudget,
@@ -56,6 +56,7 @@ fn main() {
     ResponseFormatHint::export().expect("export ResponseFormatHint");
     ProviderRequest::export().expect("export ProviderRequest");
     ProviderUsage::export().expect("export ProviderUsage");
+    HandoffTokens::export().expect("export HandoffTokens");
     ProviderError::export().expect("export ProviderError");
     AskUserField::export().expect("export AskUserField");
     ProviderEvent::export().expect("export ProviderEvent");

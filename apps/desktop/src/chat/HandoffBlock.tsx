@@ -1,10 +1,15 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { HelperControls } from '../agents/HelperControls';
+import { HelperTotals } from '../agents/HelperTotals';
+import { useNodeCosts, type NodeUsage } from '../agents/helperCost';
+import { ProviderBadge, splitModel } from '../agents/ProviderBadge';
+import { useNow } from '../agents/useNow';
 import { AgentsIcon } from '../icons';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { ChatProse } from './ChatProse';
 import { ToolCallBlock } from './ToolCallBlock';
-import { allToolCalls, type AssistantStreamState, type ToolCallState } from './streamState';
+import { allToolCalls, currentTool, type AssistantStreamState, type ToolCallState } from './streamState';
 
 interface HandoffBlockProps {
   toolCall: ToolCallState;
@@ -18,18 +23,6 @@ const STATUS_KEYS = {
   stopped: 'chat.handoff.status.stopped',
 } as const;
 
-/** Ticks once a second while `active`, so a running hand-off's clock moves. */
-function useNow(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [active]);
-  return now;
-}
-
 /** The nth block with this id: agent rounds reuse block ids. */
 function blockByOrdinal(inner: AssistantStreamState, blockId: string, occurrence: number) {
   let seen = 0;
@@ -39,6 +32,20 @@ function blockByOrdinal(inner: AssistantStreamState, blockId: string, occurrence
     seen += 1;
   }
   return undefined;
+}
+
+/** What every helper of a message used (nested ones too), by model; nothing when it has none. */
+export function HandoffTotals({ state }: { state: AssistantStreamState }) {
+  const t = useT();
+  const nodes = useMemo<NodeUsage[]>(
+    () =>
+      allToolCalls(state).flatMap((tc) =>
+        tc.handoff ? [{ model: tc.handoff.model, tokens: tc.handoff.tokens, ...tc.handoff.usage }] : [],
+      ),
+    [state],
+  );
+  if (nodes.length === 0) return null;
+  return <HelperTotals nodes={nodes} title={t('chat.handoff.totals.title')} />;
 }
 
 /** One tool call from inside a hand-off: another hand-off, or an ordinary call. */
@@ -66,17 +73,29 @@ export function HandoffBlock({ toolCall, conversationId = null }: HandoffBlockPr
     if (running || needsApproval) setOpen(true);
   }, [running, needsApproval]);
   const now = useNow(Boolean(running));
+  const nodes = useMemo<NodeUsage[]>(
+    () =>
+      handoff
+        ? [{ model: handoff.model, tokens: handoff.tokens, ...handoff.usage }]
+        : [],
+    [handoff],
+  );
+  const { costOf } = useNodeCosts(nodes);
   if (!handoff) return null;
 
   const failed = handoff.status === 'failed';
   const statusText = t(STATUS_KEYS[handoff.status]);
   const endedAt = handoff.endedAt ?? (running ? now : handoff.startedAt);
   const elapsed = fmt.duration(Math.max(0, endedAt - handoff.startedAt));
+  const tool = running ? currentTool(handoff.inner) : null;
+  const cents = nodes[0] ? costOf(nodes[0]) : null;
   const summary = [
     handoff.task,
     statusText,
-    handoff.model,
+    tool,
+    splitModel(handoff.model).modelId,
     handoff.tokens > 0 ? t('chat.handoff.tokens', { count: fmt.count(handoff.tokens) }) : '',
+    cents !== null ? fmt.money(cents) : '',
     elapsed,
   ]
     .filter(Boolean)
@@ -118,22 +137,28 @@ export function HandoffBlock({ toolCall, conversationId = null }: HandoffBlockPr
 
   return (
     <div className={`tool handoff${running ? ' running' : ''}`} data-open={open ? 'true' : 'false'}>
-      <button
-        type="button"
-        className="tool-head"
-        aria-expanded={open}
-        title={handoff.task}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="tool-icon">
-          <AgentsIcon />
-        </span>
-        <span className="tool-name">{handoff.name}</span>
-        <span className={`tool-sum${failed ? ' err' : ''}`} title={summary}>
-          {summary}
-        </span>
-        <svg className="tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m9 6 6 6-6 6" /></svg>
-      </button>
+      {/* Stays in view while a long hand-off scrolls past, so Stop and
+          Redirect are always at hand. */}
+      <div className="handoff-top">
+        <button
+          type="button"
+          className="tool-head"
+          aria-expanded={open}
+          title={handoff.task}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="tool-icon">
+            <AgentsIcon />
+          </span>
+          <span className="tool-name">{handoff.name}</span>
+          <ProviderBadge model={handoff.model} />
+          <span className={`tool-sum${failed ? ' err' : ''}`} title={summary}>
+            {summary}
+          </span>
+          <svg className="tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m9 6 6 6-6 6" /></svg>
+        </button>
+        {running && handoff.callId ? <HelperControls callId={handoff.callId} name={handoff.name} /> : null}
+      </div>
       <div className="tool-body">
         <div>
           <div className="tool-inner handoff-inner">

@@ -12,7 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::SqlitePool;
 
-use crate::db::repository::agent_calls::{self, ChatAgentActivity};
+use crate::db::repository::agent_calls::{self, AgentCallRow, ChatAgentActivity};
 use crate::db::repository::agents as repo;
 use crate::encryption::Encryption;
 use crate::workflows::definition::{
@@ -84,6 +84,54 @@ pub async fn with_chat_activity(
     Ok(())
 }
 
+/// Every agent call of a workflow run, in the order they started, for its
+/// agent tree: each named by the user's agent of that id, else by the run's
+/// workflow's own helper, else by its id (a step's id names it).
+pub async fn agent_calls_of_run(
+    pool: &SqlitePool,
+    enc: &Encryption,
+    run_id: &str,
+) -> Result<Vec<AgentCallRow>, String> {
+    let mut rows = agent_calls::list_agent_calls(pool, enc, run_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    if rows.is_empty() {
+        return Ok(rows);
+    }
+    let library = load(pool, enc).await?;
+    let workflow_id: Option<String> =
+        sqlx::query_scalar("SELECT workflow_id FROM agent_calls WHERE run_id = ? LIMIT 1")
+            .bind(run_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .flatten();
+    let own: Vec<AgentDef> = match workflow_id {
+        Some(id) => crate::db::repository::workflows::get(pool, enc, &id)
+            .await
+            .map_err(|e| e.to_string())?
+            .and_then(|w| serde_json::from_value::<WorkflowDefinition>(w.definition).ok())
+            .map(|def| def.agents)
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
+    let named = |name: &str| Some(name.trim().to_string()).filter(|n| !n.is_empty());
+    for row in rows.iter_mut().filter(|r| r.kind != "step") {
+        let name = library
+            .get(&row.agent_id)
+            .and_then(|a| named(&a.name))
+            .or_else(|| {
+                own.iter()
+                    .find(|h| h.id == row.agent_id)
+                    .and_then(|h| named(&h.name))
+            });
+        if let Some(name) = name {
+            row.name = name;
+        }
+    }
+    Ok(rows)
+}
+
 /// Take `id` off the agents the chat assistant may hand work to; used when
 /// the agent is deleted.
 pub fn forget_handoff(state: &crate::state::AppState, id: &str) -> Result<(), String> {
@@ -116,6 +164,7 @@ pub fn reference(id: &str) -> AgentDef {
         tools: Vec::new(),
         agents: Vec::new(),
         max_tokens: None,
+        alongside: false,
         library: Some(id.to_string()),
     }
 }
@@ -146,6 +195,7 @@ pub fn resolve_helpers(library: &HashMap<String, AgentDef>, helpers: &mut Vec<Ag
             helper.model = source.model;
             helper.tools = source.tools;
             helper.max_tokens = source.max_tokens;
+            helper.alongside = source.alongside;
             for next in &source.agents {
                 if present.insert(next.clone()) {
                     helpers.push(reference(next));
@@ -664,6 +714,7 @@ pub fn starters() -> Vec<AgentDef> {
             tools: tools.iter().map(|t| t.to_string()).collect(),
             agents: Vec::new(),
             max_tokens: None,
+            alongside: false,
             library: None,
         })
         .collect()

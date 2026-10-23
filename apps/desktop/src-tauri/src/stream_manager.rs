@@ -10,8 +10,8 @@ use futures::StreamExt;
 use mcp_runtime::validate_reinjection;
 use provider_core::{
     schema::{
-        AskUserField, ConnectorRuntimeEvent, Message, MessagePart, MessagePartKind, MessageRole,
-        ProviderEvent, ProviderRequest, ToolCallRecord, ToolCallStatus,
+        AppError, AskUserField, ConnectorRuntimeEvent, Message, MessagePart, MessagePartKind,
+        MessageRole, ProviderEvent, ProviderRequest, ToolCallRecord, ToolCallStatus,
     },
     AdapterContext, ModelInfo,
 };
@@ -1023,6 +1023,126 @@ pub struct CompletedToolCall {
     pub arguments: serde_json::Value,
 }
 
+/// The tool a call names: its name, or its tool id when the name is empty.
+fn called_tool_name(call: &CompletedToolCall) -> String {
+    if call.name.trim().is_empty() {
+        call.tool_id.clone().unwrap_or_default()
+    } else {
+        call.name.clone()
+    }
+}
+
+/// A hand-off that ran before its round's calls were recorded: the result
+/// for the model and how long it waited.
+type HandedOut = (Result<serde_json::Value, String>, std::time::Duration);
+
+/// What [`hand_out`] runs a round's hand-offs with.
+struct HandOut<'h> {
+    handoff: Option<&'h crate::agents::handoff::ChatHandoff<'h>>,
+    step_tools: Option<&'h dyn StepTools>,
+    provider_channel: Option<&'h EventSink<ProviderEvent>>,
+    request_id: &'h str,
+    cancel: &'h CancellationToken,
+    user_wait_ms: &'h std::sync::atomic::AtomicU64,
+    /// Most helpers at work at once (`AgentGuardrails::parallel_helpers`).
+    at_once: usize,
+}
+
+/// Run the hand-offs among `calls` (not `refused`): side by side, at most
+/// `at_once` at a time, then the helpers that act outside one by one, in call
+/// order, unless they may work alongside others. Their results by index. The
+/// lead's wait is the batch's time, not the sum of the helpers'.
+async fn hand_out(
+    calls: &[CompletedToolCall],
+    refused: &[bool],
+    with: HandOut<'_>,
+) -> HashMap<usize, HandedOut> {
+    let HandOut {
+        handoff,
+        step_tools,
+        provider_channel,
+        request_id,
+        cancel,
+        user_wait_ms,
+        at_once,
+    } = with;
+    let mut together = Vec::new();
+    let mut alone = Vec::new();
+    for (idx, call) in calls.iter().enumerate() {
+        if refused.get(idx).copied().unwrap_or(true) {
+            continue;
+        }
+        let tool_name = called_tool_name(call);
+        let runs_alone = match (handoff.filter(|h| h.offers(&tool_name)), step_tools) {
+            // Boxed, so this future stays small (see the caller).
+            (Some(handoff), _) => Box::pin(handoff.runs_alone(&tool_name)).await,
+            (None, Some(step_tools)) if step_tools.is_helper(&tool_name) => {
+                step_tools.helper_runs_alone(&tool_name).await
+            }
+            _ => continue,
+        };
+        if runs_alone {
+            alone.push(idx);
+        } else {
+            together.push(idx);
+        }
+    }
+    let hand_off = |idx: usize| {
+        let call = &calls[idx];
+        async move {
+            let tool_name = called_tool_name(call);
+            if let Some(ch) = provider_channel {
+                let _ = ch.send(ProviderEvent::ToolExecutionStarted {
+                    request_id: request_id.to_string(),
+                    tool_call_id: call.tool_call_id.clone(),
+                    tool_name: tool_name.clone(),
+                });
+            }
+            if let Some(step_tools) = step_tools {
+                step_tools.observe(&tool_name);
+            }
+            let done = match (handoff.filter(|h| h.offers(&tool_name)), step_tools) {
+                (Some(handoff), _) => {
+                    handoff
+                        .call(&tool_name, &call.tool_call_id, &call.arguments, cancel)
+                        .await
+                }
+                (None, Some(step_tools)) => step_tools.call(&tool_name, &call.arguments).await,
+                (None, None) => (
+                    Err("That agent isn't available.".to_string()),
+                    std::time::Duration::ZERO,
+                ),
+            };
+            (idx, done)
+        }
+    };
+    let mut out = HashMap::new();
+    if !together.is_empty() {
+        let started = std::time::Instant::now();
+        let mut running =
+            futures::stream::iter(together.into_iter().map(&hand_off)).buffer_unordered(at_once);
+        while let Some((idx, done)) = running.next().await {
+            out.insert(idx, done);
+        }
+        user_wait_ms.fetch_add(
+            started.elapsed().as_millis() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+    for idx in alone {
+        if cancel.is_cancelled() {
+            break;
+        }
+        let (idx, done) = hand_off(idx).await;
+        user_wait_ms.fetch_add(
+            done.1.as_millis() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        out.insert(idx, done);
+    }
+    out
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamHandle {
@@ -1098,6 +1218,50 @@ pub struct StreamManager {
     adapter_resolver: AdapterResolver,
     /// Conversations with an agent turn in progress, by conversation id.
     turns: Arc<Mutex<HashMap<String, TurnOwner>>>,
+    /// One model request at a time for each local provider (LM Studio and
+    /// the like usually serve one), by provider id. Helper turns take a
+    /// slot for each of their rounds.
+    provider_slots: Mutex<HashMap<String, Arc<tokio::sync::Semaphore>>>,
+    /// Helpers at work, by their `agent_calls` row: what Stop and Redirect
+    /// reach.
+    helpers: Arc<Mutex<HashMap<String, HelperControl>>>,
+}
+
+/// A helper at work, as Stop and Redirect reach it.
+#[derive(Debug, Clone)]
+pub struct HelperControl {
+    /// Cancelled by Stop: the helper winds down and its lead carries on.
+    pub stop: CancellationToken,
+    /// Its turn's request, which Redirect steers.
+    pub request_id: String,
+}
+
+/// A helper's place in [`StreamManager`]'s helpers, held for as long as it
+/// works and given up when dropped, on every way out.
+pub struct HelperGuard {
+    helpers: Arc<Mutex<HashMap<String, HelperControl>>>,
+    call_id: String,
+}
+
+impl Drop for HelperGuard {
+    fn drop(&mut self) {
+        let mut helpers = self.helpers.lock().unwrap_or_else(|e| e.into_inner());
+        helpers.remove(&self.call_id);
+    }
+}
+
+/// Why a round stopped waiting for its provider's slot.
+enum SlotWait {
+    Cancelled,
+    Ceiling,
+}
+
+/// What Stop or Redirect on a helper that is no longer working says.
+fn helper_not_working() -> AppError {
+    AppError::new(
+        "error.agents.notWorking",
+        "That agent isn't working on anything any more.",
+    )
 }
 
 /// Who holds a conversation's turn (see [`StreamManager::try_begin_turn`]).
@@ -1159,7 +1323,21 @@ pub trait StepTools: Send + Sync {
     /// Every tool the turn calls, its own or a built-in one, as the call
     /// begins (a workflow notes what outside content its agent read).
     fn observe(&self, _name: &str) {}
+    /// Whether `name` hands a task to a helper. A round's hand-offs run side
+    /// by side (see [`StreamManager::execute_resolved_tool_calls`]).
+    fn is_helper(&self, _name: &str) -> bool {
+        false
+    }
+    /// Whether the helper `name` hands work to must work alone: it acts
+    /// outside (see `agents::handoff::acts`) and may not work alongside others.
+    fn helper_runs_alone<'a>(&'a self, _name: &'a str) -> HelperRunsAlone<'a> {
+        Box::pin(async { false })
+    }
 }
+
+/// [`StepTools::helper_runs_alone`] being worked out.
+pub type HelperRunsAlone<'a> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>>;
 
 /// A [`StepTools`] call in progress: the result for the model, and the time
 /// spent waiting for the user.
@@ -1194,6 +1372,11 @@ pub struct TurnOptions<'a> {
     pub ceiling: Option<tokio::time::Instant>,
     /// An agent near its token limit: told once, between rounds, to answer.
     pub wrap_up: Option<&'a WrapUp>,
+    /// A helper's turn. Each of its model rounds waits for a slot on its
+    /// provider (one at a time on a local one), held for the round only, so
+    /// a helper it hands work to can't wait on it. Stopping or redirecting it
+    /// denies only the approvals asked in its own conversation.
+    pub queue_rounds: bool,
 }
 
 /// What an agent is told, once, when `due` fires: to stop working and answer
@@ -1252,7 +1435,110 @@ impl StreamManager {
             ask_user_pending: Arc::new(Mutex::new(HashMap::new())),
             adapter_resolver: resolver,
             turns: Arc::new(Mutex::new(HashMap::new())),
+            provider_slots: Mutex::new(HashMap::new()),
+            helpers: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Note a helper at work as agent call `call_id`, its turn `request_id`,
+    /// so Stop (which cancels `stop`) and Redirect reach it. It is let go
+    /// when the guard drops.
+    pub fn register_helper(
+        &self,
+        call_id: &str,
+        request_id: &str,
+        stop: CancellationToken,
+    ) -> HelperGuard {
+        let mut helpers = self.helpers.lock().unwrap_or_else(|e| e.into_inner());
+        helpers.insert(
+            call_id.to_string(),
+            HelperControl {
+                stop,
+                request_id: request_id.to_string(),
+            },
+        );
+        HelperGuard {
+            helpers: self.helpers.clone(),
+            call_id: call_id.to_string(),
+        }
+    }
+
+    fn helper(&self, call_id: &str) -> Option<HelperControl> {
+        self.helpers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(call_id)
+            .cloned()
+    }
+
+    /// Stop the helper working as agent call `call_id`, and only it: its
+    /// lead hears that the user stopped it and carries on.
+    pub fn stop_agent_call(&self, call_id: &str) -> Result<(), AppError> {
+        let helper = self.helper(call_id).ok_or_else(helper_not_working)?;
+        helper.stop.cancel();
+        Ok(())
+    }
+
+    /// Steer the helper working as agent call `call_id` with `text`, as the
+    /// user steers a chat turn, without touching any other turn's questions
+    /// or approvals.
+    pub fn redirect_agent_call(&self, call_id: &str, text: &str) -> Result<(), AppError> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Err(AppError::new(
+                "error.validation.agentRedirectEmpty",
+                "Say what the agent should do instead.",
+            ));
+        }
+        let helper = self.helper(call_id).ok_or_else(helper_not_working)?;
+        self.steer_helper_stream(&helper.request_id, text.to_string())
+            .map_err(|_| helper_not_working())
+    }
+
+    /// Wait for a slot on the round's provider (the override, else the active
+    /// one): `None` on a cloud provider, which needs none. A cancel or the
+    /// turn's ceiling ends the wait.
+    async fn wait_for_slot(
+        &self,
+        state: &AppState,
+        provider_override: Option<&str>,
+        cancel: &CancellationToken,
+        ceiling: Option<tokio::time::Instant>,
+    ) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, SlotWait> {
+        let provider = match provider_override {
+            Some(provider) => provider.to_string(),
+            None => state
+                .settings()
+                .map(|s| s.active_provider)
+                .unwrap_or_default(),
+        };
+        let Some(slot) = self.provider_slot(&provider) else {
+            return Ok(None);
+        };
+        tokio::select! {
+            permit = slot.acquire_owned() => Ok(permit.ok()),
+            () = cancel.cancelled() => Err(SlotWait::Cancelled),
+            () = reached(ceiling) => Err(SlotWait::Ceiling),
+        }
+    }
+
+    /// The slot a helper's round waits for on `provider_id`: one at a time
+    /// on a local provider; `None` (no waiting) on a cloud one.
+    fn provider_slot(&self, provider_id: &str) -> Option<Arc<tokio::sync::Semaphore>> {
+        let local = (self.adapter_resolver)(provider_id).is_some_and(|a| a.is_local());
+        if !local {
+            return None;
+        }
+        let mut slots = self
+            .provider_slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        Some(
+            slots
+                .entry(provider_id.to_string())
+                .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(1)))
+                .clone(),
+        )
     }
 
     /// Take `conversation_id`'s turn: one agent turn at a time per
@@ -1556,10 +1842,46 @@ impl StreamManager {
         Ok(cancelled)
     }
 
+    /// [`Self::cancel_stream`] for a helper's turn: it is cancelled and
+    /// marked interrupted, and nothing else is touched (other turns' questions
+    /// stay open; helpers have none of their own).
+    pub async fn cancel_helper_stream(
+        &self,
+        state: &AppState,
+        request_id: &str,
+    ) -> Result<bool, String> {
+        let cancelled = {
+            let guard = self
+                .active
+                .lock()
+                .map_err(|_| "Stream lock poisoned".to_string())?;
+            match guard.get(request_id) {
+                Some(active) => {
+                    active.cancel.cancel();
+                    true
+                }
+                None => false,
+            }
+        };
+        if cancelled {
+            let _ = messages::mark_interrupted_by_request(&state.db, request_id).await;
+        }
+        Ok(cancelled)
+    }
+
     /// Soft-interrupt an in-flight agent turn and inject a steering message.
     /// Does **not** mark the turn interrupted — the loop continues under the
     /// same canonical `request_id`.
     pub fn steer_stream(&self, request_id: &str, text: String) -> Result<(), String> {
+        self.steer_helper_stream(request_id, text)?;
+        // Drop any in-flight ask_user forms when steering.
+        self.cancel_all_ask_user();
+        Ok(())
+    }
+
+    /// [`Self::steer_stream`] for a helper's turn: other turns' questions
+    /// stay open.
+    pub fn steer_helper_stream(&self, request_id: &str, text: String) -> Result<(), String> {
         let trimmed = text.trim().to_string();
         if trimmed.is_empty() {
             return Err("steer text must not be empty".to_string());
@@ -1575,9 +1897,6 @@ impl StreamManager {
             .steer_tx
             .send(trimmed)
             .map_err(|_| "steer channel closed".to_string())?;
-        // Drop any in-flight ask_user forms when steering.
-        drop(guard);
-        self.cancel_all_ask_user();
         Ok(())
     }
 
@@ -2000,6 +2319,14 @@ impl StreamManager {
     /// executions this turn (cap binge-retries on empty Instant Answer).
     /// Returns how many new documents this round created and how many document
     /// writes succeeded.
+    ///
+    /// The round's hand-offs (`ask_` calls) run first, side by side, at most
+    /// `AgentGuardrails::parallel_helpers` at once; a helper that acts outside
+    /// runs alone afterwards, unless it may work alongside others. Their
+    /// results are then recorded in call order with every other call, which
+    /// runs as before. `helper_turn` is a helper's own turn (see
+    /// [`TurnOptions::queue_rounds`]): a cancel denies only the approvals
+    /// asked in its conversation.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_resolved_tool_calls(
         &self,
@@ -2019,6 +2346,7 @@ impl StreamManager {
         headless: bool,
         step_tools: Option<&dyn StepTools>,
         handoff: Option<&crate::agents::handoff::ChatHandoff<'_>>,
+        helper_turn: bool,
     ) -> ToolRoundTally {
         let catalog = match build_connector_tool_catalog(state).await {
             Ok(c) => c,
@@ -2107,27 +2435,75 @@ impl StreamManager {
         let mut sections_written = 0u32;
         let mut web_cap_refusals = 0u32;
 
+        // The round's hand-offs first, side by side, when there are several;
+        // the loop below records their results in call order. A lone one
+        // runs in the loop as any call does.
+        let mut handed_out: HashMap<usize, HandedOut> = HashMap::new();
+        let refused: Vec<bool> = calls
+            .iter()
+            .zip(clamp_actions.iter())
+            .enumerate()
+            .map(|(idx, (call, action))| {
+                rejected.contains_key(&call.tool_call_id)
+                    || action.reject_message().is_some()
+                    || web_rejects.get(idx).copied().flatten().is_some()
+            })
+            .collect();
+        let hand_offs = calls
+            .iter()
+            .zip(&refused)
+            .filter(|(call, refused)| {
+                let name = called_tool_name(call);
+                !**refused
+                    && (handoff.is_some_and(|h| h.offers(&name))
+                        || step_tools.is_some_and(|s| s.is_helper(&name)))
+            })
+            .count();
+        if hand_offs > 1 && !cancel.is_cancelled() {
+            // Boxed: helpers' whole turns run inside, and this function's
+            // own frame is large in a debug build.
+            handed_out = Box::pin(hand_out(
+                calls,
+                &refused,
+                HandOut {
+                    handoff,
+                    step_tools,
+                    provider_channel,
+                    request_id,
+                    cancel,
+                    user_wait_ms,
+                    at_once: usize::from(settings.agent.parallel_helpers.clamp(1, 4)),
+                },
+            ))
+            .await;
+        }
+
         for (idx, (call, action)) in calls.iter().zip(clamp_actions.iter()).enumerate() {
             if cancel.is_cancelled() {
-                runtime.deny_all_pending();
+                // A helper's turn denies only what it asked; the user's own
+                // turn everything still waiting.
+                if helper_turn {
+                    runtime.deny_pending_in(conversation_id);
+                } else {
+                    runtime.deny_all_pending();
+                }
                 break;
             }
-            let tool_name = if call.name.trim().is_empty() {
-                call.tool_id.clone().unwrap_or_default()
-            } else {
-                call.name.clone()
-            };
+            let tool_name = called_tool_name(call);
 
-            // Emit tool execution started event.
-            if let Some(ch) = provider_channel {
-                let _ = ch.send(ProviderEvent::ToolExecutionStarted {
-                    request_id: request_id.to_string(),
-                    tool_call_id: call.tool_call_id.clone(),
-                    tool_name: tool_name.clone(),
-                });
-            }
-            if let Some(step_tools) = step_tools {
-                step_tools.observe(&tool_name);
+            // Emit tool execution started event (a hand-off's went out as it
+            // began, above).
+            if !handed_out.contains_key(&idx) {
+                if let Some(ch) = provider_channel {
+                    let _ = ch.send(ProviderEvent::ToolExecutionStarted {
+                        request_id: request_id.to_string(),
+                        tool_call_id: call.tool_call_id.clone(),
+                        tool_name: tool_name.clone(),
+                    });
+                }
+                if let Some(step_tools) = step_tools {
+                    step_tools.observe(&tool_name);
+                }
             }
 
             let other_reject = rejected
@@ -2198,16 +2574,18 @@ impl StreamManager {
                 let offered = step_tools.is_some_and(|s| s.offers(&tool_name));
                 if handed.is_some() || offered || !agent_tools::is_builtin_tool_name(&tool_name) {
                     let (output, is_error) = if handed.is_some() || offered {
-                        let (result, waited) = match (handed, step_tools) {
-                            (Some(handoff), _) => {
+                        let (result, waited) = match (handed_out.remove(&idx), handed, step_tools) {
+                            // Its wait was counted with its batch.
+                            (Some((result, _)), _, _) => (result, std::time::Duration::ZERO),
+                            (None, Some(handoff), _) => {
                                 handoff
                                     .call(&tool_name, &call.tool_call_id, &call.arguments, cancel)
                                     .await
                             }
-                            (None, Some(step_tools)) => {
+                            (None, None, Some(step_tools)) => {
                                 step_tools.call(&tool_name, &call.arguments).await
                             }
-                            (None, None) => unreachable!("offered by one of the two"),
+                            (None, None, None) => unreachable!("offered by one of the two"),
                         };
                         user_wait_ms.fetch_add(
                             waited.as_millis() as u64,
@@ -3267,6 +3645,15 @@ impl StreamManager {
 
         let (cancel, mut steer_rx) =
             self.register_stream_with_steer(&request_id, Some(&conversation_id))?;
+        // A steer drops the approvals still waiting: a helper's only its own,
+        // so its siblings' prompts stay open.
+        let deny_pending = || {
+            if options.queue_rounds {
+                runtime.deny_pending_in(&conversation_id);
+            } else {
+                runtime.deny_all_pending();
+            }
+        };
 
         let guardrails = state.settings().map_err(|e| e.to_string())?.agent;
         let max_steps = guardrails.max_steps as usize;
@@ -3355,7 +3742,7 @@ impl StreamManager {
 
             // Apply any steer that arrived between steps before starting a round.
             while let Ok(text) = steer_rx.try_recv() {
-                runtime.deny_all_pending();
+                deny_pending();
                 if let Err(e) = Self::apply_steer_message(
                     state,
                     &conversation_id,
@@ -3412,6 +3799,30 @@ impl StreamManager {
                 sub_phase,
             });
 
+            // A helper's round waits for its provider's slot (a local model
+            // serves one request at a time), held until the round is over.
+            let slot = if options.queue_rounds {
+                // Boxed: this function's frame is large in a debug build, and
+                // helpers' turns nest.
+                let waited = Box::pin(self.wait_for_slot(
+                    state,
+                    provider_override,
+                    &cancel,
+                    options.ceiling,
+                ))
+                .await;
+                match waited {
+                    Ok(slot) => slot,
+                    Err(SlotWait::Cancelled) => break,
+                    Err(SlotWait::Ceiling) => {
+                        terminal = Some(ceiling_error(&request_id));
+                        break;
+                    }
+                }
+            } else {
+                None
+            };
+
             // Soft-cancel for this round only — steer cancels the child without
             // ending the turn; hard cancel cancels the parent and ends it.
             let round_cancel = cancel.child_token();
@@ -3433,7 +3844,7 @@ impl StreamManager {
                 text = steer_rx.recv() => {
                     if let Some(text) = text {
                         round_cancel.cancel();
-                        runtime.deny_all_pending();
+                        deny_pending();
                         steered_during_round = Some(text);
                     }
                     // Drop the in-flight round by exiting select; collect a
@@ -3456,6 +3867,8 @@ impl StreamManager {
                     RoundOutcome { aborted: true, ..Default::default() }
                 }
             };
+            // The provider's next request may start (another helper's).
+            drop(slot);
 
             if deadline.expired(tokio::time::Instant::now()) {
                 info!(
@@ -3909,6 +4322,7 @@ impl StreamManager {
                 options.headless,
                 options.step_tools,
                 options.handoff,
+                options.queue_rounds,
             );
             let mut steered_during_tools: Option<String> = None;
             let tally = tokio::select! {
@@ -3916,7 +4330,7 @@ impl StreamManager {
                 text = steer_rx.recv() => {
                     if let Some(text) = text {
                         tools_cancel.cancel();
-                        runtime.deny_all_pending();
+                        deny_pending();
                         steered_during_tools = Some(text);
                     }
                     ToolRoundTally::default()

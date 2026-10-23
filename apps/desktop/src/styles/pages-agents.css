@@ -201,3 +201,33 @@ div.agent-card:hover { background: var(--card); }
 @media (max-width: 720px) {
   .agents-bar .apps-home-search { max-width: 100%; flex: 1 1 100%; }
 }
+
+/* A run's agent tree: one node per agent, helpers nested under who asked them. */
+.agent-tree { margin: var(--sp-2) 10px; }
+.agent-tree ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-3); }
+.agent-tree ul.agent-tree-children {
+  margin: var(--sp-2) 0 0 var(--sp-1);
+  padding-left: var(--sp-4);
+  border-left: 2px solid var(--line-soft);
+}
+.agent-tree-node { display: grid; gap: 2px; font-size: var(--fs-5xl); min-width: 0; }
+.agent-tree-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
+.agent-tree-name { font-weight: 600; overflow-wrap: anywhere; }
+.agent-tree-model, .agent-tree-nums { color: var(--ink-2); font-weight: var(--muted-weight); font-variant-numeric: tabular-nums; }
+.agent-tree-nums { margin-left: auto; white-space: nowrap; }
+.agent-tree-model { overflow-wrap: anywhere; }
+.agent-tree-status { color: var(--ink-2); }
+.agent-tree-status[data-status="running"] { color: var(--accent-text); }
+.agent-tree-status[data-status="failed"] { color: var(--err); }
+.agent-tree-task {
+  margin: 0;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.agent-tree .helper-controls { padding: var(--sp-1) 0; border-top: 0; }
+.agent-status-link { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+button.agent-status-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; }

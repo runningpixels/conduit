@@ -69,3 +69,27 @@ describe('AgentSection hand-off agents', () => {
     expect(onOpenAgents).toHaveBeenCalled();
   });
 });
+
+describe('AgentSection helpers working at once', () => {
+  const base = { maxSteps: 25, wallClockBudgetSecs: 300 } as AppSettings['agent'];
+
+  it('shows 3 when it has never been saved', () => {
+    render(<AgentSection settings={settingsWith(base)} onUpdate={vi.fn()} onStatus={vi.fn()} />);
+    expect(screen.getByLabelText(/Helpers working at once/)).toHaveValue('3');
+  });
+
+  it('saves the choice with the other guardrails', () => {
+    const onUpdate = vi.fn();
+    render(<AgentSection settings={settingsWith({ ...base, parallelHelpers: 2 })} onUpdate={onUpdate} onStatus={vi.fn()} />);
+    const select = screen.getByLabelText(/Helpers working at once/);
+    expect(select).toHaveValue('2');
+    fireEvent.change(select, { target: { value: '4' } });
+    expect(onUpdate).toHaveBeenCalledWith({ agent: { ...base, parallelHelpers: 4 } });
+  });
+
+  it('offers only 1 to 4', () => {
+    render(<AgentSection settings={settingsWith(base)} onUpdate={vi.fn()} onStatus={vi.fn()} />);
+    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(options).toEqual(['1', '2', '3', '4']);
+  });
+});

@@ -130,6 +130,7 @@ import type {
   AgentEntry,
   AgentDef,
   LibraryAgent,
+  AgentCallRow,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -2013,6 +2014,21 @@ export async function setAppInputs(id: string, values: Record<string, unknown>):
 
 export async function listWorkflows(): Promise<WorkflowSummary[]> {
   return invokeCommand<WorkflowSummary[]>('list_workflows');
+}
+
+/** Stops one helper (not the agent that asked it). Fails when it has already finished. */
+export async function stopAgentCall(callId: string): Promise<void> {
+  await invokeCommand('stop_agent_call', { callId });
+}
+
+/** Sends a running helper a new instruction. */
+export async function redirectAgentCall(callId: string, text: string): Promise<void> {
+  await invokeCommand('redirect_agent_call', { callId, text });
+}
+
+/** The agent tree of a workflow run: one row per step, helper and nested helper. */
+export async function listAgentCalls(runId: string): Promise<AgentCallRow[]> {
+  return invokeCommand<AgentCallRow[]>('list_agent_calls', { runId });
 }
 
 /** Every agent step and helper across workflows, with what it is doing now. */

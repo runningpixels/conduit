@@ -28,4 +28,9 @@ finishAfterDocumentWrite?: boolean,
  * Ids of the library agents the chat assistant may hand work to (each
  * becomes an `ask_<id>` tool). Off by default.
  */
-handoffAgents?: Array<string>, };
+handoffAgents?: Array<string>, 
+/**
+ * How many helpers handed work in one round may work at the same time
+ * (1 to 4), in chat and in workflows.
+ */
+parallelHelpers?: number, };

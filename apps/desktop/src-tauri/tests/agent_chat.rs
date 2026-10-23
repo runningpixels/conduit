@@ -11,7 +11,7 @@ mod common;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use conduit_desktop::{
@@ -29,8 +29,9 @@ use conduit_desktop::{
 };
 use futures::stream::{Stream, StreamExt};
 use provider_core::schema::{
-    AgentGuardrails, AppSettings, Message, MessagePart, MessagePartKind, MessageRole,
-    PermissionLevel, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage, ToolDefinition,
+    AgentGuardrails, AppSettings, HandoffTokens, Message, MessagePart, MessagePartKind,
+    MessageRole, PermissionLevel, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
+    ToolDefinition,
 };
 use provider_core::{AdapterContext, ModelInfo, ProviderAdapter};
 use serde_json::{json, Value};
@@ -1024,6 +1025,743 @@ async fn the_agents_the_assistant_may_ask_are_cleaned_and_capped_on_save() {
     assert_eq!(saved.agent.handoff_agents, ["writer", "reviewer"]);
     let too_many: Vec<String> = (0..21).map(|n| format!("a{n}")).collect();
     assert!(save(too_many).is_err());
+}
+
+#[tokio::test]
+async fn how_many_helpers_work_at_once_is_one_to_four_and_three_by_default() {
+    let pool_dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance_with_settings(
+        common::setup_pool().await,
+        test_paths(pool_dir.path()),
+        AppSettings::default(),
+    );
+    let save = |at_once: u8| {
+        let mut patch: provider_core::schema::SettingsPatch = serde_json::from_str("{}").unwrap();
+        patch.agent = Some(AgentGuardrails {
+            parallel_helpers: at_once,
+            ..AgentGuardrails::default()
+        });
+        state.update_settings(patch)
+    };
+    for bad in [0, 5] {
+        let error = save(bad).unwrap_err();
+        assert_eq!(error.code, "error.validation.agentParallelHelpers");
+        assert_eq!(error.params.get("max").map(String::as_str), Some("4"));
+    }
+    assert_eq!(save(4).unwrap().agent.parallel_helpers, 4);
+    // Settings saved before it existed get the default.
+    let older: AgentGuardrails =
+        serde_json::from_value(json!({ "maxSteps": 25, "wallClockBudgetSecs": 300 })).unwrap();
+    assert_eq!(older.parallel_helpers, 3);
+}
+
+// ── Helpers side by side ─────────────────────────────────────────────────────
+
+/// When each helper's first round started and ended, by its name.
+type Shifts = Arc<Mutex<Vec<(String, Instant, Instant)>>>;
+
+/// A model that answers each request from what it is, so helpers can work
+/// side by side: the lead's first round hands out `asks` and its next one
+/// answers; a helper's first round works for its time in `work` (or until it
+/// is cancelled), then answers with its task; a later one (after a redirect)
+/// answers at once with what it was last told.
+#[derive(Clone)]
+struct Workers {
+    local: bool,
+    asks: Vec<(&'static str, Value)>,
+    work: Vec<(&'static str, Duration)>,
+    shifts: Shifts,
+    requests: Arc<Mutex<Vec<ProviderRequest>>>,
+}
+
+impl Workers {
+    fn new(asks: Vec<(&'static str, Value)>, work: Vec<(&'static str, Duration)>) -> Self {
+        Self {
+            local: false,
+            asks,
+            work,
+            shifts: Arc::new(Mutex::new(Vec::new())),
+            requests: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn shift(&self, name: &str) -> (Instant, Instant) {
+        let shifts = self.shifts.lock().unwrap();
+        let (_, start, end) = shifts
+            .iter()
+            .find(|(n, _, _)| n == name)
+            .unwrap_or_else(|| panic!("{name} never worked: {shifts:?}"));
+        (*start, *end)
+    }
+
+    /// Wait (up to 5 s) until `name`'s first round is under way.
+    async fn at_work(&self, name: &str) {
+        for _ in 0..500 {
+            let working = self
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| Self::helper_of(r).as_deref() == Some(name));
+            if working {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("{name} never started");
+    }
+
+    /// The helper a request is from, by the name its instructions give it.
+    fn helper_of(request: &ProviderRequest) -> Option<String> {
+        let system = request.system_prompt.as_deref()?;
+        if !system.contains("one of the user's agents: another agent handed you") {
+            return None;
+        }
+        let name = system.split("\n\nYou are ").nth(1)?.split('.').next()?;
+        Some(name.to_string())
+    }
+}
+
+fn last_text(request: &ProviderRequest) -> String {
+    request
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == MessageRole::User)
+        .and_then(|m| m.parts.first())
+        .and_then(|p| p.content.clone())
+        .unwrap_or_default()
+}
+
+/// A round that answers `text`, having used 100 input, 20 output, 7 cache
+/// read and 3 cache write tokens.
+fn answer(rid: &str, text: String) -> Vec<ProviderEvent> {
+    let r = rid.to_string();
+    vec![
+        ProviderEvent::MessageStart {
+            request_id: r.clone(),
+            index: 0,
+        },
+        ProviderEvent::ContentDelta {
+            request_id: r.clone(),
+            block_id: "b0".into(),
+            index: 1,
+            content: text,
+        },
+        ProviderEvent::Usage {
+            request_id: r.clone(),
+            usage: ProviderUsage {
+                input_tokens: Some(100),
+                output_tokens: Some(20),
+                cache_tokens: None,
+                cache_read_tokens: Some(7),
+                cache_write_tokens: Some(3),
+                cost_hint: None,
+            },
+        },
+        ProviderEvent::MessageComplete {
+            request_id: r,
+            index: 2,
+            finish_reason: "stop".into(),
+        },
+    ]
+}
+
+#[async_trait]
+impl ProviderAdapter for Workers {
+    fn id(&self) -> &'static str {
+        "ollama"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Workers"
+    }
+
+    fn is_local(&self) -> bool {
+        self.local
+    }
+
+    async fn validate_credentials(&self, _ctx: &AdapterContext) -> Result<(), ProviderError> {
+        Ok(())
+    }
+
+    async fn list_models(&self, _ctx: &AdapterContext) -> Result<Vec<ModelInfo>, ProviderError> {
+        Ok(Vec::new())
+    }
+
+    async fn stream_chat(
+        &self,
+        request: ProviderRequest,
+        _ctx: AdapterContext,
+        cancel: CancellationToken,
+    ) -> Result<Pin<Box<dyn Stream<Item = ProviderEvent> + Send>>, ProviderError> {
+        self.requests.lock().unwrap().push(request.clone());
+        let rid = request.request_id.clone();
+        let Some(name) = Self::helper_of(&request) else {
+            // The lead.
+            let answered = request.messages.iter().any(|m| m.role == MessageRole::Tool);
+            let events = if answered {
+                answer(&rid, "All done.".into())
+            } else {
+                tool_round(self.asks.clone())(&rid)
+            };
+            return Ok(Box::pin(futures::stream::iter(events)));
+        };
+        let first = request.messages.len() == 1;
+        let work = self
+            .work
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, d)| *d)
+            .filter(|_| first)
+            .unwrap_or_default();
+        let shifts = self.shifts.clone();
+        let text = format!("{name}: {}", last_text(&request));
+        let started = Instant::now();
+        Ok(Box::pin(
+            futures::stream::once(async move {
+                tokio::select! {
+                    () = tokio::time::sleep(work) => {}
+                    () = cancel.cancelled() => return Vec::new(),
+                }
+                if first {
+                    shifts.lock().unwrap().push((name, started, Instant::now()));
+                }
+                answer(&rid, text)
+            })
+            .flat_map(futures::stream::iter),
+        ))
+    }
+}
+
+impl Chat {
+    /// A chat whose model is `workers`, which may hand work to `handoff_agents`,
+    /// `at_once` helpers at a time.
+    async fn working(workers: &Workers, handoff_agents: &[&str], at_once: u8) -> Self {
+        let mut chat = Chat::new(Vec::new(), handoff_agents).await;
+        let workers = workers.clone();
+        chat.manager = StreamManager::with_adapter_resolver(Arc::new(move |_id: &str| {
+            Some(Box::new(workers.clone()) as Box<dyn ProviderAdapter>)
+        }));
+        let mut patch: provider_core::schema::SettingsPatch = serde_json::from_str("{}").unwrap();
+        patch.agent = Some(AgentGuardrails {
+            handoff_agents: handoff_agents.iter().map(|s| s.to_string()).collect(),
+            parallel_helpers: at_once,
+            ..AgentGuardrails::default()
+        });
+        // `Workers` is a cloud model unless it says it is local.
+        patch.local_only = Some(false);
+        chat.state.update_settings(patch).unwrap();
+        chat
+    }
+
+    /// Start the turn; its events as they come.
+    fn start(
+        &self,
+        request: ProviderRequest,
+    ) -> (
+        impl std::future::Future<Output = Result<(), String>> + '_,
+        Arc<Mutex<Vec<ProviderEvent>>>,
+    ) {
+        let (sink, collected) = event_sink::collector::<ProviderEvent>();
+        let turn = async move {
+            handoff::start_chat_turn(
+                &self.manager,
+                &self.state,
+                &self.runtime,
+                request,
+                sink,
+                EventSink::discard(),
+                None,
+            )
+            .await
+            .map(|_| ())
+        };
+        (turn, collected)
+    }
+
+    /// `agent_calls`: (agent, status, error, tokens, input, output, cache
+    /// read, cache write, request id), in the order they started.
+    async fn usage_rows(&self) -> Vec<UsageRow> {
+        sqlx::query_as(
+            "SELECT agent_id, status, error, tokens, input_tokens, output_tokens, \
+             cache_read_tokens, cache_write_tokens, request_id \
+             FROM agent_calls ORDER BY started_at, rowid",
+        )
+        .fetch_all(&self.state.db)
+        .await
+        .unwrap()
+    }
+}
+
+type UsageRow = (
+    String,
+    String,
+    Option<String>,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    Option<String>,
+);
+
+fn helper_agent(id: &str, name: &str) -> Value {
+    json!({ "id": id, "name": name, "instructions": "Look it up." })
+}
+
+/// Wait (up to 5 s) for an event `find` picks out.
+async fn seen<T>(
+    events: &Mutex<Vec<ProviderEvent>>,
+    find: impl Fn(&ProviderEvent) -> Option<T>,
+) -> T {
+    for _ in 0..500 {
+        if let Some(found) = events.lock().unwrap().iter().find_map(&find) {
+            return found;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("never seen");
+}
+
+/// The agent call id and helper request id `agent`'s hand-off started with.
+fn started_as(agent: &str) -> impl Fn(&ProviderEvent) -> Option<(String, String)> + '_ {
+    move |event| match event {
+        ProviderEvent::HandoffStarted {
+            agent_id,
+            call_id,
+            helper_request_id,
+            ..
+        } if agent_id == agent => Some((call_id.clone(), helper_request_id.clone())),
+        _ => None,
+    }
+}
+
+fn finished(events: &[ProviderEvent], tool_call: &str) -> (String, Option<String>, Option<String>) {
+    events
+        .iter()
+        .find_map(|e| match e {
+            ProviderEvent::HandoffFinished {
+                tool_call_id,
+                status,
+                error,
+                answer,
+                ..
+            } if tool_call_id.starts_with(tool_call) => {
+                Some((status.clone(), error.clone(), answer.clone()))
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{tool_call} never finished"))
+}
+
+fn three_asks() -> Vec<(&'static str, Value)> {
+    vec![
+        ("ask_alpha", json!({ "task": "first" })),
+        ("ask_beta", json!({ "task": "second" })),
+        ("ask_gamma", json!({ "task": "third" })),
+    ]
+}
+
+async fn save_three(chat: &Chat) {
+    for (id, name) in [("alpha", "Alpha"), ("beta", "Beta"), ("gamma", "Gamma")] {
+        chat.save_agent(helper_agent(id, name)).await;
+    }
+}
+
+fn overlap(a: (Instant, Instant), b: (Instant, Instant)) -> bool {
+    a.0 < b.1 && b.0 < a.1
+}
+
+#[tokio::test]
+async fn three_helpers_in_one_round_work_side_by_side_and_answer_in_call_order() {
+    let work = Duration::from_millis(400);
+    let workers = Workers::new(
+        three_asks(),
+        vec![("Alpha", work), ("Beta", work), ("Gamma", work)],
+    );
+    let chat = Chat::working(&workers, &["alpha", "beta", "gamma"], 3).await;
+    save_three(&chat).await;
+    let began = Instant::now();
+    let (result, events) = chat.run(chat.request(&[]), None).await;
+    result.unwrap();
+    let took = began.elapsed();
+
+    let (a, b, c) = (
+        workers.shift("Alpha"),
+        workers.shift("Beta"),
+        workers.shift("Gamma"),
+    );
+    assert!(
+        overlap(a, b) && overlap(b, c) && overlap(a, c),
+        "all three worked at once"
+    );
+    assert!(
+        took < work * 3,
+        "about the time of the slowest, not the sum: {took:?}"
+    );
+
+    // Recorded in the order the lead called them.
+    let order: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProviderEvent::ToolExecutionFinished { tool_name, .. } => Some(tool_name.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(order, ["ask_alpha", "ask_beta", "ask_gamma"]);
+    let lead = chat
+        .workers_requests(&workers)
+        .into_iter()
+        .rfind(|r| Workers::helper_of(r).is_none())
+        .unwrap();
+    for (n, expected) in ["Alpha: first", "Beta: second", "Gamma: third"]
+        .iter()
+        .enumerate()
+    {
+        let result = lead
+            .messages
+            .iter()
+            .flat_map(|m| &m.parts)
+            .find(|p| {
+                p.tool_call_id
+                    .as_deref()
+                    .is_some_and(|id| id.starts_with(&format!("call-{n}-")))
+                    && p.kind == MessagePartKind::ToolResult
+            })
+            .unwrap();
+        assert!(
+            result.content.as_deref().unwrap().contains(expected),
+            "{:?}",
+            result.content
+        );
+    }
+
+    // Each helper's tokens: live after its round, and split when it finished.
+    let split = HandoffTokens {
+        input_tokens: 100,
+        output_tokens: 20,
+        cache_read_tokens: 7,
+        cache_write_tokens: 3,
+    };
+    let live: Vec<(u64, HandoffTokens)> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProviderEvent::HandoffUsage { tokens, usage, .. } => Some((*tokens, *usage)),
+            _ => None,
+        })
+        .collect();
+    assert!(live.len() >= 3, "{live:?}");
+    assert!(live.iter().all(|u| *u == (120, split)), "{live:?}");
+    let finished_usage: Vec<HandoffTokens> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProviderEvent::HandoffFinished { usage, tokens, .. } => {
+                assert_eq!(*tokens, 120);
+                Some(*usage)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(finished_usage, [split; 3]);
+    let rows = chat.usage_rows().await;
+    assert_eq!(rows.len(), 3);
+    for row in &rows {
+        assert_eq!(row.1, "done");
+        assert_eq!((row.3, row.4, row.5, row.6, row.7), (120, 100, 20, 7, 3));
+        assert!(row.8.is_some(), "its request is kept");
+    }
+    // Live only: a reload shows the finished split, not every update.
+    let logged = event_log::load_events(&chat.state.db, &chat.conversation, "turn-1")
+        .await
+        .unwrap();
+    assert!(!logged.iter().map(kind_of).any(|k| k == "handoffUsage"));
+    assert!(logged.iter().map(kind_of).any(|k| k == "handoffFinished"));
+}
+
+#[tokio::test]
+async fn one_helper_at_a_time_makes_them_take_turns() {
+    let work = Duration::from_millis(150);
+    let workers = Workers::new(
+        three_asks(),
+        vec![("Alpha", work), ("Beta", work), ("Gamma", work)],
+    );
+    let chat = Chat::working(&workers, &["alpha", "beta", "gamma"], 1).await;
+    save_three(&chat).await;
+    let (result, _) = chat.run(chat.request(&[]), None).await;
+    result.unwrap();
+    let (a, b, c) = (
+        workers.shift("Alpha"),
+        workers.shift("Beta"),
+        workers.shift("Gamma"),
+    );
+    assert!(!overlap(a, b) && !overlap(b, c) && !overlap(a, c));
+}
+
+#[tokio::test]
+async fn a_local_model_serves_one_helper_round_at_a_time() {
+    let work = Duration::from_millis(150);
+    let mut workers = Workers::new(
+        three_asks(),
+        vec![("Alpha", work), ("Beta", work), ("Gamma", work)],
+    );
+    workers.local = true;
+    let chat = Chat::working(&workers, &["alpha", "beta", "gamma"], 3).await;
+    save_three(&chat).await;
+    let (result, events) = chat.run(chat.request(&[]), None).await;
+    result.unwrap();
+    let (a, b, c) = (
+        workers.shift("Alpha"),
+        workers.shift("Beta"),
+        workers.shift("Gamma"),
+    );
+    assert!(!overlap(a, b) && !overlap(b, c) && !overlap(a, c));
+    assert_eq!(
+        events
+            .iter()
+            .filter(
+                |e| matches!(e, ProviderEvent::HandoffFinished { status, .. } if status == "done")
+            )
+            .count(),
+        3
+    );
+}
+
+#[tokio::test]
+async fn a_helper_that_acts_works_alone_unless_it_may_work_alongside_others() {
+    let work = Duration::from_millis(300);
+    let asks = vec![
+        ("ask_clerk", json!({ "task": "file it" })),
+        ("ask_alpha", json!({ "task": "first" })),
+        ("ask_beta", json!({ "task": "second" })),
+    ];
+    for alongside in [false, true] {
+        let workers = Workers::new(
+            asks.clone(),
+            vec![("Clerk", work), ("Alpha", work), ("Beta", work)],
+        );
+        let chat = Chat::working(&workers, &["clerk", "alpha", "beta"], 3).await;
+        chat.save_agent(helper_agent("alpha", "Alpha")).await;
+        chat.save_agent(helper_agent("beta", "Beta")).await;
+        chat.save_agent(json!({
+            "id": "clerk", "name": "Clerk", "instructions": "File things.",
+            "tools": ["computer"], "alongside": alongside
+        }))
+        .await;
+        let (result, events) = chat.run(chat.request(&[]), None).await;
+        result.unwrap();
+        let (clerk, a, b) = (
+            workers.shift("Clerk"),
+            workers.shift("Alpha"),
+            workers.shift("Beta"),
+        );
+        assert!(overlap(a, b), "the others work side by side");
+        if alongside {
+            assert!(overlap(clerk, a), "allowed to work alongside them");
+        } else {
+            assert!(
+                clerk.0 >= a.1 && clerk.0 >= b.1,
+                "it uses the computer, so it works after the others"
+            );
+        }
+        let order: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ToolExecutionFinished { tool_name, .. } => Some(tool_name.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(order, ["ask_clerk", "ask_alpha", "ask_beta"]);
+    }
+}
+
+#[test]
+fn a_helper_acts_when_it_uses_the_computer_or_a_tool_that_changes_things() {
+    let agent = |tools: Value| -> AgentDef {
+        serde_json::from_value(
+            json!({ "id": "a", "name": "A", "instructions": "x", "tools": tools }),
+        )
+        .unwrap()
+    };
+    let unknown = |_: &str, _: &str| None;
+    assert!(!handoff::acts(
+        &agent(json!(["web_search", "web_fetch", "calculator"])),
+        unknown
+    ));
+    assert!(handoff::acts(&agent(json!(["computer"])), unknown));
+    assert!(handoff::acts(&agent(json!(["remember"])), unknown));
+    // A connector tool counts by what it declares; one that can't be told, as acting.
+    let tools = agent(json!(["files/read", "files/post"]));
+    assert!(handoff::acts(&tools, unknown));
+    assert!(handoff::acts(&tools, |_, tool| Some(tool == "read")));
+    assert!(!handoff::acts(&tools, |_, _| Some(true)));
+}
+
+#[tokio::test]
+async fn stopping_one_helper_leaves_its_sibling_working_and_the_lead_carries_on() {
+    let workers = Workers::new(
+        vec![
+            ("ask_slow", json!({ "task": "dig deep" })),
+            ("ask_quick", json!({ "task": "glance" })),
+        ],
+        vec![
+            ("Slow", Duration::from_secs(30)),
+            ("Quick", Duration::from_millis(300)),
+        ],
+    );
+    let chat = Chat::working(&workers, &["slow", "quick"], 3).await;
+    chat.save_agent(helper_agent("slow", "Slow")).await;
+    chat.save_agent(helper_agent("quick", "Quick")).await;
+    let began = Instant::now();
+    let (turn, events) = chat.start(chat.request(&[]));
+    let stop = async {
+        let (call_id, _) = seen(&events, started_as("slow")).await;
+        assert!(!call_id.is_empty());
+        workers.at_work("Slow").await;
+        chat.manager.stop_agent_call(&call_id).unwrap();
+        call_id
+    };
+    let (result, call_id) = tokio::join!(turn, stop);
+    result.unwrap();
+    assert!(
+        began.elapsed() < Duration::from_secs(10),
+        "it didn't wait for the slow one"
+    );
+    let events = events.lock().unwrap().clone();
+
+    assert_eq!(
+        finished(&events, "call-0-"),
+        ("stopped".into(), Some(handoff::STOPPED_BY_YOU.into()), None)
+    );
+    let quick = finished(&events, "call-1-");
+    assert_eq!(quick.0, "done");
+    assert_eq!(quick.2.as_deref(), Some("Quick: glance"));
+    // The lead heard both and answered.
+    let lead = chat
+        .workers_requests(&workers)
+        .into_iter()
+        .rfind(|r| Workers::helper_of(r).is_none())
+        .unwrap();
+    assert!(mentions(&lead, "Stopped by you."));
+    assert!(mentions(&lead, "Quick: glance"));
+    assert!(matches!(
+        events.last(),
+        Some(ProviderEvent::MessageComplete { .. })
+    ));
+
+    let rows = chat.usage_rows().await;
+    let row = |agent: &str| rows.iter().find(|r| r.0 == agent).unwrap().clone();
+    assert_eq!(row("slow").1, "stopped");
+    assert_eq!(row("slow").2.as_deref(), Some(handoff::STOPPED_BY_YOU));
+    assert_eq!(row("quick").1, "done");
+    // It is no longer at work.
+    let error = chat.manager.stop_agent_call(&call_id).unwrap_err();
+    assert_eq!(error.code, "error.agents.notWorking");
+}
+
+#[tokio::test]
+async fn redirecting_a_helper_steers_it_and_only_it() {
+    let workers = Workers::new(
+        vec![("ask_slow", json!({ "task": "Find hotels in Paris" }))],
+        vec![("Slow", Duration::from_secs(30))],
+    );
+    let chat = Chat::working(&workers, &["slow"], 3).await;
+    chat.save_agent(helper_agent("slow", "Slow")).await;
+    let (turn, events) = chat.start(chat.request(&[]));
+    let redirect = async {
+        let (call_id, helper_request) = seen(&events, started_as("slow")).await;
+        workers.at_work("Slow").await;
+        let empty = chat
+            .manager
+            .redirect_agent_call(&call_id, "  ")
+            .unwrap_err();
+        assert_eq!(empty.code, "error.validation.agentRedirectEmpty");
+        let unknown = chat
+            .manager
+            .redirect_agent_call("nobody", "Go")
+            .unwrap_err();
+        assert_eq!(unknown.code, "error.agents.notWorking");
+        chat.manager
+            .redirect_agent_call(&call_id, "Look at Lyon instead.")
+            .unwrap();
+        helper_request
+    };
+    let began = Instant::now();
+    let (result, helper_request) = tokio::join!(turn, redirect);
+    result.unwrap();
+    assert!(began.elapsed() < Duration::from_secs(10));
+    let events = events.lock().unwrap().clone();
+    let (status, _, answer) = finished(&events, "call-0-");
+    assert_eq!(status, "done");
+    assert_eq!(answer.as_deref(), Some("Slow: Look at Lyon instead."));
+    let rows = chat.usage_rows().await;
+    assert_eq!(rows[0].8.as_deref(), Some(helper_request.as_str()));
+}
+
+impl Chat {
+    fn workers_requests(&self, workers: &Workers) -> Vec<ProviderRequest> {
+        workers.requests.lock().unwrap().clone()
+    }
+}
+
+#[tokio::test]
+async fn migration_44_adds_the_split_and_the_request_and_allows_stopped() {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    for migration in conduit_desktop::db::MIGRATOR
+        .iter()
+        .filter(|m| m.version <= 43)
+    {
+        sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
+    }
+    sqlx::query(
+        "INSERT INTO agent_calls (id, kind, agent_id, status, tokens, started_at) \
+         VALUES ('c1', 'chat', 'researcher', 'done', 42, '2026-10-01T00:00:00Z')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let sql = conduit_desktop::db::MIGRATOR
+        .iter()
+        .find(|m| m.version == 44)
+        .expect("migration 44")
+        .sql
+        .clone();
+    sqlx::raw_sql(&sql).execute(&pool).await.unwrap();
+    let row: (i64, i64, i64, i64, i64, Option<String>) = sqlx::query_as(
+        "SELECT tokens, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, \
+         request_id FROM agent_calls",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row, (42, 0, 0, 0, 0, None));
+    agent_calls::finish_agent_call(
+        &pool,
+        "c1",
+        &agent_calls::AgentCallEnd {
+            tokens: 50,
+            usage: HandoffTokens {
+                input_tokens: 40,
+                output_tokens: 10,
+                cache_read_tokens: 2,
+                cache_write_tokens: 1,
+            },
+            error: Some(handoff::STOPPED_BY_YOU),
+            stopped: true,
+        },
+    )
+    .await
+    .unwrap();
+    let (status, input): (String, i64) =
+        sqlx::query_as("SELECT status, input_tokens FROM agent_calls")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((status.as_str(), input), ("stopped", 40));
 }
 
 // ── The turn ceiling ─────────────────────────────────────────────────────────

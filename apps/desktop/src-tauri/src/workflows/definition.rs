@@ -80,6 +80,11 @@ pub struct AgentDef {
     /// [`DEFAULT_HELPER_TOKENS`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u64>,
+    /// May work at the same time as other helpers even though it acts outside
+    /// (uses the computer or tools that change things); otherwise such a
+    /// helper works alone (`agents::handoff::acts`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alongside: bool,
     /// Set when this helper is one of the user's agents (`agents::library`):
     /// it is stored as just `{ id, library }` (the same id twice) and the rest
     /// is filled in from the library whenever the workflow is checked or run,
@@ -665,6 +670,7 @@ const HELPER_KEYS: &[&str] = &[
     "tools",
     "agents",
     "maxTokens",
+    "alongside",
     "library",
 ];
 const TRIGGER_KEYS: &[&str] = &["kind", "url", "everyMinutes"];

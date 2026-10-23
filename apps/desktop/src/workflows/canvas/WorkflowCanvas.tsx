@@ -33,7 +33,7 @@ import { useFormatters } from '../../i18n/formatters';
 import type { WorkflowDefinition, WorkflowRunDetail, WorkflowRunStep, WorkflowStep } from '../../ipc/contracts';
 import { computerText, describeStep, handsToText, type InputLabels } from '../describeStep';
 import { helperNames } from '../editorModel';
-import { STEP_TYPE_KEY } from '../stepTypes';
+import { stepKindText } from '../stepTypes';
 import { PanelResizer, usePanelWidth } from './PanelResizer';
 import { START_ID, buildCanvas, problemsByStep, runStatuses, type CanvasEdge, type CanvasNode, type NodeRun, type NodeStatus } from './canvasModel';
 
@@ -443,8 +443,8 @@ function Canvas({
         const status: NodeStatus = nodeRun?.status ?? 'idle';
         const data: NodeData = step
           ? {
-              kind: t(STEP_TYPE_KEY[step.type]),
-              line: describeStep(step, t, labels, connectorNames, definition.steps),
+              kind: stepKindText(step, t, libNames),
+              line: describeStep(step, t, labels, connectorNames, definition.steps, undefined, helperNames(definition, libNames)),
               status,
               statusText: status === 'idle' ? null : t(STATUS_KEY[status]),
               iterations: iterationText(t, nodeRun),
@@ -770,7 +770,7 @@ function RunInspector({
   const rows = [...(run?.rows ?? [])].sort((a, b) => (a.iteration ?? -1) - (b.iteration ?? -1));
   return (
     <div className="wfc-inspect">
-      <span className="wfc-kind">{t(STEP_TYPE_KEY[step.type])}</span>
+      <span className="wfc-kind">{stepKindText(step, t, libNames)}</span>
       <p className="wfc-inspect-line">{describeStep(step, t, labels, connectorNames, definition.steps, helperNames(definition, libNames))}</p>
       <span className="wf-muted wfc-inspect-id">{node.id}</span>
       {problems.map((p) => (

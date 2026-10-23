@@ -18,6 +18,7 @@
 //! - `schedule` / `scheduler`: running workflows automatically
 //! - `triggers`: starting a workflow on a new feed post or a new file
 //! - `computer`: agents running commands and changing files in the workflow's folder
+//! - `routines`: one of the user's agents on a schedule or trigger
 
 pub mod actions;
 pub mod ask;
@@ -34,6 +35,7 @@ pub mod extract;
 pub mod models;
 pub mod permissions;
 pub mod results;
+pub mod routines;
 pub mod runner;
 pub mod schedule;
 pub mod scheduler;

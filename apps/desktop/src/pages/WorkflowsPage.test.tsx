@@ -46,6 +46,7 @@ const ipc = vi.hoisted(() => ({
   getWorkflowActionRules: vi.fn(),
   setWorkflowActionRules: vi.fn(),
   suggestCommandRules: vi.fn(),
+  convertRoutineToWorkflow: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -72,6 +73,7 @@ const summary: WorkflowSummary = {
   lastRunStatus: null,
   lastRunAt: null,
   nextRunAt: null,
+  routine: false,
 };
 
 const finishedRun: WorkflowRunDetail = {
@@ -1504,6 +1506,60 @@ describe('WorkflowsPage', () => {
       fireEvent.click(within(card).getByRole('button', { name: 'Open it' }));
       expect(await screen.findByRole('heading', { name: 'Morning briefing', level: 3 })).toBeInTheDocument();
       expect(ipc.createWorkflow).not.toHaveBeenCalled();
+    });
+  });
+  describe('routines', () => {
+    const routine: WorkflowSummary = { ...summary, id: 'w9', name: 'Energy brief', routine: true };
+    const routineRecord: WorkflowRecord = {
+      ...record,
+      id: 'w9',
+      name: 'Energy brief',
+      description: 'Brief me on EU energy prices',
+      definition: {
+        steps: [
+          { id: 'work', type: 'agent', agent: 'researcher', prompt: 'Brief me on EU energy prices' },
+          { id: 'save', type: 'save_artifact', title: 'Energy brief — {{run.date}}', content: '{{steps.work.text}}', mode: 'create' },
+        ],
+      },
+    };
+
+    beforeEach(() => {
+      ipc.listWorkflows.mockResolvedValue([routine, summary]);
+      ipc.getWorkflow.mockImplementation(async (id: string) => (id === 'w9' ? routineRecord : record));
+      ipc.convertRoutineToWorkflow.mockResolvedValue(undefined);
+    });
+
+    it('hides routines from the list until "Show routines" is pressed, and opens a workflow first', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      expect(await screen.findByRole('heading', { name: 'Morning briefing' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Energy brief/ })).toBeNull();
+      // The toggle sits at the top of the list, under the Workflows / Results tabs.
+      const show = screen.getByRole('button', { name: 'Show routines (1)' });
+      expect(show.closest('.page-list-head')).not.toBeNull();
+      fireEvent.click(show);
+      const row = screen.getByRole('button', { name: /^Energy brief/ });
+      expect(within(row).getByText('Routine')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Hide routines' }));
+      expect(screen.queryByRole('button', { name: /^Energy brief/ })).toBeNull();
+    });
+
+    it('turns a routine opened from the Agents page into a workflow and opens it to edit', async () => {
+      const onStatus = vi.fn();
+      render(<WorkflowsPage onStatus={onStatus} focus={{ workflowId: 'w9' }} />);
+      expect(await screen.findByRole('heading', { name: 'Energy brief' })).toBeInTheDocument();
+      // The open routine stays in the list while it is open.
+      expect(screen.getByRole('button', { name: /^Energy brief/ })).toBeInTheDocument();
+      ipc.listWorkflows.mockResolvedValue([{ ...routine, routine: false }, summary]);
+      fireEvent.click(screen.getByRole('button', { name: 'Turn into a workflow' }));
+      await waitFor(() => expect(ipc.convertRoutineToWorkflow).toHaveBeenCalledWith('w9'));
+      await waitFor(() => expect(onStatus).toHaveBeenCalledWith('“Energy brief” is now a workflow.'));
+      expect(await screen.findByRole('button', { name: 'Save' })).toBeInTheDocument();
+    });
+
+    it('offers no "Turn into a workflow" on an ordinary workflow', async () => {
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      await screen.findByRole('heading', { name: 'Morning briefing' });
+      expect(screen.queryByRole('button', { name: 'Turn into a workflow' })).toBeNull();
     });
   });
 });

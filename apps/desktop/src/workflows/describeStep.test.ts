@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeStep, stepLabels } from './describeStep';
+import { stepKindText } from './stepTypes';
 import type { WorkflowStep } from '../ipc/contracts';
 
 const KEYS: Record<string, string> = {
@@ -71,5 +72,21 @@ describe('a connector trigger in a step line', () => {
     expect(describeStep(step, t, connector)).toContain('[New item · title]');
     const feed = stepLabels({ trigger: { kind: 'feed', url: 'https://e.com/feed', everyMinutes: 30 } });
     expect(describeStep(step, t, feed)).toContain('[Post title]');
+  });
+});
+
+describe('an agent step that runs as one of your agents', () => {
+  const runsAs: WorkflowStep = { id: 'work', type: 'agent', agent: 'researcher', prompt: 'Brief me' };
+  const names = { 'step:work': 'Researcher' };
+
+  it('says the agent works on it, by name, in its line and its title', () => {
+    expect(describeStep(runsAs, t, {}, {}, [], undefined, names)).toBe('workspace.workflows.step.agentAs');
+    expect(stepKindText(runsAs, t, { researcher: 'Researcher' })).toBe('Researcher');
+  });
+
+  it('keeps the generic text for a plain agent step', () => {
+    const plain: WorkflowStep = { id: 'think', type: 'agent', prompt: 'Think' };
+    expect(describeStep(plain, t, {}, {}, [], undefined, names)).toBe('workspace.workflows.step.agent');
+    expect(stepKindText(plain, t)).toBe('workspace.workflows.editor.type.agent');
   });
 });

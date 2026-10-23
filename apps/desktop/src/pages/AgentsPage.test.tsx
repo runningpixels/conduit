@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import type { AgentCallChange, AgentEntry, LibraryAgent } from '../ipc/contracts';
+import type { AgentCallChange, AgentEntry, LibraryAgent, RoutineSummary } from '../ipc/contracts';
 import { AgentsPage, AGENTS_REFRESH_MS } from './AgentsPage';
 
 const ipc = vi.hoisted(() => ({
@@ -16,6 +16,12 @@ const ipc = vi.hoisted(() => ({
   listProviderModels: vi.fn(),
   getSettings: vi.fn(),
   listInstalledConnectors: vi.fn(),
+  listRoutines: vi.fn(),
+  setWorkflowSchedule: vi.fn(),
+  createRoutine: vi.fn(),
+  approveWorkflowPermissions: vi.fn(),
+  deleteWorkflow: vi.fn(),
+  pickWorkspaceFolder: vi.fn(),
 }));
 vi.mock('../ipc/client', () => ipc);
 
@@ -88,6 +94,8 @@ beforeEach(() => {
   ipc.listProviderModels.mockResolvedValue([]);
   ipc.getSettings.mockResolvedValue({ activeProvider: 'anthropic', activeModel: 'claude-x' });
   ipc.listInstalledConnectors.mockResolvedValue([]);
+  ipc.listRoutines.mockResolvedValue([]);
+  ipc.setWorkflowSchedule.mockResolvedValue(null);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -398,5 +406,101 @@ describe('Running now', () => {
     expect(onOpenWorkflow).toHaveBeenCalledWith('w1', 'r1');
     // Without a name for the chat it still says where.
     expect(screen.getByText('In a chat')).toBeTruthy();
+  });
+});
+
+describe('Routines', () => {
+  const brief: RoutineSummary = {
+    workflowId: 'wf-r1',
+    agentId: 'researcher',
+    name: 'Energy brief',
+    task: 'Brief me on EU energy prices',
+    schedule: { kind: 'weekdays', time: '08:00' },
+    trigger: null,
+    folder: null,
+    enabled: true,
+    nextRunAt: '2026-10-23T06:00:00Z',
+    lastRunId: 'run-9',
+    lastRunStatus: 'completed',
+    lastRunAt: new Date(Date.now() - 3600_000).toISOString(),
+    lastResultTitle: 'Energy brief — 2026-10-22',
+  };
+  const inbox: RoutineSummary = {
+    ...brief,
+    workflowId: 'wf-r2',
+    name: 'New files',
+    schedule: { kind: 'trigger' },
+    trigger: { kind: 'folder' },
+    folder: 'C:\Inbox',
+    enabled: false,
+    nextRunAt: null,
+    lastRunId: null,
+    lastRunStatus: null,
+    lastRunAt: null,
+    lastResultTitle: null,
+  };
+
+  beforeEach(() => {
+    ipc.listAgents.mockResolvedValue([]);
+    ipc.listLibraryAgents.mockResolvedValue([writer, researcher]);
+    ipc.listRoutines.mockResolvedValue([brief, inbox]);
+  });
+
+  it("lists each agent's routines on its card: when, next run or paused, and the last result", async () => {
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    const card = screen.getByRole('group', { name: 'Researcher' });
+    const list = within(card).getByRole('list', { name: 'Routines of Researcher' });
+    expect(within(list).getByText('Energy brief')).toBeTruthy();
+    expect(within(list).getByText(/^Weekdays at 08:00 · next /)).toBeTruthy();
+    expect(within(list).getByText(/^Last: Energy brief — 2026-10-22, /)).toBeTruthy();
+    expect(within(list).getByText('When a new file arrives · paused')).toBeTruthy();
+    expect(within(screen.getByRole('group', { name: 'Writer' })).queryByRole('list')).toBeNull();
+  });
+
+  it('pauses and resumes a routine, and opens it on its last run', async () => {
+    const open = vi.fn();
+    render(<AgentsPage onOpenWorkflow={open} onOpenWorkflows={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause Energy brief' }));
+    expect(ipc.setWorkflowSchedule).toHaveBeenCalledWith('wf-r1', { kind: 'weekdays', time: '08:00' }, false);
+    fireEvent.click(screen.getByRole('button', { name: 'Resume New files' }));
+    expect(ipc.setWorkflowSchedule).toHaveBeenCalledWith('wf-r2', { kind: 'trigger' }, true);
+    fireEvent.click(screen.getByRole('button', { name: 'Open Energy brief' }));
+    expect(open).toHaveBeenCalledWith('wf-r1', 'run-9');
+    fireEvent.click(screen.getByRole('button', { name: 'Open New files' }));
+    expect(open).toHaveBeenCalledWith('wf-r2', undefined);
+  });
+
+  it('filters to the agents that have routines', async () => {
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    const chip = screen.getByRole('button', { name: /^Routines/ });
+    expect(within(chip).getByText('2')).toBeTruthy();
+    fireEvent.click(chip);
+    expect(screen.getByRole('group', { name: 'Researcher' })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Writer' })).toBeNull();
+  });
+
+  it('opens the routine form from "Run on a schedule…" under Routines, even on a card with none yet', async () => {
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    const card = screen.getByRole('group', { name: 'Writer' });
+    // The card's own actions stay Edit, Duplicate and Delete.
+    const actions = card.querySelector('.agent-actions') as HTMLElement;
+    expect(within(actions).getAllByRole('button').map((b) => b.textContent)).toEqual(['Edit', 'Duplicate', 'Delete']);
+    expect(within(card).getByText('Routines')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Run Writer on a schedule' }));
+    expect(screen.getByRole('dialog', { name: 'Run Writer on a schedule' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('still shows the cards when routines cannot be read', async () => {
+    ipc.listRoutines.mockRejectedValue(new Error('no'));
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    expect(screen.getByRole('group', { name: 'Researcher' })).toBeTruthy();
+    expect(screen.queryByText('Energy brief')).toBeNull();
   });
 });

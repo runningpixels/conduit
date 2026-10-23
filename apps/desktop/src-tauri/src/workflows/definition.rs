@@ -360,6 +360,11 @@ pub enum StepAction {
         /// Helpers (`WorkflowDefinition::agents` ids) it may hand work to.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         agents: Vec<String>,
+        /// One of the user's agents (`agents::library`) this step runs as:
+        /// its instructions lead the turn, and its model, tools and helpers
+        /// are used unless the step sets its own (see [`apply_step_agents`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent: Option<String>,
     },
     /// Stop and ask the user; the answer is the step's `answer`.
     Ask {
@@ -726,7 +731,7 @@ pub fn action_keys(step_type: &str) -> &'static [&'static str] {
         "template" => &["template"],
         "for_each" => &["items", "steps"],
         "save_artifact" => &["title", "content", "format", "mode", "onlyIfChanged"],
-        "agent" => &["prompt", "input", "tools", "agents", "model"],
+        "agent" => &["prompt", "input", "tools", "agents", "agent", "model"],
         "ask" => &["question", "choices", "default"],
         "notify" => &["title", "body", "onlyIfChanged"],
         "condition" | "branch" => &["value", "is", "text"],
@@ -1620,6 +1625,68 @@ pub fn uses_computer(def: &WorkflowDefinition) -> bool {
             .any(|h| h.tools.iter().any(|t| t == super::computer::COMPUTER_TOOL))
 }
 
+/// The user's agents that agent steps run as (their `agent`), each once, in
+/// the order the steps come.
+pub fn step_agents(def: &WorkflowDefinition) -> Vec<String> {
+    fn walk(steps: &[Step], out: &mut Vec<String>) {
+        for step in steps {
+            match &step.action {
+                StepAction::Agent {
+                    agent: Some(id), ..
+                } => {
+                    if !out.contains(id) {
+                        out.push(id.clone());
+                    }
+                }
+                StepAction::ForEach { steps, .. } => walk(steps, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&def.steps, &mut out);
+    out
+}
+
+/// Give each agent step that runs as one of the user's agents that agent's
+/// model, tools and helpers where the step doesn't set its own. `def.agents`
+/// must already hold the agent, filled in (`agents::library::resolve`); a
+/// step whose agent isn't there is left as it is, for [`validate`] to report.
+/// Only ever done on a copy: the stored step keeps just the reference.
+pub fn apply_step_agents(def: &mut WorkflowDefinition) {
+    fn walk(steps: &mut [Step], helpers: &[AgentDef]) {
+        for step in steps {
+            match &mut step.action {
+                StepAction::Agent {
+                    agent: Some(id),
+                    tools,
+                    agents,
+                    ..
+                } => {
+                    let Some(source) = helpers
+                        .iter()
+                        .find(|h| &h.id == id && h.library.as_deref() == Some(id.as_str()))
+                    else {
+                        continue;
+                    };
+                    if tools.is_empty() {
+                        tools.clone_from(&source.tools);
+                    }
+                    if agents.is_empty() {
+                        agents.clone_from(&source.agents);
+                    }
+                    if step.model.is_none() {
+                        step.model.clone_from(&source.model);
+                    }
+                }
+                StepAction::ForEach { steps, .. } => walk(steps, helpers),
+                _ => {}
+            }
+        }
+    }
+    walk(&mut def.steps, &def.agents);
+}
+
 /// An agent that uses the computer works in the workflow's folder, so there
 /// must be one; and the computer settings must be in range.
 fn check_computer(def: &WorkflowDefinition, has_folder: bool, problems: &mut Vec<String>) {
@@ -1827,10 +1894,13 @@ fn check_helpers(def: &WorkflowDefinition, problems: &mut Vec<String>) {
         ));
     }
 
-    fn agent_steps<'s>(steps: &'s [Step], out: &mut Vec<(&'s str, &'s [String])>) {
+    type Listing<'s> = Vec<(&'s str, &'s [String], Option<&'s str>)>;
+    fn agent_steps<'s>(steps: &'s [Step], out: &mut Listing<'s>) {
         for step in steps {
             match &step.action {
-                StepAction::Agent { agents, .. } => out.push((&step.id, agents)),
+                StepAction::Agent { agents, agent, .. } => {
+                    out.push((&step.id, agents, agent.as_deref()))
+                }
                 StepAction::ForEach { steps, .. } => agent_steps(steps, out),
                 _ => {}
             }
@@ -1838,8 +1908,20 @@ fn check_helpers(def: &WorkflowDefinition, problems: &mut Vec<String>) {
     }
     let mut listing = Vec::new();
     agent_steps(&def.steps, &mut listing);
-    for (step, listed) in listing {
+    for (step, listed, runs_as) in listing {
         let who = format!("Step \"{step}\"");
+        // The agent it runs as is added to the helpers when the user's agents
+        // are filled in; one that no longer exists is reported above.
+        if let Some(id) = runs_as {
+            let known = helpers
+                .iter()
+                .any(|h| h.id == id && h.library.as_deref() == Some(id));
+            if !known {
+                problems.push(format!(
+                    "{who} runs as \u{201c}{id}\u{201d}, which isn\u{2019}t one of your agents."
+                ));
+            }
+        }
         check_handoffs(&who, listed, helpers, problems);
         if circle.is_some() {
             continue;

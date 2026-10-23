@@ -694,6 +694,48 @@ export interface WorkflowSummary {
   lastRunAt: string | null;
   /** When it next runs on its own (UTC), if it has a schedule that is on. */
   nextRunAt: string | null;
+  /** Made as a routine (one of the user's agents on a schedule); listed on its agent's card. */
+  routine: boolean;
+}
+
+/** What the routine form sends (Rust `workflows::routines::RoutineRequest`). */
+export interface RoutineRequest {
+  agentId: string;
+  name: string;
+  /** What the agent does each run, as written. */
+  task: string;
+  /** `{kind:'trigger'}` with `trigger` set for a feed or folder. */
+  schedule: ScheduleSpec;
+  trigger?: Extract<WorkflowTrigger, { kind: 'feed' | 'folder' }> | null;
+  /** Also show a notification when a run finishes. */
+  notify: boolean;
+  /** A new document in Results each run, or a Markdown file in the exports folder. */
+  output: 'document' | 'file';
+  folder?: string | null;
+}
+
+/** A routine just made (Rust `commands::workflows::RoutineCreated`); its schedule is off until approved. */
+export interface RoutineCreated {
+  workflow: WorkflowRecord;
+  permissions: WorkflowPermissions;
+}
+
+/** One routine, for its agent's card (Rust `workflows::routines::RoutineSummary`). */
+export interface RoutineSummary {
+  workflowId: string;
+  agentId: string;
+  name: string;
+  task: string;
+  schedule: ScheduleSpec | null;
+  trigger: WorkflowTrigger | null;
+  folder: string | null;
+  enabled: boolean;
+  nextRunAt: string | null;
+  lastRunId: string | null;
+  lastRunStatus: WorkflowRunStatus | null;
+  lastRunAt: string | null;
+  /** What its latest run saved, when it saved something. */
+  lastResultTitle: string | null;
 }
 
 /** When a workflow runs on its own (Rust `workflows::schedule::ScheduleSpec`). */
@@ -954,7 +996,19 @@ export type WorkflowStep = {
   /** If… otherwise: later steps wait on the yes or no arm through `after`. */
   | { type: 'branch'; value: string; is: ConditionTest; text?: string }
   | { type: 'ask'; question: string; choices?: string[]; default?: string | null }
-  | { type: 'agent'; prompt: string; input?: string; tools?: string[]; model?: WorkflowModel; agents?: string[] }
+  /**
+   * `agent`: one of the user's agents (library id) the step runs as; its instructions lead the turn, and its
+   * model, tools and helpers are used when the step sets none.
+   */
+  | {
+      type: 'agent';
+      prompt: string;
+      input?: string;
+      tools?: string[];
+      model?: WorkflowModel;
+      agents?: string[];
+      agent?: string;
+    }
   | { type: 'read_file'; path: string }
   | { type: 'edit_deck'; deck: string; instructions: string; input?: string; model?: WorkflowModel }
   | { type: 'edit_draft'; draft: string; instructions: string; input?: string; model?: WorkflowModel }

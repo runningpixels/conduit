@@ -4,7 +4,7 @@
 /// workflow may do when it runs on its own, and what a paused run asks for.
 
 import type { Translate } from '../i18n';
-import { parseConnectorToolRef } from './editorModel';
+import { parseConnectorToolRef, stepAgentName } from './editorModel';
 import type { WorkflowPermissionView, WorkflowReview } from '../ipc/contracts';
 
 /// What each agent tool lets a step do (tool name → catalog key).
@@ -37,7 +37,8 @@ export function documentTitles(p: Extract<WorkflowPermissionView, { kind: 'docum
 /// Helper names by id, for a permission that names a helper.
 export type HelperNames = Record<string, string>;
 
-/// Whom an agent-tools permission is for: a step id, or `helper:<id>` for a helper.
+/// Whom an agent-tools permission is for: a step id, or `helper:<id>` for a helper. A step
+/// that runs as one of the user's agents goes by that agent's name (`step:<id>` in the names).
 function helperOf(stepId: string, names: HelperNames): string | null {
   if (!stepId.startsWith('helper:')) return null;
   const id = stepId.slice('helper:'.length);
@@ -63,6 +64,8 @@ export function permissionText(p: WorkflowPermissionView, t: Translate, helpers:
       return t('workspace.workflows.permissions.readFolder', { folder: p.path });
     case 'agentTools':
     {
+      const agent = stepAgentName(p.stepId, helpers);
+      if (agent !== null) return t('workspace.workflows.permissions.agentToolsAs', { agent, tools: agentToolsText(p.tools, t) });
       const helper = helperOf(p.stepId, helpers);
       return helper !== null
         ? t('workspace.workflows.permissions.helperTools', { helper, tools: agentToolsText(p.tools, t) })
@@ -104,6 +107,8 @@ export function reviewText(review: WorkflowReview, t: Translate, helpers: Helper
       return t('workspace.workflows.review.readFolder', { folder: p.path });
     case 'agentTools':
     {
+      const agent = stepAgentName(p.stepId, helpers);
+      if (agent !== null) return t('workspace.workflows.review.agentToolsAs', { agent, tools: agentToolsText(p.tools, t) });
       const helper = helperOf(p.stepId, helpers);
       return helper !== null
         ? t('workspace.workflows.review.helperTools', { helper, tools: agentToolsText(p.tools, t) })

@@ -16,7 +16,8 @@ use crate::db::repository::agent_calls::{self, AgentCallRow, ChatAgentActivity};
 use crate::db::repository::agents as repo;
 use crate::encryption::Encryption;
 use crate::workflows::definition::{
-    check_helper_fields, check_helper_id, AgentDef, WorkflowDefinition, MAX_HELPERS_PER_AGENT,
+    apply_step_agents, check_helper_fields, check_helper_id, step_agents, AgentDef,
+    WorkflowDefinition, MAX_HELPERS_PER_AGENT,
 };
 
 /// Longest agent id (the same as a helper's).
@@ -116,7 +117,13 @@ pub async fn agent_calls_of_run(
         None => Vec::new(),
     };
     let named = |name: &str| Some(name.trim().to_string()).filter(|n| !n.is_empty());
-    for row in rows.iter_mut().filter(|r| r.kind != "step") {
+    // A step is named by its id, unless it ran as one of the user's agents
+    // (then its row has that agent's id, not the step's).
+    let ran_as_agent = |r: &AgentCallRow| r.step_id.as_deref() != Some(r.agent_id.as_str());
+    for row in rows
+        .iter_mut()
+        .filter(|r| r.kind != "step" || ran_as_agent(r))
+    {
         let name = library
             .get(&row.agent_id)
             .and_then(|a| named(&a.name))
@@ -207,11 +214,26 @@ pub fn resolve_helpers(library: &HashMap<String, AgentDef>, helpers: &mut Vec<Ag
     }
 }
 
-/// [`resolve_helpers`] on a workflow's helpers.
+/// [`resolve_helpers`] on a workflow's helpers. An agent step that runs as
+/// one of the user's agents adds that agent to the helpers (as a reference,
+/// when it isn't there yet) and then takes its model, tools and helpers
+/// ([`apply_step_agents`]).
 pub fn resolve_with(library: &HashMap<String, AgentDef>, def: &mut WorkflowDefinition) {
+    for id in step_agents(def) {
+        if !def.agents.iter().any(|h| h.id == id) {
+            def.agents.push(reference(&id));
+        }
+    }
     if def.agents.iter().any(|h| h.library.is_some()) {
         resolve_helpers(library, &mut def.agents);
     }
+    apply_step_agents(def);
+}
+
+/// Whether `def` refers to any of the user's agents, as a helper or as the
+/// agent a step runs as.
+pub fn refers_to_library(def: &WorkflowDefinition) -> bool {
+    def.agents.iter().any(|h| h.library.is_some()) || !step_agents(def).is_empty()
 }
 
 /// Every agent in the library by id.
@@ -234,7 +256,7 @@ pub async fn resolve(
     enc: &Encryption,
     def: &mut WorkflowDefinition,
 ) -> Result<(), String> {
-    if def.agents.iter().all(|h| h.library.is_none()) {
+    if !refers_to_library(def) {
         return Ok(());
     }
     let library = load(pool, enc).await?;

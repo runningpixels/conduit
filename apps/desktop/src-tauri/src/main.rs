@@ -423,6 +423,10 @@ fn main() {
             get_workflow_run,
             get_workflow_schedule,
             set_workflow_schedule,
+            // Routines: one of the user's agents on a schedule or trigger.
+            create_routine,
+            list_routines,
+            convert_routine_to_workflow,
             notify_workflow_run,
             notify_user,
             // Keep running in the tray + start at sign-in.

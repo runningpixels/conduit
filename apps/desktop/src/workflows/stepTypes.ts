@@ -1,6 +1,8 @@
 /// The catalog key naming each step kind ("Fetch pages", "Ask the model"),
 /// shared by the step editor and the canvas.
 
+import type { Translate } from '../i18n';
+import type { WorkflowStep } from '../ipc/contracts';
 import type { StepType } from './editorModel';
 
 export const STEP_TYPE_KEY: Record<StepType, string> = {
@@ -25,3 +27,10 @@ export const STEP_TYPE_KEY: Record<StepType, string> = {
   condition: 'workspace.workflows.editor.type.condition',
   branch: 'workspace.workflows.editor.type.branch',
 };
+
+/// What a step is, as its title says: an agent step that runs as one of the user's agents goes by
+/// that agent's name (`library` is names by library id); any other step by its kind.
+export function stepKindText(step: WorkflowStep, t: Translate, library: Readonly<Record<string, string>> = {}): string {
+  if (step.type === 'agent' && step.agent) return library[step.agent] || step.agent;
+  return t(STEP_TYPE_KEY[step.type]);
+}

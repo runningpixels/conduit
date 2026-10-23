@@ -7,6 +7,8 @@ use tauri::State;
 
 use crate::agents::calls;
 use crate::agents::library::{self, LibraryAgent};
+use crate::agents::review::{self, DocumentReview};
+use crate::connector_runtime::ConnectorRuntimeManager;
 use crate::db::repository::agent_calls::{AgentCallChange, AgentCallRow};
 use crate::state::AppState;
 use crate::stream_manager::StreamManager;
@@ -32,6 +34,27 @@ pub async fn redirect_agent_call(
     text: String,
 ) -> Result<(), AppError> {
     stream_manager.redirect_agent_call(&call_id, &text)
+}
+
+/// Have the Reviewer check the chat document `artifact_id` against
+/// `request`, the user's words that produced it (empty when unknown). The
+/// chat makes the revision; this only returns what to change.
+#[tauri::command]
+pub async fn review_document(
+    state: State<'_, AppState>,
+    stream_manager: State<'_, StreamManager>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+    artifact_id: String,
+    request: String,
+) -> Result<DocumentReview, String> {
+    review::review_document(
+        state.inner(),
+        runtime.inner(),
+        stream_manager.inner(),
+        &artifact_id,
+        &request,
+    )
+    .await
 }
 
 /// A workflow run's agents (its agent steps, the helpers they handed work

@@ -403,6 +403,7 @@ fn main() {
             // Helpers at work: stop or redirect one, and a run's agent tree.
             stop_agent_call,
             redirect_agent_call,
+            review_document,
             list_agent_calls,
             list_running_agent_calls,
             preview_command_rule,

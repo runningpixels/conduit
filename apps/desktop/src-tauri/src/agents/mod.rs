@@ -7,8 +7,10 @@
 //!   workflows and chat, and running chat turns as an agent
 //! - `kit`: what an agent brings to each of its turns: its own notes
 //!   (`remember`, `forget`) and the collections it reads (`search_documents`)
+//! - `review`: the Reviewer reading a chat's document against its request
 
 pub mod calls;
 pub mod handoff;
 pub mod kit;
 pub mod library;
+pub mod review;

@@ -30,7 +30,10 @@ import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
 import { ArtifactChatList, newestFirst } from '../artifacts/ArtifactChatList';
 import { ArtifactSwitcher } from './ArtifactSwitcher';
 import { inlineArtifactText } from '../artifacts/format';
-import { AppsIcon, FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon, TrashIcon } from '../icons';
+import { ActivityCheckIcon, AppsIcon, FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon, TrashIcon } from '../icons';
+
+/** The documents the Reviewer reads (agents::review::REVIEWABLE_KINDS). */
+const REVIEWABLE_KINDS: readonly string[] = ['html', 'markdown', 'text'];
 import { clearPageSiteData } from '../artifacts/pageSiteData';
 import { Menu } from './Menu';
 import { OpenExternalLinkDialog } from './OpenExternalLinkDialog';
@@ -92,6 +95,10 @@ interface DocumentPanelProps {
   onExport: (artifactId: string, includeMetadata: boolean) => Promise<void>;
   /** Save an HTML page as a mini-app (⋯ → Save as app). */
   onSaveAsApp?: (artifact: { id: string; title: string | null }, html: string) => void;
+  /** Have the Reviewer check this document against its request (⋯ → Have it reviewed). */
+  onReview?: (artifact: Artifact) => void;
+  /** A review of this document is under way. */
+  reviewing?: boolean;
   onCloseTab?: (id: string) => void;
   /**
    * The open chat's artifacts. Chat only: with any, the panel lists them when
@@ -359,6 +366,8 @@ export function DocumentPanel({
   onSaveContent,
   onExport,
   onSaveAsApp,
+  onReview,
+  reviewing = false,
   onCloseTab,
   chatArtifacts,
   onSwitchArtifact,
@@ -1171,6 +1180,21 @@ export function DocumentPanel({
                 <DownloadIcon />
                 {exporting ? t('workspace.documentPanel.menu.exporting') : t('workspace.documentPanel.menu.saveCopy')}
               </button>
+              {onReview && REVIEWABLE_KINDS.includes(artifact.kind) && (
+                <button
+                  className="menu-item"
+                  type="button"
+                  role="menuitem"
+                  disabled={reviewing || !raw.trim()}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onReview(artifact);
+                  }}
+                >
+                  <ActivityCheckIcon />
+                  {reviewing ? t('workspace.documentPanel.menu.reviewing') : t('workspace.documentPanel.menu.review')}
+                </button>
+              )}
               {onSaveAsApp && networkArtifactId && (
                 <button
                   className="menu-item"

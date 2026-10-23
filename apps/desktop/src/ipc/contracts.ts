@@ -897,6 +897,20 @@ export interface AgentCallRow {
   finishedAt?: string | null;
 }
 
+/** One thing the Reviewer found in a document (`agents::review::ReviewIssue`). */
+export interface ReviewIssue {
+  problem: string;
+  /** What to change; empty when the Reviewer didn't say. */
+  change: string;
+}
+
+/** A document review (`review_document`): no issues means it meets the request. */
+export interface DocumentReview {
+  /** The reviewing agent's name. */
+  reviewer: string;
+  issues: ReviewIssue[];
+}
+
 /** An agent call that started or finished (`agent-call-changed`), or one still
  *  running (`list_running_agent_calls`): chat hand-offs and workflow agents. */
 export interface AgentCallChange {

@@ -237,7 +237,9 @@ import {
   setDraftOutline,
   setDraftStage,
   snapshotDraft,
+  reviewDocument,
 } from './ipc/client';
+import { requestForDocument, revisionMessage } from './chat/documentReview';
 
 /** How long the user's typing must pause before it is saved as an "Edited by you" version. */
 const DRAFT_EDIT_SESSION_IDLE_MS = 120_000;
@@ -1179,6 +1181,39 @@ export default function App() {
   // ── Slides ────────────────────────────────────────────────────────────────
   const transcriptRef = useRef(transcript);
   transcriptRef.current = transcript;
+
+  // ── Have it reviewed ──────────────────────────────────────────────────────
+  /** The document the Reviewer is reading now: one review at a time. */
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const handleReviewDocument = useCallback(
+    async (artifact: Artifact) => {
+      if (reviewingId) return;
+      const title = artifact.title?.trim() || t('chat.review.untitled');
+      const request =
+        artifact.conversationId === activeConversationIdRef.current
+          ? requestForDocument(transcriptRef.current.turns, artifact)
+          : '';
+      setReviewingId(artifact.id);
+      setStatus(makeStatus(t('chat.review.status.checking', { title }), 'active'));
+      try {
+        const review = await reviewDocument(artifact.id, request);
+        if (review.issues.length === 0) {
+          setStatus(makeStatus(t('chat.review.status.ok', { name: review.reviewer, title }), 'success'));
+          return;
+        }
+        // The revision belongs in the document's chat, even if the user moved on.
+        if (artifact.conversationId !== activeConversationIdRef.current) {
+          handleSelectConversation(artifact.conversationId);
+        }
+        setPendingSendText(revisionMessage(t, review, title, request));
+      } catch (error) {
+        setStatus(makeStatus(error instanceof Error ? error.message : t('chat.review.status.failed'), 'error'));
+      } finally {
+        setReviewingId(null);
+      }
+    },
+    [reviewingId, t, handleSelectConversation],
+  );
   const activeDeckRef = useRef(activeDeck);
   activeDeckRef.current = activeDeck;
 
@@ -4285,6 +4320,8 @@ export default function App() {
           onSaveAsApp={(artifact, html) =>
             setAppDetailsTarget({ mode: 'save', artifactId: artifact.id, title: artifact.title, html })
           }
+          onReview={destination === 'chats' ? (artifact) => void handleReviewDocument(artifact) : undefined}
+          reviewing={reviewingId !== null}
           onRenameArtifact={handleRenameArtifact}
           onStatus={setStatusMessage}
           logoSrc={brandLogo ?? undefined}

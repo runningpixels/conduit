@@ -704,6 +704,21 @@ impl<'a> ChatHandoff<'a> {
         )
     }
 
+    /// Hand `task` to `agent` outside any chat turn (a document review): its
+    /// answer. It runs as a helper does, with its row in `agent_calls`; an
+    /// empty `conversation_id` leaves the row without a chat.
+    pub async fn run_task(
+        &self,
+        agent: &AgentDef,
+        task: &str,
+        cancel: &CancellationToken,
+    ) -> Result<String, String> {
+        let tool_call_id = Uuid::new_v4().to_string();
+        self.run_helper(agent, &tool_call_id, task, cancel)
+            .await
+            .result
+    }
+
     /// The helper's whole job: its conversation, its row, its events, its
     /// turn, and the clean-up.
     async fn run_helper(
@@ -739,7 +754,7 @@ impl<'a> ChatHandoff<'a> {
             run_id: None,
             workflow_id: None,
             step_id: None,
-            conversation_id: Some(&self.conversation_id),
+            conversation_id: Some(self.conversation_id.as_str()).filter(|c| !c.is_empty()),
             kind: "helper",
             agent_id: &helper.id,
             parent_id: self.lead_row.as_deref(),

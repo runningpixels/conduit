@@ -3740,7 +3740,10 @@ impl Exec<'_> {
             request_id: None,
         };
         match repo::start_agent_call(&state.db, &state.encryption, &call).await {
-            Ok(id) => Some(id),
+            Ok(id) => {
+                crate::agents::calls::announce(state, &id).await;
+                Some(id)
+            }
             Err(e) => {
                 tracing::warn!(run = %self.run_id, error = %e, "could not record an agent's task");
                 None
@@ -3762,6 +3765,7 @@ impl Exec<'_> {
         if let Err(e) = repo::finish_agent_call(pool, &row, &end).await {
             tracing::warn!(run = %self.run_id, error = %e, "could not record how an agent's task ended");
         }
+        crate::agents::calls::announce(self.runner.state, &row).await;
     }
 
     /// Whether `helper` acts outside ([`handoff::acts`]), its connector tools

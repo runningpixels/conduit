@@ -114,6 +114,17 @@ describe('Rail', () => {
     expect(screen.getByRole('button', { name: 'Workflows (new)' })).toBeTruthy();
   });
 
+  it('counts what runs on a destination in a pill, in place of the dot', () => {
+    const { container, rerender } = renderRail({ counts: { agents: 3 }, dots: { agents: true } });
+    const agents = screen.getByRole('button', { name: 'Agents (3 running)' });
+    expect(agents.querySelector('.rail-count')?.textContent).toBe('3');
+    expect(agents.querySelector('.rail-dot')).toBeNull();
+    // Down to zero: no pill.
+    rerender(<Rail destination="chats" onNavigate={() => {}} counts={{ agents: 0 }} />);
+    expect(screen.getByRole('button', { name: 'Agents' })).toBeTruthy();
+    expect(container.querySelector('.rail-count')).toBeNull();
+  });
+
   it('leaves out hidden destinations', () => {
     renderRail({ hidden: ['agents'] });
     expect(screen.queryByRole('button', { name: 'Agents' })).toBeNull();
@@ -181,6 +192,14 @@ describe('Rail on a phone', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Writing' }).find((b) => b.classList.contains('more-row'))!);
     expect(onNavigate).toHaveBeenCalledWith('writing');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('shows the running count in the More sheet, and marks More', () => {
+    phone();
+    renderRail({ counts: { agents: 2 } });
+    fireEvent.click(screen.getByRole('button', { name: 'More (new)' }));
+    const row = screen.getAllByRole('button', { name: 'Agents (2 running)' }).find((b) => b.classList.contains('more-row'))!;
+    expect(row.querySelector('.rail-count')?.textContent).toBe('2');
   });
 
   it('closes on Escape and returns focus to More', () => {

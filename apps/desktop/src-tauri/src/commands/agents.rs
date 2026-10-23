@@ -5,8 +5,9 @@ use provider_core::schema::AppError;
 use serde_json::Value;
 use tauri::State;
 
+use crate::agents::calls;
 use crate::agents::library::{self, LibraryAgent};
-use crate::db::repository::agent_calls::AgentCallRow;
+use crate::db::repository::agent_calls::{AgentCallChange, AgentCallRow};
 use crate::state::AppState;
 use crate::stream_manager::StreamManager;
 use crate::workflows::definition::AgentDef;
@@ -41,6 +42,17 @@ pub async fn list_agent_calls(
     run_id: String,
 ) -> Result<Vec<AgentCallRow>, AppError> {
     library::agent_calls_of_run(&state.db, &state.encryption, &run_id)
+        .await
+        .map_err(AppError::from)
+}
+
+/// Every agent at work now (chat helpers and leads, workflow steps and
+/// helpers), newest first. The page keeps it current from `agent-call-changed`.
+#[tauri::command]
+pub async fn list_running_agent_calls(
+    state: State<'_, AppState>,
+) -> Result<Vec<AgentCallChange>, AppError> {
+    calls::running(&state.db, &state.encryption)
         .await
         .map_err(AppError::from)
 }

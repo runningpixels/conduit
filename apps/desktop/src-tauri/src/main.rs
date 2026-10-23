@@ -6,6 +6,7 @@
 // All modules live in the `conduit_desktop` library crate so Phase 3
 // integration tests (`tests/`) can reach the migration runner and repositories.
 use conduit_desktop::{
+    agents::calls::AGENT_CALL_CHANGED_EVENT,
     artifact_frames::{self, ArtifactFrames},
     brand,
     commands::*,
@@ -403,6 +404,7 @@ fn main() {
             stop_agent_call,
             redirect_agent_call,
             list_agent_calls,
+            list_running_agent_calls,
             preview_command_rule,
             suggest_command_rules,
             get_workflow,
@@ -422,6 +424,7 @@ fn main() {
             get_workflow_schedule,
             set_workflow_schedule,
             notify_workflow_run,
+            notify_user,
             // Keep running in the tray + start at sign-in.
             set_tray_labels,
             get_running_workflow_count,
@@ -511,6 +514,13 @@ fn main() {
             app.state::<Actions>().set_listener(move |action| {
                 let _ = handle.emit(RUN_ACTION_EVENT, action);
             });
+            // An agent started or ended a task: the page keeps its running list.
+            let handle = app.handle().clone();
+            app.state::<AppState>()
+                .agent_calls
+                .set_listener(move |change| {
+                    let _ = handle.emit(AGENT_CALL_CHANGED_EVENT, change);
+                });
             // A workflow changed a saved deck or draft: an open view reloads it.
             let handle = app.handle().clone();
             app.state::<DocumentChanges>().set_listener(move |change| {

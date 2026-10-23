@@ -60,6 +60,8 @@ pub struct AppState {
     /// OpenRouter's models again after a restart, its PDFs go as extracted
     /// text, which every model reads.
     listed_file_input: Arc<Mutex<HashMap<(String, String), bool>>>,
+    /// Where agent calls announce that they started or ended.
+    pub agent_calls: Arc<crate::agents::calls::AgentCalls>,
 }
 
 impl AppState {
@@ -302,6 +304,7 @@ impl AppState {
             drop_grants: Arc::new(Mutex::new(DropGrants::new())),
             live_prices: Arc::new(Mutex::new(HashMap::new())),
             listed_file_input: Arc::new(Mutex::new(HashMap::new())),
+            agent_calls: Arc::default(),
         })
     }
 
@@ -328,6 +331,7 @@ impl AppState {
             drop_grants: Arc::new(Mutex::new(DropGrants::new())),
             live_prices: Arc::new(Mutex::new(HashMap::new())),
             listed_file_input: Arc::new(Mutex::new(HashMap::new())),
+            agent_calls: Arc::default(),
         }
     }
 

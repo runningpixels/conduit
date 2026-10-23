@@ -91,10 +91,20 @@ export function AgentTree({ rows }: { rows: readonly AgentCallRow[] }) {
     return (
       <li key={row.id} className="agent-tree-node" data-kind={row.kind} data-status={row.status}>
         <div className="agent-tree-line">
-          <span className="agent-tree-name">{row.name || row.agentId}</span>
-          <ProviderBadge model={row.model} />
-          {modelId ? <span className="agent-tree-model">{modelId}</span> : null}
-          <span className="agent-tree-status" data-status={row.status}>{t(STATUS_KEYS[row.status])}</span>
+          {/* Who and how it is going stay on one line (long names and models
+              shorten); the numbers drop below only when it is really narrow. */}
+          <span className="agent-tree-head">
+            <span className="agent-tree-name" title={row.name || row.agentId}>
+              {row.name || row.agentId}
+            </span>
+            <ProviderBadge model={row.model} />
+            {modelId ? (
+              <span className="agent-tree-model" title={modelId}>
+                {modelId}
+              </span>
+            ) : null}
+            <span className="agent-tree-status" data-status={row.status}>{t(STATUS_KEYS[row.status])}</span>
+          </span>
           <span className="agent-tree-nums">
             {[
               elapsed,

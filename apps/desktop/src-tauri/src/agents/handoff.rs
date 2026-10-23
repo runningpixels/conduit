@@ -25,7 +25,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::agent_tools;
-use crate::agents::library;
+use crate::agents::{calls, library};
 use crate::connector_runtime::ConnectorRuntimeManager;
 use crate::db::repository::{agent_calls, conversations, event_log};
 use crate::event_sink::{EventSink, SinkClosed};
@@ -746,7 +746,10 @@ impl<'a> ChatHandoff<'a> {
             request_id: Some(&helper_request_id),
         };
         let row = match agent_calls::start_agent_call(pool, &self.state.encryption, &call).await {
-            Ok(id) => Some(id),
+            Ok(id) => {
+                calls::announce(self.state, &id).await;
+                Some(id)
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "could not record an agent's task");
                 None
@@ -830,6 +833,7 @@ impl<'a> ChatHandoff<'a> {
                 if let Err(e) = agent_calls::finish_agent_call(pool, row, &end).await {
                     tracing::warn!(error = %e, "could not record how an agent's task ended");
                 }
+                calls::announce(self.state, row).await;
             }
             let (status, error) = match (&handed.result, stopped) {
                 (Err(e), true) => ("stopped", Some(e.clone())),
@@ -1189,7 +1193,10 @@ pub async fn start_chat_turn(
                 request_id: Some(&request.request_id),
             };
             match agent_calls::start_agent_call(&state.db, &state.encryption, &call).await {
-                Ok(id) => Some(id),
+                Ok(id) => {
+                    calls::announce(state, &id).await;
+                    Some(id)
+                }
                 Err(e) => {
                     tracing::warn!(error = %e, "could not record an agent's task");
                     None
@@ -1281,6 +1288,7 @@ pub async fn start_chat_turn(
         if let Err(e) = agent_calls::finish_agent_call(&state.db, &row, &end).await {
             tracing::warn!(error = %e, "could not record how an agent's task ended");
         }
+        calls::announce(state, &row).await;
     }
     outcome
 }

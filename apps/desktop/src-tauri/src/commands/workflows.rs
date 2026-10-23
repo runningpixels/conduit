@@ -468,18 +468,45 @@ pub fn notify_workflow_run(
     title: String,
     body: String,
 ) -> Result<(), String> {
+    notify(&app, &title, &body)
+}
+
+/// Show a desktop notification from the renderer (an agent finished while the
+/// window was in the background). Same rules as [`notify_workflow_run`].
+#[tauri::command]
+pub fn notify_user(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    notify(&app, &title, &body)
+}
+
+/// The text of a notification, trimmed and cut to the accepted lengths.
+fn clip_notification(title: &str, body: &str) -> Result<(String, String), String> {
     let clip = |s: &str, max: usize| s.trim().chars().take(max).collect::<String>();
-    let title = clip(&title, MAX_NOTIFY_TITLE);
+    let title = clip(title, MAX_NOTIFY_TITLE);
     if title.is_empty() {
         return Err("A notification needs a title.".to_string());
     }
-    show_notification(&app, &title, &clip(&body, MAX_NOTIFY_BODY))
+    Ok((title, clip(body, MAX_NOTIFY_BODY)))
+}
+
+fn notify(app: &tauri::AppHandle, title: &str, body: &str) -> Result<(), String> {
+    let (title, body) = clip_notification(title, body)?;
+    show_notification(app, &title, &body)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn notifications_are_trimmed_cut_and_need_a_title() {
+        let (title, body) = clip_notification("  Done  ", "  all good \n").unwrap();
+        assert_eq!((title.as_str(), body.as_str()), ("Done", "all good"));
+        assert!(clip_notification("   ", "body").is_err());
+        let (title, body) = clip_notification(&"t".repeat(500), &"b".repeat(900)).unwrap();
+        assert_eq!(title.chars().count(), MAX_NOTIFY_TITLE);
+        assert_eq!(body.chars().count(), MAX_NOTIFY_BODY);
+    }
 
     #[test]
     fn validate_workflow_lists_each_problem_or_nothing() {

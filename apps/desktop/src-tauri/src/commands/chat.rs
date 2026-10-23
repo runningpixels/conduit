@@ -242,19 +242,51 @@ pub async fn get_request_event_log(
     conversation_id: String,
     request_id: String,
 ) -> Result<RequestEventLog, String> {
+    request_event_log(&state, &conversation_id, &request_id).await
+}
+
+/// [`get_request_event_log`] without the IPC wrapper.
+pub async fn request_event_log(
+    state: &AppState,
+    conversation_id: &str,
+    request_id: &str,
+) -> Result<RequestEventLog, String> {
     let events = crate::db::repository::event_log::load_logged_events(
         &state.db,
-        &conversation_id,
-        &request_id,
+        conversation_id,
+        request_id,
     )
     .await
     .map_err(|e| e.to_string())?;
-    let tool_finished_at =
-        crate::db::repository::tool_calls::completion_times_for_request(&state.db, &request_id)
+    let mut tool_finished_at: std::collections::HashMap<String, String> =
+        crate::db::repository::tool_calls::completion_times_for_request(&state.db, request_id)
             .await
             .map_err(|e| e.to_string())?
             .into_iter()
             .collect();
+    // The tool calls of the helpers the turn handed work to (and of theirs)
+    // ran under their own requests; their ticks come back with the lead's.
+    if let (Some(first), Some(last)) = (events.first(), events.last()) {
+        let helpers = crate::db::repository::agent_calls::helper_request_ids(
+            &state.db,
+            conversation_id,
+            request_id,
+            &first.at,
+            &last.at,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        for helper_request in helpers {
+            tool_finished_at.extend(
+                crate::db::repository::tool_calls::completion_times_for_request(
+                    &state.db,
+                    &helper_request,
+                )
+                .await
+                .map_err(|e| e.to_string())?,
+            );
+        }
+    }
     Ok(RequestEventLog {
         events,
         tool_finished_at,

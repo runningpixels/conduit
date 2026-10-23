@@ -6,5 +6,6 @@
 //! - `handoff`: handing work to an agent (the `ask_` tools), shared by
 //!   workflows and chat, and running chat turns as an agent
 
+pub mod calls;
 pub mod handoff;
 pub mod library;

@@ -1799,3 +1799,260 @@ async fn a_turn_past_its_ceiling_stops_with_a_plain_error() {
         "no round started past the ceiling"
     );
 }
+
+// ── What the page hears about agents at work ─────────────────────────────────
+
+/// Every `agent-call-changed` announcement from now on.
+fn hear(chat: &Chat) -> Arc<Mutex<Vec<agent_calls::AgentCallChange>>> {
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let sink = heard.clone();
+    chat.state
+        .agent_calls
+        .set_listener(move |change| sink.lock().unwrap().push(change.clone()));
+    heard
+}
+
+#[tokio::test]
+async fn a_helper_announces_when_it_starts_and_when_it_ends() {
+    let chat = Chat::new(
+        vec![
+            tool_round(vec![(
+                "ask_researcher",
+                json!({ "task": "Find the capital of France" }),
+            )]),
+            text_round_using("Paris.", 12),
+            text_round("It is Paris."),
+        ],
+        &["researcher"],
+    )
+    .await;
+    chat.save_agent(researcher()).await;
+    let heard = hear(&chat);
+    let (result, _) = chat.run(chat.request(&["current_time"]), None).await;
+    result.unwrap();
+
+    let heard = heard.lock().unwrap().clone();
+    assert_eq!(heard.len(), 2, "{heard:?}");
+    let (start, end) = (&heard[0], &heard[1]);
+    assert_eq!(start.id, end.id);
+    assert_eq!(
+        (
+            start.kind.as_str(),
+            start.agent_id.as_str(),
+            start.name.as_str()
+        ),
+        ("helper", "researcher", "Researcher")
+    );
+    assert_eq!(start.task, "Find the capital of France");
+    assert_eq!(
+        start.conversation_id.as_deref(),
+        Some(chat.conversation.as_str())
+    );
+    assert_eq!(
+        (start.run_id.clone(), start.workflow_id.clone()),
+        (None, None)
+    );
+    assert_eq!(start.parent_id, None);
+    assert_eq!(start.status, "running");
+    assert!(start.finished_at.is_none() && start.error.is_none());
+    assert_eq!(end.status, "done");
+    assert!(end.finished_at.is_some());
+    assert_eq!(end.task, start.task);
+    // The camelCase the page reads.
+    let json = serde_json::to_value(end).unwrap();
+    assert_eq!(json["agentId"], "researcher");
+    assert!(json["conversationId"].is_string());
+    assert!(json.get("finishedAt").is_some());
+}
+
+#[tokio::test]
+async fn a_turn_run_as_an_agent_announces_itself_by_name() {
+    let chat = Chat::new(vec![text_round("Done.")], &[]).await;
+    chat.save_agent(researcher()).await;
+    let heard = hear(&chat);
+    let (result, _) = chat.run(chat.request(&[]), Some("researcher")).await;
+    result.unwrap();
+
+    let heard = heard.lock().unwrap().clone();
+    let statuses: Vec<&str> = heard.iter().map(|c| c.status.as_str()).collect();
+    assert_eq!(statuses, ["running", "done"]);
+    assert_eq!(heard[0].kind, "chat");
+    assert_eq!(heard[0].name, "Researcher");
+    assert_eq!(heard[0].task, "compare two things");
+    assert_eq!(
+        heard[0].conversation_id.as_deref(),
+        Some(chat.conversation.as_str())
+    );
+}
+
+#[tokio::test]
+async fn a_stopped_helper_announces_that_it_stopped() {
+    let workers = Workers::new(
+        vec![("ask_slow", json!({ "task": "dig deep" }))],
+        vec![("Slow", Duration::from_secs(30))],
+    );
+    let chat = Chat::working(&workers, &["slow"], 3).await;
+    chat.save_agent(helper_agent("slow", "Slow")).await;
+    let heard = hear(&chat);
+    let (turn, events) = chat.start(chat.request(&[]));
+    let stop = async {
+        let (call_id, _) = seen(&events, started_as("slow")).await;
+        workers.at_work("Slow").await;
+        chat.manager.stop_agent_call(&call_id).unwrap();
+    };
+    let (result, ()) = tokio::join!(turn, stop);
+    result.unwrap();
+
+    let heard = heard.lock().unwrap().clone();
+    let slow: Vec<&agent_calls::AgentCallChange> =
+        heard.iter().filter(|c| c.agent_id == "slow").collect();
+    assert_eq!(slow.len(), 2, "{heard:?}");
+    assert_eq!(
+        (slow[0].status.as_str(), slow[0].name.as_str()),
+        ("running", "Slow")
+    );
+    assert_eq!(slow[1].status, "stopped");
+    assert_eq!(slow[1].error.as_deref(), Some(handoff::STOPPED_BY_YOU));
+    assert!(slow[1].finished_at.is_some());
+}
+
+#[tokio::test]
+async fn only_the_agents_still_running_are_listed() {
+    let chat = Chat::new(Vec::new(), &[]).await;
+    chat.save_agent(researcher()).await;
+    let start = |agent: &'static str, task: &'static str| {
+        let (pool, enc, conversation) = (
+            chat.state.db.clone(),
+            chat.state.encryption.clone(),
+            chat.conversation.clone(),
+        );
+        async move {
+            agent_calls::start_agent_call(
+                &pool,
+                &enc,
+                &agent_calls::AgentCallStart {
+                    run_id: None,
+                    workflow_id: None,
+                    step_id: None,
+                    conversation_id: Some(&conversation),
+                    kind: "helper",
+                    agent_id: agent,
+                    parent_id: None,
+                    task,
+                    model: None,
+                    request_id: None,
+                },
+            )
+            .await
+            .unwrap()
+        }
+    };
+    let finished = start("researcher", "old task").await;
+    let first = start("researcher", "first task").await;
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    let second = start("nobody", "second task").await;
+    agent_calls::finish_agent_call(
+        &chat.state.db,
+        &finished,
+        &agent_calls::AgentCallEnd {
+            tokens: 0,
+            usage: HandoffTokens::default(),
+            error: None,
+            stopped: false,
+        },
+    )
+    .await
+    .unwrap();
+
+    let running = conduit_desktop::agents::calls::running(&chat.state.db, &chat.state.encryption)
+        .await
+        .unwrap();
+    let ids: Vec<&str> = running.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, [second.as_str(), first.as_str()], "newest first");
+    assert_eq!(running[1].name, "Researcher");
+    assert_eq!(running[1].task, "first task");
+    assert_eq!(running[0].name, "nobody", "an unknown agent keeps its id");
+    assert!(running.iter().all(|c| c.status == "running"));
+}
+
+#[tokio::test]
+async fn a_reloaded_turn_gets_the_finish_times_of_its_helpers_tool_calls_too() {
+    use conduit_desktop::db::repository::tool_calls;
+    use provider_core::schema::{ToolCallRecord, ToolCallStatus};
+
+    let chat = Chat::new(
+        vec![
+            tool_round(vec![("ask_writer", json!({ "task": "Write it up" }))]),
+            tool_round(vec![("ask_researcher", json!({ "task": "Get the facts" }))]),
+            text_round("Facts."),
+            text_round("Written."),
+            text_round("All done."),
+        ],
+        &["writer"],
+    )
+    .await;
+    chat.save_agent(researcher()).await;
+    chat.save_agent(json!({
+        "id": "writer", "name": "Writer", "instructions": "Write.", "agents": ["researcher"]
+    }))
+    .await;
+    let (result, _) = chat.run(chat.request(&[]), None).await;
+    result.unwrap();
+
+    let request_of = |agent: &'static str| {
+        let pool = chat.state.db.clone();
+        async move {
+            sqlx::query_scalar::<_, String>("SELECT request_id FROM agent_calls WHERE agent_id = ?")
+                .bind(agent)
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+        }
+    };
+    let record = |id: &str, request_id: &str, at: &str| ToolCallRecord {
+        id: id.into(),
+        tool_id: "web_search".into(),
+        request_id: request_id.into(),
+        status: ToolCallStatus::Completed,
+        arguments: None,
+        result: None,
+        error: None,
+        approved_at: None,
+        completed_at: Some(at.into()),
+    };
+    for rec in [
+        record("lead-tool", "turn-1", "2026-10-21T10:00:01.000Z"),
+        record(
+            "writer-tool",
+            &request_of("writer").await,
+            "2026-10-21T10:00:02.000Z",
+        ),
+        record(
+            "researcher-tool",
+            &request_of("researcher").await,
+            "2026-10-21T10:00:03.000Z",
+        ),
+        record("elsewhere", "some-other-turn", "2026-10-21T10:00:04.000Z"),
+    ] {
+        tool_calls::insert_tool_call(&chat.state.db, &rec)
+            .await
+            .unwrap();
+    }
+
+    let log = conduit_desktop::commands::chat::request_event_log(
+        &chat.state,
+        &chat.conversation,
+        "turn-1",
+    )
+    .await
+    .unwrap();
+    assert!(!log.events.is_empty());
+    for id in ["lead-tool", "writer-tool", "researcher-tool"] {
+        assert!(log.tool_finished_at.contains_key(id), "{id} is missing");
+    }
+    assert!(!log.tool_finished_at.contains_key("elsewhere"));
+    assert_eq!(
+        log.tool_finished_at["researcher-tool"],
+        "2026-10-21T10:00:03.000Z"
+    );
+}

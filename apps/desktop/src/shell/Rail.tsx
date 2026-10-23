@@ -198,6 +198,8 @@ export interface RailProps {
   onNavigate: (destination: Destination) => void;
   /** Destinations with something new or running (a dot on the icon). */
   dots?: Partial<Record<Destination, boolean>>;
+  /** Destinations with things running now (a number on the icon, e.g. agents at work). */
+  counts?: Partial<Record<Destination, number>>;
   /** Hidden destinations (e.g. memory when the feature is off). */
   hidden?: readonly Destination[];
   /** A white-label brand's logo, if one is configured. */
@@ -211,6 +213,7 @@ export function Rail({
   destination,
   onNavigate,
   dots = {},
+  counts = {},
   hidden = [],
   logoSrc,
   effectiveTheme = 'dark',
@@ -234,7 +237,7 @@ export function Rail({
   const tabs = order.filter((d) => PHONE_TABS.includes(d));
   const sheetItems = order.filter((d) => !PHONE_TABS.includes(d));
   const moreCurrent = sheetItems.includes(here);
-  const moreDot = sheetItems.some((d) => dots[d]);
+  const moreDot = sheetItems.some((d) => dots[d] || (counts[d] ?? 0) > 0);
   // Arrow keys walk what is visible: the whole rail, or the tabs and More.
   const nav: string[] = phone ? [...tabs, 'more'] : order;
   const tabStop = phone ? (tabs.includes(here) ? here : 'more') : order.includes(here) ? here : order[0];
@@ -297,6 +300,13 @@ export function Rail({
     refs.current.get(nav[next])?.focus();
   }
 
+  /** The accessible name: the label, then what is running or new there. */
+  const railAria = (d: Destination, name: string) => {
+    const count = counts[d] ?? 0;
+    if (count > 0) return t('shell.rail.withRunning', { label: name, count });
+    return dots[d] ? t('shell.rail.withNew', { label: name }) : name;
+  };
+
   const button = (d: Destination) => {
     const current = d === here;
     const label = t(`shell.rail.${d}`);
@@ -314,13 +324,13 @@ export function Rail({
         data-phone={PHONE_TABS.includes(d) ? 'tab' : 'more'}
         title={label}
         aria-current={current ? 'page' : undefined}
-        aria-label={dots[d] ? t('shell.rail.withNew', { label: name }) : name}
+        aria-label={railAria(d, name)}
         tabIndex={d === tabStop ? 0 : -1}
         onClick={() => onNavigate(d)}
       >
         <span className="rail-icon" data-filled={current && SOLID_ICONS[d] ? '' : undefined}>
           {(current && SOLID_ICONS[d]) || ICONS[d]}
-          {dots[d] && <span className="rail-dot" aria-hidden="true" />}
+          <RailBadge dot={dots[d]} count={counts[d]} />
         </span>
         <span className="rail-label" aria-hidden="true">
           {label}
@@ -385,6 +395,7 @@ export function Rail({
           items={sheetItems}
           here={here}
           dots={dots}
+          counts={counts}
           effectiveTheme={effectiveTheme}
           onToggleTheme={onToggleTheme}
           onNavigate={(d) => {
@@ -401,10 +412,23 @@ export function Rail({
   );
 }
 
+/** A number pill when something runs there, else the dot when something is new. */
+function RailBadge({ dot, count }: { dot?: boolean; count?: number }) {
+  if (count && count > 0) {
+    return (
+      <span className="rail-count" aria-hidden="true">
+        {count > 99 ? '99+' : count}
+      </span>
+    );
+  }
+  return dot ? <span className="rail-dot" aria-hidden="true" /> : null;
+}
+
 interface MoreSheetProps {
   items: readonly Destination[];
   here: Destination;
   dots: Partial<Record<Destination, boolean>>;
+  counts: Partial<Record<Destination, number>>;
   effectiveTheme: 'dark' | 'light';
   onToggleTheme?: () => void;
   onNavigate: (destination: Destination) => void;
@@ -412,7 +436,7 @@ interface MoreSheetProps {
 }
 
 /** The phone "More" bottom sheet: the destinations that are not tabs, then light/dark. */
-function MoreSheet({ items, here, dots, effectiveTheme, onToggleTheme, onNavigate, onClose }: MoreSheetProps) {
+function MoreSheet({ items, here, dots, counts, effectiveTheme, onToggleTheme, onNavigate, onClose }: MoreSheetProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true);
@@ -447,12 +471,18 @@ function MoreSheet({ items, here, dots, effectiveTheme, onToggleTheme, onNavigat
               type="button"
               className="more-row"
               aria-current={d === here ? 'page' : undefined}
-              aria-label={dots[d] ? t('shell.rail.withNew', { label: name }) : name}
+              aria-label={
+                (counts[d] ?? 0) > 0
+                  ? t('shell.rail.withRunning', { label: name, count: counts[d] ?? 0 })
+                  : dots[d]
+                    ? t('shell.rail.withNew', { label: name })
+                    : name
+              }
               onClick={() => onNavigate(d)}
             >
               <span className="more-row-icon">
                 {(d === here && SOLID_ICONS[d]) || ICONS[d]}
-                {dots[d] && <span className="rail-dot" aria-hidden="true" />}
+                <RailBadge dot={dots[d]} count={counts[d]} />
               </span>
               <span className="more-row-label">{label}</span>
             </button>

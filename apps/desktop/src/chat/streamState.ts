@@ -988,7 +988,8 @@ function replayEvents(
     if (at !== undefined && Number.isFinite(at)) clock = at;
     state = reduceProviderEvent(state, event, clock);
   }
-  const toolCalls = state.toolCalls.map((tc) => {
+  // Helpers' calls too: the log carries their finish times under the same map.
+  const { toolCalls } = mapToolCallsDeep(state, (tc) => {
     const end = toolFinishedAt[tc.toolCallId];
     return end !== undefined && tc.startedAt !== undefined && end >= Math.max(tc.startedAt, tc.endedAt ?? 0)
       ? { ...tc, endedAt: end }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import type { AgentEntry, LibraryAgent } from '../ipc/contracts';
+import type { AgentCallChange, AgentEntry, LibraryAgent } from '../ipc/contracts';
 import { AgentsPage, AGENTS_REFRESH_MS } from './AgentsPage';
 
 const ipc = vi.hoisted(() => ({
@@ -118,7 +118,7 @@ describe('AgentsPage', () => {
     expect(screen.getByRole('status').getAttribute('title')).toBe('Working on: Look up the launch date');
     expect(screen.getByText('Not used yet')).toBeTruthy();
     expect(screen.getByText('glm-flash')).toBeTruthy();
-    expect(screen.getByText("Workflow's model")).toBeTruthy();
+    expect(screen.getByText('Default model')).toBeTruthy();
     expect(screen.getByText('2 tools')).toBeTruthy();
     expect(screen.getByText('Hands work to Writer')).toBeTruthy();
     expect(screen.getByText('1,234')).toBeTruthy();
@@ -331,5 +331,72 @@ describe('AgentsPage task links', () => {
     await flush();
     fireEvent.click(screen.getByRole('button', { name: 'Working on: Look up the launch date' }));
     expect(onOpenWorkflow).toHaveBeenCalledWith('w1', 'r1');
+  });
+});
+
+describe('Running now', () => {
+  const row = (extra: Partial<AgentCallChange>): AgentCallChange => ({
+    id: 'call-1',
+    kind: 'helper',
+    agentId: 'researcher',
+    name: 'Researcher',
+    task: 'Compare the plans',
+    status: 'running',
+    conversationId: 'c42',
+    startedAt: new Date(Date.now() - 65_000).toISOString(),
+    ...extra,
+  });
+
+  it('is not there while nothing runs', async () => {
+    ipc.listAgents.mockResolvedValue([]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    expect(screen.queryByText('Running now')).toBeNull();
+  });
+
+  it('lists each agent at work with its task, where and for how long', async () => {
+    ipc.listAgents.mockResolvedValue([helper]);
+    render(
+      <AgentsPage
+        onOpenWorkflow={() => {}}
+        onOpenWorkflows={() => {}}
+        running={[
+          row({}),
+          row({ id: 'call-2', kind: 'step', name: 'Writer', task: 'Write it', conversationId: null, runId: 'r1', workflowId: 'w1' }),
+        ]}
+        chatTitle={(id) => (id === 'c42' ? 'Plans' : null)}
+      />,
+    );
+    await flush();
+    const list = screen.getByRole('list', { name: 'Running now' });
+    const rows = within(list).getAllByRole('button');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('Researcher');
+    expect(rows[0]).toHaveTextContent('Compare the plans');
+    expect(rows[0]).toHaveTextContent('In Plans');
+    expect(rows[0]).toHaveTextContent('1m');
+    // The workflow's name comes from the page's own list.
+    expect(rows[1]).toHaveTextContent('In Weekly report');
+  });
+
+  it("opens a chat helper's view, and a workflow agent's run", async () => {
+    ipc.listAgents.mockResolvedValue([]);
+    const onOpenAgent = vi.fn();
+    const onOpenWorkflow = vi.fn();
+    render(
+      <AgentsPage
+        onOpenWorkflow={onOpenWorkflow}
+        onOpenWorkflows={() => {}}
+        onOpenAgent={onOpenAgent}
+        running={[row({}), row({ id: 'call-2', conversationId: null, runId: 'r1', workflowId: 'w1', task: 'Write it' })]}
+      />,
+    );
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Researcher: Compare the plans' }));
+    expect(onOpenAgent).toHaveBeenCalledWith('c42', 'call-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Open Researcher: Write it' }));
+    expect(onOpenWorkflow).toHaveBeenCalledWith('w1', 'r1');
+    // Without a name for the chat it still says where.
+    expect(screen.getByText('In a chat')).toBeTruthy();
   });
 });

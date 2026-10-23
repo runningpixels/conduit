@@ -842,6 +842,26 @@ export interface AgentCallRow {
   finishedAt?: string | null;
 }
 
+/** An agent call that started or finished (`agent-call-changed`), or one still
+ *  running (`list_running_agent_calls`): chat hand-offs and workflow agents. */
+export interface AgentCallChange {
+  id: string;
+  kind: 'step' | 'helper' | 'chat';
+  agentId: string;
+  name: string;
+  task: string;
+  status: 'running' | 'done' | 'failed' | 'stopped';
+  error?: string | null;
+  /** The chat it works for; null for workflow agents. */
+  conversationId?: string | null;
+  /** The workflow run it works for; null in chat. */
+  runId?: string | null;
+  workflowId?: string | null;
+  parentId?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+}
+
 /** One hand-off in an agent step's output. */
 export interface AgentHandoff {
   agent: string;

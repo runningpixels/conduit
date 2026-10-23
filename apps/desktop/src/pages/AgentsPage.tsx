@@ -4,13 +4,16 @@
 /// Edit, Duplicate, Delete). "In workflows" are the agent steps and helpers that
 /// belong to one workflow; the whole card opens it. Working agents come first.
 /// It reads the lists when it opens and again every few seconds while shown.
+/// Above them, "Running now" lists every agent at work, in chats and workflow
+/// runs, from the shell's live list; a row opens it where it works.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentEditorDialog } from '../agents/AgentEditorDialog';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { createLibraryAgent, deleteLibraryAgent, listAgents, listLibraryAgents } from '../ipc/client';
-import type { AgentEntry, LibraryAgent } from '../ipc/contracts';
+import type { AgentCallChange, AgentEntry, LibraryAgent } from '../ipc/contracts';
+import { useNow } from '../agents/useNow';
 import { PageFrame } from '../shell/PageFrame';
 import { destinationIcon } from '../shell/Rail';
 import { COMPUTER_TOOL } from '../workflows/editorModel';
@@ -65,11 +68,22 @@ function activityOf(agent: LibraryAgent, entries: readonly AgentEntry[]) {
   };
 }
 
+const NO_RUNNING: readonly AgentCallChange[] = [];
+
 export function AgentsPage({
   onOpenWorkflow,
   onOpenWorkflows,
   onOpenConversation,
+  running = NO_RUNNING,
+  chatTitle,
+  onOpenAgent,
 }: {
+  /// Agent calls running now, chats and workflow runs (the shell keeps the list).
+  running?: readonly AgentCallChange[];
+  /// A chat's title, for where a running agent works.
+  chatTitle?: (conversationId: string) => string | null;
+  /// Open a chat helper's own view.
+  onOpenAgent?: (conversationId: string, callId: string) => void;
   /// Open this workflow in the Workflows page, on this run when one is given.
   onOpenWorkflow: (workflowId: string, runId?: string) => void;
   /// Open this chat conversation.
@@ -87,6 +101,7 @@ export function AgentsPage({
   /// The editor dialog; `agent` null makes a new one.
   const [editing, setEditing] = useState<{ agent: LibraryAgent | null } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const now = useNow(running.length > 0);
   const stopped = useRef(false);
   const read = useCallback(() => {
     Promise.resolve()
@@ -336,6 +351,45 @@ export function AgentsPage({
     );
   };
 
+  /// One agent at work: who, on what, where, for how long. It opens where it works.
+  const runningRow = (row: AgentCallChange) => {
+    const name = row.name || row.agentId;
+    const workflowName = row.workflowId
+      ? (entries ?? []).find((e) => e.workflowId === row.workflowId)?.workflowName
+      : undefined;
+    const title = row.conversationId ? chatTitle?.(row.conversationId) : null;
+    const where = row.runId
+      ? workflowName
+        ? t('shell.agents.runningIn', { name: workflowName })
+        : t('shell.agents.runningInWorkflow')
+      : title
+        ? t('shell.agents.runningIn', { name: title })
+        : t('shell.agents.runningInChat');
+    const started = Date.parse(row.startedAt);
+    const elapsed = Number.isFinite(started) ? fmt.duration(Math.max(0, now - started)) : '';
+    const open = () => {
+      if (row.runId && row.workflowId) onOpenWorkflow(row.workflowId, row.runId);
+      else if (row.conversationId && row.kind === 'helper' && onOpenAgent) onOpenAgent(row.conversationId, row.id);
+      else if (row.conversationId) onOpenConversation?.(row.conversationId);
+    };
+    return (
+      <li key={row.id}>
+        <button
+          type="button"
+          className="agents-running-row"
+          title={row.task}
+          aria-label={t('chat.agentView.openAria', { name, task: row.task })}
+          onClick={open}
+        >
+          <span className="agents-running-name">{name}</span>
+          <span className="agents-running-task">{row.task}</span>
+          <span className="agents-running-where">{where}</span>
+          <span className="agents-running-time">{elapsed}</span>
+        </button>
+      </li>
+    );
+  };
+
   const FILTERS: [Filter, string][] = [
     ['all', t('shell.agents.filterAll')],
     ['working', t('shell.agents.filterWorking')],
@@ -354,6 +408,17 @@ export function AgentsPage({
         </button>
       }
     >
+      {running.length > 0 ? (
+        <section className="agents-section agents-running" aria-labelledby="agents-running-title">
+          <div className="agents-section-head">
+            <h3 id="agents-running-title">{t('shell.agents.runningTitle')}</h3>
+            <p>{t('shell.agents.runningHint')}</p>
+          </div>
+          <ul className="agents-running-list" aria-label={t('shell.agents.runningTitle')}>
+            {running.map(runningRow)}
+          </ul>
+        </section>
+      ) : null}
       {entries === null || library === null ? (
         <p className="wf-muted">{failed ? t('shell.agents.loadFailed') : t('shell.agents.loading')}</p>
       ) : (

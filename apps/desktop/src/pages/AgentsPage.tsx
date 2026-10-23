@@ -100,6 +100,7 @@ export function AgentsPage({
   chatTitle,
   onOpenAgent,
   onOpenDocuments,
+  onAskAgent,
 }: {
   /// Agent calls running now, chats and workflow runs (the shell keeps the list).
   running?: readonly AgentCallChange[];
@@ -115,6 +116,8 @@ export function AgentsPage({
   onOpenWorkflows: () => void;
   /// Go to Documents, where collections are made (the agent editor's "What it can read").
   onOpenDocuments?: () => void;
+  /// Start a new chat with this agent picked in the composer.
+  onAskAgent?: (agent: { id: string; name: string }) => void;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -432,6 +435,16 @@ export function AgentsPage({
           {stats(m.tasks, m.failed, m.tokens)}
           {routineList(lib, name, routinesOf(def.id))}
           <span className="agent-actions">
+            {onAskAgent && (
+              <button
+                type="button"
+                className="btn"
+                aria-label={t('shell.agents.askLabel', { name })}
+                onClick={() => onAskAgent({ id: def.id, name })}
+              >
+                {t('shell.agents.ask')}
+              </button>
+            )}
             <button
               type="button"
               className="btn ghost"

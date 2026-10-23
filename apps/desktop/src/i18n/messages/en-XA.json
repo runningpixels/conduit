@@ -1895,6 +1895,8 @@
   "shell.agents.copyName": "[{name} çöṕý ——]",
   "shell.agents.deleteConfirm": "[Ḍéļéťé “{name}”? Ŵöŕķḟļöŵš ťĥàť üšé îť ķééṕ ťĥéîŕ öŵñ çöṕý. —————— —————— —————— ————]",
   "shell.agents.deleteLabel": "[Ḍéļéťé {name} ———]",
+  "shell.agents.ask": "[Àšķ ——]",
+  "shell.agents.askLabel": "[Šťàŕť à çĥàť ŵîťĥ {name} —————— ——]",
   "shell.agents.duplicate": "[Ḍüṕļîçàťé ————]",
   "shell.agents.duplicateLabel": "[Ḍüṕļîçàťé {name} ————]",
   "shell.agents.editLabel": "[Éḍîť {name} ——]",

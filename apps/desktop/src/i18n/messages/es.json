@@ -1895,6 +1895,8 @@
   "shell.agents.copyName": "{name} (copia)",
   "shell.agents.deleteConfirm": "¿Eliminar «{name}»? Los flujos que lo usan conservan su propia copia.",
   "shell.agents.deleteLabel": "Eliminar {name}",
+  "shell.agents.ask": "Preguntar",
+  "shell.agents.askLabel": "Iniciar un chat con {name}",
   "shell.agents.duplicate": "Duplicar",
   "shell.agents.duplicateLabel": "Duplicar {name}",
   "shell.agents.editLabel": "Editar {name}",

@@ -1895,6 +1895,8 @@
   "shell.agents.copyName": "{name} copy",
   "shell.agents.deleteConfirm": "Delete “{name}”? Workflows that use it keep their own copy.",
   "shell.agents.deleteLabel": "Delete {name}",
+  "shell.agents.ask": "Ask",
+  "shell.agents.askLabel": "Start a chat with {name}",
   "shell.agents.duplicate": "Duplicate",
   "shell.agents.duplicateLabel": "Duplicate {name}",
   "shell.agents.editLabel": "Edit {name}",

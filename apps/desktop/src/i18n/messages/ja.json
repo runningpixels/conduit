@@ -1895,6 +1895,8 @@
   "shell.agents.copyName": "{name} のコピー",
   "shell.agents.deleteConfirm": "「{name}」を削除しますか？このエージェントを使っているワークフローは、それぞれのコピーを保持します。",
   "shell.agents.deleteLabel": "{name} を削除",
+  "shell.agents.ask": "質問する",
+  "shell.agents.askLabel": "{name} とのチャットを始める",
   "shell.agents.duplicate": "複製",
   "shell.agents.duplicateLabel": "{name} を複製",
   "shell.agents.editLabel": "{name} を編集",

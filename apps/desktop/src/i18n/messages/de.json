@@ -1895,6 +1895,8 @@
   "shell.agents.copyName": "{name} (Kopie)",
   "shell.agents.deleteConfirm": "„{name}“ löschen? Workflows, die diesen Agenten nutzen, behalten ihre eigene Kopie.",
   "shell.agents.deleteLabel": "{name} löschen",
+  "shell.agents.ask": "Fragen",
+  "shell.agents.askLabel": "Chat mit {name} starten",
   "shell.agents.duplicate": "Duplizieren",
   "shell.agents.duplicateLabel": "{name} duplizieren",
   "shell.agents.editLabel": "{name} bearbeiten",

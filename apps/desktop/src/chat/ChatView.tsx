@@ -344,6 +344,10 @@ interface ChatViewProps {
   onPendingSendConsumed?: () => void;
   /// The pending text starts a Research run (Home's Research chip).
   pendingSendResearch?: boolean;
+  /// An agent to pick in the composer (an agent card's "Ask"), once.
+  pendingAgent?: { id: string; name: string } | null;
+  /// Clear `pendingAgent` after it has been picked.
+  onPendingAgentConsumed?: () => void;
   /// A turn changed the conversation's stored summary (a Research run sets the
   /// title from its question); the shell re-reads the chat list.
   onConversationChanged?: () => void;
@@ -938,6 +942,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     pendingSendText = null,
     onPendingSendConsumed,
     pendingSendResearch = false,
+    pendingAgent = null,
+    onPendingAgentConsumed,
     onConversationChanged,
     paneActive = true,
     onOpenSettings,
@@ -1102,6 +1108,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const composerAgentRef = useRef<{ id: string; name: string } | null>(null);
   composerAgentRef.current = composerAgent;
   useEffect(() => setComposerAgent(null), [conversationId]);
+  // After the reset above, so a new chat's switch doesn't clear it.
+  useEffect(() => {
+    if (!pendingAgent) return;
+    setComposerAgent(pendingAgent);
+    onPendingAgentConsumed?.();
+    requestAnimationFrame(() => composerRef.current?.focusPrompt());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAgent]);
   const [knowledgeReloadToken, setKnowledgeReloadToken] = useState(0);
   // Named documents/collections a just-sent turn's retrieval could not use --
   // refused by the reinjection gate, or a whole collection unsearchable this

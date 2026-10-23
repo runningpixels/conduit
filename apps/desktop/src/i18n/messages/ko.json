@@ -1895,6 +1895,8 @@
   "shell.agents.copyName": "{name} 복사본",
   "shell.agents.deleteConfirm": "“{name}”을(를) 삭제할까요? 이 에이전트를 쓰는 워크플로는 각자 복사본을 유지합니다.",
   "shell.agents.deleteLabel": "{name} 삭제",
+  "shell.agents.ask": "질문하기",
+  "shell.agents.askLabel": "{name} 채팅 시작",
   "shell.agents.duplicate": "복제",
   "shell.agents.duplicateLabel": "{name} 복제",
   "shell.agents.editLabel": "{name} 편집",

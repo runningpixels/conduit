@@ -3268,6 +3268,18 @@ export default function App() {
     [openSettings, studio, writingStudio, activeDeck, activeDraft, leaveDeckChat, contextTab],
   );
 
+  /** An agent card's "Ask": a fresh chat (or the empty one on screen) with that agent picked. */
+  const [pendingAgent, setPendingAgent] = useState<{ id: string; name: string } | null>(null);
+  const askAgent = useCallback(
+    async (agent: { id: string; name: string }) => {
+      const hadDeck = activeDeckRef.current != null || activeDraftRef.current != null;
+      navigateTo('chats');
+      if (hadDeck || !activeConversationId || !chatViewRef.current?.isEmpty()) await handleNewChat();
+      setPendingAgent(agent);
+    },
+    [navigateTo, activeConversationId, handleNewChat],
+  );
+
   // ── Agents at work ───────────────────────────────────────────────────────
   // One list of the running agent calls feeds the rail's count, the Agents
   // page's "Running now" and the toasts when a chat's helper finishes.
@@ -3924,6 +3936,8 @@ export default function App() {
             pendingSendText={pendingSendText}
             pendingSendResearch={pendingSendResearch}
             onPendingSendConsumed={consumePendingSend}
+            pendingAgent={pendingAgent}
+            onPendingAgentConsumed={() => setPendingAgent(null)}
             onConversationChanged={() => {
               void refreshConversations();
               if (activeConversationId) void refreshActiveConversationSummary(activeConversationId);
@@ -4094,6 +4108,7 @@ export default function App() {
                 }}
                 onOpenWorkflows={() => navigateTo('workflows')}
                 onOpenDocuments={openDocuments}
+                onAskAgent={(agent) => void askAgent(agent)}
                 onOpenConversation={(id) => {
                   handleSelectConversation(id);
                   navigateTo('chats');

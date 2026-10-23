@@ -264,6 +264,16 @@ describe('AgentsPage', () => {
     expect(ipc.createLibraryAgent).toHaveBeenCalledWith({ ...writer.agent, id: '', name: 'Writer copy' });
   });
 
+  it('starts a chat with an agent from Ask', async () => {
+    ipc.listLibraryAgents.mockResolvedValue([writer]);
+    ipc.listAgents.mockResolvedValue([]);
+    const onAskAgent = vi.fn();
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} onAskAgent={onAskAgent} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Start a chat with Writer' }));
+    expect(onAskAgent).toHaveBeenCalledWith({ id: writer.agent.id, name: 'Writer' });
+  });
+
   it('asks before deleting and says workflows keep their copy', async () => {
     ipc.listLibraryAgents.mockResolvedValue([writer]);
     ipc.listAgents.mockResolvedValue([]);

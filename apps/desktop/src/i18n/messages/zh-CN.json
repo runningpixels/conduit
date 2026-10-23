@@ -1895,6 +1895,8 @@
   "shell.agents.copyName": "{name} 副本",
   "shell.agents.deleteConfirm": "删除“{name}”？使用它的工作流会保留各自的副本。",
   "shell.agents.deleteLabel": "删除 {name}",
+  "shell.agents.ask": "提问",
+  "shell.agents.askLabel": "与 {name} 开始对话",
   "shell.agents.duplicate": "复制",
   "shell.agents.duplicateLabel": "复制 {name}",
   "shell.agents.editLabel": "编辑 {name}",

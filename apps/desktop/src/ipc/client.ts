@@ -128,6 +128,8 @@ import type {
   SeedExamplesRequest,
   SeedExamplesOutcome,
   AgentEntry,
+  AgentDef,
+  LibraryAgent,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -2009,6 +2011,47 @@ export async function listWorkflows(): Promise<WorkflowSummary[]> {
 /** Every agent step and helper across workflows, with what it is doing now. */
 export async function listAgents(): Promise<AgentEntry[]> {
   return invokeCommand<AgentEntry[]>('list_agents');
+}
+
+/** The user's agents (the agent library), by name. */
+export async function listLibraryAgents(): Promise<LibraryAgent[]> {
+  return invokeCommand<LibraryAgent[]>('list_library_agents');
+}
+
+/**
+ * Save a new agent. An empty `agent.id` gets one made from its name; an id
+ * already taken gets a suffix (`researcher_2`). Rejects with the problems,
+ * one per line.
+ */
+export async function createLibraryAgent(agent: AgentDef): Promise<LibraryAgent> {
+  return invokeCommand<LibraryAgent>('create_library_agent', { agent });
+}
+
+/** Save changes to an agent (found by `agent.id`). Rejects with the problems, one per line. */
+export async function updateLibraryAgent(agent: AgentDef): Promise<LibraryAgent> {
+  return invokeCommand<LibraryAgent>('update_library_agent', { agent });
+}
+
+/**
+ * Delete an agent. Workflows that use it keep their own copy, and other
+ * agents stop handing it work. Returns how many workflows were given a copy.
+ */
+export async function deleteLibraryAgent(id: string): Promise<number> {
+  return invokeCommand<number>('delete_library_agent', { id });
+}
+
+/** Everything wrong with an agent, in plain English; empty when it can be saved. */
+export async function validateLibraryAgent(agent: AgentDef): Promise<string[]> {
+  return invokeCommand<string[]>('validate_library_agent', { agent });
+}
+
+/**
+ * A definition's helpers with the user's agents filled in (and the agents
+ * they hand work to added), as a run sees them. A helper whose agent no
+ * longer exists comes back as just `{ id, library }`.
+ */
+export async function resolveWorkflowAgents(definition: WorkflowDefinition): Promise<AgentDef[]> {
+  return invokeCommand<AgentDef[]>('resolve_workflow_agents', { definition });
 }
 
 export async function getWorkflow(id: string): Promise<WorkflowRecord> {

@@ -108,6 +108,7 @@ const SHAPES: Record<string, unknown> = {
   listDrafts: [],
   listWorkflows: [],
   listAgents: [],
+  listLibraryAgents: [],
   listWorkflowReviews: [],
   listWorkflowQuestions: [],
   listWorkflowActions: [],
@@ -169,7 +170,7 @@ const IPC_EXPORTS = [
   // Ideas (App.tsx reads the collection count for "Ask your documents").
   'listKnowledgeCollections',
   // Home: its lists and the apps App.tsx keeps for it.
-  'listWorkflows', 'listAgents', 'listApps', 'listStarterApps', 'openApp',
+  'listWorkflows', 'listAgents', 'listLibraryAgents', 'listApps', 'listStarterApps', 'openApp',
   // Slides: App.tsx asks whether the open chat is bound to a deck.
   'getDeckForConversation', 'listDecks', 'openDeck', 'undoStartDeck', 'listDeckSnapshots', 'listSlideThemes',
   'editSlideWords', 'setSlotPinned', 'replaceInDeck', 'insertBullet', 'removeBullet',
@@ -243,7 +244,7 @@ describe('App shell', { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
     expect(await screen.findByText('Nothing is waiting for you')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
-    expect(await screen.findByText('No agents yet')).toBeInTheDocument();
+    expect(await screen.findByText(/You haven’t made an agent yet/)).toBeInTheDocument();
 
     // Context opens on Documents, with its tabs; the rail marks Context.
     fireEvent.click(screen.getByRole('button', { name: 'Context' }));

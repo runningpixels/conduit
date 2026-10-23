@@ -71,6 +71,17 @@ fn main() {
         Err(e) => tracing::warn!(error = %e, "could not tidy research runs left running"),
     }
 
+    // The starter agents (Researcher, Writer...) are added once, before the
+    // page can ask for the user's agents.
+    match tauri::async_runtime::block_on(conduit_desktop::agents::library::seed_starters(
+        &state.db,
+        &state.encryption,
+    )) {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(agents = n, "added the starter agents"),
+        Err(e) => tracing::warn!(error = %e, "could not add the starter agents"),
+    }
+
     let app = tauri::Builder::default()
         // First, so a second launch hands off before anything else starts: it
         // exits, and the running one shows its window (it may be in the tray).
@@ -381,6 +392,13 @@ fn main() {
             cancel_workflow_draft,
             list_workflows,
             list_agents,
+            // The agent library: agents defined once, used in any workflow.
+            list_library_agents,
+            create_library_agent,
+            update_library_agent,
+            delete_library_agent,
+            validate_library_agent,
+            resolve_workflow_agents,
             preview_command_rule,
             suggest_command_rules,
             get_workflow,

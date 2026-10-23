@@ -306,9 +306,12 @@ impl Runner<'_> {
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "That workflow no longer exists.".to_string())?;
-        let def: definition::WorkflowDefinition =
+        let mut def: definition::WorkflowDefinition =
             serde_json::from_value(workflow.definition.clone())
                 .map_err(|e| definition::unreadable(&e))?;
+        // The user's agents it uses are read now, so an edit to one reaches
+        // this run; the stored workflow keeps only the references.
+        crate::agents::library::resolve(pool, enc, &mut def).await?;
         definition::validate(&def).map_err(|problems| problems.join(" "))?;
         let reused = match resume {
             Some(resume) => reusable(&def.steps, resume)?,
@@ -415,14 +418,21 @@ impl Runner<'_> {
             Some(workflow) if workflow.version != earlier.run.version => Err(
                 "The workflow changed while this run waited, so it didn't carry on.".to_string(),
             ),
-            Some(workflow) => serde_json::from_value::<definition::WorkflowDefinition>(
-                workflow.definition.clone(),
-            )
-            .map_err(|e| definition::unreadable(&e))
-            .and_then(|def| {
-                definition::validate(&def).map_err(|problems| problems.join(" "))?;
-                Ok((workflow, def))
-            }),
+            Some(workflow) => {
+                match serde_json::from_value::<definition::WorkflowDefinition>(
+                    workflow.definition.clone(),
+                ) {
+                    Err(e) => Err(definition::unreadable(&e)),
+                    Ok(mut def) => {
+                        match crate::agents::library::resolve(pool, enc, &mut def).await {
+                            Err(e) => Err(e),
+                            Ok(()) => definition::validate(&def)
+                                .map_err(|problems| problems.join(" "))
+                                .map(|()| (workflow, def)),
+                        }
+                    }
+                }
+            }
         };
         let (workflow, def) = match ready {
             Ok(ready) => ready,

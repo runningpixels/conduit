@@ -4,6 +4,7 @@
 //! `#[tauri::command]` function so `main.rs`'s `use conduit_desktop::commands::*`
 //! and `tauri::generate_handler![...]` continue to resolve.
 
+pub mod agents;
 pub mod app_inputs;
 pub mod app_settings;
 pub mod apps;
@@ -27,6 +28,7 @@ pub mod slides;
 pub mod tray;
 pub mod workflows;
 
+pub use agents::*;
 pub use app_inputs::*;
 pub use app_settings::*;
 pub use apps::*;

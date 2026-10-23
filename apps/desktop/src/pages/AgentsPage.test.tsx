@@ -1,11 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import type { AgentEntry } from '../ipc/contracts';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import type { AgentEntry, LibraryAgent } from '../ipc/contracts';
 import { AgentsPage, AGENTS_REFRESH_MS } from './AgentsPage';
 
 const ipc = vi.hoisted(() => ({
   listAgents: vi.fn(),
+  listLibraryAgents: vi.fn(),
+  createLibraryAgent: vi.fn(),
+  deleteLibraryAgent: vi.fn(),
+  updateLibraryAgent: vi.fn(),
+  validateLibraryAgent: vi.fn(),
   getWorkflow: vi.fn(),
+  listProviderDescriptors: vi.fn(),
+  listConfiguredProviders: vi.fn(),
+  listProviderModels: vi.fn(),
+  getSettings: vi.fn(),
+  listInstalledConnectors: vi.fn(),
 }));
 vi.mock('../ipc/client', () => ipc);
 
@@ -44,9 +54,38 @@ const step: AgentEntry = {
   tokens: 0,
 };
 
+const writer: LibraryAgent = {
+  agent: {
+    id: 'writer',
+    name: 'Writer',
+    instructions: 'Write it up.\nKeep it short.',
+    tools: ['computer', 'calculator'],
+    agents: ['researcher'],
+  },
+  createdAt: '2026-10-01T00:00:00Z',
+  updatedAt: '2026-10-01T00:00:00Z',
+  usedBy: [
+    { workflowId: 'w1', workflowName: 'Weekly report' },
+    { workflowId: 'w2', workflowName: 'Digest' },
+  ],
+};
+const researcher: LibraryAgent = {
+  agent: { id: 'researcher', name: 'Researcher', instructions: 'Find facts', tools: [] },
+  createdAt: '2026-10-01T00:00:00Z',
+  updatedAt: '2026-10-01T00:00:00Z',
+  usedBy: [],
+};
+
 beforeEach(() => {
   vi.useFakeTimers();
   ipc.getWorkflow.mockRejectedValue(new Error('no'));
+  ipc.listLibraryAgents.mockResolvedValue([]);
+  ipc.validateLibraryAgent.mockResolvedValue([]);
+  ipc.listProviderDescriptors.mockResolvedValue([]);
+  ipc.listConfiguredProviders.mockResolvedValue([]);
+  ipc.listProviderModels.mockResolvedValue([]);
+  ipc.getSettings.mockResolvedValue({ activeProvider: 'anthropic', activeModel: 'claude-x' });
+  ipc.listInstalledConnectors.mockResolvedValue([]);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -125,14 +164,85 @@ describe('AgentsPage', () => {
     expect(open).toHaveBeenCalledWith('w1');
   });
 
-  it('shows the empty state with a way to Workflows', async () => {
+  it('shows an empty library as a section with a way to make an agent, and a way to Workflows', async () => {
     ipc.listAgents.mockResolvedValue([]);
     const go = vi.fn();
     render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={go} />);
     await flush();
-    expect(screen.getByText('No agents yet')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Your agents' })).toBeTruthy();
+    expect(screen.getByText(/You haven’t made an agent yet/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New agent' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'In workflows' })).toBeTruthy();
+    // Nothing to search or filter yet.
+    expect(screen.queryByRole('searchbox')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open Workflows' }));
     expect(go).toHaveBeenCalled();
+  });
+
+  it("shows your agents with their copies' activity, apart from the ones in workflows", async () => {
+    ipc.listLibraryAgents.mockResolvedValue([writer, researcher]);
+    ipc.listAgents.mockResolvedValue([
+      { ...helper, agentId: 'writer', library: 'writer', name: 'Writer', tasks: 4, failed: 1, tokens: 1500, currentTask: 'Draft the intro' },
+      { ...helper, workflowId: 'w2', agentId: 'writer', library: 'writer', name: 'Writer', tasks: 2, failed: 0, tokens: 500, currentTask: null },
+      step,
+    ]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    const mine = screen.getByRole('group', { name: 'Writer' });
+    expect(within(mine).getByText('Used in 2 workflows')).toBeTruthy();
+    expect(within(mine).getByText('Write it up.')).toBeTruthy();
+    expect(within(mine).getByText('Working on: Draft the intro')).toBeTruthy();
+    expect(within(mine).getByText('Uses your computer')).toBeTruthy();
+    expect(within(mine).getByText('Hands work to Researcher')).toBeTruthy();
+    // 4 + 2 tasks, 1500 + 500 tokens.
+    expect(within(mine).getByText('6')).toBeTruthy();
+    expect(within(mine).getByText('2K')).toBeTruthy();
+    const other = screen.getByRole('group', { name: 'Researcher' });
+    expect(within(other).getByText('Not used in a workflow yet')).toBeTruthy();
+    // The workflow copies are not listed a second time under "In workflows".
+    expect(screen.getAllByRole('button', { name: 'Weekly report' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Writer' })).toBeNull();
+  });
+
+  it('opens the editor from New agent and Edit', async () => {
+    ipc.listLibraryAgents.mockResolvedValue([writer, researcher]);
+    ipc.listAgents.mockResolvedValue([]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'New agent' }));
+    expect(screen.getByRole('dialog', { name: 'New agent' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Writer' }));
+    expect(screen.getByRole('dialog', { name: 'Edit agent' })).toBeTruthy();
+    expect(screen.getByDisplayValue('Writer')).toBeTruthy();
+  });
+
+  it('duplicates an agent with an empty id so the backend makes a new one', async () => {
+    ipc.listLibraryAgents.mockResolvedValue([writer]);
+    ipc.listAgents.mockResolvedValue([]);
+    ipc.createLibraryAgent.mockResolvedValue(writer);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate Writer' }));
+    await flush();
+    expect(ipc.createLibraryAgent).toHaveBeenCalledWith({ ...writer.agent, id: '', name: 'Writer copy' });
+  });
+
+  it('asks before deleting and says workflows keep their copy', async () => {
+    ipc.listLibraryAgents.mockResolvedValue([writer]);
+    ipc.listAgents.mockResolvedValue([]);
+    ipc.deleteLibraryAgent.mockResolvedValue(2);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Writer' }));
+    expect(confirm).toHaveBeenCalledWith('Delete “Writer”? Workflows that use it keep their own copy.');
+    expect(ipc.deleteLibraryAgent).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Writer' }));
+    await flush();
+    expect(ipc.deleteLibraryAgent).toHaveBeenCalledWith('writer');
+    confirm.mockRestore();
   });
 
   it('refreshes every few seconds and stops on unmount', async () => {

@@ -9,7 +9,7 @@
 /// New workflows start from a ready-made one; editing is a checked JSON editor
 /// for now (the backend validates every save).
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ConfirmDialog } from '@conduit/ui';
 import { workflowRunStatus, type StatusState } from '../chat/statusTypes';
 import { useLocale, useT } from '../i18n';
@@ -82,6 +82,7 @@ import type {
 } from '../ipc/contracts';
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, stepLabels, type InputLabels } from '../workflows/describeStep';
+import { LibraryAgentsProvider, useLibraryAgents } from '../agents/useLibraryAgents';
 import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, triggerNeedsFolder, usesComputer } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { ResultView } from '../workflows/ResultView';
@@ -187,7 +188,16 @@ function durationMs(start: string, end: string | null): number | null {
 export function waitKey(wait: { runId: string; stepId: string }): string {
   return `${wait.runId}:${wait.stepId}`;
 }
-export function WorkflowsPage({
+/// The Workflows page; the user's agents are read once for the helper names it shows.
+export function WorkflowsPage(props: ComponentProps<typeof WorkflowsPageBody>) {
+  return (
+    <LibraryAgentsProvider>
+      <WorkflowsPageBody {...props} />
+    </LibraryAgentsProvider>
+  );
+}
+
+function WorkflowsPageBody({
   onStatus,
   onOpenDocument,
   onOpenDeck,
@@ -220,6 +230,7 @@ export function WorkflowsPage({
   onResultsSeen?: () => void;
 }) {
   const t = useT();
+  const { names: libNames } = useLibraryAgents();
   const { locale } = useLocale();
   const { isExample } = useExampleItems();
   const fmt = useFormatters();
@@ -1207,7 +1218,7 @@ export function WorkflowsPage({
               busy={answering.has(waitKey(review))}
               error={reviewErrors[waitKey(review)]}
               onAnswer={(decision) => void answer(review, decision)}
-              helperNames={helperNames(record.definition)}
+              helperNames={helperNames(record.definition, libNames)}
             />
           ))}
         {questions
@@ -1276,7 +1287,7 @@ export function WorkflowsPage({
               definitionVersion={record.version}
               trigger={record.definition.trigger}
               folder={record.definition.folder}
-              helperNames={helperNames(record.definition)}
+              helperNames={helperNames(record.definition, libNames)}
               onStatus={onStatus}
               onChanged={() => void refreshList()}
             />
@@ -1437,7 +1448,7 @@ export function WorkflowsPage({
               <div className="wfv-listview">
                 <div className="wfv-listview-steps">
                   {stepsToggle}
-                  <StepList steps={record.definition.steps} labels={inputLabels} connectorNames={stepNames} helpers={helperNames(record.definition)} />
+                  <StepList steps={record.definition.steps} labels={inputLabels} connectorNames={stepNames} helpers={helperNames(record.definition, libNames)} />
                 </div>
                 <aside className="wfv-panel" aria-label={t('workspace.workflows.canvas.inspector')}>
                   {renderPanel(selectedStep === START_ID ? START_ID : null, null)}
@@ -1484,7 +1495,7 @@ export function WorkflowsPage({
                     detail={openRun}
                     steps={record.definition.steps}
                     labels={inputLabels}
-                    helpers={helperNames(record.definition)}
+                    helpers={helperNames(record.definition, libNames)}
                     statusLabel={statusLabel}
                     onOpenDocument={onOpenDocument}
                     onOpenDeck={onOpenDeck}

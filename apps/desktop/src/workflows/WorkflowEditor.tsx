@@ -22,6 +22,7 @@ import { StartPanel } from './StartPanel';
 import { AgentConnectorTools } from './AgentConnectorTools';
 import { ComputerToolOption } from './ComputerToolOption';
 import { ChipField, type ChipFieldHandle } from './ChipField';
+import { LibraryAgentsProvider, useLibraryAgents } from '../agents/useLibraryAgents';
 import { useT } from '../i18n';
 import type { DataFormat, WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import {
@@ -128,6 +129,7 @@ export function WorkflowEditor({
   const start = <StartPanel draft={draft} onChange={onChange} notes={notes} />;
 
   return (
+    <LibraryAgentsProvider>
     <ProviderModelsProvider>
       <EditorNavContext.Provider value={nav}>
       <div className="wf-editor">
@@ -176,6 +178,7 @@ export function WorkflowEditor({
       </div>
       </EditorNavContext.Provider>
     </ProviderModelsProvider>
+    </LibraryAgentsProvider>
   );
 }
 
@@ -248,6 +251,7 @@ function StepCard({
   nestedList?: boolean;
 }) {
   const t = useT();
+  const { names: libNames } = useLibraryAgents();
   const headingId = useId();
   const update = (fn: (s: WorkflowStep) => WorkflowStep) => setSteps(updateStep(def.steps, path, fn));
   const refs = valuesAt(def, path);
@@ -657,7 +661,7 @@ function StepCard({
                       disabled={!on && (step.agents ?? []).length >= MAX_HELPER_LINKS}
                       onChange={(e) => update((s) => withStepHelper(s, helper.id, e.target.checked))}
                     />
-                    {helper.name || helper.id}
+                    {helper.name || (helper.library ? libNames[helper.library] : '') || helper.id}
                   </label>
                 );
               })}

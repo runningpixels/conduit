@@ -2370,3 +2370,133 @@ async fn an_agent_that_reads_collections_can_search_them_and_no_others() {
     );
     assert!(!mentions(&requests[1], "Private diary"));
 }
+
+// ── Reviewing a chat's document ──────────────────────────────────────────────
+
+impl Chat {
+    /// A document of `kind` in this chat holding `text`.
+    async fn document(&self, kind: &str, title: &str, text: &str) -> String {
+        use conduit_desktop::db::repository::artifacts;
+        let made = artifacts::create(&self.state.db, &self.conversation, kind, Some(title), None)
+            .await
+            .unwrap();
+        artifacts::set_content(
+            &self.state.db,
+            &self.state.paths.artifacts,
+            &self.state.encryption,
+            &made.id,
+            Some("text/markdown"),
+            &artifacts::ArtifactContent::Text { text: text.into() },
+        )
+        .await
+        .unwrap();
+        made.id
+    }
+
+    async fn review(
+        &self,
+        artifact: &str,
+        request: &str,
+    ) -> Result<review::DocumentReview, String> {
+        review::review_document(&self.state, &self.runtime, &self.manager, artifact, request).await
+    }
+}
+
+use conduit_desktop::agents::review;
+
+#[tokio::test]
+async fn the_reviewer_reads_a_document_against_its_request_and_lists_what_to_change() {
+    let chat = Chat::new(
+        vec![text_round_using(
+            r#"{"verdict":"issues","issues":[{"problem":"It is 240 words","change":"Cut it under 200"}]}"#,
+            40,
+        )],
+        &[],
+    )
+    .await;
+    let doc = chat
+        .document("markdown", "Heater email", "Dear landlord, the heater...")
+        .await;
+    let found = chat
+        .review(&doc, "An email under 200 words.")
+        .await
+        .unwrap();
+    assert_eq!(found.reviewer, "Reviewer");
+    assert_eq!(
+        found.issues,
+        vec![review::ReviewIssue {
+            problem: "It is 240 words".into(),
+            change: "Cut it under 200".into()
+        }]
+    );
+
+    // The deleted Reviewer's starter stands in, with its web tools, and is
+    // told what it reads and that the document is saved.
+    let requests = chat.requests();
+    assert_eq!(requests.len(), 1);
+    let asked = &requests[0];
+    assert!(asked
+        .system_prompt
+        .as_deref()
+        .unwrap()
+        .contains("You are Reviewer."));
+    assert_eq!(tool_names(asked), vec!["web_fetch", "web_search"]);
+    // (`mentions` reads the request as JSON, where a line break is `\n`.)
+    assert!(mentions(asked, r"REQUEST:\nAn email under 200 words."));
+    assert!(mentions(asked, r"DOCUMENT:\nDear landlord, the heater..."));
+    assert!(mentions(
+        asked,
+        "already saved as a markdown document titled \u{201c}Heater email\u{201d}"
+    ));
+
+    // Recorded as an agent's task of its own, outside any chat.
+    let calls = chat.calls().await;
+    assert_eq!(calls.len(), 1);
+    let (kind, agent, conversation, parent, _, status, error, tokens) = &calls[0];
+    assert_eq!((kind.as_str(), agent.as_str()), ("helper", "reviewer"));
+    assert_eq!((conversation, parent), (&None, &None));
+    assert_eq!((status.as_str(), error), ("done", &None));
+    assert_eq!(*tokens, 40);
+}
+
+#[tokio::test]
+async fn the_users_own_reviewer_reviews_and_ok_means_nothing_to_change() {
+    let chat = Chat::new(vec![text_round(r#"{"verdict":"ok","issues":[]}"#)], &[]).await;
+    chat.save_agent(json!({
+        "id": "reviewer", "name": "Strict editor", "instructions": "Be strict about length.",
+        "tools": []
+    }))
+    .await;
+    let doc = chat.document("text", "Notes", "Short notes.").await;
+    let found = chat.review(&doc, "").await.unwrap();
+    assert_eq!(found.reviewer, "Strict editor");
+    assert!(found.issues.is_empty());
+    let asked = &chat.requests()[0];
+    assert!(asked
+        .system_prompt
+        .as_deref()
+        .unwrap()
+        .contains("You are Strict editor. Be strict about length."));
+    assert!(tool_names(asked).is_empty());
+    assert!(mentions(asked, "isn't known"));
+}
+
+#[tokio::test]
+async fn only_a_document_with_text_is_reviewed() {
+    let chat = Chat::new(vec![], &[]).await;
+    let app = chat.document("app", "Timer", "<html></html>").await;
+    assert_eq!(
+        chat.review(&app, "a timer").await.unwrap_err(),
+        "Only documents can be reviewed."
+    );
+    let empty = chat.document("markdown", "Blank", "   ").await;
+    assert_eq!(
+        chat.review(&empty, "x").await.unwrap_err(),
+        "The document is empty."
+    );
+    assert_eq!(
+        chat.review("missing", "x").await.unwrap_err(),
+        "That document no longer exists."
+    );
+    assert!(chat.requests().is_empty());
+}

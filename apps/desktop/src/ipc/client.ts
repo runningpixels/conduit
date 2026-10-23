@@ -135,6 +135,7 @@ import type {
   LibraryAgent,
   AgentCallRow,
   AgentCallChange,
+  DocumentReview,
 } from './contracts';
 
 export async function getAppPaths(): Promise<AppPaths> {
@@ -2043,6 +2044,12 @@ export async function stopAgentCall(callId: string): Promise<void> {
 /** Sends a running helper a new instruction. */
 export async function redirectAgentCall(callId: string, text: string): Promise<void> {
   await invokeCommand('redirect_agent_call', { callId, text });
+}
+
+/** Have the Reviewer check a chat document against `request`, the user's
+ *  words that produced it (empty when unknown). Changes nothing itself. */
+export async function reviewDocument(artifactId: string, request: string): Promise<DocumentReview> {
+  return invokeCommand<DocumentReview>('review_document', { artifactId, request });
 }
 
 /** Agent calls running now, in chat and in workflow runs. */

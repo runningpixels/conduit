@@ -3431,13 +3431,12 @@ async fn remember_fact(ctx: &AgentToolContext<'_>, input: RememberInput) -> Resu
     let item = crate::db::repository::memory::create(
         ctx.db,
         ctx.encryption,
-        crate::db::repository::memory::NewMemory {
+        crate::db::repository::memory::NewMemory::global(
             kind,
-            body: input.fact,
-            source_conversation_id: Some(ctx.conversation_id.to_string()),
-            pinned: false,
-            status: crate::db::repository::memory::MemoryStatus::Pending,
-        },
+            input.fact,
+            Some(ctx.conversation_id.to_string()),
+            crate::db::repository::memory::MemoryStatus::Pending,
+        ),
     )
     .await
     .map_err(|e| e.to_string())?;

@@ -81,6 +81,7 @@ function item(overrides: Partial<MemoryItem>): MemoryItem {
     body: 'I prefer terse commit messages',
     pinned: false,
     status: 'active',
+    scope: 'global',
     createdAt: '2026-09-04T00:00:00Z',
     updatedAt: '2026-09-04T00:00:00Z',
     ...overrides,

@@ -22,6 +22,9 @@ const ipc = vi.hoisted(() => ({
   approveWorkflowPermissions: vi.fn(),
   deleteWorkflow: vi.fn(),
   pickWorkspaceFolder: vi.fn(),
+  listMemoryItems: vi.fn(),
+  listKnowledgeCollections: vi.fn(),
+  agentMemoryScope: (id: string) => `agent:${id}`,
 }));
 vi.mock('../ipc/client', () => ipc);
 
@@ -70,6 +73,7 @@ const writer: LibraryAgent = {
   },
   createdAt: '2026-10-01T00:00:00Z',
   updatedAt: '2026-10-01T00:00:00Z',
+  notes: 0,
   usedBy: [
     { workflowId: 'w1', workflowName: 'Weekly report' },
     { workflowId: 'w2', workflowName: 'Digest' },
@@ -81,6 +85,7 @@ const researcher: LibraryAgent = {
   createdAt: '2026-10-01T00:00:00Z',
   updatedAt: '2026-10-01T00:00:00Z',
   usedBy: [],
+  notes: 0,
   chat: { tasks: 0, failed: 0, tokens: 0, lastActive: null, currentTask: null, currentConversationId: null },
 };
 
@@ -96,6 +101,8 @@ beforeEach(() => {
   ipc.listInstalledConnectors.mockResolvedValue([]);
   ipc.listRoutines.mockResolvedValue([]);
   ipc.setWorkflowSchedule.mockResolvedValue(null);
+  ipc.listMemoryItems.mockResolvedValue([]);
+  ipc.listKnowledgeCollections.mockResolvedValue([]);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -406,6 +413,49 @@ describe('Running now', () => {
     expect(onOpenWorkflow).toHaveBeenCalledWith('w1', 'r1');
     // Without a name for the chat it still says where.
     expect(screen.getByText('In a chat')).toBeTruthy();
+  });
+});
+
+describe('Memory and knowledge chips', () => {
+  const withDef = (agent: LibraryAgent, def: Partial<LibraryAgent['agent']>, notes = 0): LibraryAgent => ({
+    ...agent,
+    notes,
+    agent: { ...agent.agent, ...def },
+  });
+
+  beforeEach(() => {
+    ipc.listAgents.mockResolvedValue([]);
+  });
+
+  it('shows how many notes an agent that remembers keeps, and how many collections it reads', async () => {
+    ipc.listLibraryAgents.mockResolvedValue([
+      withDef(writer, { memory: true, knowledge: ['c1', 'c2'] }, 3),
+      withDef(researcher, { memory: true }, 1),
+    ]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    const w = within(screen.getByRole('group', { name: 'Writer' }));
+    expect(w.getByText('Remembers · 3 notes')).toBeTruthy();
+    expect(w.getByText('Reads 2 collections')).toBeTruthy();
+    const r = within(screen.getByRole('group', { name: 'Researcher' }));
+    expect(r.getByText('Remembers · 1 note')).toBeTruthy();
+    expect(r.queryByText(/^Reads/)).toBeNull();
+  });
+
+  it('says only "Remembers" before it has any notes', async () => {
+    ipc.listLibraryAgents.mockResolvedValue([withDef(writer, { memory: true })]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    expect(within(screen.getByRole('group', { name: 'Writer' })).getByText('Remembers')).toBeTruthy();
+  });
+
+  it('shows neither chip when memory is off and nothing is read', async () => {
+    ipc.listLibraryAgents.mockResolvedValue([withDef(writer, {}, 5)]);
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    const w = within(screen.getByRole('group', { name: 'Writer' }));
+    expect(w.queryByText(/^Remembers/)).toBeNull();
+    expect(w.queryByText(/^Reads/)).toBeNull();
   });
 });
 

@@ -14,6 +14,7 @@ use sqlx::SqlitePool;
 
 use crate::db::repository::agent_calls::{self, AgentCallRow, ChatAgentActivity};
 use crate::db::repository::agents as repo;
+use crate::db::repository::{knowledge, memory};
 use crate::encryption::Encryption;
 use crate::workflows::definition::{
     apply_step_agents, check_helper_fields, check_helper_id, step_agents, AgentDef,
@@ -36,6 +37,8 @@ pub struct LibraryAgent {
     /// What it has done in chat (turns run as it, tasks handed to it). Zeros
     /// until [`with_chat_activity`] fills it in.
     pub chat: ChatUse,
+    /// How many notes it keeps (`memory::agent_scope`).
+    pub notes: u64,
 }
 
 /// A library agent's work in chat, for its card on the Agents page.
@@ -172,6 +175,8 @@ pub fn reference(id: &str) -> AgentDef {
         agents: Vec::new(),
         max_tokens: None,
         alongside: false,
+        memory: false,
+        knowledge: Vec::new(),
         library: Some(id.to_string()),
     }
 }
@@ -203,6 +208,8 @@ pub fn resolve_helpers(library: &HashMap<String, AgentDef>, helpers: &mut Vec<Ag
             helper.tools = source.tools;
             helper.max_tokens = source.max_tokens;
             helper.alongside = source.alongside;
+            helper.memory = source.memory;
+            helper.knowledge = source.knowledge;
             for next in &source.agents {
                 if present.insert(next.clone()) {
                     helpers.push(reference(next));
@@ -489,10 +496,54 @@ fn prepared(mut agent: AgentDef, taken: &HashSet<String>) -> AgentDef {
     agent.name = agent.name.trim().to_string();
     agent.instructions = agent.instructions.trim().to_string();
     agent.id = agent.id.trim().to_string();
+    for collection in &mut agent.knowledge {
+        *collection = collection.trim().to_string();
+    }
     if agent.id.is_empty() {
         agent.id = unique_id(&slug(&agent.name), taken);
     }
     agent
+}
+
+/// The collections `agent` reads that aren't among the user's collections
+/// of documents, as problems (like a helper that isn't one of the agents).
+pub async fn check_knowledge(pool: &SqlitePool, agent: &AgentDef) -> Result<Vec<String>, String> {
+    let listed: Vec<&str> = agent
+        .knowledge
+        .iter()
+        .map(|c| c.trim())
+        .filter(|c| !c.is_empty())
+        .collect();
+    if listed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let known: HashSet<String> = knowledge::list_collections(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|c| c.id)
+        .collect();
+    let who = quoted(agent);
+    Ok(listed
+        .into_iter()
+        .filter(|id| !known.contains(*id))
+        .map(|id| {
+            format!(
+                "{who} reads \u{201c}{id}\u{201d}, which isn\u{2019}t one of your collections of documents."
+            )
+        })
+        .collect())
+}
+
+/// [`check`] and [`check_knowledge`] together.
+async fn problems(
+    pool: &SqlitePool,
+    agent: &AgentDef,
+    others: &[AgentDef],
+) -> Result<Vec<String>, String> {
+    let mut problems = check(agent, others).err().unwrap_or_default();
+    problems.extend(check_knowledge(pool, agent).await?);
+    Ok(problems)
 }
 
 /// Everything wrong with `agent` as a library agent; empty when it can be
@@ -510,7 +561,16 @@ pub async fn validate(
         agent
     };
     let others: Vec<AgentDef> = library.into_values().collect();
-    Ok(check(&agent, &others).err().unwrap_or_default())
+    problems(pool, &agent, &others).await
+}
+
+/// Fail with the problems, one per line, when there are any.
+fn none_of(problems: Vec<String>) -> Result<(), String> {
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems.join("\n"))
+    }
 }
 
 /// Save a new agent. Errors are the problems, one per line.
@@ -532,7 +592,7 @@ pub async fn create(
         agent
     };
     let others: Vec<AgentDef> = library.into_values().collect();
-    check(&agent, &others).map_err(|p| p.join("\n"))?;
+    none_of(problems(pool, &agent, &others).await?)?;
     let saved = repo::insert(pool, enc, &agent)
         .await
         .map_err(|e| e.to_string())?;
@@ -551,7 +611,7 @@ pub async fn update(
     }
     let agent = prepared(agent, &HashSet::new());
     let others: Vec<AgentDef> = library.into_values().collect();
-    check(&agent, &others).map_err(|p| p.join("\n"))?;
+    none_of(problems(pool, &agent, &others).await?)?;
     let saved = repo::update(pool, enc, &agent)
         .await
         .map_err(|e| e.to_string())?;
@@ -564,24 +624,32 @@ async fn entry(
     record: repo::AgentRecord,
 ) -> Result<LibraryAgent, String> {
     let mut used = used_by(pool, enc).await?;
+    let notes = memory::count_in(pool, &memory::agent_scope(&record.agent.id))
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(LibraryAgent {
         used_by: used.remove(&record.agent.id).unwrap_or_default(),
         agent: record.agent,
         created_at: record.created_at,
         updated_at: record.updated_at,
         chat: ChatUse::default(),
+        notes: notes.max(0) as u64,
     })
 }
 
 /// Every agent, by name, with the workflows that use it.
 pub async fn list(pool: &SqlitePool, enc: &Encryption) -> Result<Vec<LibraryAgent>, String> {
     let mut used = used_by(pool, enc).await?;
+    let notes = memory::agent_note_counts(pool)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut out: Vec<LibraryAgent> = repo::list(pool, enc)
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
         .map(|r| LibraryAgent {
             used_by: used.remove(&r.agent.id).unwrap_or_default(),
+            notes: notes.get(&r.agent.id).copied().unwrap_or(0).max(0) as u64,
             agent: r.agent,
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -633,8 +701,11 @@ pub async fn delete(pool: &SqlitePool, enc: &Encryption, id: &str) -> Result<u32
     let Some(gone) = library.get(id).cloned() else {
         return Err("That agent no longer exists.".to_string());
     };
+    // Its notes go with it, so the copy doesn't remember; it still reads
+    // the same collections.
     let copy = AgentDef {
         library: None,
+        memory: false,
         ..gone
     };
     let mut changes = Vec::new();
@@ -692,6 +763,9 @@ pub async fn delete(pool: &SqlitePool, enc: &Encryption, id: &str) -> Result<u32
     repo::delete_in(&mut tx, id)
         .await
         .map_err(|e| e.to_string())?;
+    memory::delete_scope_in(&mut tx, &memory::agent_scope(id))
+        .await
+        .map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(changes.len() as u32)
 }
@@ -737,6 +811,8 @@ pub fn starters() -> Vec<AgentDef> {
             agents: Vec::new(),
             max_tokens: None,
             alongside: false,
+            memory: false,
+            knowledge: Vec::new(),
             library: None,
         })
         .collect()

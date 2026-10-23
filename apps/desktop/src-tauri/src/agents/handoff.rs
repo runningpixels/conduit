@@ -25,8 +25,10 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::agent_tools;
+use crate::agents::kit::AgentKit;
 use crate::agents::{calls, library};
 use crate::connector_runtime::ConnectorRuntimeManager;
+use crate::db::repository::memory::MemoryOrigin;
 use crate::db::repository::{agent_calls, conversations, event_log};
 use crate::event_sink::{EventSink, SinkClosed};
 use crate::state::AppState;
@@ -904,6 +906,26 @@ impl<'a> ChatHandoff<'a> {
             helper.name.trim(),
             helper.instructions.trim()
         );
+        // Its notes and collections (every agent handed work in chat is one
+        // of the user's).
+        let kit =
+            match AgentKit::load(self.state, Some(&helper.id), helper, MemoryOrigin::Chat).await {
+                Ok(kit) => kit,
+                Err(error) => {
+                    return (
+                        Handed {
+                            result: Err(error),
+                            tokens: 0,
+                            usage: HandoffTokens::default(),
+                        },
+                        false,
+                    )
+                }
+            };
+        if let Some(kit) = &kit {
+            kit.add_to_system(&mut system);
+            definitions.extend(kit.definitions());
+        }
         let mut request = text_request(hidden, &model.model, "", task);
         let helper_request_id = helper_request_id.to_string();
 
@@ -977,6 +999,7 @@ impl<'a> ChatHandoff<'a> {
             model.chosen.then_some(model.provider.as_str()),
             TurnOptions {
                 handoff: nested.as_ref(),
+                kit: kit.as_ref(),
                 ceiling: Some(self.ceiling),
                 wrap_up: Some(&guard.wrap),
                 queue_rounds: true,
@@ -1163,6 +1186,14 @@ pub async fn start_chat_turn(
         }
         restrict_tools(state, &mut request, lead).await;
     }
+    // Its notes and collections.
+    let kit = match &lead {
+        Some(lead) => AgentKit::load(state, Some(&lead.id), lead, MemoryOrigin::Chat).await?,
+        None => None,
+    };
+    if let Some(kit) = &kit {
+        kit.add_to_request(&mut request);
+    }
     let lead_has_helpers = !offered.is_empty();
     if lead_has_helpers {
         let mut system = request.system_prompt.take().unwrap_or_default();
@@ -1265,6 +1296,7 @@ pub async fn start_chat_turn(
             provider.as_deref(),
             TurnOptions {
                 handoff: Some(&handoff),
+                kit: kit.as_ref(),
                 ceiling: Some(ceiling),
                 ..TurnOptions::default()
             },

@@ -319,7 +319,31 @@ pub fn required(def: &WorkflowDefinition, ctx: &Context) -> Vec<Permission> {
             });
         }
     }
+    // An agent that reads collections of documents (a helper, or the agent
+    // a step runs as) searches them as a `search_documents` step does.
+    let none = |_: &str| None;
+    for agent in reading_agents(def) {
+        set.insert(search_documents(
+            &agent.knowledge,
+            ctx.collection_title.unwrap_or(&none),
+        ));
+    }
     set.into_iter().collect()
+}
+
+/// The helpers some agent step can hand work to and the agents steps run
+/// as, that read collections of documents.
+fn reading_agents(def: &WorkflowDefinition) -> Vec<&super::definition::AgentDef> {
+    let mut out: Vec<&super::definition::AgentDef> = reachable_helpers(def);
+    for id in super::definition::step_agents(def) {
+        if let Some(agent) = def.agents.iter().find(|h| h.id == id) {
+            if !out.iter().any(|h| h.id == agent.id) {
+                out.push(agent);
+            }
+        }
+    }
+    out.retain(|h| h.knowledge.iter().any(|c| !c.trim().is_empty()));
+    out
 }
 
 /// How a helper's tools are named in an `AgentTools` permission (a step id
@@ -449,9 +473,9 @@ fn collect(
     }
 }
 
-/// The titles of the collections `def`'s `search_documents` steps name, by
-/// id, for [`Context::collection_title`]. A collection that no longer exists
-/// is left out.
+/// The titles of the collections `def`'s `search_documents` steps and its
+/// agents name, by id, for [`Context::collection_title`]. A collection that
+/// no longer exists is left out.
 pub async fn collection_titles(
     pool: &sqlx::SqlitePool,
     def: &WorkflowDefinition,
@@ -474,6 +498,15 @@ pub async fn collection_titles(
     }
     let mut wanted = BTreeSet::new();
     ids(&def.steps, &mut wanted);
+    for agent in reading_agents(def) {
+        wanted.extend(
+            agent
+                .knowledge
+                .iter()
+                .map(|c| c.trim())
+                .filter(|c| !c.is_empty()),
+        );
+    }
     let mut titles = std::collections::HashMap::new();
     for id in wanted {
         if let Ok(Some(collection)) =

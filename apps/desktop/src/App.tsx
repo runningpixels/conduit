@@ -4041,7 +4041,12 @@ export default function App() {
             )}
             {destination === 'connectors' && <ConnectorsPage onStatus={setStatusMessage} />}
             {destination === 'memory' && (
-              <MemoryPage settings={settings} onSettingsChange={setSettings} onStatus={setStatusMessage} />
+              <MemoryPage
+                settings={settings}
+                onSettingsChange={setSettings}
+                onStatus={setStatusMessage}
+                onOpenAgents={() => navigateTo('agents')}
+              />
             )}
             {/* Manage is the Apps page as it was. Apps, the home screen, shows
                 the same page while an app is open, so an app opened from
@@ -4088,6 +4093,7 @@ export default function App() {
                   setDestination('workflows');
                 }}
                 onOpenWorkflows={() => navigateTo('workflows')}
+                onOpenDocuments={openDocuments}
                 onOpenConversation={(id) => {
                   handleSelectConversation(id);
                   navigateTo('chats');

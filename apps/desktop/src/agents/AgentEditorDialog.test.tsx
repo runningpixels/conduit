@@ -12,10 +12,16 @@ const ipc = vi.hoisted(() => ({
   listProviderModels: vi.fn(),
   getSettings: vi.fn(),
   listInstalledConnectors: vi.fn(),
+  listMemoryItems: vi.fn(),
+  createMemoryItem: vi.fn(),
+  updateMemoryItem: vi.fn(),
+  deleteMemoryItem: vi.fn(),
+  listKnowledgeCollections: vi.fn(),
+  agentMemoryScope: (id: string) => `agent:${id}`,
 }));
 vi.mock('../ipc/client', () => ipc);
 
-const stamp = { createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', usedBy: [],
+const stamp = { notes: 0, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', usedBy: [],
   chat: { tasks: 0, failed: 0, tokens: 0, lastActive: null, currentTask: null, currentConversationId: null } };
 const writer: LibraryAgent = {
   agent: { id: 'writer', name: 'Writer', instructions: 'Write it up.', tools: [] },
@@ -34,6 +40,8 @@ beforeEach(() => {
   ipc.listProviderModels.mockResolvedValue([]);
   ipc.getSettings.mockResolvedValue({ activeProvider: 'anthropic', activeModel: 'claude-x' });
   ipc.listInstalledConnectors.mockResolvedValue([]);
+  ipc.listMemoryItems.mockResolvedValue([]);
+  ipc.listKnowledgeCollections.mockResolvedValue([]);
 });
 afterEach(() => {
   vi.useRealTimers();

@@ -214,7 +214,10 @@ describe('artifact + attachment IPC wrappers', () => {
   it('listMemoryItems / create / update / delete / accept / getMemoryPromptBlock', async () => {
     invoke.mockResolvedValue([]);
     await listMemoryItems('pending');
-    expect(invoke).toHaveBeenCalledWith('list_memory_items', { status: 'pending' });
+    expect(invoke).toHaveBeenCalledWith('list_memory_items', { status: 'pending', scope: null });
+
+    await listMemoryItems(null, 'agent:writer');
+    expect(invoke).toHaveBeenCalledWith('list_memory_items', { status: null, scope: 'agent:writer' });
 
     invoke.mockResolvedValue({ id: 'm1' });
     await createMemoryItem('I prefer terse commits', 'core', true);
@@ -222,6 +225,15 @@ describe('artifact + attachment IPC wrappers', () => {
       body: 'I prefer terse commits',
       kind: 'core',
       pinned: true,
+      scope: null,
+    });
+
+    await createMemoryItem('Likes tables', 'note', false, 'agent:writer');
+    expect(invoke).toHaveBeenCalledWith('create_memory_item', {
+      body: 'Likes tables',
+      kind: 'note',
+      pinned: false,
+      scope: 'agent:writer',
     });
 
     await updateMemoryItem('m1', 'Updated', 'note', false);

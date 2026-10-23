@@ -10,6 +10,7 @@ import { useFocusTrap } from '../shell/useFocusTrap';
 import { useT } from '../i18n';
 import { createLibraryAgent, updateLibraryAgent, validateLibraryAgent } from '../ipc/client';
 import type { AgentDef, LibraryAgent } from '../ipc/contracts';
+import { AgentKnowledge, AgentMemory } from './AgentMemory';
 import { AgentConnectorTools } from '../workflows/AgentConnectorTools';
 import {
   AGENT_TOOLS,
@@ -45,7 +46,10 @@ export function AgentEditorDialog({
   library,
   onClose,
   onSaved,
+  onOpenDocuments,
 }: {
+  /// Go to where collections of documents are made.
+  onOpenDocuments?: () => void;
   /// The agent to change; `null` makes a new one.
   agent: LibraryAgent | null;
   /// All of the user's agents: the ones this one may hand work to, and the ids already taken.
@@ -267,6 +271,32 @@ export function AgentEditorDialog({
               {t('shell.agents.editor.alongside')}
             </label>
             <p className="wf-muted">{t('shell.agents.editor.alongsideHint')}</p>
+            <AgentMemory
+              agentId={isNew ? null : draft.id}
+              on={draft.memory === true}
+              onToggle={(on) =>
+                set((d) => {
+                  const next = { ...d };
+                  if (on) next.memory = true;
+                  else delete next.memory;
+                  return next;
+                })
+              }
+            />
+            <AgentKnowledge
+              value={draft.knowledge ?? []}
+              onOpenDocuments={onOpenDocuments}
+              onToggle={(id, on) =>
+                set((d) => {
+                  const next = { ...d };
+                  const ids = (d.knowledge ?? []).filter((x) => x !== id);
+                  if (on) ids.push(id);
+                  if (ids.length > 0) next.knowledge = ids;
+                  else delete next.knowledge;
+                  return next;
+                })
+              }
+            />
           </section>
         </div>
 

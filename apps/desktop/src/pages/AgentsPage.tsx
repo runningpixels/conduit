@@ -99,6 +99,7 @@ export function AgentsPage({
   running = NO_RUNNING,
   chatTitle,
   onOpenAgent,
+  onOpenDocuments,
 }: {
   /// Agent calls running now, chats and workflow runs (the shell keeps the list).
   running?: readonly AgentCallChange[];
@@ -112,6 +113,8 @@ export function AgentsPage({
   onOpenConversation?: (conversationId: string) => void;
   /// Go to the Workflows page (the empty "In workflows" section's button).
   onOpenWorkflows: () => void;
+  /// Go to Documents, where collections are made (the agent editor's "What it can read").
+  onOpenDocuments?: () => void;
 }) {
   const t = useT();
   const fmt = useFormatters();
@@ -353,7 +356,7 @@ export function AgentsPage({
     );
 
   /// The model, computer use, tool count and who it hands work to.
-  const traits = (model: { model: string } | null | undefined, tools: readonly string[], handsTo: readonly string[]) => {
+  const traits = (model: { model: string } | null | undefined, tools: readonly string[], handsTo: readonly string[], extra?: { notes: number | null; collections: number }) => {
     const others = tools.filter((x) => x !== COMPUTER_TOOL).length;
     return (
       <span className="agent-traits">
@@ -368,6 +371,12 @@ export function AgentsPage({
         {others > 0 ? <span className="apps-home-trait">{t('shell.agents.tools', { count: others })}</span> : null}
         {handsTo.length > 0 ? (
           <span className="apps-home-trait">{t('shell.agents.handsTo', { names: handsTo.join(', ') })}</span>
+        ) : null}
+        {extra && extra.notes !== null ? (
+          <span className="apps-home-trait">{t('shell.agents.remembers', { count: extra.notes })}</span>
+        ) : null}
+        {extra && extra.collections > 0 ? (
+          <span className="apps-home-trait">{t('shell.agents.reads', { count: extra.collections })}</span>
         ) : null}
       </span>
     );
@@ -416,7 +425,10 @@ export function AgentsPage({
           {/* Never busy yet: the line under its name already says it isn't used. */}
           {m.working !== null || m.lastActive ? status(m.working, m.lastActive, m.link) : null}
           {about ? <span className="agent-about">{about}</span> : null}
-          {traits(def.model, def.tools ?? [], handsTo)}
+          {traits(def.model, def.tools ?? [], handsTo, {
+            notes: def.memory ? lib.notes : null,
+            collections: (def.knowledge ?? []).length,
+          })}
           {stats(m.tasks, m.failed, m.tokens)}
           {routineList(lib, name, routinesOf(def.id))}
           <span className="agent-actions">
@@ -624,6 +636,7 @@ export function AgentsPage({
         <AgentEditorDialog
           agent={editing.agent}
           library={library ?? []}
+          onOpenDocuments={onOpenDocuments}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);

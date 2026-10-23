@@ -85,6 +85,16 @@ pub struct AgentDef {
     /// helper works alone (`agents::handoff::acts`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub alongside: bool,
+    /// Keeps notes of its own between runs ("Remembers between runs"): they
+    /// are in its context on every run, and it gets `remember` and `forget`
+    /// (`agents::kit`). Only for one of the user's agents; ignored on a
+    /// workflow's own helper.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub memory: bool,
+    /// Ids of the collections of documents it may search, with a
+    /// `search_documents` tool over exactly those (`agents::kit`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub knowledge: Vec<String>,
     /// Set when this helper is one of the user's agents (`agents::library`):
     /// it is stored as just `{ id, library }` (the same id twice) and the rest
     /// is filled in from the library whenever the workflow is checked or run,
@@ -107,6 +117,8 @@ pub const MIN_HELPER_TOKENS: u64 = 1_000;
 pub const MAX_HELPER_TOKENS: u64 = 300_000;
 /// Longest helper name.
 pub const MAX_HELPER_NAME_CHARS: usize = 60;
+/// Most collections of documents one agent may read.
+pub const MAX_AGENT_COLLECTIONS: usize = 10;
 
 impl AgentDef {
     pub fn token_limit(&self) -> u64 {
@@ -676,6 +688,8 @@ const HELPER_KEYS: &[&str] = &[
     "agents",
     "maxTokens",
     "alongside",
+    "memory",
+    "knowledge",
     "library",
 ];
 const TRIGGER_KEYS: &[&str] = &["kind", "url", "everyMinutes"];
@@ -1776,6 +1790,18 @@ pub fn check_helper_fields(helper: &AgentDef, problems: &mut Vec<String>) {
         }
     }
     check_agent_tools(&who, &helper.tools, problems);
+    if helper.knowledge.iter().any(|c| c.trim().is_empty()) {
+        problems.push(format!("{who} lists a collection without an id."));
+    }
+    let mut seen = HashSet::new();
+    if !helper.knowledge.iter().all(|c| seen.insert(c.trim())) {
+        problems.push(format!("{who} lists a collection twice."));
+    }
+    if helper.knowledge.len() > MAX_AGENT_COLLECTIONS {
+        problems.push(format!(
+            "{who} can read at most {MAX_AGENT_COLLECTIONS} collections."
+        ));
+    }
 }
 
 /// A reference to one of the user's agents that [`agents::library::resolve`]

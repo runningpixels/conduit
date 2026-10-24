@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAppIntl, EN_MESSAGES, translate, type Translate } from '../i18n';
-import { appPrompt, appPromptLabel } from './appPrompt';
+import { appPrompt, appPromptBody, appPromptLabel } from './appPrompt';
 import type { ChatTurn } from './conversationHydration';
 import { requestForDocument, revisionMessage } from './documentReview';
 
@@ -49,6 +49,10 @@ describe('the revision message', () => {
     expect(message).toContain('including its length limits, counts and sections');
     expect(message).toContain('1. It is 240 words — Cut it under 200\n2. October 8 is missing');
     expect(message).toContain('My request was:\nAn email under 200 words.');
+    // The issues come first, so the opened note shows them before the instructions.
+    const body = appPromptBody(message);
+    expect(body.startsWith('Reviewer checked the document “Heater email” against my request and found the problems below.\n\n1. ')).toBe(true);
+    expect(body.indexOf('2. October 8')).toBeLessThan(body.indexOf('Fix them'));
   });
 
   it('leaves the request out when it is not known, and counts one thing', () => {

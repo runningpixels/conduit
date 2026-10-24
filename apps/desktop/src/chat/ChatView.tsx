@@ -183,7 +183,8 @@ import {
   type DocumentToolActivity,
 } from './agentTools';
 import type { DeckDetail, DraftDetail, ResearchMaterial } from '../ipc/contracts';
-import { appPromptLabel } from './appPrompt';
+import { appPromptBody, appPromptLabel } from './appPrompt';
+import { AppNote } from './AppNote';
 import { deckDeveloperPrompt, deckSystemAppendix } from '../slides/deckPrompt';
 import { draftDeveloperPrompt, draftSystemAppendix, type DraftPromptSources } from './draftPrompt';
 import { isDraftTool, isDraftWriteTool, selectDraftTurnTools } from './draftTools';
@@ -3567,9 +3568,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               }
               if (appLabel) {
                 return withDay(
-                  <article key={turn.id} className="turn app-note" data-message-id={turn.id}>
-                    <p className="app-note-text">{appLabel}</p>
-                  </article>,
+                  <AppNote key={turn.id} messageId={turn.id} label={appLabel} body={appPromptBody(turn.content)} />,
                 );
               }
 

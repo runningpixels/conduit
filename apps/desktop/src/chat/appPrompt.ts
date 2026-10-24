@@ -16,6 +16,14 @@ export function appPrompt(label: string, text: string): string {
   return `${APP_PROMPT_MARK}${label.replace(/\s+/g, ' ').trim()}\n${text}`;
 }
 
+/** The text the model reads in an app-sent message (after its label line);
+ *  empty for a typed one. */
+export function appPromptBody(content: string): string {
+  if (!content.startsWith(APP_PROMPT_MARK)) return '';
+  const end = content.indexOf('\n');
+  return end === -1 ? '' : content.slice(end + 1);
+}
+
 /** The thread label of an app-sent message, or null for a typed one. */
 export function appPromptLabel(content: string): string | null {
   if (!content.startsWith(APP_PROMPT_MARK)) return null;

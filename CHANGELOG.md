@@ -7,6 +7,83 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.14] - 2026-10-24
+
+Agents become something you define once and use everywhere: in chat, in
+workflows and on a schedule. They can work side by side, remember what they
+learn and read your documents, and you can open any of them to watch, stop or
+redirect it.
+
+### Added
+
+- **Your agents.** On the Agents page you make an agent once (name,
+  instructions, model, tools, the agents it may hand work to, and a token
+  limit) and use it in any workflow. A workflow keeps a reference, so editing
+  the agent changes it everywhere. Four starters come with a new profile:
+  Researcher, Writer, Reviewer and Data analyst. Deleting an agent gives each
+  workflow that used it its own copy.
+- **Agents in chat.** Type `@` in the message box to pick one of your agents
+  for that turn, or press **Ask** on its card. In Settings → Agent you choose
+  which agents the assistant may hand work to; each hand-off runs on that
+  agent's own model and shows as one line in the reply, with its status,
+  tokens, cost and time.
+- **Helpers work side by side.** Several hand-offs in one go run at the same
+  time (up to 3 by default, 1–4 in Settings → Agent). Helpers that change
+  things, such as using your computer or a connector action, still work one
+  at a time. Under a reply, **Helpers** totals tokens and cost by model.
+- **Open an agent to watch it.** Clicking a hand-off shows that agent's live
+  view: its task, tool calls, tokens and cost. **Stop** ends that helper only,
+  and **Redirect** (or the message box) sends it a new instruction while it
+  works. Back or Esc returns to the chat. A toast says when a helper finishes
+  or needs approval, the Agents rail button counts running agents, and the
+  Agents page lists what is running now.
+- **Routines.** **Run on a schedule…** on an agent's card gives it a task to
+  do daily, on weekdays, every few hours, or when a feed or folder has
+  something new. Each answer lands in Results, with an optional notification.
+  A reply from one of your agents offers **Schedule this…**, and **Turn into a
+  workflow** makes a routine an ordinary workflow you can edit.
+- **Agents remember and read.** An agent set to **Remembers** keeps its own
+  notes between runs, which you can see and edit in its editor. **Reads** lets
+  it search the knowledge collections you pick.
+- **Have it reviewed.** The document panel's ⋯ menu can send an HTML,
+  Markdown or text document in a chat to your Reviewer agent. If it finds
+  problems, the chat revises the same document; otherwise a toast says it
+  looks fine.
+- **App notes open.** A note the app sent for you, such as a review's
+  findings, opens to show exactly what was sent.
+
+### Changed
+
+- **Workflow helpers** can come from your agents (**Add from your agents**),
+  be copied into one workflow (**Make a copy here**), or be saved to your
+  agents (**Save to your agents**). A workflow's agent step can also run as
+  one of your agents, with its instructions, model, tools and token limit.
+- **The workflow side panel can be dragged wider or narrower**, and keeps its
+  width.
+- **A workflow run shows its agents as a tree** under each step, with totals
+  by model and the same Stop and Redirect controls.
+- **A chat turn stops after 15 minutes.** A helper's waiting time doesn't
+  count against the assistant's clock.
+- A profile opened with this version can't be opened by an older build.
+
+### Fixed
+
+- A helper's tokens were counted twice.
+- A helper that reached its token limit lost its work. It is now warned at
+  75% to answer with what it has, and a finished answer is kept.
+- Two helpers in one workflow step that both needed approval no longer
+  overwrite each other's request; they ask one after the other.
+- Stopping one helper no longer cancels other turns' approvals or questions.
+- A workflow step running as one of your agents now keeps to that agent's
+  token limit.
+
+### Security
+
+- **Updated rustls-webpki and webpki-roots**: the distrusted emSign
+  intermediates are no longer accepted.
+- **Updated tokio to 1.54.1**, vite to 8.3.5, katex (through mermaid) to 0.18
+  and dompurify to 3.4.17 for their advisories.
+
 ## [1.0.0-rc.13] - 2026-10-20
 
 Conduit now fits small windows, phones and tablets, reads in your language in
@@ -1392,7 +1469,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.13...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.14...HEAD
+[1.0.0-rc.14]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.13...v1.0.0-rc.14
 [1.0.0-rc.13]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.12...v1.0.0-rc.13
 [1.0.0-rc.12]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.11...v1.0.0-rc.12
 [1.0.0-rc.11]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.10...v1.0.0-rc.11

@@ -36,7 +36,7 @@ open-source sync app built with Rust and Tauri.
 
 ## At a glance
 
-| **[Agents](#workflows)**: agents that work on your computer, and ask before they act | **[Workflows](#workflows)**: routines that run on a schedule or when something new arrives, and ask first |
+| **[Agents](#agents)**: agents that work on your computer, and ask before they act | **[Workflows](#workflows)**: routines that run on a schedule or when something new arrives, and ask first |
 | --- | --- |
 | ![The Agents page in Conduit: six agents across three workflows, filtered by All 6, Working 1 and Helpers 2. The agent fixing issue #42 in ferry-sync is working and uses your computer; beside it, the Competitor release watch agent that hands work to its Researcher and Editor helpers, the Dependency advisories agent and the cargo test step are idle. Each card shows its model and tools and its tasks, failures and tokens over the last 30 days](./docs/assets/tour-agents.webp) | ![The Workflows screen with the "Weekly Ferry team brief" workflow on the canvas: a Start step that asks for the Tauri blog and Rust blog addresses, two Fetch pages steps and two Ask the model summaries side by side, then a step that combines them, every step marked Finished, and the latest run's result, "Ferry team weekly brief 2026-10-17", on the right](./docs/assets/tour-workflows.webp) |
 | **[Research](#research)**: every claim backed by a real quote | **[Writing](#writing)**: blog posts, docs and reports, written section by section |
@@ -160,6 +160,22 @@ Text you write yourself stays word for word, History keeps every version, and
 a draft exports as Markdown or HTML.
 
 ## Things that run for you
+
+### Agents
+
+On the **Agents** page you define an agent once: its instructions, model,
+tools, token limit and the agents it may hand work to. Four come with a new
+profile: Researcher, Writer, Reviewer and Data analyst. Use one in a chat by
+typing `@` and its name, let the assistant hand it work, add it to a workflow,
+or give it a task to run on a schedule. Editing an agent changes it everywhere
+it is used.
+
+Several helpers can work at the same time. Each hand-off shows as one line in
+the reply with its tokens, cost and time. Open it to watch the agent work,
+stop it, or redirect it with a new instruction. An agent can keep its own notes
+between runs and search the document collections you pick. **Have it
+reviewed** in a chat document's menu sends the document to your Reviewer and
+revises it with what it finds.
 
 ### Workflows
 
@@ -364,7 +380,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.13 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.14 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -395,6 +411,7 @@ left is checking it on real installs before calling it final.
 | Workflows — ready-made, custom or drafted from a description; run now, on a schedule, or on a new feed post, file or connector item; a model per step; Research, Documents and connector steps; with approval | Working |
 | Workflow canvas — live step status, editing on the canvas, branches, parallel steps and joins, Runs and Results tabs, runs that resume after a restart | Working |
 | Workflow agents — connector tools with approval, helpers, Inbox and Agents pages | Working |
+| Your agents — defined once, used in chat, workflows and routines; helpers side by side; open, stop or redirect one; memory, documents and document review | Working |
 | Computer use — agents run commands and change files in a folder you choose, with approval, command rules and a Permissions tab | Working, off by default; commands are confined to the folder on Windows only |
 | Personal apps — save a page, nine starter apps, per-app storage, settings, model access and usage limits | Working |
 | First-run examples in a new profile | Working |
@@ -402,7 +419,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.13 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.14 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

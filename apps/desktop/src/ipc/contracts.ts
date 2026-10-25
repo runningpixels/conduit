@@ -927,6 +927,8 @@ export interface AgentCallChange {
   runId?: string | null;
   workflowId?: string | null;
   parentId?: string | null;
+  /** Its workflow step waits for the user: open, but not working. */
+  waiting?: boolean;
   startedAt: string;
   finishedAt?: string | null;
 }

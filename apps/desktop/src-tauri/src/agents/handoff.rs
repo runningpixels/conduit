@@ -1005,6 +1005,7 @@ impl<'a> ChatHandoff<'a> {
         request.tool_definitions = definitions;
         request.request_id = helper_request_id.clone();
 
+        let notes = sink.clone();
         let stream = self.streams.run_agent_turn_opts(
             self.state,
             self.runtime,
@@ -1025,7 +1026,7 @@ impl<'a> ChatHandoff<'a> {
         let stop = CancellationToken::new();
         let _control = row.map(|row| {
             self.streams
-                .register_helper(row, &helper_request_id, stop.clone())
+                .register_helper(row, &helper_request_id, stop.clone(), Some(notes))
         });
         tokio::pin!(stream);
         let ended = tokio::select! {
@@ -1119,7 +1120,111 @@ impl<'a> ChatHandoff<'a> {
 /// that agent: its instructions, model and tools. The agents ticked in
 /// Settings (or the agent's own helpers) become `ask_` tools the model may
 /// call. With neither, the turn is the ordinary chat turn.
+///
+/// The turn and every helper under it run inside this one call, so a panic
+/// anywhere in them would otherwise end it silently: no closing event, and
+/// every agent row left "working" until the user pressed Stop. A panic is
+/// caught here and ends the turn with an error instead.
 pub async fn start_chat_turn(
+    streams: &StreamManager,
+    state: &AppState,
+    runtime: &ConnectorRuntimeManager,
+    mut request: ProviderRequest,
+    channel: impl Into<EventSink<ProviderEvent>>,
+    runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
+    agent: Option<String>,
+) -> Result<StreamHandle, String> {
+    use futures::FutureExt;
+
+    let channel: EventSink<ProviderEvent> = channel.into();
+    if request.request_id.trim().is_empty() {
+        request.request_id = Uuid::new_v4().to_string();
+    }
+    let conversation_id = request.conversation_id.clone();
+    let request_id = request.request_id.clone();
+    let turn = run_chat_turn(
+        streams,
+        state,
+        runtime,
+        request,
+        channel.clone(),
+        runtime_channel,
+        agent,
+    );
+    match std::panic::AssertUnwindSafe(turn).catch_unwind().await {
+        Ok(outcome) => outcome,
+        Err(panic) => {
+            let detail = panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_default();
+            end_panicked_turn(
+                streams,
+                state,
+                &conversation_id,
+                &request_id,
+                &channel,
+                &detail,
+            )
+            .await;
+            Ok(StreamHandle { request_id })
+        }
+    }
+}
+
+/// What a turn that panicked tells the user.
+pub const TURN_PANICKED: &str =
+    "This reply stopped because of an internal error. Nothing more is running. Try again.";
+
+/// Close a turn whose task panicked: its open agent rows fail with the
+/// reason, its streams are let go, and the page hears one error, saved with
+/// the turn so a reload shows it too.
+async fn end_panicked_turn(
+    streams: &StreamManager,
+    state: &AppState,
+    conversation_id: &str,
+    request_id: &str,
+    channel: &EventSink<ProviderEvent>,
+    detail: &str,
+) {
+    tracing::error!(%request_id, %detail, "a chat turn panicked");
+    match agent_calls::fail_open_calls_of_conversation(&state.db, conversation_id, TURN_PANICKED)
+        .await
+    {
+        Ok(ended) => {
+            for (id, helper_request) in ended {
+                if let Some(helper_request) = helper_request {
+                    streams.forget_stream(&helper_request);
+                }
+                calls::announce(state, &id).await;
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "could not end the agents of a turn that panicked"),
+    }
+    streams.forget_stream(request_id);
+    let error = ProviderEvent::Error {
+        request_id: request_id.to_string(),
+        error: provider_core::schema::ProviderError {
+            provider_code: Some("turn_panicked".to_string()),
+            message: TURN_PANICKED.to_string(),
+            retryable: false,
+        },
+    };
+    if let Err(e) = event_log::append_and_apply_batch(
+        &state.db,
+        conversation_id,
+        request_id,
+        std::slice::from_ref(&error),
+    )
+    .await
+    {
+        tracing::warn!(error = %e, "could not save the error of a turn that panicked");
+    }
+    let _ = channel.send(error);
+}
+
+async fn run_chat_turn(
     streams: &StreamManager,
     state: &AppState,
     runtime: &ConnectorRuntimeManager,

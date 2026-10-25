@@ -45,16 +45,18 @@ impl<T: Pending, A> Waiting<T, A> {
     /// Register `item` and return where its answer arrives.
     pub fn ask(&self, item: T) -> oneshot::Receiver<A> {
         let (tx, rx) = oneshot::channel();
+        // Registered before the listener hears of it: the page may answer the
+        // moment it is told, and an answer to an unregistered wait is lost.
+        if let Ok(mut waiting) = self.waiting.lock() {
+            waiting.insert(
+                (item.run_id().to_string(), item.step_id().to_string()),
+                (item.clone(), tx),
+            );
+        }
         if let Ok(slot) = self.on_wait.lock() {
             if let Some(listener) = slot.as_ref() {
                 listener(&item);
             }
-        }
-        if let Ok(mut waiting) = self.waiting.lock() {
-            waiting.insert(
-                (item.run_id().to_string(), item.step_id().to_string()),
-                (item, tx),
-            );
         }
         rx
     }

@@ -216,6 +216,7 @@ function helpers(stream: ReturnType<typeof captureStream>) {
       emit(inner(outer, started(id, name, task, callId))),
     finish: (id: string, status = 'done') =>
       emit({ kind: 'handoffFinished', requestId: r(), toolCallId: id, status, tokens: 900, error: null, answer: 'All done.' }),
+    note: (id: string, content: string) => emit(inner(id, { kind: 'userNote', requestId: 'h', text: content })),
     toolStart: (id: string, toolId: string, name: string) =>
       emit(inner(id, { kind: 'toolCallStart', requestId: 'h', toolCallId: toolId, index: 0, toolId: name, name })),
     complete: () => emit({ kind: 'messageComplete', requestId: r(), index: 99, finishReason: 'stop' }),
@@ -345,15 +346,24 @@ describe('the agent view', () => {
     dialog.remove();
   });
 
-  it('sends the composer to the running helper and notes it', async () => {
-    await openResearcher();
+  it('sends the composer to the running helper and shows the note where the backend put it', async () => {
+    const { h } = await openResearcher();
+    h.say('tc1', 'b1', 'First finding.');
     const box = screen.getByLabelText('Message the active provider');
     expect(box).toHaveAttribute('placeholder', 'Tell Researcher what to do…');
     fireEvent.change(box, { target: { value: 'Use primary sources' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     await waitFor(() => expect(redirectAgentCall).toHaveBeenCalledWith('call-1', 'Use primary sources'));
-    expect(await screen.findByText('You: Use primary sources')).toBeInTheDocument();
     expect(box).toHaveValue('');
+    // Not kept in the page: it shows once the backend's event arrives, in order.
+    expect(screen.queryByText('You: Use primary sources')).toBeNull();
+    h.note('tc1', 'Use primary sources');
+    h.say('tc1', 'b2', 'Second finding.');
+    const note = await screen.findByText('You: Use primary sources');
+    const before = screen.getByText('First finding.');
+    const after = screen.getByText('Second finding.');
+    expect(before.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(note.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(startChatStream).toHaveBeenCalledTimes(1);
   });
 

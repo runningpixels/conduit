@@ -11,20 +11,20 @@
 //! drifted from the Rust source.
 
 use provider_core::schema::{
-    AccentOverride, AgentGuardrails, AppActivityEntry, AppActivityKind, AppCapabilities,
-    AppCategory, AppCreatedWith, AppDetail, AppError, AppInput, AppInputKind, AppInputTranslation,
-    AppLlm, AppLlmSlot, AppManifest, AppModelChoice, AppModelSlots, AppNetwork, AppOrigin,
-    AppSettings, AppSettingsView, AppStorage, AppSummary, AppUsageDay, Artifact, ArtifactKind,
-    AskUserField, Attachment, BlockOwner, BrandBundle, BrandConfig, BrandFonts, BrandIdentity,
-    BrandLogo, BrandPalette, BrandRuntime, BrandThemes, BrandUpdater, ConnectorDefinition,
-    ConnectorGrant, ConnectorPromptArgument, ConnectorPromptInfo, ConnectorResourceInfo,
-    ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt, ContentAnnotation,
-    Conversation, ConversationSummary, CredentialRequest, CredentialSummary, DeckDetail,
-    DeckReplaceResult, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary,
-    DraftBlock, DraftDetail, DraftExportFormat, DraftSnapshotCause, DraftSnapshotSummary,
-    DraftSources, DraftStage, DraftSummary, GenerationControls, GrantScope, GrantStatus,
-    HandoffTokens, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend, Message,
-    MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, ModelPrice,
+    AccentOverride, AgentGuardrails, AgentGuardrailsPatch, AppActivityEntry, AppActivityKind,
+    AppCapabilities, AppCategory, AppCreatedWith, AppDetail, AppError, AppInput, AppInputKind,
+    AppInputTranslation, AppLlm, AppLlmSlot, AppManifest, AppModelChoice, AppModelSlots,
+    AppNetwork, AppOrigin, AppSettings, AppSettingsView, AppStorage, AppSummary, AppUsageDay,
+    Artifact, ArtifactKind, AskUserField, Attachment, BlockOwner, BrandBundle, BrandConfig,
+    BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime, BrandThemes, BrandUpdater,
+    ConnectorDefinition, ConnectorGrant, ConnectorPromptArgument, ConnectorPromptInfo,
+    ConnectorResourceInfo, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt,
+    ContentAnnotation, Conversation, ConversationSummary, CredentialRequest, CredentialSummary,
+    DeckDetail, DeckReplaceResult, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage,
+    DeckSummary, DraftBlock, DraftDetail, DraftExportFormat, DraftSnapshotCause,
+    DraftSnapshotSummary, DraftSources, DraftStage, DraftSummary, GenerationControls, GrantScope,
+    GrantStatus, HandoffTokens, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend,
+    Message, MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, ModelPrice,
     ModelPriceOverride, OutlineSection, PageLlmGrant, PageLlmProviderGrant, PageLlmReply,
     PageLlmRequest, PageLlmState, PageStorageEntry, PageStorageUsage, PermissionLevel, PriceSource,
     PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest,
@@ -213,6 +213,7 @@ fn main() {
     UpdatePolicy::export().expect("export UpdatePolicy");
     ProviderEndpointConfig::export().expect("export ProviderEndpointConfig");
     AgentGuardrails::export().expect("export AgentGuardrails");
+    AgentGuardrailsPatch::export().expect("export AgentGuardrailsPatch");
     WorkflowComputerSettings::export().expect("export WorkflowComputerSettings");
     AccentOverride::export().expect("export AccentOverride");
     AppError::export()

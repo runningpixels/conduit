@@ -6,7 +6,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ChatProse } from './ChatProse';
-import type { AssistantStreamState, ContentBlockState, ToolCallState, TurnSegment } from './streamState';
+import type { AssistantStreamState, ContentBlockState, ToolCallState, TurnSegment, UserNote } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import type { ArtifactCandidate } from './artifactCandidates';
 import { ChevronRight } from '../icons';
@@ -124,7 +124,8 @@ type TimelineItem =
   | { kind: 'reasoning'; block: ContentBlockState; key: string }
   | { kind: 'text'; block: ContentBlockState; key: string; blockIndex: number }
   | { kind: 'tools'; calls: ToolCallState[]; key: string }
-  | { kind: 'askUser'; toolCallId: string; key: string };
+  | { kind: 'askUser'; toolCallId: string; key: string }
+  | { kind: 'note'; note: UserNote; key: string };
 
 function buildTimelineItems(
   state: AssistantStreamState,
@@ -168,6 +169,12 @@ function buildTimelineItems(
     }
     if (seg.kind === 'askUser') {
       items.push({ kind: 'askUser', toolCallId: seg.toolCallId, key: `ask-${seg.toolCallId}` });
+      i += 1;
+      continue;
+    }
+    if (seg.kind === 'note') {
+      const note = state.notes?.find((n) => n.id === seg.noteId);
+      if (note) items.push({ kind: 'note', note, key: `note-${note.id}` });
       i += 1;
       continue;
     }
@@ -473,6 +480,14 @@ export function TurnBody({
           onOpenArtifact={onOpenArtifact}
           onStatus={onStatus}
         />,
+      );
+      continue;
+    }
+    if (item.kind === 'note') {
+      body.push(
+        <p key={item.key} className="agent-view-note" title={fmt.wallClock(item.note.at)}>
+          {t('chat.agentView.you', { text: item.note.text })}
+        </p>,
       );
       continue;
     }

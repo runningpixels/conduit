@@ -152,7 +152,7 @@ pub fn forget_handoff(state: &crate::state::AppState, id: &str) -> Result<(), St
     agent.handoff_agents.retain(|h| h != id);
     let mut patch: crate::state::SettingsPatch =
         serde_json::from_str("{}").map_err(|e| e.to_string())?;
-    patch.agent = Some(agent);
+    patch.agent = Some(agent.into());
     state.update_settings(patch).map_err(|e| e.to_string())?;
     Ok(())
 }

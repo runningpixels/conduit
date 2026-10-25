@@ -238,6 +238,13 @@ pub async fn list_agent_calls(
     Ok(out)
 }
 
+/// SQL: whether a call's workflow step waits for the user right now. Such a
+/// call is open, but its agent is paused until the user answers, so it is not
+/// counted as working.
+const WAITING_ON_USER: &str = "EXISTS (SELECT 1 FROM workflow_run_steps s \
+     WHERE s.run_id = agent_calls.run_id AND s.step_id = agent_calls.step_id \
+     AND s.status = 'running' AND s.waiting_until IS NOT NULL)";
+
 /// An agent call as the page hears of it when it starts or ends (event
 /// `agent-call-changed`) and lists the running ones.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -257,6 +264,10 @@ pub struct AgentCallChange {
     pub run_id: Option<String>,
     pub workflow_id: Option<String>,
     pub parent_id: Option<String>,
+    /// Its step waits for the user (to check an action, or an answer): the
+    /// call is open, but nothing is working.
+    #[serde(default)]
+    pub waiting: bool,
     pub started_at: String,
     pub finished_at: Option<String>,
 }
@@ -270,12 +281,12 @@ pub async fn agent_call_changes(
 ) -> Result<Vec<AgentCallChange>, DbError> {
     use sqlx::Row;
 
-    let rows = sqlx::query(
+    let rows = sqlx::query(&format!(
         "SELECT id, kind, agent_id, task, status, error, conversation_id, run_id, workflow_id, \
-         parent_id, started_at, finished_at FROM agent_calls \
+         parent_id, started_at, finished_at, {WAITING_ON_USER} AS waiting FROM agent_calls \
          WHERE (?1 IS NOT NULL AND id = ?1) OR (?1 IS NULL AND status = 'running') \
-         ORDER BY started_at DESC, rowid DESC",
-    )
+         ORDER BY started_at DESC, rowid DESC"
+    ))
     .bind(id)
     .fetch_all(pool)
     .await?;
@@ -298,6 +309,7 @@ pub async fn agent_call_changes(
             run_id: row.try_get("run_id")?,
             workflow_id: row.try_get("workflow_id")?,
             parent_id: row.try_get("parent_id")?,
+            waiting: row.try_get::<i64, _>("waiting")? != 0,
             started_at: row.try_get("started_at")?,
             finished_at: row.try_get("finished_at")?,
         });
@@ -349,6 +361,60 @@ pub async fn fail_interrupted_agent_calls(pool: &SqlitePool) -> Result<(), DbErr
     Ok(())
 }
 
+/// End as failed every call still running for a chat turn in `conversation_id`
+/// (its own, its helpers, and theirs): the turn is gone, so nobody is working.
+/// Returns each call's id and its turn's request. A conversation has one turn
+/// at a time, so these all belong to the turn that ended.
+pub async fn fail_open_calls_of_conversation(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    error: &str,
+) -> Result<Vec<(String, Option<String>)>, DbError> {
+    type Open = (String, Option<String>);
+    let mut ended: Vec<Open> = Vec::new();
+    let mut parents: Vec<String> = Vec::new();
+    loop {
+        let mut rows: Vec<Open> = Vec::new();
+        if parents.is_empty() {
+            rows = sqlx::query_as(
+                "SELECT id, request_id FROM agent_calls \
+                 WHERE conversation_id = ? AND status = 'running'",
+            )
+            .bind(conversation_id)
+            .fetch_all(pool)
+            .await?;
+        } else {
+            // Helpers of helpers keep their own hidden conversation.
+            for parent in &parents {
+                let more: Vec<Open> = sqlx::query_as(
+                    "SELECT id, request_id FROM agent_calls \
+                     WHERE parent_id = ? AND status = 'running'",
+                )
+                .bind(parent)
+                .fetch_all(pool)
+                .await?;
+                rows.extend(more);
+            }
+        }
+        if rows.is_empty() {
+            return Ok(ended);
+        }
+        parents = rows.iter().map(|(id, _)| id.clone()).collect();
+        for (id, _) in &rows {
+            sqlx::query(
+                "UPDATE agent_calls SET status = 'failed', error = ?, finished_at = ? \
+                 WHERE id = ? AND status = 'running'",
+            )
+            .bind(error)
+            .bind(now_iso8601())
+            .bind(id)
+            .execute(pool)
+            .await?;
+        }
+        ended.extend(rows);
+    }
+}
+
 /// What one agent (an agent step or a helper of a workflow) has been doing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -387,10 +453,11 @@ pub async fn agent_activity(
     .fetch_all(pool)
     .await?;
     type Running = (String, String, String, Option<String>, Option<String>);
-    let running: Vec<Running> = sqlx::query_as(
+    let running: Vec<Running> = sqlx::query_as(&format!(
         "SELECT workflow_id, kind, agent_id, task, run_id FROM agent_calls \
-             WHERE status = 'running' AND workflow_id IS NOT NULL ORDER BY started_at",
-    )
+             WHERE status = 'running' AND workflow_id IS NOT NULL AND NOT {WAITING_ON_USER} \
+             ORDER BY started_at"
+    ))
     .fetch_all(pool)
     .await?;
     let mut out: Vec<AgentActivity> = rows

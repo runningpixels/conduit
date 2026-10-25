@@ -3159,6 +3159,13 @@ impl Exec<'_> {
                 .await
                 .map_err(|e| e.to_string())?;
         }
+        // Boxed: this sits deep in a turn, where a debug build's stack is short.
+        Box::pin(crate::agents::calls::announce_step(
+            self.runner.state,
+            self.run_id,
+            step_id,
+        ))
+        .await;
         Ok(())
     }
 
@@ -3187,6 +3194,13 @@ impl Exec<'_> {
                 .await
                 .map_err(|e| e.to_string())?;
         }
+        // Boxed: this sits deep in a turn, where a debug build's stack is short.
+        Box::pin(crate::agents::calls::announce_step(
+            self.runner.state,
+            self.run_id,
+            step_id,
+        ))
+        .await;
         Ok(())
     }
 
@@ -3456,6 +3470,7 @@ impl Exec<'_> {
         }
         if let Some(kit) = &kit {
             kit.add_to_system(&mut system);
+            kit.add_next_run_hint(&mut system);
         }
         let worked = self
             .agent_turn(AgentTurn {
@@ -3736,6 +3751,7 @@ impl Exec<'_> {
                 row,
                 &request_id,
                 stop.clone(),
+                None,
             )),
             _ => None,
         };

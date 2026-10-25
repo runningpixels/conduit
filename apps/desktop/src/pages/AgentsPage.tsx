@@ -133,7 +133,10 @@ export function AgentsPage({
   const [routines, setRoutines] = useState<RoutineSummary[]>([]);
   /// The agent being put on a schedule.
   const [scheduling, setScheduling] = useState<LibraryAgent | null>(null);
-  const now = useNow(running.length > 0);
+  /// A call whose step waits for the user is open but not working: it needs them.
+  const busyCalls = running.filter((row) => !row.waiting);
+  const needsYou = running.filter((row) => row.waiting);
+  const now = useNow(busyCalls.length > 0);
   const stopped = useRef(false);
   const read = useCallback(() => {
     Promise.resolve()
@@ -546,7 +549,7 @@ export function AgentsPage({
           <span className="agents-running-name">{name}</span>
           <span className="agents-running-task">{row.task}</span>
           <span className="agents-running-where">{where}</span>
-          <span className="agents-running-time">{elapsed}</span>
+          <span className="agents-running-time">{row.waiting ? t('shell.agents.waitingRow') : elapsed}</span>
         </button>
       </li>
     );
@@ -571,14 +574,25 @@ export function AgentsPage({
         </button>
       }
     >
-      {running.length > 0 ? (
+      {needsYou.length > 0 ? (
+        <section className="agents-section agents-running" aria-labelledby="agents-waiting-title">
+          <div className="agents-section-head">
+            <h3 id="agents-waiting-title">{t('shell.agents.waitingTitle')}</h3>
+            <p>{t('shell.agents.waitingHint')}</p>
+          </div>
+          <ul className="agents-running-list" aria-label={t('shell.agents.waitingTitle')}>
+            {needsYou.map(runningRow)}
+          </ul>
+        </section>
+      ) : null}
+      {busyCalls.length > 0 ? (
         <section className="agents-section agents-running" aria-labelledby="agents-running-title">
           <div className="agents-section-head">
             <h3 id="agents-running-title">{t('shell.agents.runningTitle')}</h3>
             <p>{t('shell.agents.runningHint')}</p>
           </div>
           <ul className="agents-running-list" aria-label={t('shell.agents.runningTitle')}>
-            {running.map(runningRow)}
+            {busyCalls.map(runningRow)}
           </ul>
         </section>
       ) : null}

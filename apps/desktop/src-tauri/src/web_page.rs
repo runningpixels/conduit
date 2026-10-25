@@ -52,6 +52,8 @@ pub enum FetchError {
     NotAPage(String),
     /// The response is a PDF the parser could not read.
     BadPdf(String),
+    /// The site served a bot check (CAPTCHA or "verify you are human") instead of the page.
+    BotWall,
 }
 
 /// Longest a PDF may take to parse. The parse can't be interrupted, so a
@@ -65,7 +67,10 @@ impl FetchError {
         match self {
             FetchError::Network(_) => true,
             FetchError::Status { status, .. } => *status >= 500 || *status == 429,
-            FetchError::Unreadable | FetchError::NotAPage(_) | FetchError::BadPdf(_) => false,
+            FetchError::Unreadable
+            | FetchError::NotAPage(_)
+            | FetchError::BadPdf(_)
+            | FetchError::BotWall => false,
         }
     }
 }
@@ -75,11 +80,14 @@ impl std::fmt::Display for FetchError {
         match self {
             FetchError::Network(message) => f.write_str(message),
             FetchError::Status { status, text } => write!(f, "the site answered {status} {text}"),
-            FetchError::Unreadable => f.write_str("the page could not be read"),
+            FetchError::Unreadable => f.write_str("the page came back as data that could not be decoded"),
             FetchError::NotAPage(content_type) => {
                 write!(f, "it is not a web page ({content_type})")
             }
             FetchError::BadPdf(reason) => write!(f, "the PDF could not be read ({reason})"),
+            FetchError::BotWall => f.write_str(
+                "the site showed a bot check (CAPTCHA) instead of the page, so it can not be read automatically",
+            ),
         }
     }
 }
@@ -119,15 +127,23 @@ pub async fn fetch(
     )
     .await
     .map_err(FetchError::Network)?;
+    let bytes = B64
+        .decode(&response.body)
+        .map_err(|_| FetchError::Unreadable)?;
+    // A bot check often arrives as a 503 or 403: name it plainly rather than
+    // reporting a bare status.
     if response.status >= 400 {
+        if looks_like_bot_wall(&bytes) {
+            return Err(FetchError::BotWall);
+        }
         return Err(FetchError::Status {
             status: response.status,
             text: response.status_text,
         });
     }
-    let bytes = B64
-        .decode(&response.body)
-        .map_err(|_| FetchError::Unreadable)?;
+    if looks_like_bot_wall(&bytes) {
+        return Err(FetchError::BotWall);
+    }
     let content_type = response
         .headers
         .iter()
@@ -153,6 +169,15 @@ pub async fn fetch(
         });
     }
     let body = String::from_utf8_lossy(&bytes);
+    // Bytes that are still binary after decoding (an encoding we did not ask for)
+    // would reach the model as noise; say so instead.
+    let replacement = body
+        .chars()
+        .filter(|c| *c == char::REPLACEMENT_CHARACTER)
+        .count();
+    if body.contains(char::from(0)) || replacement * 10 > body.chars().count() {
+        return Err(FetchError::Unreadable);
+    }
     // Data (a CSV, JSON or plain-text file) is handed over as it is: reading
     // it as an article would throw away the rows.
     if is_data(&media_type, &response.url) {
@@ -189,6 +214,34 @@ pub async fn fetch(
         anchors,
         content_type: media_type,
     })
+}
+
+/// Phrases a CAPTCHA or "are you a robot" interstitial uses. Only a small
+/// page can be one: a long article that mentions CAPTCHAs is not a wall.
+const BOT_WALL_MARKERS: &[&str] = &[
+    "type the characters you see in this image",
+    "enter the characters you see below",
+    "sorry, we just need to make sure you're not a robot",
+    "to discuss automated access to amazon data",
+    "verify you are human",
+    "verify you are a human",
+    "checking if the site connection is secure",
+    "attention required! | cloudflare",
+    "please enable cookies and reload the page",
+    "unusual traffic from your computer network",
+    "g-recaptcha",
+    "h-captcha",
+    "px-captcha",
+];
+
+const BOT_WALL_MAX_BYTES: usize = 40_000;
+
+fn looks_like_bot_wall(bytes: &[u8]) -> bool {
+    if bytes.is_empty() || bytes.len() > BOT_WALL_MAX_BYTES {
+        return false;
+    }
+    let lower = String::from_utf8_lossy(bytes).to_lowercase();
+    BOT_WALL_MARKERS.iter().any(|m| lower.contains(m))
 }
 
 /// The first `max_chars` characters of `text`, and whether anything was cut.
@@ -371,6 +424,16 @@ mod tests {
 
     /// Serves `body` with `content_type` to every request on loopback.
     async fn serve(content_type: &'static str, body: Vec<u8>) -> String {
+        serve_with(200, content_type, "", body).await
+    }
+
+    /// Like [`serve`], with a status and extra raw header lines (each ending in CRLF).
+    async fn serve_with(
+        status: u16,
+        content_type: &'static str,
+        extra_headers: &'static str,
+        body: Vec<u8>,
+    ) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -381,7 +444,7 @@ mod tests {
                     let mut buf = vec![0u8; 4096];
                     let _ = socket.read(&mut buf).await;
                     let head = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        "HTTP/1.1 {status} Test\r\nContent-Type: {content_type}\r\n{extra_headers}Content-Length: {}\r\nConnection: close\r\n\r\n",
                         body.len()
                     );
                     let _ = socket.write_all(head.as_bytes()).await;
@@ -522,5 +585,58 @@ mod tests {
     async fn refuses_plain_http() {
         let result = fetch("http://example.com/", "test", AddressPolicy::APP, 1000).await;
         assert!(matches!(result, Err(FetchError::Network(_))), "{result:?}");
+    }
+
+    /// A zlib stream ("deflate" content-encoding) holding `data` in one stored block.
+    fn zlib_stored(data: &[u8]) -> Vec<u8> {
+        let mut out = vec![0x78, 0x01, 0x01];
+        out.extend_from_slice(&(data.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(!(data.len() as u16)).to_le_bytes());
+        out.extend_from_slice(data);
+        let (mut a, mut b) = (1u32, 0u32);
+        for byte in data {
+            a = (a + *byte as u32) % 65521;
+            b = (b + a) % 65521;
+        }
+        out.extend_from_slice(&((b << 16) | a).to_be_bytes());
+        out
+    }
+
+    #[tokio::test]
+    async fn a_compressed_page_is_decoded() {
+        let html = "<html><head><title>Vac</title></head><body><article><p>Compressed review text that is long enough to be kept as the article body.</p></article></body></html>";
+        let base = serve_with(
+            200,
+            "text/html",
+            "Content-Encoding: deflate\r\n",
+            zlib_stored(html.as_bytes()),
+        )
+        .await;
+        let page = fetch(&format!("{base}/p"), "test", LOOPBACK, 10_000)
+            .await
+            .expect("decoded");
+        assert!(
+            page.text.contains("Compressed review text"),
+            "{:?}",
+            page.text
+        );
+    }
+
+    #[tokio::test]
+    async fn a_captcha_page_is_named_as_a_bot_check() {
+        let html = b"<html><body><h4>Type the characters you see in this image</h4><form></form></body></html>".to_vec();
+        for status in [200, 503] {
+            let base = serve_with(status, "text/html", "", html.clone()).await;
+            let result = fetch(&format!("{base}/dp/B0"), "test", LOOPBACK, 10_000).await;
+            assert!(matches!(result, Err(FetchError::BotWall)), "{status}");
+        }
+        assert!(FetchError::BotWall.to_string().contains("bot check"));
+    }
+
+    #[tokio::test]
+    async fn undecodable_bytes_are_unreadable_not_noise() {
+        let base = serve("text/html", vec![0x9f, 0x8b, 0xff, 0x00, 0xfe, 0xff, 0xc3]).await;
+        let result = fetch(&format!("{base}/p"), "test", LOOPBACK, 10_000).await;
+        assert!(matches!(result, Err(FetchError::Unreadable)), "{result:?}");
     }
 }

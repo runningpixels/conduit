@@ -1747,8 +1747,6 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [agentView, setAgentView] = useState<AgentViewTarget | null>(null);
   const agentViewRef = useRef(agentView);
   agentViewRef.current = agentView;
-  /** What the user told each running helper from the composer, by agent call id. */
-  const [redirectNotes, setRedirectNotes] = useState<Record<string, string[]>>({});
   const [redirectError, setRedirectError] = useState<string | null>(null);
   /** The main thread's scroll position when the view opened, restored on the way back. */
   const mainScrollRef = useRef<{ top: number; stuck: boolean } | null>(null);
@@ -1911,8 +1909,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const text = prompt.trim();
     if (!text) return;
     try {
+      // The backend keeps the redirect with the helper's events; the view shows it from there.
       await redirectAgentCall(helper.callId, text);
-      setRedirectNotes((notes) => ({ ...notes, [helper.callId]: [...(notes[helper.callId] ?? []), text] }));
       setPrompt('');
       setRedirectError(null);
     } catch {
@@ -3518,7 +3516,6 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               levels={agentLevels}
               main={mainChatState}
               conversationId={conversationId}
-              notes={redirectNotes[viewedHelper?.callId ?? ''] ?? []}
               sendError={redirectError}
               onNavigate={navigateAgentView}
               onBack={agentViewBack}

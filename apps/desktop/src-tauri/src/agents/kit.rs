@@ -43,6 +43,12 @@ pub const REMEMBER_TOOL: &str = "remember";
 pub const FORGET_TOOL: &str = "forget";
 pub const SEARCH_DOCUMENTS_TOOL: &str = "search_documents";
 
+/// Added to the instructions of a run as an agent that keeps notes. A task
+/// that compares with earlier runs ("did a price drop since last time") has
+/// nothing to compare with unless the last run saved it.
+const NEXT_RUN_HINT: &str =
+    "If this task compares with earlier runs, save what the next run will need with remember.";
+
 /// Most notes one agent keeps; past it, it must replace or forget one.
 pub const MAX_AGENT_NOTES: i64 = 50;
 
@@ -159,6 +165,16 @@ impl AgentKit {
             system.push_str("\n\n");
         }
         system.push_str(&self.notes_block);
+    }
+
+    /// For a workflow step run as this agent (a routine is one): the line that
+    /// tells an agent with notes to keep what its next run will need. Nothing
+    /// when it has no `remember` tool this turn.
+    pub fn add_next_run_hint(&self, system: &mut String) {
+        if self.remembers() {
+            system.push_str("\n\n");
+            system.push_str(NEXT_RUN_HINT);
+        }
     }
 
     /// Its notes in `request`'s system prompt and its tools in its tools, in

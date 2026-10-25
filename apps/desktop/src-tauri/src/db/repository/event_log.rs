@@ -296,5 +296,6 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         ProviderEvent::HandoffFinished { .. } => "handoffFinished",
         // Live only: never logged (`agents::handoff::live_only`).
         ProviderEvent::HandoffUsage { .. } => "handoffUsage",
+        ProviderEvent::UserNote { .. } => "userNote",
     }
 }

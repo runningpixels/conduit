@@ -404,6 +404,25 @@ describe('Running now', () => {
     expect(rows[1]).toHaveTextContent('In Weekly report');
   });
 
+  it('lists an agent waiting for the user apart, not as running', async () => {
+    ipc.listAgents.mockResolvedValue([]);
+    render(
+      <AgentsPage
+        onOpenWorkflow={() => {}}
+        onOpenWorkflows={() => {}}
+        running={[row({}), row({ id: 'call-2', name: 'Writer', task: 'Edit it', waiting: true })]}
+      />,
+    );
+    await flush();
+    const running = within(screen.getByRole('list', { name: 'Running now' })).getAllByRole('button');
+    expect(running).toHaveLength(1);
+    expect(running[0]).toHaveTextContent('Researcher');
+    const waiting = within(screen.getByRole('list', { name: 'Needs you' })).getAllByRole('button');
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toHaveTextContent('Writer');
+    expect(waiting[0]).toHaveTextContent('Waiting for you');
+  });
+
   it("opens a chat helper's view, and a workflow agent's run", async () => {
     ipc.listAgents.mockResolvedValue([]);
     const onOpenAgent = vi.fn();

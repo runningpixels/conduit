@@ -9488,3 +9488,109 @@ async fn a_run_that_reads_documents_unattended_without_approval_pauses_to_ask() 
         "asked before the agent's turn began"
     );
 }
+
+#[tokio::test]
+async fn an_agent_whose_step_waits_for_the_user_is_not_counted_as_working() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "act", "type": "agent", "prompt": "Post it" },
+        ]}))
+        .await;
+    let (pool, enc) = (&h.state.db, &h.state.encryption);
+    let run = repo::start_run(pool, &id, 1, "manual").await.unwrap();
+    repo::start_step(pool, enc, &run.id, "act", None, &json!({ "type": "agent" }))
+        .await
+        .unwrap();
+    let call = conduit_desktop::db::repository::agent_calls::start_agent_call(
+        pool,
+        enc,
+        &conduit_desktop::db::repository::agent_calls::AgentCallStart {
+            run_id: Some(&run.id),
+            workflow_id: Some(&id),
+            step_id: Some("act"),
+            conversation_id: None,
+            kind: "step",
+            agent_id: "act",
+            parent_id: None,
+            task: "Post it",
+            model: None,
+            request_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    let running = || async {
+        conduit_desktop::agents::calls::running(pool, enc)
+            .await
+            .unwrap()
+    };
+    let working = |rows: &[conduit_desktop::db::repository::agent_calls::AgentCallChange]| {
+        rows.iter().filter(|r| !r.waiting).count()
+    };
+    let rows = running().await;
+    assert_eq!((rows.len(), working(&rows)), (1, 1));
+
+    let now = chrono::Utc::now();
+    let (since, until) = (to_iso(now), to_iso(now + chrono::Duration::hours(1)));
+    repo::set_step_waiting(pool, &run.id, "act", Some((&since, &until)))
+        .await
+        .unwrap();
+    let rows = running().await;
+    assert_eq!((rows.len(), working(&rows)), (1, 0), "{rows:?}");
+    assert_eq!(rows[0].id, call);
+    let activity = repo::agent_activity(pool, enc, "1970-01-01T00:00:00Z")
+        .await
+        .unwrap();
+    assert!(
+        activity.iter().all(|a| a.current_task.is_none()),
+        "{activity:?}"
+    );
+
+    // Answered: working again.
+    repo::set_step_waiting(pool, &run.id, "act", None)
+        .await
+        .unwrap();
+    let rows = running().await;
+    assert_eq!(working(&rows), 1);
+}
+
+#[tokio::test]
+async fn an_agent_with_notes_is_told_to_save_what_its_next_run_needs() {
+    for (memory, told) in [(true, true), (false, false)] {
+        let h = Harness::new(EchoModel::default()).await;
+        save_agent(
+            &h,
+            json!({ "id": "watcher", "name": "Watcher", "instructions": "Watch prices.", "memory": memory }),
+        )
+        .await;
+        let id = h
+            .save(
+                json!({ "steps": [{ "id": "go", "type": "agent", "agent": "watcher",
+                "prompt": "Has any price dropped since your last check?" }] }),
+            )
+            .await;
+        let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+        let runner = Runner {
+            connectors: Some(&connectors),
+            ..h.manual_runner()
+        };
+        let detail = runner.run(&id, &HashMap::new(), "manual").await.unwrap();
+        assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+        let requests = h.model.requests.lock().unwrap().clone();
+        let system = requests[0].system_prompt.clone().unwrap_or_default();
+        assert_eq!(
+            system.contains("save what the next run will need with remember"),
+            told,
+            "memory {memory}: {system}"
+        );
+        assert_eq!(
+            requests[0]
+                .tool_definitions
+                .iter()
+                .any(|t| t.name == "remember"),
+            told,
+            "the line is there exactly when the tool is"
+        );
+    }
+}

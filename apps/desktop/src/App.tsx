@@ -143,7 +143,7 @@ import { AppsPage } from './pages/AppsPage';
 import { AppsHomePage } from './pages/AppsHomePage';
 import { AgentsPage } from './pages/AgentsPage';
 import { useRunningAgentCalls } from './agents/runningAgentCalls';
-import { announceAgentCall } from './agents/agentCallNotices';
+import { announceAgentCall, isWatchingAgentCall } from './agents/agentCallNotices';
 import type { AgentCallChange } from './ipc/contracts';
 import { InboxPage } from './pages/InboxPage';
 import type { AppSummary, StarterAppInfo } from './ipc/contracts';
@@ -3324,6 +3324,8 @@ export default function App() {
     callId: string;
     nonce: number;
   } | null>(null);
+  const pendingAgentViewRef = useRef(pendingAgentView);
+  pendingAgentViewRef.current = pendingAgentView;
   /** The helper whose view is open in the chat, if any: it gets no toast. */
   const watchedAgentRef = useRef<{ conversationId: string; callId: string } | null>(null);
   const destinationRef = useRef(destination);
@@ -3341,9 +3343,12 @@ export default function App() {
   openAgentViewRef.current = openAgentView;
   const runningAgents = useRunningAgentCalls((change: AgentCallChange) => {
     const watched = watchedAgentRef.current;
+    // A view still being opened counts: it shows the same news, and a toast
+    // with Open for the helper on screen is noise.
+    const opening = pendingAgentViewRef.current;
     announceAgentCall(change, {
       t,
-      watching: destinationRef.current === 'chats' && watched?.callId === change.id,
+      watching: isWatchingAgentCall(change.id, destinationRef.current === 'chats', watched, opening),
       focused: document.hasFocus(),
       pushToast,
       openAgentView: (conversationId, callId) => openAgentViewRef.current(conversationId, callId),

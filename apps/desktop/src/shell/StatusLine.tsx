@@ -43,6 +43,8 @@ interface StatusLineProps {
   credentialMode: CredentialMode;
   /** `keychain://…` reference, or empty when not configured. */
   credentialRef: string;
+  /** An agent answers this message: its model is shown (and priced) instead of the chat's. */
+  agentModel?: { name: string; provider: string; model: string } | null;
   /** Open the composer model picker. */
   modelMenuOpen: () => void;
 }
@@ -55,6 +57,7 @@ export function StatusLine({
   compactThresholdPercent = DEFAULT_COMPACT_THRESHOLD_PERCENT,
   credentialMode,
   credentialRef,
+  agentModel = null,
   modelMenuOpen,
 }: StatusLineProps) {
   const t = useT();
@@ -66,7 +69,9 @@ export function StatusLine({
   const close = () => setOpen(false);
 
   const tokens = Math.max(0, contextTokens);
-  const contextWindow = useContextWindow(settings.activeProvider, settings.activeModel);
+  const shownProvider = agentModel?.provider ?? settings.activeProvider;
+  const shownModel = agentModel?.model ?? settings.activeModel;
+  const contextWindow = useContextWindow(shownProvider, shownModel);
   const percent = contextWindow != null ? Math.round((tokens / contextWindow) * 100) : null;
   const nearLimit = percent != null && percent >= compactThresholdPercent;
   const meterFill = percent != null ? Math.min(100, Math.max(0, percent)) : 0;
@@ -84,12 +89,12 @@ export function StatusLine({
 
   const lookupPrice = useModelPrices(
     useMemo(
-      () => [{ providerId: settings.activeProvider, modelIds: [settings.activeModel] }],
-      [settings.activeProvider, settings.activeModel],
+      () => [{ providerId: shownProvider, modelIds: [shownModel] }],
+      [shownProvider, shownModel],
     ),
   );
-  const activePrice = lookupPrice(settings.activeProvider, settings.activeModel)?.price;
-  const estimatedCents = estimateCostCents(usage, settings.activeProvider, activePrice);
+  const activePrice = lookupPrice(shownProvider, shownModel)?.price;
+  const estimatedCents = estimateCostCents(usage, shownProvider, activePrice);
   const spendLabel =
     estimatedCents != null && estimatedCents > 0
       ? formatCostCents(estimatedCents)
@@ -128,7 +133,7 @@ export function StatusLine({
         onClick={() => setOpen((v) => !v)}
       >
         <i className="pdot" aria-hidden="true" />
-        <span>{settings.activeModel}</span>
+        <span>{agentModel ? `${agentModel.name} · ${agentModel.model}` : settings.activeModel}</span>
         {expanded && keyResolved && !keyMissing && (
           <>
             {sep}
@@ -189,7 +194,8 @@ export function StatusLine({
           }}
         >
           <ModelIcon />
-          {providerDisplayName(settings.activeProvider)} / {settings.activeModel}
+          {agentModel ? `${agentModel.name} · ` : null}
+          {providerDisplayName(shownProvider)} / {shownModel}
           <span className="tail">{t('shell.statusLine.menu.change')}</span>
         </button>
 

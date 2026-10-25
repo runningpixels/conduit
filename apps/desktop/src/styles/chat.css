@@ -2439,21 +2439,28 @@
 /* The agent view: one helper's own transcript in place of the thread. The
    breadcrumb stays at the top and the main chat's strip at the bottom. */
 .agent-view { display: grid; gap: var(--sp-3); min-width: 0; font-family: var(--font-ui); }
-.agent-view-crumbs {
+/* The breadcrumb and the helper's header stick as one block. */
+.agent-view-top {
   position: sticky;
   /* Negative top: stick to the thread's edge, not below its padding. */
   top: calc(-1 * var(--sp-5));
   z-index: 2;
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg);
+}
+.agent-view-crumbs {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
   min-width: 0;
-  padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--bg);
+  padding: var(--sp-2) 0 0;
 }
 @media (max-width: 720px) {
-  .agent-view-crumbs { top: calc(-1 * var(--sp-4)); }
+  .agent-view-top { top: calc(-1 * var(--sp-4)); }
   .thread .agent-view-main { bottom: calc(-1 * var(--sp-3)); }
 }
 .agent-view-back {

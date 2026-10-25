@@ -88,70 +88,73 @@ export function AgentView({
 
   return (
     <section className="agent-view" aria-label={t('chat.agentView.regionAria', { name: handoff.name })}>
-      <nav className="agent-view-crumbs" aria-label={t('chat.agentView.breadcrumbAria')}>
-        <button type="button" className="agent-view-back" onClick={onBack}>
-          <ChevronLeft aria-hidden="true" />
-          <span>{t('chat.agentView.back')}</span>
-        </button>
-        <ol>
-          <li>
+      {/* Sticky together: the live view follows the newest output, and the name, status and Stop must not scroll away. */}
+      <div className="agent-view-top">
+        <nav className="agent-view-crumbs" aria-label={t('chat.agentView.breadcrumbAria')}>
+          <button type="button" className="agent-view-back" onClick={onBack}>
+            <ChevronLeft aria-hidden="true" />
+            <span>{t('chat.agentView.back')}</span>
+          </button>
+          <ol>
+            <li>
+              <button
+                type="button"
+                className="agent-view-crumb"
+                title={t('chat.agentView.chat')}
+                onClick={() => onNavigate(0)}
+              >
+                {t('chat.agentView.chat')}
+              </button>
+            </li>
+            {levels.map((level, i) => {
+              const last = i === levels.length - 1;
+              const label = [level.handoff.name, shortTask(level.handoff.task)].filter(Boolean).join(' · ');
+              return (
+                <li key={level.toolCallId}>
+                  <ChevronRight className="agent-view-sep" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className="agent-view-crumb"
+                    title={level.handoff.task}
+                    aria-current={last ? 'page' : undefined}
+                    onClick={() => (last ? undefined : onNavigate(i + 1))}
+                  >
+                    {label}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+
+        <header className="agent-view-head" data-status={handoff.status}>
+          <span className="agent-view-icon" aria-hidden="true">
+            <AgentsIcon />
+          </span>
+          <h2 className="agent-view-name">{handoff.name}</h2>
+          <ProviderBadge model={handoff.model} />
+          {modelId ? (
+            <span className="agent-view-model" title={modelId}>
+              {modelId}
+            </span>
+          ) : null}
+          <span className="agent-view-status" data-status={handoff.status}>
+            {t(HANDOFF_STATUS_KEYS[handoff.status])}
+          </span>
+          {numbers ? <span className="agent-view-nums">{numbers}</span> : null}
+          {running && handoff.callId ? (
             <button
               type="button"
-              className="agent-view-crumb"
-              title={t('chat.agentView.chat')}
-              onClick={() => onNavigate(0)}
+              className="btn ghost helper-btn agent-view-stop"
+              disabled={stopping}
+              aria-label={t('chat.handoff.stopAria', { name: handoff.name })}
+              onClick={() => void stop()}
             >
-              {t('chat.agentView.chat')}
+              {t('chat.handoff.stop')}
             </button>
-          </li>
-          {levels.map((level, i) => {
-            const last = i === levels.length - 1;
-            const label = [level.handoff.name, shortTask(level.handoff.task)].filter(Boolean).join(' · ');
-            return (
-              <li key={level.toolCallId}>
-                <ChevronRight className="agent-view-sep" aria-hidden="true" />
-                <button
-                  type="button"
-                  className="agent-view-crumb"
-                  title={level.handoff.task}
-                  aria-current={last ? 'page' : undefined}
-                  onClick={() => (last ? undefined : onNavigate(i + 1))}
-                >
-                  {label}
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-
-      <header className="agent-view-head" data-status={handoff.status}>
-        <span className="agent-view-icon" aria-hidden="true">
-          <AgentsIcon />
-        </span>
-        <h2 className="agent-view-name">{handoff.name}</h2>
-        <ProviderBadge model={handoff.model} />
-        {modelId ? (
-          <span className="agent-view-model" title={modelId}>
-            {modelId}
-          </span>
-        ) : null}
-        <span className="agent-view-status" data-status={handoff.status}>
-          {t(HANDOFF_STATUS_KEYS[handoff.status])}
-        </span>
-        {numbers ? <span className="agent-view-nums">{numbers}</span> : null}
-        {running && handoff.callId ? (
-          <button
-            type="button"
-            className="btn ghost helper-btn agent-view-stop"
-            disabled={stopping}
-            aria-label={t('chat.handoff.stopAria', { name: handoff.name })}
-            onClick={() => void stop()}
-          >
-            {t('chat.handoff.stop')}
-          </button>
-        ) : null}
-      </header>
+          ) : null}
+        </header>
+      </div>
       {stopFailed ? (
         <p className="helper-error" role="status">
           {t('chat.handoff.controlFailed', { name: handoff.name })}

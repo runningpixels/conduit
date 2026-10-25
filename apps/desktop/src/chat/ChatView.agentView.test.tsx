@@ -383,6 +383,23 @@ describe('the agent view', () => {
     expect(screen.queryByRole('navigation', { name: 'Where you are' })).toBeNull();
   });
 
+  it('keeps text written for a helper that finished meanwhile instead of queueing it for the chat', async () => {
+    const { h } = await openResearcher();
+    const box = screen.getByLabelText('Message the active provider');
+    fireEvent.change(box, { target: { value: 'Use primary sources' } });
+    h.finish('tc1');
+    h.finish('tc2');
+    h.complete();
+    await waitFor(() => expect(screen.getByText('Main chat replied')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(await screen.findByText(/Researcher has finished, so your message was not sent/)).toBeInTheDocument();
+    // Still in the helper's view, text kept, nothing sent anywhere.
+    expect(screen.getByRole('heading', { name: 'Researcher' })).toBeInTheDocument();
+    expect(box).toHaveValue('Use primary sources');
+    expect(redirectAgentCall).not.toHaveBeenCalled();
+    expect(startChatStream).toHaveBeenCalledTimes(1);
+  });
+
   it('opens a helper by its call id when the shell asks', async () => {
     const stream = captureStream();
     const onConsumed = vi.fn();

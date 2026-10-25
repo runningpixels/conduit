@@ -138,6 +138,8 @@ export interface ComposerProps {
   onRefreshKnowledgeCapabilities?: () => void;
   /** `@`-picked library agent the next message goes to. Passing the setter turns `@` on. */
   selectedAgent?: { id: string; name: string } | null;
+  /** The model the picked agent (or the agent whose reply is the last one) runs on, for the status line. */
+  statusAgentModel?: { name: string; provider: string; model: string } | null;
   onSelectAgent?: (agent: { id: string; name: string } | null) => void;
   /** Prompts and resources advertised by the running connectors (t0-9). */
   mcpPrompts?: ConnectorPromptInfo[];
@@ -223,6 +225,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onRemoveKnowledgeRef,
   onRefreshKnowledgeCapabilities,
   selectedAgent = null,
+  statusAgentModel = null,
   onSelectAgent,
   mcpPrompts = [],
   mcpResources = [],
@@ -1644,6 +1647,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         compactThresholdPercent={compactThresholdPercent}
         credentialMode={credentialMode}
         credentialRef={credentialRef ?? ''}
+        agentModel={statusAgentModel}
         modelMenuOpen={() => modelPickerRef.current?.open()}
       />
       {starterIds.length > 0 ? (

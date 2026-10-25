@@ -19,6 +19,17 @@ export interface AgentCallNoticeDeps {
   notify: (title: string, body: string) => void;
 }
 
+/// Whether the user is looking at a call's view, or it is being opened
+/// (a click that has not reached the chat yet): either way it needs no toast.
+export function isWatchingAgentCall(
+  callId: string,
+  inChats: boolean,
+  watched: { callId: string } | null,
+  opening: { callId: string } | null,
+): boolean {
+  return inChats && (watched?.callId === callId || opening?.callId === callId);
+}
+
 /// Tell the user a chat helper finished or failed, unless they are watching
 /// it. Workflow helpers are covered by their run's own toast, and one the user
 /// stopped needs no news. True when something was said.

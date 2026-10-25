@@ -204,6 +204,13 @@ export function AgentsPage({
   const all = useMemo(() => busyFirst((entries ?? []).filter((e) => !e.library)), [entries]);
   const routinesOf = (agentId: string) => routines.filter((r) => r.agentId === agentId);
   const routineIds = new Set(routines.map((r) => r.workflowId));
+  /// The line under an agent's name. Routines are listed on the card, so they count here too.
+  const usedBySubtitle = (workflows: number, routineCount: number) =>
+    routineCount === 0
+      ? t('shell.agents.usedIn', { count: workflows })
+      : workflows === 0
+        ? t('shell.agents.usedInRoutines', { count: routineCount })
+        : t('shell.agents.usedInBoth', { workflows, routines: routineCount });
   const counts: Record<Filter, number> = {
     all: all.length + mine.length,
     working: all.filter((e) => e.currentTask !== null).length + mine.filter((m) => m.working !== null).length,
@@ -421,7 +428,7 @@ export function AgentsPage({
             <span className="agent-card-title">
               <span className="agent-name">{name}</span>
               <span className="agent-sub">
-                {t('shell.agents.usedIn', { count: lib.usedBy.filter((u) => !routineIds.has(u.workflowId)).length })}
+                {usedBySubtitle(lib.usedBy.filter((u) => !routineIds.has(u.workflowId)).length, routinesOf(def.id).length)}
               </span>
             </span>
           </span>
@@ -500,8 +507,16 @@ export function AgentsPage({
   /// One agent at work: who, on what, where, for how long. It opens where it works.
   const runningRow = (row: AgentCallChange) => {
     const name = row.name || row.agentId;
-    const workflowName = row.workflowId
-      ? (entries ?? []).find((e) => e.workflowId === row.workflowId)?.workflowName
+    // A helper inside a workflow run can lack its own workflow id; its run's
+    // other calls (or its parent) know it.
+    const workflowId =
+      row.workflowId ??
+      (row.runId
+        ? running.find((r) => r.runId === row.runId && r.workflowId)?.workflowId
+        : running.find((r) => r.id === row.parentId)?.workflowId) ??
+      null;
+    const workflowName = workflowId
+      ? (entries ?? []).find((e) => e.workflowId === workflowId)?.workflowName
       : undefined;
     const title = row.conversationId ? chatTitle?.(row.conversationId) : null;
     const where = row.runId
@@ -514,7 +529,8 @@ export function AgentsPage({
     const started = Date.parse(row.startedAt);
     const elapsed = Number.isFinite(started) ? fmt.duration(Math.max(0, now - started)) : '';
     const open = () => {
-      if (row.runId && row.workflowId) onOpenWorkflow(row.workflowId, row.runId);
+      if (workflowId) onOpenWorkflow(workflowId, row.runId ?? undefined);
+      else if (row.runId) onOpenWorkflows();
       else if (row.conversationId && row.kind === 'helper' && onOpenAgent) onOpenAgent(row.conversationId, row.id);
       else if (row.conversationId) onOpenConversation?.(row.conversationId);
     };

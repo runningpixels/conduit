@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { announceAgentCall, type AgentCallNoticeDeps } from './agentCallNotices';
+import { announceAgentCall, isWatchingAgentCall, type AgentCallNoticeDeps } from './agentCallNotices';
 import type { AgentCallChange } from '../ipc/contracts';
 import type { StatusState } from '../chat/statusTypes';
 
@@ -83,5 +83,14 @@ describe('announceAgentCall', () => {
     const { d, toasts } = deps();
     announceAgentCall(change({ task: 'x'.repeat(200) }), d);
     expect(toasts[0].brief).toContain(`${'x'.repeat(79)}…`);
+  });
+});
+
+describe('isWatchingAgentCall', () => {
+  it('counts an open view and one still being opened, only while in chats', () => {
+    expect(isWatchingAgentCall('call-1', true, { callId: 'call-1' }, null)).toBe(true);
+    expect(isWatchingAgentCall('call-1', true, null, { callId: 'call-1' })).toBe(true);
+    expect(isWatchingAgentCall('call-1', true, { callId: 'call-2' }, null)).toBe(false);
+    expect(isWatchingAgentCall('call-1', false, { callId: 'call-1' }, null)).toBe(false);
   });
 });

@@ -253,6 +253,11 @@ const PINNED: &[(i64, &str, &str)] = &[
         "60de412d612745e91176e2d5f5cfcaca71bd3a0b700b4b478b849d59f46568c2769c842a165caa983a9d472e01472a6e",
         "memory scope",
     ),
+    (
+        47,
+        "8331f4bbc1fc0b34d3cefcbee3c20fe71972d0579d1ce3478dae8f98ddf0c819a6b813bfaff274ff136923f4a2b901d9",
+        "connector tool read only",
+    ),
 ];
 
 fn hex(bytes: &[u8]) -> String {

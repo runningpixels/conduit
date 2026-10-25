@@ -1,8 +1,10 @@
 /// The Connectors page's detail pane for one connector version: status and
-/// start/stop, what it offers (tools, prompts, resources), its remembered tool
-/// approvals, other versions, and revoking its grant.
-import type { ConnectorCapability, ConnectorRuntimeSnapshot } from '../../../ipc/contracts';
-import type { ToolApprovalMemoryRow } from '../../../ipc/client';
+/// start/stop, what it offers (tools, prompts, resources) and whether each tool
+/// only reads, its remembered tool approvals, other versions, and revoking its
+/// grant.
+import { useCallback, useEffect, useState } from 'react';
+import type { ConnectorCapability, ConnectorRuntimeSnapshot, ConnectorToolAccess } from '../../../ipc/contracts';
+import { listConnectorToolAccess, setConnectorToolReadOnly, type ToolApprovalMemoryRow } from '../../../ipc/client';
 import { useT } from '../../../i18n';
 import { ToolApprovalList } from './ToolApprovalList';
 import { approvalTool, canToggle, connectorLabel, needsSignIn, type ConnectorsState } from './useConnectors';
@@ -44,6 +46,62 @@ export function ConnectorDetail({
   for (const row of approvals) approvalByTool.set(approvalTool(row), row);
   const busy = state.busy === s.connectorVersionId;
 
+  // What each tool says about changing things, read from the running
+  // connector. A tool that says nothing asks first; the user can mark it as
+  // only reading.
+  const [access, setAccess] = useState<Record<string, ConnectorToolAccess>>({});
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const versionId = s.connectorVersionId;
+  const running = s.running;
+  useEffect(() => {
+    setAccess({});
+    setAccessError(null);
+    if (!running) return;
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => listConnectorToolAccess(versionId))
+      .then((rows) => {
+        if (cancelled || !Array.isArray(rows)) return;
+        setAccess(Object.fromEntries(rows.map((row) => [row.name, row])));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [versionId, running]);
+  const markReadOnly = useCallback(
+    async (tool: string, readOnly: boolean) => {
+      setAccessError(null);
+      try {
+        await setConnectorToolReadOnly(versionId, tool, readOnly);
+        setAccess((prev) => (prev[tool] ? { ...prev, [tool]: { ...prev[tool], markedReadOnly: readOnly } } : prev));
+      } catch (e) {
+        setAccessError(String(e));
+      }
+    },
+    [versionId],
+  );
+  const anyUnstated = tools.some((cap) => access[cap.name] && access[cap.name].declared === null);
+
+  const accessControl = (name: string) => {
+    const row = access[name];
+    if (!row) return null;
+    if (row.declared === 'readOnly') return <span className="cx-tag">{t('settings.connectors.detail.readsOnly')}</span>;
+    if (row.declared === 'sensitive') return <span className="cx-tag">{t('settings.connectors.detail.alwaysAsks')}</span>;
+    if (row.declared === 'sideEffectful') return <span className="cx-tag">{t('settings.connectors.detail.changesThings')}</span>;
+    return (
+      <label className="cx-check">
+        <input
+          type="checkbox"
+          checked={row.markedReadOnly}
+          onChange={(e) => void markReadOnly(name, e.target.checked)}
+          aria-label={t('settings.connectors.detail.markReadOnlyAria', { tool: name })}
+        />
+        <span>{t('settings.connectors.detail.markReadOnly')}</span>
+      </label>
+    );
+  };
+
   const capList = (items: ConnectorCapability[], withApprovals: boolean) => (
     <ul className="cx-rows">
       {items.map((cap) => {
@@ -55,6 +113,7 @@ export function ConnectorDetail({
               <b className="cx-mono">{cap.name}</b>
               {detail ? <small>{detail}</small> : null}
             </span>
+            {withApprovals ? accessControl(cap.name) : null}
             {approval ? (
               <span className="cx-tag">
                 {approval.scope === 'always'
@@ -112,6 +171,12 @@ export function ConnectorDetail({
 
       <section className="grp">
         <div className="grp-label">{t('settings.connectors.detail.tools', { count: tools.length })}</div>
+        {anyUnstated ? <p className="cx-note">{t('settings.connectors.detail.unstatedHint')}</p> : null}
+        {accessError ? (
+          <p className="cx-error" role="alert">
+            {accessError}
+          </p>
+        ) : null}
         {tools.length > 0 ? (
           capList(tools, true)
         ) : (

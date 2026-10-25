@@ -3335,7 +3335,15 @@
     "writing.studio.step.outline": "cdd6290b6b2860663a3ff7c60cbe70af640e9c39",
     "writing.studio.stepsAria": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
     "writing.studio.titleAria": "188a377e928f4da8293b675611c0de7c9fd6affe",
-    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0"
+    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0",
+    "settings.connectors.detail.readsOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.alwaysAsks": "15032144742bdfa73bb32d237fbac4e3194fbcfd",
+    "settings.connectors.detail.changesThings": "282750b75bad93050ee10750cbe7bc8db348fb3b",
+    "settings.connectors.detail.markReadOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.markReadOnlyAria": "f5e09f162bcfdc94f2836e81be3f97391d42e5c1",
+    "workspace.workflows.editor.connector.toolUnstated": "f521ec88a0a30bf9791fc4900ecc385f3e548ac5",
+    "settings.connectors.detail.unstatedHint": "9c0d891878120c653aa2de684d1927fd41720086",
+    "workspace.workflows.editor.connector.askUnstated": "4190a1e0ca53328dfb3d3f3739456e7ef2bb07cd"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6673,7 +6681,15 @@
     "writing.studio.step.outline": "cdd6290b6b2860663a3ff7c60cbe70af640e9c39",
     "writing.studio.stepsAria": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
     "writing.studio.titleAria": "188a377e928f4da8293b675611c0de7c9fd6affe",
-    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0"
+    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0",
+    "settings.connectors.detail.readsOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.alwaysAsks": "15032144742bdfa73bb32d237fbac4e3194fbcfd",
+    "settings.connectors.detail.changesThings": "282750b75bad93050ee10750cbe7bc8db348fb3b",
+    "settings.connectors.detail.markReadOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.markReadOnlyAria": "f5e09f162bcfdc94f2836e81be3f97391d42e5c1",
+    "workspace.workflows.editor.connector.toolUnstated": "f521ec88a0a30bf9791fc4900ecc385f3e548ac5",
+    "settings.connectors.detail.unstatedHint": "9c0d891878120c653aa2de684d1927fd41720086",
+    "workspace.workflows.editor.connector.askUnstated": "4190a1e0ca53328dfb3d3f3739456e7ef2bb07cd"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -10011,7 +10027,15 @@
     "writing.studio.step.outline": "cdd6290b6b2860663a3ff7c60cbe70af640e9c39",
     "writing.studio.stepsAria": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
     "writing.studio.titleAria": "188a377e928f4da8293b675611c0de7c9fd6affe",
-    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0"
+    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0",
+    "settings.connectors.detail.readsOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.alwaysAsks": "15032144742bdfa73bb32d237fbac4e3194fbcfd",
+    "settings.connectors.detail.changesThings": "282750b75bad93050ee10750cbe7bc8db348fb3b",
+    "settings.connectors.detail.markReadOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.markReadOnlyAria": "f5e09f162bcfdc94f2836e81be3f97391d42e5c1",
+    "workspace.workflows.editor.connector.toolUnstated": "f521ec88a0a30bf9791fc4900ecc385f3e548ac5",
+    "settings.connectors.detail.unstatedHint": "9c0d891878120c653aa2de684d1927fd41720086",
+    "workspace.workflows.editor.connector.askUnstated": "4190a1e0ca53328dfb3d3f3739456e7ef2bb07cd"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -13349,7 +13373,15 @@
     "writing.studio.step.outline": "cdd6290b6b2860663a3ff7c60cbe70af640e9c39",
     "writing.studio.stepsAria": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
     "writing.studio.titleAria": "188a377e928f4da8293b675611c0de7c9fd6affe",
-    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0"
+    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0",
+    "settings.connectors.detail.readsOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.alwaysAsks": "15032144742bdfa73bb32d237fbac4e3194fbcfd",
+    "settings.connectors.detail.changesThings": "282750b75bad93050ee10750cbe7bc8db348fb3b",
+    "settings.connectors.detail.markReadOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.markReadOnlyAria": "f5e09f162bcfdc94f2836e81be3f97391d42e5c1",
+    "workspace.workflows.editor.connector.toolUnstated": "f521ec88a0a30bf9791fc4900ecc385f3e548ac5",
+    "settings.connectors.detail.unstatedHint": "9c0d891878120c653aa2de684d1927fd41720086",
+    "workspace.workflows.editor.connector.askUnstated": "4190a1e0ca53328dfb3d3f3739456e7ef2bb07cd"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -16687,7 +16719,15 @@
     "writing.studio.step.outline": "cdd6290b6b2860663a3ff7c60cbe70af640e9c39",
     "writing.studio.stepsAria": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
     "writing.studio.titleAria": "188a377e928f4da8293b675611c0de7c9fd6affe",
-    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0"
+    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0",
+    "settings.connectors.detail.readsOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.alwaysAsks": "15032144742bdfa73bb32d237fbac4e3194fbcfd",
+    "settings.connectors.detail.changesThings": "282750b75bad93050ee10750cbe7bc8db348fb3b",
+    "settings.connectors.detail.markReadOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.markReadOnlyAria": "f5e09f162bcfdc94f2836e81be3f97391d42e5c1",
+    "workspace.workflows.editor.connector.toolUnstated": "f521ec88a0a30bf9791fc4900ecc385f3e548ac5",
+    "settings.connectors.detail.unstatedHint": "9c0d891878120c653aa2de684d1927fd41720086",
+    "workspace.workflows.editor.connector.askUnstated": "4190a1e0ca53328dfb3d3f3739456e7ef2bb07cd"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -20025,7 +20065,15 @@
     "writing.studio.step.outline": "cdd6290b6b2860663a3ff7c60cbe70af640e9c39",
     "writing.studio.stepsAria": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
     "writing.studio.titleAria": "188a377e928f4da8293b675611c0de7c9fd6affe",
-    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0"
+    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0",
+    "settings.connectors.detail.readsOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.alwaysAsks": "15032144742bdfa73bb32d237fbac4e3194fbcfd",
+    "settings.connectors.detail.changesThings": "282750b75bad93050ee10750cbe7bc8db348fb3b",
+    "settings.connectors.detail.markReadOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.markReadOnlyAria": "f5e09f162bcfdc94f2836e81be3f97391d42e5c1",
+    "workspace.workflows.editor.connector.toolUnstated": "f521ec88a0a30bf9791fc4900ecc385f3e548ac5",
+    "settings.connectors.detail.unstatedHint": "9c0d891878120c653aa2de684d1927fd41720086",
+    "workspace.workflows.editor.connector.askUnstated": "4190a1e0ca53328dfb3d3f3739456e7ef2bb07cd"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -23363,6 +23411,14 @@
     "writing.studio.step.outline": "cdd6290b6b2860663a3ff7c60cbe70af640e9c39",
     "writing.studio.stepsAria": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
     "writing.studio.titleAria": "188a377e928f4da8293b675611c0de7c9fd6affe",
-    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0"
+    "writing.studio.updating": "3ab0d73100de748c51a34c8ec9d1202a33a3acd0",
+    "settings.connectors.detail.readsOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.alwaysAsks": "15032144742bdfa73bb32d237fbac4e3194fbcfd",
+    "settings.connectors.detail.changesThings": "282750b75bad93050ee10750cbe7bc8db348fb3b",
+    "settings.connectors.detail.markReadOnly": "0bf6368a0ac1902f5f2a39a04e9799f92b7b6337",
+    "settings.connectors.detail.markReadOnlyAria": "f5e09f162bcfdc94f2836e81be3f97391d42e5c1",
+    "workspace.workflows.editor.connector.toolUnstated": "f521ec88a0a30bf9791fc4900ecc385f3e548ac5",
+    "settings.connectors.detail.unstatedHint": "9c0d891878120c653aa2de684d1927fd41720086",
+    "workspace.workflows.editor.connector.askUnstated": "4190a1e0ca53328dfb3d3f3739456e7ef2bb07cd"
   }
 }

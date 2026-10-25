@@ -35,6 +35,9 @@ export interface ConnectorToolInfo {
   readOnly: boolean | null;
   /// `sensitive` tools always ask, even when allowed; `null` when not reported.
   permissionLevel: 'readOnly' | 'sideEffectful' | 'sensitive' | null;
+  /// It says nothing about changing things; the user can mark it as only
+  /// reading on the Connectors page.
+  undeclared?: boolean;
 }
 
 function isObject(v: unknown): v is JsonObject {
@@ -102,15 +105,18 @@ export async function loadConnectorTools(connectorId: string): Promise<Connector
     inputSchema: isObject(t.inputSchema) ? t.inputSchema : {},
     readOnly: t.readOnly,
     permissionLevel: t.permissionLevel ?? null,
+    undeclared: t.undeclared === true,
   }));
 }
 
 /// How a tool is marked in a picker: `sensitive` always asks, `changes`
-/// stops to ask before it acts (also when nothing says it only reads), and a
-/// tool that only reads has no mark.
-export function toolMark(tool: ConnectorToolInfo): 'sensitive' | 'changes' | null {
+/// stops to ask before it acts, `unstated` asks too because the tool doesn't
+/// say (the user can mark it as only reading), and a tool that only reads has
+/// no mark.
+export function toolMark(tool: ConnectorToolInfo): 'sensitive' | 'changes' | 'unstated' | null {
   if (tool.permissionLevel === 'sensitive') return 'sensitive';
-  return tool.readOnly === true ? null : 'changes';
+  if (tool.readOnly === true) return null;
+  return tool.undeclared ? 'unstated' : 'changes';
 }
 
 /// The picker line for a tool: its name plus its mark.
@@ -118,6 +124,7 @@ export function toolLabel(tool: ConnectorToolInfo, t: Translate): string {
   const mark = toolMark(tool);
   if (mark === 'sensitive') return t('workspace.workflows.editor.connector.toolSensitive', { tool: tool.name });
   if (mark === 'changes') return t('workspace.workflows.editor.connector.toolChanges', { tool: tool.name });
+  if (mark === 'unstated') return t('workspace.workflows.editor.connector.toolUnstated', { tool: tool.name });
   return tool.name;
 }
 

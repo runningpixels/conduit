@@ -23,12 +23,12 @@ pub mod resources;
 pub mod supervisor;
 pub mod workflow_tools;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::Duration;
 
 use mcp_runtime::{
-    protocol::{ClientInfo, ServerInfo},
+    protocol::{ClientInfo, PermissionLevel, ServerInfo},
     HttpSseConfig, HttpSseTransport, McpError, McpTransport, PromptMessage, ResourceContents,
     StdioConfig, StdioTransport, ToolOutput,
 };
@@ -38,6 +38,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::db::repository::connectors as conn_repo;
+use crate::db::repository::tool_read_only_marks;
 use crate::db::DbPool;
 use crate::state::AppState;
 use crate::time::now_iso8601;
@@ -81,6 +82,23 @@ pub struct ActiveConnector {
     pub transport: Arc<TokioMutex<Box<dyn McpTransport>>>,
     pub spec: TransportSpec,
     pub client: ClientInfo,
+    /// The connector (not version) this runs, for the user's tool marks.
+    pub connector_id: String,
+    /// Tools the user marked as only reading, applied to every tool list
+    /// (`consent::list_live_tools`). Updated in place when a mark changes.
+    pub read_only_marks: StdRwLock<HashSet<String>>,
+}
+
+/// One tool of a running connector, as the Connectors page shows its access.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorToolAccess {
+    pub name: String,
+    /// What the tool says about itself; `None` when it says nothing, which is
+    /// the only case the user's mark applies to.
+    pub declared: Option<PermissionLevel>,
+    /// The user marked it as only reading.
+    pub marked_read_only: bool,
 }
 
 #[derive(Clone)]
@@ -226,6 +244,83 @@ impl ConnectorRuntimeManager {
             .lock()
             .ok()
             .and_then(|g| g.get(version_id).cloned())
+    }
+
+    /// Every running version of `connector_id`, so a changed tool mark
+    /// reaches them all.
+    pub fn active_of_connector(&self, connector_id: &str) -> Vec<Arc<ActiveConnector>> {
+        self.active
+            .lock()
+            .map(|g| {
+                g.values()
+                    .filter(|a| a.connector_id == connector_id)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// What each tool of a running connector says about changing things, and
+    /// the user's "only reads" marks. Empty when the version isn't running.
+    pub async fn tool_access(
+        &self,
+        connector_version_id: &str,
+    ) -> Result<Vec<ConnectorToolAccess>, String> {
+        let Some(active) = self.active_connector(connector_version_id) else {
+            return Ok(Vec::new());
+        };
+        let marks = active
+            .read_only_marks
+            .read()
+            .map(|m| m.clone())
+            .unwrap_or_default();
+        // The raw listing: each tool's own declaration, before any mark.
+        let tools = {
+            let mut t = active.transport.lock().await;
+            tokio::time::timeout(self.call_timeout, t.list_tools(&active.cancel))
+                .await
+                .map_err(|_| "the connector didn't list its tools in time".to_string())?
+                .map_err(|e| e.message)?
+        };
+        let mut rows: Vec<ConnectorToolAccess> = tools
+            .into_iter()
+            .map(|t| ConnectorToolAccess {
+                declared: (!t.is_undeclared()).then(|| t.effective_permission_level()),
+                marked_read_only: marks.contains(&t.name),
+                name: t.name,
+            })
+            .collect();
+        rows.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(rows)
+    }
+
+    /// Mark a tool as only reading, or take the mark away. It applies to every
+    /// version of the connector, running or not, and only to tools that
+    /// declare nothing themselves.
+    pub async fn set_tool_read_only(
+        &self,
+        pool: &DbPool,
+        connector_version_id: &str,
+        tool_name: &str,
+        read_only: bool,
+    ) -> Result<(), String> {
+        let version = conn_repo::get_version(pool, connector_version_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("connector version {connector_version_id} not found"))?;
+        tool_read_only_marks::set(pool, &version.connector_id, tool_name, read_only)
+            .await
+            .map_err(|e| e.to_string())?;
+        for active in self.active_of_connector(&version.connector_id) {
+            if let Ok(mut marks) = active.read_only_marks.write() {
+                if read_only {
+                    marks.insert(tool_name.to_string());
+                } else {
+                    marks.remove(tool_name);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The set of currently-running connector version ids (M4.6 rail snapshot
@@ -415,6 +510,15 @@ impl ConnectorRuntimeManager {
             transport: Arc::new(TokioMutex::new(transport)),
             spec: spec.clone(),
             client: self.client.clone(),
+            connector_id: version.connector_id.clone(),
+            read_only_marks: StdRwLock::new(
+                tool_read_only_marks::list(&pool, &version.connector_id)
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!(error = %e, "could not read the connector's read-only tool marks");
+                        HashSet::new()
+                    }),
+            ),
         });
         self.insert_active(connector_version_id, active.clone());
 

@@ -209,6 +209,8 @@ fn main() {
             stop_connector,
             discover_connector,
             list_workflow_connector_tools,
+            list_connector_tool_access,
+            set_connector_tool_read_only,
             invoke_connector_tool,
             approve_connector_tool_call,
             deny_connector_tool_call,

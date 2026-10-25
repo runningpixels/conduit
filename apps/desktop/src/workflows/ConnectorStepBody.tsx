@@ -167,7 +167,9 @@ export function ConnectorStepBody({
               {t(
                 toolMark(tool) === 'sensitive'
                   ? 'workspace.workflows.editor.connector.askSensitive'
-                  : 'workspace.workflows.editor.connector.askChanges',
+                  : toolMark(tool) === 'unstated'
+                    ? 'workspace.workflows.editor.connector.askUnstated'
+                    : 'workspace.workflows.editor.connector.askChanges',
                 { tool: tool.name, name: choice.name },
               )}
             </p>

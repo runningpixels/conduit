@@ -976,6 +976,17 @@ export interface WorkflowConnectorTool {
   inputSchema: Record<string, unknown>;
   readOnly: boolean;
   permissionLevel: 'readOnly' | 'sideEffectful' | 'sensitive';
+  /** It says nothing about changing things, so it asks first unless marked as only reading. */
+  undeclared?: boolean;
+}
+
+/** One tool of a running connector, as the Connectors page shows its access. */
+export interface ConnectorToolAccess {
+  name: string;
+  /** What the tool says about itself; null when it says nothing. */
+  declared: 'readOnly' | 'sideEffectful' | 'sensitive' | null;
+  /** The user marked it as only reading. */
+  markedReadOnly: boolean;
 }
 
 export interface WorkflowDraftResult {

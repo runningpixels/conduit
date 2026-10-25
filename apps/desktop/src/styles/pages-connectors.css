@@ -27,6 +27,15 @@
 .cx-inline-meta { font-weight: 400; }
 .cx-mono { font-family: var(--font-mono); }
 .cx-note { margin: 0; font-size: var(--fs-2xl); color: var(--ink-2); font-weight: var(--muted-weight); line-height: 1.5; }
+.cx-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xl);
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
 .cx-tag {
   font-size: var(--fs-md);
   color: var(--hue-text);

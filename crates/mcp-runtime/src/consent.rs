@@ -106,6 +106,33 @@ mod tests {
     }
 
     #[test]
+    fn a_users_read_only_mark_applies_only_to_a_tool_that_declares_nothing() {
+        for undeclared in [
+            tool(None, None),
+            tool(None, hints(None, None)),
+            tool(None, hints(None, Some(false))),
+        ] {
+            let mut t = undeclared;
+            assert!(t.is_undeclared());
+            t.apply_user_read_only();
+            assert_eq!(classify(&t).required, ConsentKind::Auto);
+        }
+        for declared in [
+            tool(None, hints(Some(false), None)),
+            tool(None, hints(None, Some(true))),
+            tool(Some(PermissionLevel::SideEffectful), None),
+            tool(Some(PermissionLevel::Sensitive), None),
+        ] {
+            let mut t = declared;
+            let before = classify(&t).level;
+            assert!(!t.is_undeclared());
+            t.apply_user_read_only();
+            assert_eq!(classify(&t).level, before);
+            assert_eq!(classify(&t).required, ConsentKind::Prompt);
+        }
+    }
+
+    #[test]
     fn parses_standard_annotations_from_a_tool_listing() {
         let t: McpTool = serde_json::from_value(serde_json::json!({
             "name": "read_file",

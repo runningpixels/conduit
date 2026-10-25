@@ -3596,5 +3596,13 @@
   "writing.studio.step.outline": "Gliederung",
   "writing.studio.stepsAria": "Schritte",
   "writing.studio.titleAria": "Titel des Entwurfs",
-  "writing.studio.updating": "Wird aktualisiert…"
+  "writing.studio.updating": "Wird aktualisiert…",
+  "settings.connectors.detail.readsOnly": "Liest nur",
+  "settings.connectors.detail.alwaysAsks": "Fragt immer zuerst",
+  "settings.connectors.detail.changesThings": "Ändert etwas, fragt zuerst",
+  "settings.connectors.detail.markReadOnly": "Liest nur",
+  "settings.connectors.detail.markReadOnlyAria": "{tool} liest nur und läuft daher ohne Rückfrage",
+  "workspace.workflows.editor.connector.toolUnstated": "{tool} – gibt nicht an, ob es etwas ändert, fragt dich zuerst",
+  "settings.connectors.detail.unstatedHint": "Manche Tools geben nicht an, ob sie etwas ändern, und fragen daher vor jedem Aufruf. Hake „Liest nur“ bei einem Tool an, dem du zutraust, nur nachzuschlagen: Es läuft dann in Chats, Agenten und Workflows ohne Rückfrage.",
+  "workspace.workflows.editor.connector.askUnstated": "„{tool}“ gibt nicht an, ob es in {name} etwas ändert, daher hält der Lauf vor jedem Aufruf an und fragt. Wenn es nur nachschlägt, markiere es unter Kontext → Connectors als „Liest nur“."
 }

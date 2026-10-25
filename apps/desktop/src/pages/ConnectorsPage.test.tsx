@@ -17,6 +17,8 @@ const ipc = vi.hoisted(() => ({
   stopConnector: vi.fn(),
   revokeConnectorGrant: vi.fn(),
   revokeToolApprovalMemory: vi.fn(),
+  listConnectorToolAccess: vi.fn(),
+  setConnectorToolReadOnly: vi.fn(),
 }));
 
 vi.mock('../ipc/client', () => ipc);
@@ -58,6 +60,8 @@ describe('ConnectorsPage', () => {
     ipc.startConnector.mockResolvedValue({ name: 'echo', version: '1.0.0' });
     ipc.revokeConnectorGrant.mockResolvedValue(undefined);
     ipc.revokeToolApprovalMemory.mockResolvedValue(true);
+    ipc.listConnectorToolAccess.mockResolvedValue([]);
+    ipc.setConnectorToolReadOnly.mockResolvedValue(undefined);
     ipc.addRemoteConnector.mockResolvedValue({ connectorId: 'remote:new', connectorVersionId: 'remote:new:1' });
   });
 
@@ -101,6 +105,37 @@ describe('ConnectorsPage', () => {
     expect(screen.getAllByText('query')).toHaveLength(2);
     expect(screen.getByText('Always allowed')).toBeInTheDocument();
     expect(screen.getByText('Sum it up')).toBeInTheDocument();
+  });
+
+  it('says what each tool declares and lets an undeclared tool be marked as only reading', async () => {
+    ipc.getConnectorRuntimeStates.mockResolvedValue([acme]);
+    ipc.listConnectorCapabilities.mockResolvedValue(
+      ['ask_wiki_question', 'read_wiki', 'delete_page'].map((name, i) => ({
+        id: `c${i}`,
+        connectorVersionId: acme.connectorVersionId,
+        kind: 'tool',
+        name,
+        discoveredAt: '',
+      })),
+    );
+    ipc.listConnectorToolAccess.mockResolvedValue([
+      { name: 'ask_wiki_question', declared: null, markedReadOnly: false },
+      { name: 'read_wiki', declared: 'readOnly', markedReadOnly: false },
+      { name: 'delete_page', declared: 'sideEffectful', markedReadOnly: false },
+    ]);
+    render(<ConnectorsPage onStatus={vi.fn()} />);
+    const box = await screen.findByRole('checkbox', { name: /ask_wiki_question only reads/ });
+    expect(box).not.toBeChecked();
+    // Declared tools get a label, never a checkbox: a mark can't override them.
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    expect(screen.getByText('Changes things, asks first')).toBeInTheDocument();
+    expect(screen.getByText(/Some tools don’t say whether they change anything/)).toBeInTheDocument();
+
+    fireEvent.click(box);
+    await waitFor(() =>
+      expect(ipc.setConnectorToolReadOnly).toHaveBeenCalledWith(acme.connectorVersionId, 'ask_wiki_question', true),
+    );
+    await waitFor(() => expect(box).toBeChecked());
   });
 
   it('starts a stopped connector', async () => {

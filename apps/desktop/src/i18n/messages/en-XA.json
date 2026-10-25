@@ -3596,5 +3596,13 @@
   "writing.studio.step.outline": "[Öüťļîñé ———]",
   "writing.studio.stepsAria": "[Šťéṕš ——]",
   "writing.studio.titleAria": "[Ḍŕàḟť ťîťļé —————]",
-  "writing.studio.updating": "[Üṕḍàťîñĝ… ————]"
+  "writing.studio.updating": "[Üṕḍàťîñĝ… ————]",
+  "settings.connectors.detail.readsOnly": "[Öñļý ŕéàḍš ————]",
+  "settings.connectors.detail.alwaysAsks": "[Àļŵàýš àšķš ḟîŕšť —————— —]",
+  "settings.connectors.detail.changesThings": "[Çĥàñĝéš ťĥîñĝš, àšķš ḟîŕšť —————— —————]",
+  "settings.connectors.detail.markReadOnly": "[Öñļý ŕéàḍš ————]",
+  "settings.connectors.detail.markReadOnlyAria": "[{tool} öñļý ŕéàḍš, šö îť ŕüñš ŵîťĥöüť àšķîñĝ —————— —————— ————]",
+  "workspace.workflows.editor.connector.toolUnstated": "[{tool} — ḍöéšñ’ť šàý îḟ îť çĥàñĝéš ťĥîñĝš, àšķš ýöü ḟîŕšť —————— —————— —————— ———]",
+  "settings.connectors.detail.unstatedHint": "[Šöḿé ťööļš ḍöñ’ť šàý ŵĥéťĥéŕ ťĥéý çĥàñĝé àñýťĥîñĝ, šö ťĥéý àšķ ḅéḟöŕé éàçĥ çàļļ. Ťîçķ “Öñļý ŕéàḍš” ḟöŕ à ťööļ ýöü ťŕüšť ťö öñļý ļööķ ťĥîñĝš üṕ: îť ťĥéñ ŕüñš ŵîťĥöüť àšķîñĝ îñ çĥàťš, àĝéñťš àñḍ ŵöŕķḟļöŵš. —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— ————]",
+  "workspace.workflows.editor.connector.askUnstated": "[“{tool}” ḍöéšñ’ť šàý ŵĥéťĥéŕ îť çĥàñĝéš àñýťĥîñĝ îñ {name}, šö ťĥé ŕüñ šťöṕš àñḍ àšķš ḅéḟöŕé éàçĥ çàļļ. Îḟ îť öñļý ļööķš ťĥîñĝš üṕ, ḿàŕķ îť “Öñļý ŕéàḍš” îñ Çöñťéẍť → Çöññéçťöŕš. —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— ——————]"
 }

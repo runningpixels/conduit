@@ -693,12 +693,17 @@ function WorkflowsPageBody({
   useEffect(() => {
     if (!running || !selectedId) return;
     let cancelled = false;
+    // The sidebar shows the live run's status too ("Waiting for you"); read
+    // the list again when it changes, not only once the run has ended.
+    let liveStatus: string | null = null;
     const timer = setInterval(() => {
       void (async () => {
         try {
           const next = await listWorkflowRuns(selectedId, 20);
           if (cancelled) return;
           const live = next.find((r) => isLive(r.status));
+          if (live && liveStatus !== null && live.status !== liveStatus) void refreshList();
+          liveStatus = live?.status ?? null;
           const shown = openRunRef.current;
           const target =
             live && (!shown || shown.run.id === live.id)

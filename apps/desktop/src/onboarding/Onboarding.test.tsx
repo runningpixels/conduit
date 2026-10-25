@@ -176,7 +176,7 @@ describe('Onboarding (Phase 6 M6.4)', () => {
       migrationRecovery: null,
     });
     vi.mocked(updateSettings).mockImplementation(
-      async (patch) => ({ ...baseSettings, ...patch, onboardingCompleted: true }),
+      async (patch) => ({ ...baseSettings, ...patch, onboardingCompleted: true }) as AppSettings,
     );
 
     const { onComplete, onSettingsChange } = renderOnboarding();
@@ -395,7 +395,7 @@ describe('Onboarding (Phase 6 M6.4)', () => {
       const order: string[] = [];
       vi.mocked(updateSettings).mockImplementation(async (patch) => {
         order.push('write');
-        return { ...baseSettings, ...patch };
+        return { ...baseSettings, ...patch } as AppSettings;
       });
       const onSettingsChange = vi.fn(() => {
         order.push('announce');

@@ -575,6 +575,58 @@ impl AgentGuardrails {
     }
 }
 
+/// A partial update to [`AgentGuardrails`]: only the fields present change, so
+/// saving one setting never resets the others to their defaults.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/agent_guardrails_patch.ts"
+)]
+pub struct AgentGuardrailsPatch {
+    #[ts(optional)]
+    pub max_steps: Option<u32>,
+    #[ts(optional)]
+    pub wall_clock_budget_secs: Option<u32>,
+    #[ts(optional)]
+    pub finish_after_document_write: Option<bool>,
+    #[ts(optional)]
+    pub handoff_agents: Option<Vec<String>>,
+    #[ts(optional)]
+    pub parallel_helpers: Option<u8>,
+}
+
+impl AgentGuardrailsPatch {
+    /// The guardrails with this patch's fields applied over `base`.
+    pub fn apply_to(self, base: &AgentGuardrails) -> AgentGuardrails {
+        AgentGuardrails {
+            max_steps: self.max_steps.unwrap_or(base.max_steps),
+            wall_clock_budget_secs: self
+                .wall_clock_budget_secs
+                .unwrap_or(base.wall_clock_budget_secs),
+            finish_after_document_write: self
+                .finish_after_document_write
+                .or(base.finish_after_document_write),
+            handoff_agents: self
+                .handoff_agents
+                .unwrap_or_else(|| base.handoff_agents.clone()),
+            parallel_helpers: self.parallel_helpers.unwrap_or(base.parallel_helpers),
+        }
+    }
+}
+
+impl From<AgentGuardrails> for AgentGuardrailsPatch {
+    fn from(full: AgentGuardrails) -> Self {
+        Self {
+            max_steps: Some(full.max_steps),
+            wall_clock_budget_secs: Some(full.wall_clock_budget_secs),
+            finish_after_document_write: full.finish_after_document_write,
+            handoff_agents: Some(full.handoff_agents),
+            parallel_helpers: Some(full.parallel_helpers),
+        }
+    }
+}
+
 fn default_agent_max_steps() -> u32 {
     25
 }
@@ -995,6 +1047,14 @@ pub enum ProviderEvent {
         #[ts(type = "number")]
         tokens: u64,
         usage: HandoffTokens,
+    },
+    /// The user redirected the agent whose turn this is: what they told it,
+    /// kept in order among its own events so a reloaded view shows it where
+    /// it was said. Only helpers' turns carry it (the chat keeps its own
+    /// steering messages).
+    UserNote {
+        request_id: String,
+        text: String,
     },
 }
 
@@ -3530,9 +3590,9 @@ pub struct SettingsPatch {
     /// t1-6: one-time acknowledgement of the PDF import notice.
     #[ts(optional)]
     pub pdf_import_notice_acknowledged: Option<bool>,
-    /// Replace agent loop guardrails. Values are validated on save.
+    /// Update agent loop guardrails field by field. Values are validated on save.
     #[ts(optional)]
-    pub agent: Option<AgentGuardrails>,
+    pub agent: Option<AgentGuardrailsPatch>,
     /// White-label Mode A: toggle whether the on-disk `brand.md` is loaded
     /// and applied. See `AppSettings::branding_enabled`.
     #[ts(optional)]

@@ -80,4 +80,4 @@ answer?: string,
 /**
  * `tokens` by kind, for its cost.
  */
-usage: HandoffTokens, } | { "kind": "handoffUsage", requestId: string, toolCallId: string, tokens: number, usage: HandoffTokens, };
+usage: HandoffTokens, } | { "kind": "handoffUsage", requestId: string, toolCallId: string, tokens: number, usage: HandoffTokens, } | { "kind": "userNote", requestId: string, text: string, };

@@ -1062,6 +1062,24 @@ describe('WorkflowsPage', () => {
       expect(await runDetail()).toHaveTextContent('Finished');
     });
 
+    it('reads the sidebar list again when a paused run goes back to running', async () => {
+      ipc.listWorkflowRuns.mockResolvedValue([{ ...live, status: 'paused' as const }]);
+      ipc.getWorkflowRun.mockResolvedValue({ run: { ...live, status: 'paused' as const }, steps: [] });
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      await screen.findByRole('button', { name: 'Waiting for you' });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2100);
+      });
+      const before = ipc.listWorkflows.mock.calls.length;
+
+      ipc.listWorkflowRuns.mockResolvedValue([live]);
+      ipc.getWorkflowRun.mockResolvedValue(liveDetail);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2100);
+      });
+      expect(ipc.listWorkflows.mock.calls.length).toBeGreaterThan(before);
+    });
+
     it('treats a run paused for approval as still going', async () => {
       ipc.listWorkflowRuns.mockResolvedValue([{ ...live, status: 'paused' as const }]);
       render(<WorkflowsPage onStatus={vi.fn()} />);

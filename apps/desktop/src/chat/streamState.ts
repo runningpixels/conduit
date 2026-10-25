@@ -148,7 +148,15 @@ export type TurnSegment =
   | { kind: 'reasoning'; blockId: string }
   | { kind: 'text'; blockId: string }
   | { kind: 'tool'; toolCallId: string }
-  | { kind: 'askUser'; toolCallId: string };
+  | { kind: 'askUser'; toolCallId: string }
+  | { kind: 'note'; noteId: string };
+
+/** What the user told the agent whose turn this is (a helper's Redirect), and when. */
+export interface UserNote {
+  id: string;
+  text: string;
+  at: number;
+}
 
 export interface AssistantStreamState {
   requestId: string;
@@ -157,6 +165,8 @@ export interface AssistantStreamState {
   toolCalls: ToolCallState[];
   /** Ordered render timeline. Empty only for stale in-memory fixtures; new streams always append. */
   segments: TurnSegment[];
+  /** The user's redirects of this agent, in order; each has a `note` segment. */
+  notes?: UserNote[];
   /// Phase 7 / M-WebSearch: sources surfaced by the provider when the user
   /// opted in via `include_sources`. One list per `SearchSources` event.
   searchSources: SearchSource[];
@@ -353,6 +363,7 @@ function countSegments(
   return segments.filter((s) => {
     if (s.kind !== kind) return false;
     if (s.kind === 'tool' || s.kind === 'askUser') return s.toolCallId === id;
+    if (s.kind === 'note') return s.noteId === id;
     return s.blockId === id;
   }).length;
 }
@@ -744,6 +755,14 @@ function reduceProviderEvent(
             | 'steering',
         },
       };
+    case 'userNote': {
+      const noteId = `note-${(state.notes?.length ?? 0) + 1}`;
+      return {
+        ...state,
+        notes: [...(state.notes ?? []), { id: noteId, text: event.text, at: now }],
+        segments: [...withoutEmptyTextSegments(state), { kind: 'note', noteId }],
+      };
+    }
     case 'askUserRequested':
       return {
         ...state,

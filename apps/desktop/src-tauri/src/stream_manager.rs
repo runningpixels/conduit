@@ -1228,12 +1228,16 @@ pub struct StreamManager {
 }
 
 /// A helper at work, as Stop and Redirect reach it.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HelperControl {
     /// Cancelled by Stop: the helper winds down and its lead carries on.
     pub stop: CancellationToken,
     /// Its turn's request, which Redirect steers.
     pub request_id: String,
+    /// Where the helper's own events go: a redirect is noted there, so it is
+    /// kept with the rest of its transcript. None for helpers with no
+    /// transcript (a workflow's).
+    pub notes: Option<EventSink<ProviderEvent>>,
 }
 
 /// A helper's place in [`StreamManager`]'s helpers, held for as long as it
@@ -1452,6 +1456,7 @@ impl StreamManager {
         call_id: &str,
         request_id: &str,
         stop: CancellationToken,
+        notes: Option<EventSink<ProviderEvent>>,
     ) -> HelperGuard {
         let mut helpers = self.helpers.lock().unwrap_or_else(|e| e.into_inner());
         helpers.insert(
@@ -1459,6 +1464,7 @@ impl StreamManager {
             HelperControl {
                 stop,
                 request_id: request_id.to_string(),
+                notes,
             },
         );
         HelperGuard {
@@ -1496,7 +1502,15 @@ impl StreamManager {
         }
         let helper = self.helper(call_id).ok_or_else(helper_not_working)?;
         self.steer_helper_stream(&helper.request_id, text.to_string())
-            .map_err(|_| helper_not_working())
+            .map_err(|_| helper_not_working())?;
+        // Kept with the helper's transcript, at the point it was said.
+        if let Some(notes) = &helper.notes {
+            let _ = notes.send(ProviderEvent::UserNote {
+                request_id: helper.request_id.clone(),
+                text: text.to_string(),
+            });
+        }
+        Ok(())
     }
 
     /// Wait for a slot on the round's provider (the override, else the active
@@ -1969,6 +1983,11 @@ impl StreamManager {
                 },
             );
         Ok((cancel, steer_rx))
+    }
+
+    /// Let go of a stream's registration (a turn that ended without cleaning up).
+    pub fn forget_stream(&self, request_id: &str) {
+        let _ = self.active.lock().map(|mut g| g.remove(request_id));
     }
 
     /// Handle to the active-stream map, for spawned tasks that need to remove

@@ -185,13 +185,16 @@ async fn settings_and_db_survive_in_place_reopen() {
         image_generation_consent_acknowledged: None,
         embedding_consent_providers: None,
         pdf_import_notice_acknowledged: None,
-        agent: Some(provider_core::schema::AgentGuardrails {
-            max_steps: 40,
-            wall_clock_budget_secs: 600,
-            finish_after_document_write: None,
-            handoff_agents: Vec::new(),
-            parallel_helpers: 3,
-        }),
+        agent: Some(
+            provider_core::schema::AgentGuardrails {
+                max_steps: 40,
+                wall_clock_budget_secs: 600,
+                finish_after_document_write: None,
+                handoff_agents: Vec::new(),
+                parallel_helpers: 3,
+            }
+            .into(),
+        ),
         branding_enabled: None,
         workspace_tools_enabled: None,
         workspace_root: None,

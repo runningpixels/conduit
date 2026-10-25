@@ -23,8 +23,6 @@ interface AgentViewProps {
   levels: AgentLevel[];
   main: MainChatState;
   conversationId: string | null;
-  /// What the user told this helper from the composer, oldest first.
-  notes: readonly string[];
   /// Why the last message to this helper did not reach it, if it didn't.
   sendError: string | null;
   /// Show the path's first `depth` levels: 0 is the main chat.
@@ -44,7 +42,6 @@ export function AgentView({
   levels,
   main,
   conversationId,
-  notes,
   sendError,
   onNavigate,
   onBack,
@@ -185,11 +182,6 @@ export function AgentView({
         {!hasText && handoff.answer ? <ChatProse content={handoff.answer} streaming={false} /> : null}
         {running && empty ? <p className="handoff-note">{t('chat.handoff.status.running')}</p> : null}
         {handoff.error ? <p className="error-text">{handoff.error}</p> : null}
-        {notes.map((note, i) => (
-          <p key={i} className="agent-view-note">
-            {t('chat.agentView.you', { text: note })}
-          </p>
-        ))}
         {sendError ? (
           <p className="helper-error" role="status">
             {sendError}

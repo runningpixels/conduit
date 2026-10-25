@@ -110,3 +110,24 @@ async fn name_calls(
     }
     Ok(())
 }
+
+/// Tell the listener how the open calls of `step_id` in `run_id` stand: a step
+/// starts or stops waiting for the user, which moves its agents between
+/// working and needing the user.
+pub async fn announce_step(state: &AppState, run_id: &str, step_id: &str) {
+    let ids: Result<Vec<String>, _> = sqlx::query_scalar(
+        "SELECT id FROM agent_calls WHERE run_id = ? AND step_id = ? AND status = 'running'",
+    )
+    .bind(run_id)
+    .bind(step_id)
+    .fetch_all(&state.db)
+    .await;
+    match ids {
+        Ok(ids) => {
+            for id in ids {
+                announce(state, &id).await;
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "could not find a waiting step's agents"),
+    }
+}

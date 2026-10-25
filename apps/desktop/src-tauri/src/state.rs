@@ -557,7 +557,9 @@ impl AppState {
         if let Some(value) = patch.pdf_import_notice_acknowledged {
             settings.pdf_import_notice_acknowledged = value;
         }
-        if let Some(mut guardrails) = patch.agent {
+        if let Some(agent_patch) = patch.agent {
+            // Field by field, so saving one guardrail leaves the rest as they were.
+            let mut guardrails = agent_patch.apply_to(&settings.agent);
             crate::validation::clean_handoff_agents(&mut guardrails.handoff_agents);
             crate::validation::validate_agent_guardrails(&guardrails)?;
             settings.agent = guardrails;

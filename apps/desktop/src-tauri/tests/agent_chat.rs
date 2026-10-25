@@ -1008,10 +1008,13 @@ async fn the_agents_the_assistant_may_ask_are_cleaned_and_capped_on_save() {
     );
     let save = |ids: Vec<String>| {
         let mut patch: provider_core::schema::SettingsPatch = serde_json::from_str("{}").unwrap();
-        patch.agent = Some(AgentGuardrails {
-            handoff_agents: ids,
-            ..AgentGuardrails::default()
-        });
+        patch.agent = Some(
+            AgentGuardrails {
+                handoff_agents: ids,
+                ..AgentGuardrails::default()
+            }
+            .into(),
+        );
         state.update_settings(patch)
     };
     let saved = save(vec![
@@ -1037,10 +1040,13 @@ async fn how_many_helpers_work_at_once_is_one_to_four_and_three_by_default() {
     );
     let save = |at_once: u8| {
         let mut patch: provider_core::schema::SettingsPatch = serde_json::from_str("{}").unwrap();
-        patch.agent = Some(AgentGuardrails {
-            parallel_helpers: at_once,
-            ..AgentGuardrails::default()
-        });
+        patch.agent = Some(
+            AgentGuardrails {
+                parallel_helpers: at_once,
+                ..AgentGuardrails::default()
+            }
+            .into(),
+        );
         state.update_settings(patch)
     };
     for bad in [0, 5] {
@@ -1053,6 +1059,28 @@ async fn how_many_helpers_work_at_once_is_one_to_four_and_three_by_default() {
     let older: AgentGuardrails =
         serde_json::from_value(json!({ "maxSteps": 25, "wallClockBudgetSecs": 300 })).unwrap();
     assert_eq!(older.parallel_helpers, 3);
+}
+
+#[tokio::test]
+async fn a_partial_agent_patch_keeps_the_other_guardrails() {
+    let pool_dir = tempfile::tempdir().unwrap();
+    let state = AppState::test_instance_with_settings(
+        common::setup_pool().await,
+        test_paths(pool_dir.path()),
+        AppSettings::default(),
+    );
+    let patch: provider_core::schema::SettingsPatch = serde_json::from_value(json!({
+        "agent": { "handoffAgents": ["writer"], "maxSteps": 40 }
+    }))
+    .unwrap();
+    state.update_settings(patch).unwrap();
+    // The way the settings tool sends it: one field, nothing else.
+    let patch: provider_core::schema::SettingsPatch =
+        serde_json::from_value(json!({ "agent": { "parallelHelpers": 1 } })).unwrap();
+    let saved = state.update_settings(patch).unwrap();
+    assert_eq!(saved.agent.parallel_helpers, 1);
+    assert_eq!(saved.agent.handoff_agents, ["writer"]);
+    assert_eq!(saved.agent.max_steps, 40);
 }
 
 // ── Helpers side by side ─────────────────────────────────────────────────────
@@ -1244,11 +1272,14 @@ impl Chat {
             Some(Box::new(workers.clone()) as Box<dyn ProviderAdapter>)
         }));
         let mut patch: provider_core::schema::SettingsPatch = serde_json::from_str("{}").unwrap();
-        patch.agent = Some(AgentGuardrails {
-            handoff_agents: handoff_agents.iter().map(|s| s.to_string()).collect(),
-            parallel_helpers: at_once,
-            ..AgentGuardrails::default()
-        });
+        patch.agent = Some(
+            AgentGuardrails {
+                handoff_agents: handoff_agents.iter().map(|s| s.to_string()).collect(),
+                parallel_helpers: at_once,
+                ..AgentGuardrails::default()
+            }
+            .into(),
+        );
         // `Workers` is a cloud model unless it says it is local.
         patch.local_only = Some(false);
         chat.state.update_settings(patch).unwrap();
@@ -1694,6 +1725,26 @@ async fn redirecting_a_helper_steers_it_and_only_it() {
     let (status, _, answer) = finished(&events, "call-0-");
     assert_eq!(status, "done");
     assert_eq!(answer.as_deref(), Some("Slow: Look at Lyon instead."));
+    // The redirect is kept with the helper's events, before it finished, and saved in
+    // the turn's log so a reloaded view still shows it.
+    let note_at = events.iter().position(|e| {
+        matches!(e, ProviderEvent::Handoff { event, .. }
+            if matches!(&**event, ProviderEvent::UserNote { text, .. } if text == "Look at Lyon instead."))
+    });
+    let finished_at = events
+        .iter()
+        .position(|e| matches!(e, ProviderEvent::HandoffFinished { .. }));
+    assert!(
+        note_at.is_some() && note_at < finished_at,
+        "{note_at:?} {finished_at:?}"
+    );
+    let logged: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM provider_event_log WHERE event_kind = 'handoff' \n         AND payload LIKE '%userNote%' AND payload LIKE '%Look at Lyon instead.%'",
+    )
+    .fetch_one(&chat.state.db)
+    .await
+    .unwrap();
+    assert_eq!(logged, 1);
     let rows = chat.usage_rows().await;
     assert_eq!(rows[0].8.as_deref(), Some(helper_request.as_str()));
 }
@@ -2499,4 +2550,56 @@ async fn only_a_document_with_text_is_reviewed() {
         "That document no longer exists."
     );
     assert!(chat.requests().is_empty());
+}
+
+#[tokio::test]
+async fn a_turn_that_panics_ends_with_an_error_and_no_agent_keeps_working() {
+    let chat = Chat::new(
+        vec![
+            tool_round(vec![("ask_writer", json!({ "task": "Write it up" }))]),
+            tool_round(vec![("ask_researcher", json!({ "task": "Get the facts" }))]),
+            // The researcher's round panics, deep inside the lead's turn.
+            Arc::new(|_: &str| -> Vec<ProviderEvent> {
+                panic!("byte index 3 is not a char boundary")
+            }),
+        ],
+        &["writer"],
+    )
+    .await;
+    chat.save_agent(researcher()).await;
+    chat.save_agent(json!({
+        "id": "writer", "name": "Writer", "instructions": "Write.", "agents": ["researcher"]
+    }))
+    .await;
+    let (result, events) = chat.run(chat.request(&[]), None).await;
+    // The page is told once, with the turn's id, and the turn is over.
+    result.expect("a panicked turn still ends in an event");
+    let errors: Vec<&ProviderEvent> = events
+        .iter()
+        .filter(|e| matches!(e, ProviderEvent::Error { .. }))
+        .collect();
+    assert_eq!(errors.len(), 1, "{events:?}");
+    match errors[0] {
+        ProviderEvent::Error { request_id, error } => {
+            assert_eq!(request_id, "turn-1");
+            assert_eq!(error.message, handoff::TURN_PANICKED);
+        }
+        _ => unreachable!(),
+    }
+    // No row is left running; each failed with the reason.
+    let calls = chat.calls().await;
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    for call in &calls {
+        assert_eq!(call.5, "failed", "{call:?}");
+        assert_eq!(call.6.as_deref(), Some(handoff::TURN_PANICKED), "{call:?}");
+    }
+    let running = conduit_desktop::agents::calls::running(&chat.state.db, &chat.state.encryption)
+        .await
+        .unwrap();
+    assert!(running.is_empty(), "{running:?}");
+    // The conversation can take another turn.
+    let mut again = chat.request(&[]);
+    again.request_id = "turn-2".into();
+    let (result, _) = chat.run(again, None).await;
+    assert!(result.is_ok());
 }

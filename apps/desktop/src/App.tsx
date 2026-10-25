@@ -3761,7 +3761,7 @@ export default function App() {
         destination={destination}
         onNavigate={navigateTo}
         dots={{ workflows: workflowsUnread && destination !== 'workflows', inbox: waitingCount > 0 && destination !== 'inbox' }}
-        counts={{ agents: runningAgents.length }}
+        counts={{ agents: runningAgents.filter((call) => !call.waiting).length }}
         logoSrc={brandLogo ?? undefined}
         effectiveTheme={effectiveTheme}
         onToggleTheme={handleToggleTheme}

@@ -52,10 +52,19 @@ pub struct PendingConsentMeta {
 
 pub type PendingConsentMetas = Arc<StdMutex<HashMap<String, PendingConsentMeta>>>;
 
-/// A running connector's tool declarations right now (a fresh `tools/list`).
+/// A running connector's tool declarations right now (a fresh `tools/list`),
+/// with the user's "only reads" marks applied to tools that declare nothing.
 pub async fn list_live_tools(active: &Arc<ActiveConnector>) -> Result<Vec<McpTool>, McpError> {
-    let mut t = active.transport.lock().await;
-    t.list_tools(&active.cancel).await
+    let mut tools = {
+        let mut t = active.transport.lock().await;
+        t.list_tools(&active.cancel).await?
+    };
+    if let Ok(marks) = active.read_only_marks.read() {
+        for tool in tools.iter_mut().filter(|t| marks.contains(&t.name)) {
+            tool.apply_user_read_only();
+        }
+    }
+    Ok(tools)
 }
 
 /// Whether a tool declares that it only reads, so it runs without asking.

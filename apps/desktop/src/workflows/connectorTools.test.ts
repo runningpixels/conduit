@@ -68,6 +68,10 @@ describe('read-only gating', () => {
     expect(toolMark(tool)).toBe('changes');
     expect(toolMark(toolFromCapability(cap('list', { annotations: { readOnlyHint: true } })))).toBeNull();
     expect(toolMark(toolFromCapability(cap('del', { permissionLevel: 'destructive' })))).toBe('changes');
+    // A live tool that says nothing is told apart, so the picker can say so.
+    expect(toolMark({ name: 'ask', inputSchema: {}, readOnly: false, permissionLevel: 'sideEffectful', undeclared: true })).toBe(
+      'unstated',
+    );
   });
 
   it('reads tools and their read-only flag from the workflow tool list', async () => {
@@ -75,14 +79,16 @@ describe('read-only gating', () => {
     ipc.listWorkflowConnectorTools.mockResolvedValue([
       { name: 'list', description: null, inputSchema: schema, readOnly: true, permissionLevel: 'readOnly' },
       { name: 'post', description: 'Posts', inputSchema: {}, readOnly: false, permissionLevel: 'sideEffectful' },
+      { name: 'ask', description: null, inputSchema: {}, readOnly: false, permissionLevel: 'sideEffectful', undeclared: true },
     ]);
     const tools = await loadConnectorTools('github');
     expect(ipc.listWorkflowConnectorTools).toHaveBeenCalledWith('github');
     expect(tools).toEqual([
-      { name: 'list', description: undefined, inputSchema: schema, readOnly: true, permissionLevel: 'readOnly' },
-      { name: 'post', description: 'Posts', inputSchema: {}, readOnly: false, permissionLevel: 'sideEffectful' },
+      { name: 'list', description: undefined, inputSchema: schema, readOnly: true, permissionLevel: 'readOnly', undeclared: false },
+      { name: 'post', description: 'Posts', inputSchema: {}, readOnly: false, permissionLevel: 'sideEffectful', undeclared: false },
+      { name: 'ask', description: undefined, inputSchema: {}, readOnly: false, permissionLevel: 'sideEffectful', undeclared: true },
     ]);
-    expect(tools.map(toolMark)).toEqual([null, 'changes']);
+    expect(tools.map(toolMark)).toEqual([null, 'changes', 'unstated']);
   });
 });
 

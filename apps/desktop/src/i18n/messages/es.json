@@ -3596,5 +3596,13 @@
   "writing.studio.step.outline": "Esquema",
   "writing.studio.stepsAria": "Pasos",
   "writing.studio.titleAria": "Título del borrador",
-  "writing.studio.updating": "Actualizando…"
+  "writing.studio.updating": "Actualizando…",
+  "settings.connectors.detail.readsOnly": "Solo lee",
+  "settings.connectors.detail.alwaysAsks": "Siempre pregunta antes",
+  "settings.connectors.detail.changesThings": "Hace cambios, pregunta antes",
+  "settings.connectors.detail.markReadOnly": "Solo lee",
+  "settings.connectors.detail.markReadOnlyAria": "{tool} solo lee, así que se ejecuta sin preguntar",
+  "workspace.workflows.editor.connector.toolUnstated": "{tool} — no indica si cambia algo, te pregunta antes",
+  "settings.connectors.detail.unstatedHint": "Algunas herramientas no indican si cambian algo, así que preguntan antes de cada llamada. Marca «Solo lee» en una herramienta de la que te fíes que solo consulta: entonces se ejecuta sin preguntar en chats, agentes y flujos de trabajo.",
+  "workspace.workflows.editor.connector.askUnstated": "«{tool}» no indica si cambia algo en {name}, así que la ejecución se detiene y pregunta antes de cada llamada. Si solo consulta, márcala como «Solo lee» en Contexto → Conectores."
 }

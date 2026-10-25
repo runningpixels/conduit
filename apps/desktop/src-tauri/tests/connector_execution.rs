@@ -488,3 +488,85 @@ async fn tool_output_not_reinjected_into_messages() {
         .unwrap();
     assert_eq!(leaked.0, 0, "tool output marker leaked into message_parts");
 }
+
+#[tokio::test]
+async fn a_tool_marked_read_only_runs_without_asking_and_declared_tools_keep_their_word() {
+    let (pool, state, mgr, vid) = setup().await;
+
+    // `unmarked` declares nothing, so it asks first.
+    let access = mgr.tool_access(&vid).await.unwrap();
+    let unmarked = access.iter().find(|t| t.name == "unmarked").unwrap();
+    assert_eq!(unmarked.declared, None);
+    assert!(!unmarked.marked_read_only);
+    let post = access.iter().find(|t| t.name == "post_message").unwrap();
+    assert_eq!(
+        post.declared,
+        Some(mcp_runtime::protocol::PermissionLevel::SideEffectful)
+    );
+
+    // Marked as only reading, it runs without a consent prompt.
+    mgr.set_tool_read_only(&pool, &vid, "unmarked", true)
+        .await
+        .unwrap();
+    let (events, sink) = recorder();
+    let tcid = Uuid::new_v4().to_string();
+    let req = ToolCallRequest {
+        connector_version_id: &vid,
+        tool_call_id: &tcid,
+        request_id: "req-mark",
+        tool_name: "unmarked",
+        arguments: &json!({}),
+        conversation_id: None,
+    };
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        execute_tool_call(&state, &mgr, &req, &sink),
+    )
+    .await
+    .expect("a marked tool must not wait for consent")
+    .expect("marked tool completes");
+    assert_eq!(outcome.record.status, ToolCallStatus::Completed);
+    assert!(!wait_for_consent(&events, &tcid, Duration::from_millis(1)).await);
+
+    // A mark never overrides a tool's own declaration.
+    mgr.set_tool_read_only(&pool, &vid, "post_message", true)
+        .await
+        .unwrap();
+    let tools = conduit_desktop::connector_runtime::consent::list_live_tools(
+        &mgr.active_connector(&vid).unwrap(),
+    )
+    .await
+    .unwrap();
+    let post = tools.iter().find(|t| t.name == "post_message").unwrap();
+    assert_eq!(
+        post.effective_permission_level(),
+        mcp_runtime::protocol::PermissionLevel::SideEffectful
+    );
+
+    // The mark is stored per connector and read again on the next start.
+    mgr.stop_connector(&state, &vid).await.unwrap();
+    mgr.start_connector(&state, &vid).await.unwrap();
+    let access = mgr.tool_access(&vid).await.unwrap();
+    assert!(
+        access
+            .iter()
+            .find(|t| t.name == "unmarked")
+            .unwrap()
+            .marked_read_only
+    );
+
+    // Taking the mark away makes it ask again.
+    mgr.set_tool_read_only(&pool, &vid, "unmarked", false)
+        .await
+        .unwrap();
+    let tools = conduit_desktop::connector_runtime::consent::list_live_tools(
+        &mgr.active_connector(&vid).unwrap(),
+    )
+    .await
+    .unwrap();
+    let unmarked = tools.iter().find(|t| t.name == "unmarked").unwrap();
+    assert_eq!(
+        unmarked.effective_permission_level(),
+        mcp_runtime::protocol::PermissionLevel::SideEffectful
+    );
+}

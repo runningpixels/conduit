@@ -92,6 +92,7 @@ import type {
   WorkflowDefinition,
   WorkflowDraftResult,
   WorkflowConnectorTool,
+  ConnectorToolAccess,
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunDetail,
@@ -1166,6 +1167,22 @@ export async function listToolApprovalMemory(): Promise<ToolApprovalMemoryRow[]>
 
 export async function revokeToolApprovalMemory(id: string): Promise<boolean> {
   return invokeCommand<boolean>('revoke_tool_approval_memory', { id });
+}
+
+/// What each tool of a running connector says about changing things, and the
+/// user's "only reads" marks. Empty when the connector isn't running.
+export async function listConnectorToolAccess(connectorVersionId: string): Promise<ConnectorToolAccess[]> {
+  return invokeCommand<ConnectorToolAccess[]>('list_connector_tool_access', { connectorVersionId });
+}
+
+/// Mark a tool that says nothing about changing things as only reading (it
+/// then runs without asking), or take the mark away.
+export async function setConnectorToolReadOnly(
+  connectorVersionId: string,
+  toolName: string,
+  readOnly: boolean,
+): Promise<void> {
+  await invokeCommand<void>('set_connector_tool_read_only', { connectorVersionId, toolName, readOnly });
 }
 
 export async function revokeConnectorGrant(

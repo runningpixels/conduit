@@ -3596,5 +3596,13 @@
   "writing.studio.step.outline": "Estrutura",
   "writing.studio.stepsAria": "Etapas",
   "writing.studio.titleAria": "Título do rascunho",
-  "writing.studio.updating": "Atualizando…"
+  "writing.studio.updating": "Atualizando…",
+  "settings.connectors.detail.readsOnly": "Só lê",
+  "settings.connectors.detail.alwaysAsks": "Sempre pergunta antes",
+  "settings.connectors.detail.changesThings": "Faz alterações, pergunta antes",
+  "settings.connectors.detail.markReadOnly": "Só lê",
+  "settings.connectors.detail.markReadOnlyAria": "{tool} só lê, então roda sem perguntar",
+  "workspace.workflows.editor.connector.toolUnstated": "{tool} — não diz se altera algo, pergunta antes",
+  "settings.connectors.detail.unstatedHint": "Algumas ferramentas não dizem se alteram algo, então perguntam antes de cada chamada. Marque “Só lê” em uma ferramenta que você confia que só consulta: ela passa a rodar sem perguntar em chats, agentes e fluxos de trabalho.",
+  "workspace.workflows.editor.connector.askUnstated": "“{tool}” não diz se altera algo em {name}, então a execução para e pergunta antes de cada chamada. Se ela só consulta, marque “Só lê” em Contexto → Conectores."
 }

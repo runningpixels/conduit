@@ -164,6 +164,25 @@ impl McpTool {
             _ => PermissionLevel::SideEffectful,
         }
     }
+
+    /// Whether the tool says nothing about changing things: no Conduit
+    /// `permissionLevel`, no `readOnlyHint` and no `destructiveHint: true`.
+    /// Only such a tool can be marked read-only by the user.
+    pub fn is_undeclared(&self) -> bool {
+        self.permission_level.is_none()
+            && self
+                .annotations
+                .as_ref()
+                .is_none_or(|a| a.read_only_hint.is_none() && a.destructive_hint != Some(true))
+    }
+
+    /// Apply the user's "only reads" mark: an undeclared tool becomes
+    /// read-only. A tool that declares anything keeps its own word.
+    pub fn apply_user_read_only(&mut self) {
+        if self.is_undeclared() {
+            self.permission_level = Some(PermissionLevel::ReadOnly);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

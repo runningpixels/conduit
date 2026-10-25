@@ -50,6 +50,9 @@ pub struct ToolInfo {
     pub read_only: Option<bool>,
     /// `readOnly`, `sideEffectful` or `sensitive`.
     pub permission_level: PermissionLevel,
+    /// The tool says nothing about changing things (and the user hasn't
+    /// marked it as only reading), so it asks first by default.
+    pub undeclared: bool,
     /// The tool's JSON Schema for its arguments.
     pub input_schema: Value,
 }
@@ -207,6 +210,7 @@ pub async fn list_tools(
         .map(|t| ToolInfo {
             read_only: Some(is_read_only(&t)),
             permission_level: t.effective_permission_level(),
+            undeclared: t.is_undeclared(),
             name: t.name,
             description: Some(t.description).filter(|d| !d.trim().is_empty()),
             input_schema: t.input_schema,

@@ -2,7 +2,9 @@
 //! and the local-connector registration flow.
 
 use crate::{
-    connector_runtime::{execution, prompts, resources, ConnectorRuntimeManager},
+    connector_runtime::{
+        execution, prompts, resources, ConnectorRuntimeManager, ConnectorToolAccess,
+    },
     db::repository::connectors::{
         self, ConnectorCapability, ConnectorDefinition, ConnectorGrant, ConnectorRuntimeState,
         ConnectorVersion,
@@ -114,6 +116,30 @@ pub async fn list_workflow_connector_tools(
     connector_id: String,
 ) -> Result<Vec<crate::connector_runtime::workflow_tools::ToolInfo>, String> {
     crate::connector_runtime::workflow_tools::list_tools(state.inner(), &runtime, &connector_id)
+        .await
+}
+
+/// What each tool of a running connector says about changing things, and the
+/// user's "only reads" marks. Empty when the connector isn't running.
+#[tauri::command]
+pub async fn list_connector_tool_access(
+    runtime: State<'_, ConnectorRuntimeManager>,
+    connector_version_id: String,
+) -> Result<Vec<ConnectorToolAccess>, String> {
+    runtime.tool_access(&connector_version_id).await
+}
+
+/// Mark a connector tool as only reading, or take the mark away.
+#[tauri::command]
+pub async fn set_connector_tool_read_only(
+    state: State<'_, AppState>,
+    runtime: State<'_, ConnectorRuntimeManager>,
+    connector_version_id: String,
+    tool_name: String,
+    read_only: bool,
+) -> Result<(), String> {
+    runtime
+        .set_tool_read_only(&state.db, &connector_version_id, &tool_name, read_only)
         .await
 }
 

@@ -3237,10 +3237,13 @@ impl StreamManager {
             };
 
             // Truncate very long tool results to save context window space.
+            // The cut backs off to a char boundary: a byte cut inside a
+            // multi-byte character panicked the turn's task and left its
+            // helpers "Working" forever.
             const MAX_TOOL_RESULT_CHARS: usize = 50_000;
             let result_content = if result_content.len() > MAX_TOOL_RESULT_CHARS {
                 let mut truncated = result_content;
-                truncated.truncate(MAX_TOOL_RESULT_CHARS);
+                truncated.truncate(truncated.floor_char_boundary(MAX_TOOL_RESULT_CHARS));
                 truncated.push_str("\n\n[Tool output truncated at 50,000 characters]");
                 truncated
             } else {

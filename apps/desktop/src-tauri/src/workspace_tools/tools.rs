@@ -466,7 +466,7 @@ fn grep_file(
         if regex.is_match(&line) {
             let mut display = line;
             if display.len() > DEFAULT_GREP_LINE_MAX {
-                display.truncate(DEFAULT_GREP_LINE_MAX);
+                display.truncate(display.floor_char_boundary(DEFAULT_GREP_LINE_MAX));
                 display.push('…');
             }
             hits.push(json!({

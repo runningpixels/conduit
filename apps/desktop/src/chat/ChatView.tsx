@@ -23,6 +23,7 @@ import {
   compactConversation,
   steerChatStream,
   notifyUser,
+  listLibraryAgents,
   redirectAgentCall,
   discoverConnector,
   getArtifact,
@@ -64,6 +65,7 @@ import {
   type ConversationCompaction,
 } from '../ipc/client';
 import type {
+  WorkflowModel,
   Conversation,
   SkillSummary,
   KnowledgeCollection,
@@ -1109,6 +1111,35 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const composerAgentRef = useRef<{ id: string; name: string } | null>(null);
   composerAgentRef.current = composerAgent;
   useEffect(() => setComposerAgent(null), [conversationId]);
+  // The model an agent turn runs on, for the status line: the agent's own,
+  // read from the library once per agent. The chat's model is only what a
+  // plain message uses.
+  const [agentModels, setAgentModels] = useState<Record<string, WorkflowModel | null>>({});
+  const lastUserAgent = (() => {
+    for (let i = turns.length - 1; i >= 0; i--) if (turns[i].role === 'user') return turns[i].agent ?? null;
+    return null;
+  })();
+  const statusAgent = composerAgent ?? lastUserAgent;
+  const statusAgentId = statusAgent?.id ?? null;
+  useEffect(() => {
+    if (!statusAgentId || statusAgentId in agentModels) return;
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => listLibraryAgents())
+      .then((list) => {
+        if (cancelled || !Array.isArray(list)) return;
+        setAgentModels((known) => ({
+          ...known,
+          ...Object.fromEntries(list.map((a) => [a.agent.id, a.agent.model ?? null])),
+          [statusAgentId]: list.find((a) => a.agent.id === statusAgentId)?.agent.model ?? null,
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [statusAgentId, agentModels]);
+  const statusAgentModel = statusAgent && agentModels[statusAgent.id] ? { name: statusAgent.name, ...agentModels[statusAgent.id]! } : null;
   // After the reset above, so a new chat's switch doesn't clear it.
   useEffect(() => {
     if (!pendingAgent) return;
@@ -1889,6 +1920,15 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     }
   }
   const redirectTarget = viewedHelper?.status === 'running' && viewedHelper.callId ? viewedHelper : null;
+  // The helper the box's text was being written for. If it finishes before the
+  // user presses Enter, the text must not slip into the main chat as a queued
+  // follow-up: keep it and say so (once; a second Send is a deliberate one).
+  const helperDraftRef = useRef<string | null>(null);
+  const redirectCallId = redirectTarget?.callId ?? null;
+  useEffect(() => {
+    if (!prompt.trim()) helperDraftRef.current = null;
+    else if (redirectCallId) helperDraftRef.current = redirectCallId;
+  }, [prompt, redirectCallId]);
   const liveMain = activeStream?.streaming ? activeStream : null;
   const liveHelpers = liveMain ? runningHandoffs(liveMain) : 0;
   const mainChatState: MainChatState = liveMain
@@ -3980,6 +4020,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         prompt={prompt}
         onPromptChange={setPrompt}
         onSend={(attachments) => {
+          if (viewedHelper && !redirectTarget && helperDraftRef.current === viewedHelper.callId) {
+            helperDraftRef.current = null;
+            setRedirectError(t('chat.agentView.finishedKept', { name: viewedHelper.name }));
+            return;
+          }
           // From a finished helper's view the message is for the chat: back to it.
           if (agentView) navigateAgentView(0);
           void handleSend(undefined, attachments);
@@ -4059,6 +4104,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onRemoveKnowledgeRef={handleRemoveKnowledgeRef}
         onRefreshKnowledgeCapabilities={() => setKnowledgeReloadToken((n) => n + 1)}
         selectedAgent={composerAgent}
+        statusAgentModel={statusAgentModel}
         onSelectAgent={deck || draft || compact ? undefined : setComposerAgent}
         mcpPrompts={mcpPrompts}
         mcpResources={mcpResources}

@@ -92,6 +92,13 @@ describe('AgentEditorDialog', () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
+  it('labels the default model like the card, not as the workflow model', async () => {
+    render(<AgentEditorDialog agent={writer} library={[writer]} onClose={() => {}} onSaved={() => {}} />);
+    await settle();
+    expect(screen.getByRole('option', { name: 'Default model' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /workflow's model/ })).toBeNull();
+  });
+
   it('shows what is wrong as the user types, and does not save until it is fixed', async () => {
     ipc.validateLibraryAgent.mockResolvedValue(['Give the agent a name.']);
     render(<AgentEditorDialog agent={null} library={[]} onClose={() => {}} onSaved={() => {}} />);

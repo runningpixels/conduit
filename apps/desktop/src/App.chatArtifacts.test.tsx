@@ -269,7 +269,8 @@ describe('the panel remembers the artifact open in each chat', { timeout: 30_000
     fireEvent.click(screen.getByRole('button', { name: /Alpha two/, expanded: false }));
     fireEvent.click(screen.getByRole('option', { name: /Alpha one/ }));
     await waitFor(() => expect(openTitle()).toBe('Alpha one'));
-    expect(readLastArtifact('cA')).toBe('a1');
+    // The remember-what-is-open write is an effect that lands after the title.
+    await waitFor(() => expect(readLastArtifact('cA')).toBe('a1'));
     // In place: one artifact open, no tab strip.
     expect(document.querySelector('.artifact-tabs')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Alpha one/, expanded: false }));

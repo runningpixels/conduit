@@ -181,6 +181,7 @@ export function AgentEditorDialog({
                 kind="step"
                 idPrefix="agent-editor-model"
                 label={t('workspace.workflows.model.label')}
+                followLabel={t('shell.agents.workflowModel')}
                 model={draft.model}
                 onChange={(model) => set((d) => withHelperModel(d, model))}
               />

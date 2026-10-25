@@ -424,6 +424,35 @@ describe('Running now', () => {
     // Without a name for the chat it still says where.
     expect(screen.getByText('In a chat')).toBeTruthy();
   });
+
+  it('opens the run of a workflow helper that has no workflow id of its own', async () => {
+    ipc.listAgents.mockResolvedValue([]);
+    const onOpenWorkflow = vi.fn();
+    const onOpenWorkflows = vi.fn();
+    const { rerender } = render(
+      <AgentsPage
+        onOpenWorkflow={onOpenWorkflow}
+        onOpenWorkflows={onOpenWorkflows}
+        running={[
+          row({ id: 'step-1', kind: 'step', conversationId: null, runId: 'r1', workflowId: 'w1', task: 'Plan' }),
+          row({ id: 'call-2', conversationId: null, runId: 'r1', workflowId: null, parentId: 'step-1', task: 'Dig in' }),
+        ]}
+      />,
+    );
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Researcher: Dig in' }));
+    expect(onOpenWorkflow).toHaveBeenCalledWith('w1', 'r1');
+    // Nothing tells which workflow: still go somewhere useful.
+    rerender(
+      <AgentsPage
+        onOpenWorkflow={onOpenWorkflow}
+        onOpenWorkflows={onOpenWorkflows}
+        running={[row({ id: 'call-3', conversationId: null, runId: 'r9', workflowId: null, task: 'Lost' })]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open Researcher: Lost' }));
+    expect(onOpenWorkflows).toHaveBeenCalled();
+  });
 });
 
 describe('Memory and knowledge chips', () => {
@@ -516,6 +545,14 @@ describe('Routines', () => {
     expect(within(list).getByText(/^Last: Energy brief — 2026-10-22, /)).toBeTruthy();
     expect(within(list).getByText('When a new file arrives · paused')).toBeTruthy();
     expect(within(screen.getByRole('group', { name: 'Writer' })).queryByRole('list')).toBeNull();
+  });
+
+  it('counts routines in the subtitle so it does not contradict the Routines list', async () => {
+    render(<AgentsPage onOpenWorkflow={() => {}} onOpenWorkflows={() => {}} />);
+    await flush();
+    const card = screen.getByRole('group', { name: 'Researcher' });
+    expect(within(card).getByText(/^Used in 2 routines/)).toBeTruthy();
+    expect(within(card).queryByText('Not used in a workflow yet')).toBeNull();
   });
 
   it('pauses and resumes a routine, and opens it on its last run', async () => {

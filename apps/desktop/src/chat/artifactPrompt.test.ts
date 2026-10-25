@@ -33,6 +33,26 @@ describe('looksLikeArtifactCreationRequest', () => {
     expect(looksLikeArtifactCreationRequest('explain what a markdown artifact is')).toBe(false);
   });
 
+  it('treats "save it as a document" as creation without a creation verb', () => {
+    expect(
+      looksLikeArtifactCreationRequest(
+        'Ask the scouts, give their findings to Writer for a one-page comparison with a recommendation, and save it as a document',
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeArtifactCreationRequest(
+        'Hand it to Writer to write a one-page buying guide for each option, saved as a document',
+      ),
+    ).toBe(true);
+    expect(looksLikeArtifactCreationRequest('put this in a new page')).toBe(true);
+    expect(looksLikeArtifactCreationRequest('keep the result as a report')).toBe(true);
+  });
+
+  it('does not fire on questions about saving documents', () => {
+    expect(looksLikeArtifactCreationRequest('how do I save a file as a document?')).toBe(false);
+    expect(looksLikeArtifactCreationRequest('what does save as a document do')).toBe(false);
+  });
+
   it('still treats phrased-as-a-question ability requests as creation', () => {
     expect(looksLikeArtifactCreationRequest('can you create an html artifact?')).toBe(true);
     expect(looksLikeArtifactCreationRequest('could you make a new json artifact?')).toBe(true);

@@ -353,3 +353,12 @@ describe('StatusLine — the detail popover', () => {
     expect(document.activeElement).toBe(screen.getByTitle('Chat details'));
   });
 });
+
+describe('StatusLine — an agent answers', () => {
+  it("names the agent and shows its model instead of the chat's", () => {
+    render(<StatusLine {...baseProps} agentModel={{ name: 'Product scout', provider: 'openrouter', model: 'deepseek/deepseek-v4-pro' }} />);
+    const line = screen.getByTitle('Chat details');
+    expect(line).toHaveTextContent('Product scout · deepseek/deepseek-v4-pro');
+    expect(line).not.toHaveTextContent('claude-sonnet-4');
+  });
+});

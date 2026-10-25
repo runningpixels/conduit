@@ -26,6 +26,7 @@ export function WorkflowModelRow({
   model,
   onChange,
   label,
+  followLabel,
 }: {
   /** `workflow`: the default for the whole workflow; `step`: one step's own. */
   kind: 'workflow' | 'step';
@@ -34,6 +35,8 @@ export function WorkflowModelRow({
   onChange: (model: WorkflowModel | null) => void;
   /** Overrides the row's label (a helper's model, say). */
   label?: string;
+  /** Overrides the first option (an agent has no workflow to follow). */
+  followLabel?: string;
 }) {
   const t = useT();
   const ctx = useContext(ProviderModelsContext);
@@ -51,7 +54,10 @@ export function WorkflowModelRow({
       slot={kind}
       idPrefix={idPrefix}
       label={label ?? (kind === 'workflow' ? t('workspace.workflows.model.label') : t('workspace.workflows.model.stepLabel'))}
-      followLabel={kind === 'workflow' ? t('workspace.workflows.model.followChat') : t('workspace.workflows.model.followWorkflow')}
+      followLabel={
+        followLabel ??
+        (kind === 'workflow' ? t('workspace.workflows.model.followChat') : t('workspace.workflows.model.followWorkflow'))
+      }
       choice={choice}
       providers={pickable(choice)}
       modelsByProvider={modelsByProvider}

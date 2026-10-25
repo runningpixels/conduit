@@ -92,6 +92,16 @@ const INTENT_REGEX =
  */
 const DOCUMENT_CREATION_REGEX =
   /\b(create|make|build|generate|write|draft|design|produce|put\s+together|turn\b.*\binto)\b.*\b(documents?|web\s?pages?|landing\s+pages?|html\s+pages?|one[- ]pagers?|pages?|reports?|guides?|cheat\s?sheets?|infographics?|brochures?|flyers?|newsletters?|html|markdown|dashboards?|(web\s?)?apps?|games?|calculators?|converters?|timers?|trackers?|viewers?|explorers?|monitors?|checkers?|finders?|lookups?|tickers?|quiz(zes)?|flash\s?cards?|visuali[sz]ations?|simulators?|animations?|spinners?|widgets?|kanban|sortable\s+tables?|interactive\s+\w+|pitch\s+decks?|slide\s?decks?|presentations?|templates?|websites?|forms?)\b/i;
+
+/**
+ * "…and save it as a document" names the deliverable without a creation verb
+ * ("give their findings to Writer for a one-page comparison, and save it as a
+ * document"), which left the turn without document tools. Saving *to* or
+ * *as* a document/page/report is a creation request; "saved as" covers the
+ * passive form ("…a buying guide, saved as a document").
+ */
+const DOCUMENT_SAVE_REGEX =
+  /\b(save|saved|keep|kept|put|store|stored)\s+(?:(?:it|this|that|them|these|those|the\s+\w+(?:\s+\w+)?|everything|all)\s+)?(?:as|in|into)\s+(?:a|an|the|one)\s+(?:new\s+)?(?:documents?|docs?|pages?|reports?)\b/i;
 /* The second half used to stop at document nouns. "Make a weather dashboard",
  * "make this a sortable table" and "make me a CSS-only loading spinner" were
  * then general turns without document tools, and GLM called one anyway — a
@@ -109,5 +119,9 @@ export function looksLikeArtifactCreationRequest(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (!trimmed) return false;
   if (INFORMATIONAL_QUESTION_PREFIX_REGEX.test(trimmed)) return false;
-  return INTENT_REGEX.test(trimmed) || DOCUMENT_CREATION_REGEX.test(trimmed);
+  return (
+    INTENT_REGEX.test(trimmed) ||
+    DOCUMENT_CREATION_REGEX.test(trimmed) ||
+    DOCUMENT_SAVE_REGEX.test(trimmed)
+  );
 }

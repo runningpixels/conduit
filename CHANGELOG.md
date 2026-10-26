@@ -7,6 +7,62 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.15] - 2026-10-26
+
+Fixes found by running agents on a real shopping task, a crash on long tool
+results, and a way to let a connector tool that says nothing about itself run
+without asking.
+
+### Added
+
+- **Mark a connector tool "Only reads".** In Context → Connectors, each tool
+  of a running connector now shows what it declares: only reads, changes
+  things, or always asks. A tool that declares nothing asks before every call;
+  tick **Only reads** for one you trust to only look things up, and it runs
+  without asking in chats, agents and workflows. A tool that says it changes
+  things, or is sensitive, keeps asking.
+
+### Changed
+
+- **An approval card for a tool that declares nothing** now says the tool
+  doesn't say whether it changes anything, instead of "may change an external
+  system", and points to **Only reads**. Workflow and agent editors label
+  such tools the same way.
+- **A workflow step waiting for you** shows under **Needs you** on the Agents
+  page and reads "Waiting for you" in the run view. It no longer counts as a
+  running agent on the Agents badge or the **Working** filter.
+- **A chat asked to one of your agents** shows that agent and its model in
+  the status line.
+- **The agent editor's default model** reads "Default model".
+- **An agent used by a routine** says so on its card, instead of "Not used in
+  a workflow yet".
+- **An agent that remembers** is told to save what its next run needs when a
+  task compares with earlier runs ("since your last check").
+- **Reading web pages:** compressed pages (gzip, Brotli, deflate) are read,
+  and a page that blocks automated readers says so instead of returning
+  unreadable text.
+
+### Fixed
+
+- A tool result over 50,000 bytes with non-English text could crash the reply.
+- A reply that stopped on an internal error left its helpers "Working"
+  forever; it now ends them and says the reply stopped.
+- Ordinary review pages were blocked as prompt injection when they contained
+  text like "Assistant:" mid-line.
+- A redirect sent to a helper showed after its answer, and was gone after a
+  restart. It now shows where it was sent and is kept.
+- Text typed for a helper went to the main chat if the helper finished first.
+  It is kept, with a note that the helper finished.
+- Clicking a workflow step under **Running now** did nothing; it opens the
+  run.
+- **Stop** scrolled out of sight in a long agent view; the header stays on
+  top.
+- A toast announced a helper finishing while you were already watching it.
+- The Workflows list kept saying "Waiting for you" after you answered.
+- Saving one agent setting could reset the other agent settings.
+- "Save it as a document" in a chat was not recognised as asking for a
+  document.
+
 ## [1.0.0-rc.14] - 2026-10-24
 
 Agents become something you define once and use everywhere: in chat, in
@@ -1469,7 +1525,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.14...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.15...HEAD
+[1.0.0-rc.15]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.14...v1.0.0-rc.15
 [1.0.0-rc.14]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.13...v1.0.0-rc.14
 [1.0.0-rc.13]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.12...v1.0.0-rc.13
 [1.0.0-rc.12]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.11...v1.0.0-rc.12

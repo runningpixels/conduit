@@ -3610,9 +3610,7 @@
   "shell.settingsSheet.usage.intro": "プロバイダーとモデルごとのモデルの費用と、1 日の支出アラート。",
   "shell.settingsSheet.updates.heading": "更新",
   "shell.settingsSheet.updates.intro": "{appName} が新しいバージョンを確認してインストールする方法。",
-  "shell.settingsSheet.about.intro": "このバージョン、{appName} の開発者、このマシン上でファイルを保存する場所。",
   "settings.about.version.label": "バージョン",
-  "settings.about.madeBy.label": "開発者",
   "settings.about.website.label": "ウェブサイト",
   "settings.about.source.label": "ソースコード",
   "settings.about.issues.label": "不具合とアイデア",
@@ -3620,5 +3618,6 @@
   "settings.about.license.label": "ライセンス",
   "settings.about.files.title": "このマシン上のファイル",
   "workspace.commandPalette.command.usage": "使用量と費用",
-  "workspace.commandPalette.command.updates": "更新"
+  "workspace.commandPalette.command.updates": "更新",
+  "shell.settingsSheet.about.intro": "このバージョン、プロジェクトの場所、{appName} がこのマシン上でファイルを保存する場所。"
 }

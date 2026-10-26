@@ -3610,9 +3610,7 @@
   "shell.settingsSheet.usage.intro": "제공자와 모델별 모델 비용, 그리고 하루 지출 알림입니다.",
   "shell.settingsSheet.updates.heading": "업데이트",
   "shell.settingsSheet.updates.intro": "{appName}이(가) 새 버전을 확인하고 설치하는 방식입니다.",
-  "shell.settingsSheet.about.intro": "현재 버전, {appName}을(를) 만드는 사람, 그리고 이 컴퓨터에서 파일을 보관하는 위치입니다.",
   "settings.about.version.label": "버전",
-  "settings.about.madeBy.label": "만든 사람",
   "settings.about.website.label": "웹사이트",
   "settings.about.source.label": "소스 코드",
   "settings.about.issues.label": "문제와 아이디어",
@@ -3620,5 +3618,6 @@
   "settings.about.license.label": "라이선스",
   "settings.about.files.title": "이 컴퓨터의 파일",
   "workspace.commandPalette.command.usage": "사용량 및 비용",
-  "workspace.commandPalette.command.updates": "업데이트"
+  "workspace.commandPalette.command.updates": "업데이트",
+  "shell.settingsSheet.about.intro": "현재 버전, 프로젝트를 찾을 수 있는 곳, 그리고 {appName}이(가) 이 컴퓨터에서 파일을 보관하는 위치입니다."
 }

@@ -3349,9 +3349,7 @@
     "shell.settingsSheet.usage.intro": "65a1c6ace230a37c54d4d67b3272735c08b290bf",
     "shell.settingsSheet.updates.heading": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
     "shell.settingsSheet.updates.intro": "6575aaebf693bbf83be785cf44b5950494eace48",
-    "shell.settingsSheet.about.intro": "92639403abc3588130d11f58a1db2c53cd804cd4",
     "settings.about.version.label": "2da600bf9404843107a9531694f654e5662959e0",
-    "settings.about.madeBy.label": "eae192773b7b66705334a7e4ede6d53ec2e44495",
     "settings.about.website.label": "2e8a57cc5c472f4ac3b071979a38e80db7e59e87",
     "settings.about.source.label": "22a35fbebff47762d94faae1d7babdf97b0736bf",
     "settings.about.issues.label": "3158aa12dd82966e00dc8af4f90e9249972377ea",
@@ -3359,7 +3357,8 @@
     "settings.about.license.label": "3229609e15436ec51bcf00818a69a84dbc58a0c2",
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
-    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce"
+    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6711,9 +6710,7 @@
     "shell.settingsSheet.usage.intro": "65a1c6ace230a37c54d4d67b3272735c08b290bf",
     "shell.settingsSheet.updates.heading": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
     "shell.settingsSheet.updates.intro": "6575aaebf693bbf83be785cf44b5950494eace48",
-    "shell.settingsSheet.about.intro": "92639403abc3588130d11f58a1db2c53cd804cd4",
     "settings.about.version.label": "2da600bf9404843107a9531694f654e5662959e0",
-    "settings.about.madeBy.label": "eae192773b7b66705334a7e4ede6d53ec2e44495",
     "settings.about.website.label": "2e8a57cc5c472f4ac3b071979a38e80db7e59e87",
     "settings.about.source.label": "22a35fbebff47762d94faae1d7babdf97b0736bf",
     "settings.about.issues.label": "3158aa12dd82966e00dc8af4f90e9249972377ea",
@@ -6721,7 +6718,8 @@
     "settings.about.license.label": "3229609e15436ec51bcf00818a69a84dbc58a0c2",
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
-    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce"
+    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -10073,9 +10071,7 @@
     "shell.settingsSheet.usage.intro": "65a1c6ace230a37c54d4d67b3272735c08b290bf",
     "shell.settingsSheet.updates.heading": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
     "shell.settingsSheet.updates.intro": "6575aaebf693bbf83be785cf44b5950494eace48",
-    "shell.settingsSheet.about.intro": "92639403abc3588130d11f58a1db2c53cd804cd4",
     "settings.about.version.label": "2da600bf9404843107a9531694f654e5662959e0",
-    "settings.about.madeBy.label": "eae192773b7b66705334a7e4ede6d53ec2e44495",
     "settings.about.website.label": "2e8a57cc5c472f4ac3b071979a38e80db7e59e87",
     "settings.about.source.label": "22a35fbebff47762d94faae1d7babdf97b0736bf",
     "settings.about.issues.label": "3158aa12dd82966e00dc8af4f90e9249972377ea",
@@ -10083,7 +10079,8 @@
     "settings.about.license.label": "3229609e15436ec51bcf00818a69a84dbc58a0c2",
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
-    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce"
+    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -13435,9 +13432,7 @@
     "shell.settingsSheet.usage.intro": "65a1c6ace230a37c54d4d67b3272735c08b290bf",
     "shell.settingsSheet.updates.heading": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
     "shell.settingsSheet.updates.intro": "6575aaebf693bbf83be785cf44b5950494eace48",
-    "shell.settingsSheet.about.intro": "92639403abc3588130d11f58a1db2c53cd804cd4",
     "settings.about.version.label": "2da600bf9404843107a9531694f654e5662959e0",
-    "settings.about.madeBy.label": "eae192773b7b66705334a7e4ede6d53ec2e44495",
     "settings.about.website.label": "2e8a57cc5c472f4ac3b071979a38e80db7e59e87",
     "settings.about.source.label": "22a35fbebff47762d94faae1d7babdf97b0736bf",
     "settings.about.issues.label": "3158aa12dd82966e00dc8af4f90e9249972377ea",
@@ -13445,7 +13440,8 @@
     "settings.about.license.label": "3229609e15436ec51bcf00818a69a84dbc58a0c2",
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
-    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce"
+    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -16797,9 +16793,7 @@
     "shell.settingsSheet.usage.intro": "65a1c6ace230a37c54d4d67b3272735c08b290bf",
     "shell.settingsSheet.updates.heading": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
     "shell.settingsSheet.updates.intro": "6575aaebf693bbf83be785cf44b5950494eace48",
-    "shell.settingsSheet.about.intro": "92639403abc3588130d11f58a1db2c53cd804cd4",
     "settings.about.version.label": "2da600bf9404843107a9531694f654e5662959e0",
-    "settings.about.madeBy.label": "eae192773b7b66705334a7e4ede6d53ec2e44495",
     "settings.about.website.label": "2e8a57cc5c472f4ac3b071979a38e80db7e59e87",
     "settings.about.source.label": "22a35fbebff47762d94faae1d7babdf97b0736bf",
     "settings.about.issues.label": "3158aa12dd82966e00dc8af4f90e9249972377ea",
@@ -16807,7 +16801,8 @@
     "settings.about.license.label": "3229609e15436ec51bcf00818a69a84dbc58a0c2",
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
-    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce"
+    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -20159,9 +20154,7 @@
     "shell.settingsSheet.usage.intro": "65a1c6ace230a37c54d4d67b3272735c08b290bf",
     "shell.settingsSheet.updates.heading": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
     "shell.settingsSheet.updates.intro": "6575aaebf693bbf83be785cf44b5950494eace48",
-    "shell.settingsSheet.about.intro": "92639403abc3588130d11f58a1db2c53cd804cd4",
     "settings.about.version.label": "2da600bf9404843107a9531694f654e5662959e0",
-    "settings.about.madeBy.label": "eae192773b7b66705334a7e4ede6d53ec2e44495",
     "settings.about.website.label": "2e8a57cc5c472f4ac3b071979a38e80db7e59e87",
     "settings.about.source.label": "22a35fbebff47762d94faae1d7babdf97b0736bf",
     "settings.about.issues.label": "3158aa12dd82966e00dc8af4f90e9249972377ea",
@@ -20169,7 +20162,8 @@
     "settings.about.license.label": "3229609e15436ec51bcf00818a69a84dbc58a0c2",
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
-    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce"
+    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -23521,9 +23515,7 @@
     "shell.settingsSheet.usage.intro": "65a1c6ace230a37c54d4d67b3272735c08b290bf",
     "shell.settingsSheet.updates.heading": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
     "shell.settingsSheet.updates.intro": "6575aaebf693bbf83be785cf44b5950494eace48",
-    "shell.settingsSheet.about.intro": "92639403abc3588130d11f58a1db2c53cd804cd4",
     "settings.about.version.label": "2da600bf9404843107a9531694f654e5662959e0",
-    "settings.about.madeBy.label": "eae192773b7b66705334a7e4ede6d53ec2e44495",
     "settings.about.website.label": "2e8a57cc5c472f4ac3b071979a38e80db7e59e87",
     "settings.about.source.label": "22a35fbebff47762d94faae1d7babdf97b0736bf",
     "settings.about.issues.label": "3158aa12dd82966e00dc8af4f90e9249972377ea",
@@ -23531,6 +23523,7 @@
     "settings.about.license.label": "3229609e15436ec51bcf00818a69a84dbc58a0c2",
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
-    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce"
+    "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
   }
 }

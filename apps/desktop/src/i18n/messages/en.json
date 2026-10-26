@@ -3610,9 +3610,7 @@
   "shell.settingsSheet.usage.intro": "What your models have cost, by provider and model, and an alert for daily spend.",
   "shell.settingsSheet.updates.heading": "Updates",
   "shell.settingsSheet.updates.intro": "How {appName} checks for new versions and installs them.",
-  "shell.settingsSheet.about.intro": "Which version this is, who makes {appName}, and where it keeps its files on this machine.",
   "settings.about.version.label": "Version",
-  "settings.about.madeBy.label": "Made by",
   "settings.about.website.label": "Website",
   "settings.about.source.label": "Source code",
   "settings.about.issues.label": "Problems and ideas",
@@ -3620,5 +3618,6 @@
   "settings.about.license.label": "License",
   "settings.about.files.title": "Files on this machine",
   "workspace.commandPalette.command.usage": "Usage & cost",
-  "workspace.commandPalette.command.updates": "Updates"
+  "workspace.commandPalette.command.updates": "Updates",
+  "shell.settingsSheet.about.intro": "Which version this is, where to find the project, and where {appName} keeps its files on this machine."
 }

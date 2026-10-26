@@ -3610,9 +3610,7 @@
   "shell.settingsSheet.usage.intro": "Lo que han costado tus modelos, por proveedor y modelo, y un aviso de gasto diario.",
   "shell.settingsSheet.updates.heading": "Actualizaciones",
   "shell.settingsSheet.updates.intro": "Cómo {appName} busca versiones nuevas y las instala.",
-  "shell.settingsSheet.about.intro": "Qué versión es, quién hace {appName} y dónde guarda sus archivos en este PC.",
   "settings.about.version.label": "Versión",
-  "settings.about.madeBy.label": "Hecho por",
   "settings.about.website.label": "Sitio web",
   "settings.about.source.label": "Código fuente",
   "settings.about.issues.label": "Problemas e ideas",
@@ -3620,5 +3618,6 @@
   "settings.about.license.label": "Licencia",
   "settings.about.files.title": "Archivos en este PC",
   "workspace.commandPalette.command.usage": "Uso y costo",
-  "workspace.commandPalette.command.updates": "Actualizaciones"
+  "workspace.commandPalette.command.updates": "Actualizaciones",
+  "shell.settingsSheet.about.intro": "Qué versión es, dónde encontrar el proyecto y dónde guarda {appName} sus archivos en este PC."
 }

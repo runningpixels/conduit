@@ -3610,9 +3610,7 @@
   "shell.settingsSheet.usage.intro": "按提供商和模型列出模型的费用，以及每日支出提醒。",
   "shell.settingsSheet.updates.heading": "更新",
   "shell.settingsSheet.updates.intro": "{appName} 如何检查并安装新版本。",
-  "shell.settingsSheet.about.intro": "当前版本、{appName} 的开发者，以及它在这台机器上存放文件的位置。",
   "settings.about.version.label": "版本",
-  "settings.about.madeBy.label": "开发者",
   "settings.about.website.label": "网站",
   "settings.about.source.label": "源代码",
   "settings.about.issues.label": "问题与建议",
@@ -3620,5 +3618,6 @@
   "settings.about.license.label": "许可证",
   "settings.about.files.title": "这台机器上的文件",
   "workspace.commandPalette.command.usage": "用量与费用",
-  "workspace.commandPalette.command.updates": "更新"
+  "workspace.commandPalette.command.updates": "更新",
+  "shell.settingsSheet.about.intro": "当前版本、项目所在位置，以及 {appName} 在这台机器上存放文件的位置。"
 }

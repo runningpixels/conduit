@@ -10,11 +10,9 @@ const { openExternalUrl } = await import('../../ipc/client');
 const PATHS = { root: 'C:\\Conduit', settingsFile: 'C:\\Conduit\\settings.json', database: 'C:\\Conduit\\conduit.db' };
 
 describe('AboutSection', () => {
-  it('says which version this is and who makes it', async () => {
+  it('says which version this is', async () => {
     render(<AboutSection paths={PATHS as never} onStatus={vi.fn()} />);
     expect(await screen.findByText('1.0.0-rc.15')).toBeInTheDocument();
-    expect(screen.getByText('Made by')).toBeInTheDocument();
-    expect(screen.getByText('Emilio Olivares')).toBeInTheDocument();
   });
 
   it('opens the project links in the browser', () => {

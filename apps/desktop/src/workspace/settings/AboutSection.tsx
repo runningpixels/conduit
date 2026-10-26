@@ -9,8 +9,6 @@ interface AboutSectionProps {
   onStatus: (message: string) => void;
 }
 
-/** Who makes the app. A name, so it is never translated. */
-const AUTHOR = 'Emilio Olivares';
 const LICENSE_NAME = 'AGPL-3.0';
 const WEBSITE = 'https://conduitllm.com';
 const REPO = 'https://github.com/runningpixels/conduit';
@@ -24,7 +22,7 @@ const LABEL: CSSProperties = {
 const PATH: CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xl)', wordBreak: 'break-all' };
 
 /**
- * About: which version this is, who makes it, where to find the project, and
+ * About: which version this is, where to find the project, and
  * where it keeps its files on this machine. Usage and updates have their own
  * sections; this one only says what the app is and where it lives.
  */
@@ -63,10 +61,6 @@ export function AboutSection({ paths, onStatus }: AboutSectionProps) {
               <span style={PATH}>{version}</span>
             </div>
           )}
-          <div className="status-item">
-            <span style={LABEL}>{t('settings.about.madeBy.label')}</span>
-            <span>{AUTHOR}</span>
-          </div>
           {links.map((link) => (
             <div className="status-item" key={link.url}>
               <span style={LABEL}>{link.label}</span>

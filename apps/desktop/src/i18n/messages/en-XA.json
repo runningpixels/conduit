@@ -3610,9 +3610,7 @@
   "shell.settingsSheet.usage.intro": "[Ŵĥàť ýöüŕ ḿöḍéļš ĥàṽé çöšť, ḅý ṕŕöṽîḍéŕ àñḍ ḿöḍéļ, àñḍ àñ àļéŕť ḟöŕ ḍàîļý šṕéñḍ. —————— —————— —————— —————— —————— ——]",
   "shell.settingsSheet.updates.heading": "[Üṕḍàťéš ———]",
   "shell.settingsSheet.updates.intro": "[Ĥöŵ {appName} çĥéçķš ḟöŕ ñéŵ ṽéŕšîöñš àñḍ îñšťàļļš ťĥéḿ. —————— —————— —————— —]",
-  "shell.settingsSheet.about.intro": "[Ŵĥîçĥ ṽéŕšîöñ ťĥîš îš, ŵĥö ḿàķéš {appName}, àñḍ ŵĥéŕé îť ķééṕš îťš ḟîļéš öñ ťĥîš ḿàçĥîñé. —————— —————— —————— —————— —————— ——]",
   "settings.about.version.label": "[Ṽéŕšîöñ ———]",
-  "settings.about.madeBy.label": "[Ḿàḍé ḅý ———]",
   "settings.about.website.label": "[Ŵéḅšîťé ———]",
   "settings.about.source.label": "[Šöüŕçé çöḍé —————]",
   "settings.about.issues.label": "[Ṕŕöḅļéḿš àñḍ îḍéàš —————— ——]",
@@ -3620,5 +3618,6 @@
   "settings.about.license.label": "[Ļîçéñšé ———]",
   "settings.about.files.title": "[Ḟîļéš öñ ťĥîš ḿàçĥîñé —————— ———]",
   "workspace.commandPalette.command.usage": "[Üšàĝé & çöšť —————]",
-  "workspace.commandPalette.command.updates": "[Üṕḍàťéš ———]"
+  "workspace.commandPalette.command.updates": "[Üṕḍàťéš ———]",
+  "shell.settingsSheet.about.intro": "[Ŵĥîçĥ ṽéŕšîöñ ťĥîš îš, ŵĥéŕé ťö ḟîñḍ ťĥé ṕŕöĵéçť, àñḍ ŵĥéŕé {appName} ķééṕš îťš ḟîļéš öñ ťĥîš ḿàçĥîñé. —————— —————— —————— —————— —————— —————— ——]"
 }

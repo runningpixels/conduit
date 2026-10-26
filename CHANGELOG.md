@@ -44,6 +44,8 @@ without asking.
 
 ### Fixed
 
+- The model picker in a new chat had no search field: the top of the menu was
+  cut off.
 - A tool result over 50,000 bytes with non-English text could crash the reply.
 - A reply that stopped on an internal error left its helpers "Working"
   forever; it now ends them and says the reply stopped.

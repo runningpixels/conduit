@@ -7,10 +7,12 @@ interface UpdatesSectionProps {
   settings: AppSettings;
   onUpdate: (next: AppSettings) => void;
   onStatus: (message: string) => void;
+  /** Leave out the section title: the page around it already says "Updates". */
+  bare?: boolean;
 }
 
 /** Updates section: update channel, check toggle, check now, download & install. */
-export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionProps) {
+export function UpdatesSection({ settings, onUpdate, onStatus, bare = false }: UpdatesSectionProps) {
   const t = useT();
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
@@ -71,9 +73,11 @@ export function UpdatesSection({ settings, onUpdate, onStatus }: UpdatesSectionP
 
   return (
     <div className="settings-section">
-      <div className="settings-section-header">
-        <span>{t('settings.updates.header.title')}</span>
-      </div>
+      {!bare && (
+        <div className="settings-section-header">
+          <span>{t('settings.updates.header.title')}</span>
+        </div>
+      )}
       <div className="status-item">
         <label className="field" style={{ display: 'grid', gap: 6 }}>
           <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-xl)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{t('settings.updates.channel.label')}</span>

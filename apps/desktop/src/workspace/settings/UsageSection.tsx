@@ -25,6 +25,8 @@ interface UsageSectionProps {
   /** Apply settings the backend has already persisted (no second save). */
   onSettingsChange: (s: AppSettings) => void;
   onStatus: (message: string) => void;
+  /** Leave out the section title: the page around it already says "Usage & cost". */
+  bare?: boolean;
 }
 
 /** The ceiling `pricing::price_is_valid` enforces; a typo guard, not a rule. */
@@ -256,7 +258,7 @@ export function SpendAlertField({
   );
 }
 
-export function UsageSection({ settings, onSettingsChange, onStatus }: UsageSectionProps) {
+export function UsageSection({ settings, onSettingsChange, onStatus, bare = false }: UsageSectionProps) {
   const t = useT();
   const fmt = useFormatters();
   const formatCents = fmt.money;
@@ -318,9 +320,11 @@ export function UsageSection({ settings, onSettingsChange, onStatus }: UsageSect
   if (loading && !data) {
     return (
       <div className="settings-section">
-        <div className="settings-section-header">
-          <span>{t('settings.usage.header')}</span>
-        </div>
+        {!bare && (
+          <div className="settings-section-header">
+            <span>{t('settings.usage.header')}</span>
+          </div>
+        )}
         <span className="status-pill hold">{t('common.status.loading')}</span>
       </div>
     );
@@ -329,9 +333,11 @@ export function UsageSection({ settings, onSettingsChange, onStatus }: UsageSect
   if (!data || (data.totalInputTokens === 0 && data.totalOutputTokens === 0)) {
     return (
       <div className="settings-section">
-        <div className="settings-section-header">
-          <span>{t('settings.usage.header')}</span>
-        </div>
+        {!bare && (
+          <div className="settings-section-header">
+            <span>{t('settings.usage.header')}</span>
+          </div>
+        )}
         <p style={{ fontSize: 'var(--fs-3xl)', color: 'var(--ink-2)', padding: '12px 0' }}>
           {t('settings.usage.empty')}
         </p>
@@ -348,7 +354,7 @@ export function UsageSection({ settings, onSettingsChange, onStatus }: UsageSect
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <span>{t('settings.usage.header')}</span>
+        {!bare && <span>{t('settings.usage.header')}</span>}
         <select
           aria-label={t('settings.usage.periodAriaLabel')}
           value={period}

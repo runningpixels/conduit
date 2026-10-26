@@ -8,9 +8,10 @@
  * uiPrefs.
  *
  * Nav order groups by intent: configure (providers → chat → web search →
- * workspace → connectors → prompts → skills → memory), look (appearance → branding), trust
- * (privacy → about). Web search and workspace tools used to live under Chat
- * defaults; usage/updates/about used to live under Privacy & data.
+ * workspace → connectors → prompts → skills → memory, with usage & cost after
+ * web search), look (appearance → branding), trust (privacy → updates → about).
+ * Web search and workspace tools used to live under Chat defaults; usage and
+ * updates used to live under About, which now says who makes the app.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AppPaths, AppSettings, BrandConfig, ModelInfo } from '../ipc/contracts';
@@ -65,7 +66,8 @@ import {
 
 /**
  * Settings nav ids. `advanced` is gone (its blocks moved into Privacy & data,
- * then Usage / Updates / About split out to `about`). Branding stays gated by
+ * then Usage / Updates / About split out to `about`, and Usage and Updates
+ * out of that into `usage` and `updates`). Branding stays gated by
  * `allowUserBranding`. Web search and workspace are first-class sections so
  * they are findable without scrolling Chat defaults.
  */
@@ -73,6 +75,7 @@ export type SettingsSection =
   | 'providers'
   | 'chat'
   | 'web-search'
+  | 'usage'
   | 'workspace'
   | 'computer'
   | 'connectors'
@@ -83,6 +86,7 @@ export type SettingsSection =
   | 'appearance'
   | 'branding'
   | 'privacy'
+  | 'updates'
   | 'about';
 
 /** Sections that moved to their own rail destination (docs/plans/ui-revamp.md).
@@ -133,6 +137,7 @@ const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode; group:
   { id: 'providers', labelId: 'shell.settingsSheet.nav.providers', icon: <KeyNavIcon />, group: 'models' },
   { id: 'chat', labelId: 'shell.settingsSheet.nav.chat', icon: <ChatIcon />, group: 'models' },
   { id: 'web-search', labelId: 'shell.settingsSheet.nav.web-search', icon: <SearchIcon />, group: 'models' },
+  { id: 'usage', labelId: 'shell.settingsSheet.nav.usage', icon: <UsageNavIcon />, group: 'models' },
   { id: 'workspace', labelId: 'shell.settingsSheet.nav.workspace', icon: <FolderIcon />, group: 'assistant' },
   { id: 'computer', labelId: 'shell.settingsSheet.nav.computer', icon: <ComputerNavIcon />, group: 'assistant' },
   { id: 'connectors', labelId: 'shell.settingsSheet.nav.connectors', icon: <ConnectorsIcon />, group: 'assistant' },
@@ -143,6 +148,7 @@ const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode; group:
   { id: 'appearance', labelId: 'shell.settingsSheet.nav.appearance', icon: <SunNavIcon />, group: 'app' },
   { id: 'branding', labelId: 'shell.settingsSheet.nav.branding', icon: <BrandingNavIcon />, group: 'app' },
   { id: 'privacy', labelId: 'shell.settingsSheet.nav.privacy', icon: <LockIcon />, group: 'app' },
+  { id: 'updates', labelId: 'shell.settingsSheet.nav.updates', icon: <UpdatesNavIcon />, group: 'app' },
   { id: 'about', labelId: 'shell.settingsSheet.nav.about', icon: <InfoIcon />, group: 'app' },
 ];
 
@@ -215,6 +221,23 @@ function BrandingNavIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 3 3 8.5V21h18V8.5L12 3Z" />
       <circle cx="12" cy="12" r="2.6" />
+    </svg>
+  );
+}
+
+function UsageNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
+      <path d="M4 20h16M7 16v-5M12 16V6M17 16v-8" />
+    </svg>
+  );
+}
+
+function UpdatesNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 12a8 8 0 1 1-2.34-5.66L20 8.5" />
+      <path d="M20 3.5v5h-5" />
     </svg>
   );
 }
@@ -760,17 +783,27 @@ export function SettingsSheet({
             </>
           )}
 
+          {section === 'usage' && (
+            <>
+              <h2 className="sheet-h">{t('shell.settingsSheet.usage.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.usage.intro')}</p>
+              <UsageSection settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} bare />
+            </>
+          )}
+
+          {section === 'updates' && (
+            <>
+              <h2 className="sheet-h">{t('shell.settingsSheet.updates.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.updates.intro')}</p>
+              <UpdatesSection settings={settings} onUpdate={save} onStatus={onStatus} bare />
+            </>
+          )}
+
           {section === 'about' && (
             <>
               <h2 className="sheet-h">{t('shell.settingsSheet.about.heading')}</h2>
               <p className="sheet-sub">{t('shell.settingsSheet.about.intro')}</p>
-              <div style={{ marginBottom: 24 }}>
-                <UsageSection settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
-              </div>
-              <div style={{ marginBottom: 24 }}>
-                <UpdatesSection settings={settings} onUpdate={save} onStatus={onStatus} />
-              </div>
-              <AboutSection paths={paths} />
+              <AboutSection paths={paths} onStatus={onStatus} />
             </>
           )}
 

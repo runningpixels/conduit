@@ -147,7 +147,7 @@ describe('SettingsSheet behaviour (restored from SettingsScreen tests)', () => {
 
   it('auto-saves: choosing an update policy calls updateSettings with the new value', async () => {
     const { updateSettings } = await import('../ipc/client');
-    renderSheet({}, 'about');
+    renderSheet({}, 'updates');
     fireEvent.change(screen.getByLabelText(/automatic updates/i), {
       target: { value: 'automatic' },
     });
@@ -160,7 +160,7 @@ describe('SettingsSheet behaviour (restored from SettingsScreen tests)', () => {
     // Same relationship the channel select already has to that checkbox: the
     // policy is meaningless when nothing may touch the network, and a control
     // that appears live while it cannot act is a lie about what is happening.
-    renderSheet({ updateCheckEnabled: false }, 'about');
+    renderSheet({ updateCheckEnabled: false }, 'updates');
     expect(screen.getByLabelText(/automatic updates/i)).toBeDisabled();
   });
 

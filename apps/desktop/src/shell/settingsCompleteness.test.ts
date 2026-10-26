@@ -89,7 +89,7 @@ function bodyIds(): string[] {
 describe('settings sections', () => {
   const union = unionIds();
 
-  it('declares the thirteen settings sections', () => {
+  it('declares the sixteen settings sections', () => {
     expect([...union].sort()).toEqual(
       [
         'about',
@@ -104,6 +104,8 @@ describe('settings sections', () => {
         'prompts',
         'providers',
         'skills',
+        'updates',
+        'usage',
         'web-search',
         'workspace',
       ].sort(),

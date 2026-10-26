@@ -209,9 +209,9 @@ describe('SettingsSheet', () => {
     renderSheet();
     const group = (name: string) =>
       Array.from(screen.getByRole('group', { name }).querySelectorAll('button')).map((b) => b.textContent);
-    expect(group('Models')).toEqual(['Providers & keys', 'Chat defaults', 'Web search']);
+    expect(group('Models')).toEqual(['Providers & keys', 'Chat defaults', 'Web search', 'Usage & cost']);
     expect(group('Assistant')).toEqual(['Workspace', 'Computer', 'Connectors', 'Prompts', 'Skills', 'Memory', 'Knowledge']);
-    expect(group('App')).toEqual(expect.arrayContaining(['Appearance', 'Privacy & data', 'About']));
+    expect(group('App')).toEqual(expect.arrayContaining(['Appearance', 'Privacy & data', 'Updates', 'About']));
   });
 
   it('gives the computer its own entry, not a corner of Workspace', () => {
@@ -273,11 +273,19 @@ describe('SettingsSheet', () => {
     expect(screen.queryByTestId('about-section')).toBeNull();
   });
 
-  it('keeps usage, updates, and paths under About', () => {
-    renderSheet({ initialSection: 'about' });
+  it('gives usage and updates their own sections, and keeps About to the app itself', () => {
+    renderSheet({ initialSection: 'usage' });
     expect(screen.getByTestId('usage-section')).toBeTruthy();
+    expect(screen.queryByTestId('updates-section')).toBeNull();
+    cleanup();
+    renderSheet({ initialSection: 'updates' });
     expect(screen.getByTestId('updates-section')).toBeTruthy();
+    expect(screen.queryByTestId('usage-section')).toBeNull();
+    cleanup();
+    renderSheet({ initialSection: 'about' });
     expect(screen.getByTestId('about-section')).toBeTruthy();
+    expect(screen.queryByTestId('usage-section')).toBeNull();
+    expect(screen.queryByTestId('updates-section')).toBeNull();
   });
 
   it('mounts agent guardrails under Chat defaults', () => {

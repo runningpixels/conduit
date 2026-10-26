@@ -56,8 +56,27 @@ import { Menu } from '../workspace/Menu';
  */
 const MODEL_FETCH_TIMEOUT_MS = 2500;
 
-/** Room the upward menu leaves: its 8px gap to the trigger plus 8px below the title bar. */
+/** Room the upward menu leaves: its 8px gap to the trigger plus 8px below its ceiling. */
 const MENU_EDGE_ROOM = 16;
+
+/** `overflow-y` values that cut off a descendant drawn outside the box. */
+const CLIPS = new Set(['auto', 'scroll', 'hidden', 'clip']);
+
+/**
+ * The highest point the upward menu can show at: the title bar's bottom, or
+ * the top of the nearest ancestor that clips its overflow, whichever is lower.
+ * In a chat the composer sits in a scrolling pane under the chat's header, and
+ * that pane cuts the menu off at its own top edge, well below the title bar.
+ */
+export function menuCeiling(trigger: HTMLElement): number {
+  let ceiling = document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0;
+  for (let el = trigger.parentElement; el; el = el.parentElement) {
+    if (CLIPS.has(getComputedStyle(el).overflowY)) {
+      ceiling = Math.max(ceiling, el.getBoundingClientRect().top);
+    }
+  }
+  return ceiling;
+}
 
 interface ComposerModelPickerProps {
   settings: AppSettings;
@@ -225,17 +244,16 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
     const closeMenu = useCallback(() => setOpen(false), []);
 
     // The menu opens upward, so its height is capped by the room above the
-    // trigger. On Home the composer sits mid-window, where a fixed 52vh ran
-    // the menu's top — and the search with it — under the title bar, which
-    // paints over the top of the page.
+    // trigger. Too tall a menu loses its top — and the search with it — under
+    // the title bar on Home, and to the chat pane's clipping edge in a new chat.
     const [roomAbove, setRoomAbove] = useState<number | null>(null);
     useLayoutEffect(() => {
       if (!open) return;
       const measure = () => {
-        const top = triggerRef.current?.getBoundingClientRect().top;
-        if (top === undefined) return;
-        const ceiling = document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0;
-        setRoomAbove(Math.max(160, Math.floor(top - ceiling - MENU_EDGE_ROOM)));
+        const trigger = triggerRef.current;
+        if (!trigger) return;
+        const top = trigger.getBoundingClientRect().top;
+        setRoomAbove(Math.max(160, Math.floor(top - menuCeiling(trigger) - MENU_EDGE_ROOM)));
       };
       measure();
       window.addEventListener('resize', measure);

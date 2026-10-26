@@ -8,7 +8,9 @@ name: Release
 #     `channel` step below). A stable release is GitHub's "latest" release and
 #     carries version-free copies of the installers, so
 #     .../releases/latest/download/Conduit_x64-setup.exe always serves the
-#     newest one and the website never changes per release.
+#     newest one and the website never changes per release. The release stays
+#     a draft until every installer and those copies are attached, so
+#     "latest" never points at a release with missing files.
 #   - push branch nightly         → beta release
 #   - workflow_dispatch           → manual (pick channel via input)
 #   - workflow_call               → reusable; Phase 9 white-label passes
@@ -65,6 +67,7 @@ jobs:
       edition: ${{ steps.meta.outputs.edition }}
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
+      draft: ${{ steps.draft.outputs.draft }}
     steps:
       - id: meta
         run: |
@@ -104,6 +107,33 @@ jobs:
             echo "version=${VERSION}"
             echo "tag=${TAG}"
           } >> "$GITHUB_OUTPUT"
+
+      # Create the draft release once, before the matrix. GitHub allows several
+      # drafts per tag, so four legs each creating their own could split the
+      # assets between them; with one draft in place tauri-action finds it and
+      # every leg uploads there. A release that is already published (nightly,
+      # or a re-run) is left alone and the legs upload to it as before:
+      # tauri-action in draft mode would skip it and make a second release.
+      - name: Create the draft release
+        id: draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if IS_DRAFT=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null); then
+            echo "release $TAG exists (draft: $IS_DRAFT); leaving it as is"
+            echo "draft=${IS_DRAFT}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FLAGS=()
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then FLAGS+=(--verify-tag); fi
+          if [ "${{ steps.meta.outputs.channel }}" = beta ]; then FLAGS+=(--prerelease); fi
+          gh release create "$TAG" --draft "${FLAGS[@]}" \
+            --title "Conduit $TAG" \
+            --notes 'See release notes. OS bundles are unsigned (first-run Gatekeeper/SmartScreen prompt expected); updater payloads are signature-verified.'
+          echo "draft=true" >> "$GITHUB_OUTPUT"
 
   # Build per-platform with tauri-action: compiles, updater-signs each bundle
   # (emits the .sig next to it), and uploads the bundles to a GitHub Release.
@@ -202,7 +232,13 @@ jobs:
           tagName: ${{ needs.meta.outputs.tag }}
           releaseName: 'Conduit ${{ needs.meta.outputs.tag }}'
           releaseBody: 'See release notes. OS bundles are unsigned (first-run Gatekeeper/SmartScreen prompt expected); updater payloads are signature-verified.'
-          releaseDraft: false
+          # Draft until the manifest job has attached everything. A published
+          # stable release becomes "latest" the moment the first leg uploads,
+          # and the site's releases/latest/download/ links then 404 until the
+          # version-free copies land: about 30 minutes on rc.16. The manifest
+          # job publishes it as its last step. The meta job created the draft
+          # (or found a published release, e.g. nightly: then false).
+          releaseDraft: ${{ needs.meta.outputs.draft == 'true' }}
           prerelease: ${{ needs.meta.outputs.channel == 'beta' }}
           args: ${{ matrix.args }}
 
@@ -371,6 +407,24 @@ jobs:
           ls -la fixed
           test "$(ls fixed | wc -l)" -eq 5
           gh release upload "$TAG" fixed/* --clobber
+
+      # Every asset is attached, so the release can go public. Until here it is
+      # a draft and the previous release stays "latest", so the site's download
+      # links keep working throughout. Runs before the pages job, so the
+      # updater manifest never points at a draft's (404) asset URLs. If any
+      # step above fails, the release stays a draft: fix it and publish by hand.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.meta.outputs.channel }}" = stable ]; then
+            gh release edit "$TAG" --draft=false --latest
+          else
+            gh release edit "$TAG" --draft=false --latest=false
+          fi
+          gh release view "$TAG" --json isDraft,isPrerelease,name
 
   # Publish the per-channel manifest to GitHub Pages, which is the host
   # `tauri.conf.json` endpoints and `updater.rs::UPDATE_BASE` point at:

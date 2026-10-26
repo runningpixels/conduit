@@ -109,15 +109,15 @@ studio with the slide large in the middle and the chat beside it.
 
 ### Answers from your own documents
 
-**Documents** holds collections of your files (plain text, Markdown, CSV, Word
-and PDF), or drop files on the window outside a chat. Attach a collection to a
+**Documents** holds collections of your files (plain text, Markdown, CSV, HTML,
+Word and PDF), or drop files on the window outside a chat. Attach a collection to a
 chat and the assistant searches it while it answers; the documents it drew on
 are named with the reply, and clicking one shows the exact passage. Retrieval is
 hybrid: semantic search for passages that mean the same thing, keyword search
 for exact terms like error codes and names.
 
-For one file, attach it to the message instead: drop a PDF, Word, text or CSV
-file on the chat, or pick it with **+**. Every model reads its text; models that
+For one file, attach it to the message instead: drop a PDF, Word, text, CSV or
+HTML file on the chat, or pick it with **+**. Every model reads its text; models that
 read PDFs themselves (Claude, OpenAI, Gemini) get the PDF, charts and scans
 included. The document's text, or the PDF, goes to the chat's provider with the
 message.
@@ -380,7 +380,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.15 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.16 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -399,7 +399,7 @@ left is checking it on real installs before calling it final.
 | Context gauge with automatic compaction | Working |
 | Skills (`SKILL.md`) and user-approved encrypted memory | Working |
 | Conversation pin, archive and folders | Working |
-| Image and document attachments (PDF, Word, text, Markdown, CSV), Mermaid/KaTeX, conversation export | Working |
+| Image and document attachments (PDF, Word, text, Markdown, CSV, HTML), Mermaid/KaTeX, conversation export | Working |
 | Usage & Cost — every model call, catalog and listed prices with overrides, daily spend alert | Working |
 | Web search (hosted OpenAI/Gemini/Anthropic/OpenRouter + Exa, Tavily, Brave, SearXNG) | Working |
 | Knowledge base — document collections with hybrid retrieval and citations | Working |
@@ -419,7 +419,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.15 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.16 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

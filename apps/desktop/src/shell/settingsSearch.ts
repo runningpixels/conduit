@@ -50,8 +50,10 @@ export const PREFIX_SECTIONS: readonly (readonly [string, SettingsSection])[] = 
   ['settings.diagnostics.', 'privacy'],
   ['shell.settingsSheet.about.', 'about'],
   ['settings.about.', 'about'],
-  ['settings.usage.', 'about'],
-  ['settings.updates.', 'about'],
+  ['shell.settingsSheet.usage.', 'usage'],
+  ['settings.usage.', 'usage'],
+  ['shell.settingsSheet.updates.', 'updates'],
+  ['settings.updates.', 'updates'],
 ];
 
 /** Catalog areas that are not a section's settings (the auto-save notice). */

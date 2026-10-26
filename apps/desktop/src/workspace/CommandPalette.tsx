@@ -300,6 +300,8 @@ export function CommandPalette({
         ? [{ id: 'cmd-branding', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.branding'), run: () => { onOpenSettings('branding'); close(); } }]
         : []),
       { id: 'cmd-privacy', group, kind: 'cmd', label: t('workspace.commandPalette.command.privacyData'), run: () => { onOpenSettings('privacy'); close(); } },
+      { id: 'cmd-usage', group, kind: 'cmd', label: t('workspace.commandPalette.command.usage'), run: () => { onOpenSettings('usage'); close(); } },
+      { id: 'cmd-updates', group, kind: 'cmd', label: t('workspace.commandPalette.command.updates'), run: () => { onOpenSettings('updates'); close(); } },
       { id: 'cmd-about', group, kind: 'cmd', label: t('workspace.commandPalette.command.about'), run: () => { onOpenSettings('about'); close(); } },
       { id: 'cmd-rename', group, kind: 'cmd', label: t('workspace.commandPalette.command.renameChat'), run: () => { onRenameChat(); close(); } },
       { id: 'cmd-pin', group, kind: 'cmd', label: activePinned ? t('workspace.commandPalette.command.unpinChat') : t('workspace.commandPalette.command.pinChat'), run: () => { onPinChat?.(); close(); } },

@@ -3171,7 +3171,7 @@ export default function App() {
   const pushToast = useCallback((toast: StatusState) => {
     setToasts((current) => [...current.slice(-4), toast]);
   }, []);
-  const openUsageSettings = useCallback(() => openSettings('about'), [openSettings]);
+  const openUsageSettings = useCallback(() => openSettings('usage'), [openSettings]);
   const checkSpendAlert = useSpendAlert({
     thresholdUsd: settings.dailySpendAlertUsd,
     onToast: pushToast,

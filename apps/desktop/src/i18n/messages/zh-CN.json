@@ -3604,5 +3604,6 @@
   "settings.connectors.detail.markReadOnlyAria": "{tool} 只读，因此无需询问即可运行",
   "workspace.workflows.editor.connector.toolUnstated": "{tool} — 未说明是否会更改内容，会先询问你",
   "settings.connectors.detail.unstatedHint": "有些工具没有说明是否会更改内容，因此每次调用前都会询问。对你确信只做查询的工具勾选“只读”：之后它在聊天、代理和工作流中运行时将不再询问。",
-  "workspace.workflows.editor.connector.askUnstated": "“{tool}”未说明是否会更改 {name} 中的内容，因此运行会在每次调用前停下来询问。如果它只做查询，请在“上下文 → 连接器”中将其标记为“只读”。"
+  "workspace.workflows.editor.connector.askUnstated": "“{tool}”未说明是否会更改 {name} 中的内容，因此运行会在每次调用前停下来询问。如果它只做查询，请在“上下文 → 连接器”中将其标记为“只读”。",
+  "consent.permission.undeclared": "此工具没有说明是否会更改内容，因此会先询问。如果它只做查询，可以在“上下文 → 连接器”中将其标记为“只读”。"
 }

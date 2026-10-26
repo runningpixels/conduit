@@ -3604,5 +3604,6 @@
   "settings.connectors.detail.markReadOnlyAria": "{tool} は読み取りのみなので、確認せずに実行します",
   "workspace.workflows.editor.connector.toolUnstated": "{tool} — 変更するかどうか不明、先に確認します",
   "settings.connectors.detail.unstatedHint": "一部のツールは何かを変更するかどうかを示さないため、呼び出しのたびに確認します。調べるだけだと信頼できるツールには「読み取りのみ」にチェックを入れてください。チャット、エージェント、ワークフローで確認なしに実行されます。",
-  "workspace.workflows.editor.connector.askUnstated": "「{tool}」は {name} で何かを変更するかどうかを示さないため、実行は呼び出しのたびに止まって確認します。調べるだけなら、コンテキスト → コネクタで「読み取りのみ」にしてください。"
+  "workspace.workflows.editor.connector.askUnstated": "「{tool}」は {name} で何かを変更するかどうかを示さないため、実行は呼び出しのたびに止まって確認します。調べるだけなら、コンテキスト → コネクタで「読み取りのみ」にしてください。",
+  "consent.permission.undeclared": "このツールは何かを変更するかどうかを示さないため、先に確認します。調べるだけなら、コンテキスト → コネクタで「読み取りのみ」にできます。"
 }

@@ -61,9 +61,15 @@ const PERMISSION_LEVEL_KEYS: Record<PermissionLevel, string> = {
  *  now sends — the permission level and the tool's own description — instead
  *  of the English sentence Rust used to compose (D9/D10 item 2). Mirrors the
  *  former `mcp_runtime::consent::expected_effect`: the level's sentence,
- *  followed by the description on its own line when non-empty. */
-function expectedEffectText(t: Translate, level: PermissionLevel, description: string): string {
-  const kind = t(PERMISSION_LEVEL_KEYS[level]);
+ *  followed by the description on its own line when non-empty. A tool that
+ *  declares nothing asks because it is unknown, and is told apart. */
+function expectedEffectText(
+  t: Translate,
+  level: PermissionLevel,
+  description: string,
+  undeclared?: boolean,
+): string {
+  const kind = t(undeclared ? 'consent.permission.undeclared' : PERMISSION_LEVEL_KEYS[level]);
   return description.trim().length === 0 ? kind : `${kind}\n${description}`;
 }
 
@@ -351,7 +357,7 @@ export function ToolCallBlock({
                     connectorName: prompt?.connectorName ?? t('chat.toolCall.consent.defaultConnectorName'),
                     toolName: prompt?.toolName ?? toolCall.name,
                     expectedEffect: prompt
-                      ? expectedEffectText(t, prompt.permissionLevel, prompt.toolDescription)
+                      ? expectedEffectText(t, prompt.permissionLevel, prompt.toolDescription, prompt.undeclared)
                       : t('chat.toolCall.consent.defaultExpectedEffect'),
                   })}
                 </p>

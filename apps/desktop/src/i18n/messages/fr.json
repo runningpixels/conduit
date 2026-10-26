@@ -3604,5 +3604,6 @@
   "settings.connectors.detail.markReadOnlyAria": "{tool} ne fait que lire, il s’exécute donc sans demander",
   "workspace.workflows.editor.connector.toolUnstated": "{tool} — n’indique pas s’il modifie quelque chose, vous demande d’abord",
   "settings.connectors.detail.unstatedHint": "Certains outils n’indiquent pas s’ils modifient quelque chose : ils demandent donc avant chaque appel. Cochez « Lecture seule » pour un outil dont vous êtes sûr qu’il ne fait que consulter : il s’exécutera alors sans demander dans les discussions, les agents et les workflows.",
-  "workspace.workflows.editor.connector.askUnstated": "« {tool} » n’indique pas s’il modifie quelque chose dans {name} : l’exécution s’arrête donc et demande avant chaque appel. S’il ne fait que consulter, marquez-le « Lecture seule » dans Contexte → Connecteurs."
+  "workspace.workflows.editor.connector.askUnstated": "« {tool} » n’indique pas s’il modifie quelque chose dans {name} : l’exécution s’arrête donc et demande avant chaque appel. S’il ne fait que consulter, marquez-le « Lecture seule » dans Contexte → Connecteurs.",
+  "consent.permission.undeclared": "Cet outil n’indique pas s’il modifie quelque chose : il demande donc d’abord. S’il ne fait que consulter, vous pouvez le marquer « Lecture seule » dans Contexte → Connecteurs."
 }

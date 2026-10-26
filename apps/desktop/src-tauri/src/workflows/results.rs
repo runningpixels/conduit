@@ -249,6 +249,7 @@ mod tests {
             error: None,
             started_at: "2026-10-11T07:30:00Z".into(),
             finished_at: None,
+            waiting: false,
         }
     }
 

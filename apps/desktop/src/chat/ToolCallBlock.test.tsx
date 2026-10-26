@@ -52,3 +52,41 @@ describe('ToolCallBlock generic card', () => {
     expect(text.length).toBeLessThan(1000);
   });
 });
+
+describe('ToolCallBlock consent card', () => {
+  const asking = (undeclared: boolean): ToolCallState => ({
+    toolCallId: 'tc-2',
+    toolId: 'ask_question',
+    name: 'ask_question',
+    argumentsText: '',
+    arguments: { repoName: 'a/b' },
+    complete: false,
+    status: 'running',
+    startedAt: 0,
+    sideEffecting: true,
+    consent: 'pending',
+    consentPrompt: {
+      toolCallId: 'tc-2',
+      connectorVersionId: 'v1',
+      connectorName: 'DeepWiki',
+      toolName: 'ask_question',
+      arguments: { repoName: 'a/b' },
+      permissionLevel: 'sideEffectful',
+      undeclared,
+      toolDescription: '',
+      dataSummary: '',
+    },
+  });
+
+  it('says a tool that declares nothing does not say what it does, and where to mark it', () => {
+    const text = render(<ToolCallBlock toolCall={asking(true)} defaultCollapsed={false} />).container.textContent ?? '';
+    expect(text).toContain('doesn’t say whether it changes anything');
+    expect(text).toContain('Context → Connectors');
+    expect(text).not.toContain('may change an external system');
+  });
+
+  it('keeps the side-effect sentence for a tool that says it changes things', () => {
+    const text = render(<ToolCallBlock toolCall={asking(false)} defaultCollapsed={false} />).container.textContent ?? '';
+    expect(text).toContain('may change an external system');
+  });
+});

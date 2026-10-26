@@ -117,6 +117,7 @@ pub fn build_prompt_with_def(
         tool_name: tool.name.clone(),
         arguments: redacted,
         permission_level: level,
+        undeclared: tool.is_undeclared(),
         tool_description: tool.description.clone(),
         data_summary: summary,
         consent_copy: consent_copy.map(|s| s.to_string()),

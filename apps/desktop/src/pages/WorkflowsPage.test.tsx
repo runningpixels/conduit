@@ -999,6 +999,23 @@ describe('WorkflowsPage', () => {
       expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     });
 
+    it('shows a step that waits for you as waiting, not running', async () => {
+      const paused = { ...live, status: 'paused' as const };
+      const step = { ...finishedRun.steps[0], runId: 'r5', status: 'running' as const, error: null, finishedAt: null };
+      ipc.listWorkflowRuns.mockResolvedValue([paused]);
+      ipc.getWorkflowRun.mockResolvedValue({
+        run: paused,
+        steps: [
+          { ...step, id: 's1', stepId: 'fetch', waiting: true },
+          { ...step, id: 's2', stepId: 'summary', input: { type: 'summarize' } },
+        ],
+      });
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const detail = await runDetail();
+      const words = [...detail.querySelectorAll('.wf-step-top .wf-status')].map((el) => el.textContent);
+      expect(words).toEqual(['Waiting for you', 'Running…']);
+    });
+
     it('follows the run until it ends, then offers Run now again', async () => {
       ipc.listWorkflowRuns.mockResolvedValue([live]);
       ipc.getWorkflowRun.mockResolvedValue(liveDetail);

@@ -45,7 +45,7 @@ const RETRIEVAL_TOP_K: usize = 6;
 /// shows, and an unsupported file picked some other way still fails cleanly
 /// by name.
 const PICKER_EXTENSIONS: &[&str] = &[
-    "txt", "md", "markdown", "mdown", "text", "csv", "docx", "pdf",
+    "txt", "md", "markdown", "mdown", "text", "csv", "docx", "pdf", "html", "htm",
 ];
 
 /// Maps an extraction failure onto the specific message for *that* cause.

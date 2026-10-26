@@ -70,6 +70,7 @@ fn guess_mime_from_extension(path: &std::path::Path) -> Option<&'static str> {
         Some("txt" | "text") => Some("text/plain"),
         Some("md" | "markdown" | "mdown") => Some("text/markdown"),
         Some("csv") => Some("text/csv"),
+        Some("html" | "htm") => Some("text/html"),
         Some("json") => Some("application/json"),
         Some("pdf") => Some("application/pdf"),
         Some("docx") => {

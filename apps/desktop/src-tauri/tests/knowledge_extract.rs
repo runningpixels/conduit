@@ -36,6 +36,26 @@ async fn md_round_trips_multibyte_content() {
 }
 
 #[tokio::test]
+async fn html_extracts_the_text_without_markup_or_scripts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("saved page.html");
+    let content = "<!doctype html><html><head><title>Menu</title><script>alert(1)</script></head>\
+        <body><h1>Café 東京</h1><p>Ramen &amp; gyoza</p></body></html>";
+    fs::write(&path, content).unwrap();
+
+    let extracted = extract_document(&path).await.expect("html extracts");
+    assert!(extracted.text.contains("Café 東京"), "{}", extracted.text);
+    assert!(
+        extracted.text.contains("Ramen & gyoza"),
+        "{}",
+        extracted.text
+    );
+    assert!(!extracted.text.contains("alert"), "{}", extracted.text);
+    assert!(!extracted.text.contains('<'), "{}", extracted.text);
+    assert_eq!(extracted.mime_type.as_deref(), Some("text/html"));
+}
+
+#[tokio::test]
 async fn csv_preserves_quoted_comma_and_quoted_newline() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("data.csv");

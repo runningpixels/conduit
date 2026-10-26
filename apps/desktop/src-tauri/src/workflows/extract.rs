@@ -46,6 +46,13 @@ const DROP_TAGS: &[&str] = &[
     "aside", "form",
 ];
 
+/// The tags [`extract_document`] drops: only what is never content. A saved
+/// document's header, footer, nav or form can hold real text, so unlike a
+/// fetched page none of those is chrome to cut.
+const DOCUMENT_DROP_TAGS: &[&str] = &[
+    "script", "style", "noscript", "svg", "template", "iframe", "head",
+];
+
 /// Tags that force a line break when rendered to text. `li` and `h1`-`h3`
 /// also get a text prefix (handled in [`render_region`]).
 const BLOCK_TAGS: &[&str] = &[
@@ -81,7 +88,7 @@ const MIN_REGION_CHARS: usize = 200;
 /// links.
 pub fn extract_readable(html: &str, base_url: &str) -> Extracted {
     let title = extract_title(html);
-    let cleaned = remove_dropped(html);
+    let cleaned = remove_dropped(html, DROP_TAGS);
     let region = choose_region(&cleaned);
 
     let rendered = render_region(region);
@@ -94,6 +101,19 @@ pub fn extract_readable(html: &str, base_url: &str) -> Extracted {
         text,
         links,
         anchors,
+    }
+}
+
+/// The text of a local HTML file (a chat attachment, an imported document),
+/// with its title as a first line when it has one. Unlike
+/// [`extract_readable`] it keeps the whole body: no region is chosen and only
+/// scripts, styles and other non-content markup are dropped.
+pub fn extract_document(html: &str) -> String {
+    let rendered = render_region(&remove_dropped(html, DOCUMENT_DROP_TAGS));
+    let text = normalize_whitespace(&rendered.text);
+    match extract_title(html) {
+        Some(title) if !text.starts_with(&title) => format!("{title}\n\n{text}"),
+        _ => text,
     }
 }
 
@@ -274,7 +294,7 @@ fn find_element(html: &str, name: &str) -> Option<(usize, usize)> {
 
 /// Remove every `DROP_TAGS` element (tag and contents) and every HTML
 /// comment, leaving other markup untouched for [`render_region`] to walk.
-fn remove_dropped(html: &str) -> String {
+fn remove_dropped(html: &str, drop_tags: &[&str]) -> String {
     let mut out = String::with_capacity(html.len());
     let mut i = 0;
     while i < html.len() {
@@ -294,7 +314,7 @@ fn remove_dropped(html: &str) -> String {
                 let name_start = if closing { lt + 2 } else { lt + 1 };
                 let name = read_tag_name(html, name_start);
                 let tag_end = skip_tag_end(html, lt);
-                if !closing && DROP_TAGS.contains(&name.as_str()) {
+                if !closing && drop_tags.contains(&name.as_str()) {
                     let (_, after_close) = skip_element(html, tag_end, &name);
                     i = after_close;
                 } else {
@@ -649,6 +669,34 @@ fn resolve_anchors(raw: &[(String, String)], base_url: &str) -> Vec<Link> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_document_keeps_its_header_footer_and_nav_but_not_its_scripts() {
+        let html = "<html><head><title>Trip notes</title><style>p{color:red}</style></head><body>
+            <header><h1>Lisbon</h1></header><nav>Day 1 | Day 2</nav>
+            <main><p>Tram 28 &amp; pasteis.</p></main><script>track()</script>
+            <footer>Written in May</footer></body></html>";
+        let text = extract_document(html);
+        assert!(
+            text.starts_with(
+                "Trip notes
+
+"
+            ),
+            "{text}"
+        );
+        for kept in [
+            "Lisbon",
+            "Day 1 | Day 2",
+            "Tram 28 & pasteis.",
+            "Written in May",
+        ] {
+            assert!(text.contains(kept), "missing {kept:?} in {text}");
+        }
+        for gone in ["track()", "color:red", "<p>"] {
+            assert!(!text.contains(gone), "kept {gone:?} in {text}");
+        }
+    }
 
     #[test]
     fn extracts_title() {

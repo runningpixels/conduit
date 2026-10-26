@@ -21,7 +21,7 @@ describe('knowledgeDropPaths', () => {
   /** The Rust picker filter and this list must agree, or a file could be
    *  droppable but not pickable (or the reverse). */
   it('matches the extensions the Rust file picker offers', () => {
-    expect(KNOWLEDGE_EXTENSIONS).toEqual(['txt', 'md', 'markdown', 'mdown', 'text', 'csv', 'docx', 'pdf']);
+    expect(KNOWLEDGE_EXTENSIONS).toEqual(['txt', 'md', 'markdown', 'mdown', 'text', 'csv', 'docx', 'pdf', 'html', 'htm']);
   });
 });
 

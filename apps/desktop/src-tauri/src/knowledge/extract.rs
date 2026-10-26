@@ -107,6 +107,7 @@ enum Format {
     Csv,
     Docx,
     Pdf,
+    Html,
 }
 
 /// Extracts indexable plain text from a file on disk.
@@ -177,6 +178,7 @@ fn format_for_extension(extension: &str) -> Result<Format, ExtractFailure> {
         "csv" => Format::Csv,
         "docx" => Format::Docx,
         "pdf" => Format::Pdf,
+        "html" | "htm" => Format::Html,
         other => return Err(ExtractFailure::UnsupportedFormat(other.to_string())),
     })
 }
@@ -245,7 +247,18 @@ fn parse_sync(bytes: &[u8], format: Format) -> Result<Extracted, ExtractFailure>
         Format::Csv => extract_csv(bytes),
         Format::Docx => extract_docx(bytes),
         Format::Pdf => extract_pdf(bytes),
+        Format::Html => extract_html(bytes),
     }
+}
+
+/// The page's text without its markup, scripts or styles: raw tags would
+/// spend the context on `<div class=…>` and bury what the page says.
+fn extract_html(bytes: &[u8]) -> Result<Extracted, ExtractFailure> {
+    let html = String::from_utf8_lossy(bytes);
+    Ok(Extracted {
+        text: crate::workflows::extract::extract_document(&html),
+        mime_type: Some("text/html".to_string()),
+    })
 }
 
 fn extract_plain_text(bytes: &[u8], mime: &str) -> Result<Extracted, ExtractFailure> {

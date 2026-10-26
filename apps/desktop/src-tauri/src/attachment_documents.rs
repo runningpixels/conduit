@@ -51,12 +51,14 @@ pub const REQUEST_TEXT_MAX_CHARS: usize = 300_000;
 /// [`DOCUMENT_TEXT_MAX_CHARS`] characters.
 const EXTRACTION_CACHE_ENTRIES: usize = 8;
 
-/// The plain-text flavours read as UTF-8 (lossy).
+/// The text flavours read as UTF-8 (lossy). HTML is sent as the page's text,
+/// its markup, scripts and styles removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextFlavor {
     Plain,
     Markdown,
     Csv,
+    Html,
 }
 
 /// A document kind this module reads.
@@ -76,6 +78,7 @@ impl DocumentKind {
             DocumentKind::Text(TextFlavor::Plain) => "text/plain",
             DocumentKind::Text(TextFlavor::Markdown) => "text/markdown",
             DocumentKind::Text(TextFlavor::Csv) => "text/csv",
+            DocumentKind::Text(TextFlavor::Html) => "text/html",
         }
     }
 
@@ -88,6 +91,7 @@ impl DocumentKind {
             DocumentKind::Text(TextFlavor::Plain) => "txt",
             DocumentKind::Text(TextFlavor::Markdown) => "md",
             DocumentKind::Text(TextFlavor::Csv) => "csv",
+            DocumentKind::Text(TextFlavor::Html) => "html",
         }
     }
 }
@@ -98,8 +102,8 @@ impl DocumentKind {
 /// PDF and DOCX are recognised by their bytes alone (`%PDF-`; a zip archive
 /// holding `word/document.xml`), whatever the file is called. Plain text has
 /// no signature, so it needs both: bytes that do not look binary, and a name
-/// (`.txt`, `.md`, `.markdown`, `.csv`) or claimed type (`text/*`) saying it is
-/// text. A `.txt` that is really a zip stays unsupported.
+/// (`.txt`, `.md`, `.markdown`, `.csv`, `.html`, `.htm`) or claimed type
+/// (`text/*`) saying it is text. A `.txt` that is really a zip stays unsupported.
 pub fn sniff_document(
     bytes: &[u8],
     filename: Option<&str>,
@@ -118,6 +122,7 @@ pub fn sniff_document(
         Some("txt" | "text") => Some(TextFlavor::Plain),
         Some("md" | "markdown" | "mdown") => Some(TextFlavor::Markdown),
         Some("csv") => Some(TextFlavor::Csv),
+        Some("html" | "htm") => Some(TextFlavor::Html),
         _ => None,
     };
     let flavor = by_extension.or_else(|| {
@@ -126,6 +131,7 @@ pub fn sniff_document(
         match essence {
             "text/csv" => Some(TextFlavor::Csv),
             "text/markdown" | "text/x-markdown" => Some(TextFlavor::Markdown),
+            "text/html" => Some(TextFlavor::Html),
             m if m.starts_with("text/") => Some(TextFlavor::Plain),
             _ => None,
         }
@@ -526,6 +532,19 @@ mod tests {
         assert_eq!(
             sniff_document(text, Some("blob"), Some("text/x-log")),
             Some(DocumentKind::Text(TextFlavor::Plain))
+        );
+        let page = b"<!doctype html><p>Hi</p>";
+        assert_eq!(
+            sniff_document(page, Some("saved.HTML"), None),
+            Some(DocumentKind::Text(TextFlavor::Html))
+        );
+        assert_eq!(
+            sniff_document(page, Some("page.htm"), None),
+            Some(DocumentKind::Text(TextFlavor::Html))
+        );
+        assert_eq!(
+            sniff_document(page, None, Some("text/html; charset=utf-8")),
+            Some(DocumentKind::Text(TextFlavor::Html))
         );
         // Text bytes, but nothing says it is text.
         assert_eq!(sniff_document(text, Some("data.bin"), None), None);

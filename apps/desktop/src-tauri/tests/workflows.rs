@@ -9539,6 +9539,19 @@ async fn an_agent_whose_step_waits_for_the_user_is_not_counted_as_working() {
     let rows = running().await;
     assert_eq!((rows.len(), working(&rows)), (1, 0), "{rows:?}");
     assert_eq!(rows[0].id, call);
+    let step_waiting = || async {
+        let detail = repo::get_run(pool, enc, &run.id).await.unwrap().unwrap();
+        detail
+            .steps
+            .iter()
+            .find(|s| s.step_id == "act")
+            .unwrap()
+            .waiting
+    };
+    assert!(
+        step_waiting().await,
+        "the run view shows the step as waiting"
+    );
     let activity = repo::agent_activity(pool, enc, "1970-01-01T00:00:00Z")
         .await
         .unwrap();
@@ -9553,6 +9566,7 @@ async fn an_agent_whose_step_waits_for_the_user_is_not_counted_as_working() {
         .unwrap();
     let rows = running().await;
     assert_eq!(working(&rows), 1);
+    assert!(!step_waiting().await);
 }
 
 #[tokio::test]

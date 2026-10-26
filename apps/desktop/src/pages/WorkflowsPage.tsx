@@ -2141,12 +2141,14 @@ function RunStepRow({
       ? onOpenDeck && (() => onOpenDeck(edit.target!.id))
       : onOpenDraft && (() => onOpenDraft(edit.target!.id))
     : undefined;
+  // A step waiting for an approval or an answer is still running, but says so.
+  const stepStatus = step.waiting && step.status === 'running' ? 'paused' : step.status;
   return (
     <li className={step.iteration != null ? 'wf-run-step wf-run-step-nested' : 'wf-run-step'}>
       <details>
         <summary className="wf-step-sum">
           <span className="wf-step-top">
-            <span className={STATUS_CLASS[step.status] ?? 'wf-status'}>{statusLabel(step.status)}</span>
+            <span className={STATUS_CLASS[stepStatus] ?? 'wf-status'}>{statusLabel(stepStatus)}</span>
             <span className="wf-step-name">{name}</span>
           </span>
           {description ? <span className="wf-muted wf-step-desc">{description}</span> : null}

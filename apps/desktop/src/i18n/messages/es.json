@@ -3604,5 +3604,6 @@
   "settings.connectors.detail.markReadOnlyAria": "{tool} solo lee, así que se ejecuta sin preguntar",
   "workspace.workflows.editor.connector.toolUnstated": "{tool} — no indica si cambia algo, te pregunta antes",
   "settings.connectors.detail.unstatedHint": "Algunas herramientas no indican si cambian algo, así que preguntan antes de cada llamada. Marca «Solo lee» en una herramienta de la que te fíes que solo consulta: entonces se ejecuta sin preguntar en chats, agentes y flujos de trabajo.",
-  "workspace.workflows.editor.connector.askUnstated": "«{tool}» no indica si cambia algo en {name}, así que la ejecución se detiene y pregunta antes de cada llamada. Si solo consulta, márcala como «Solo lee» en Contexto → Conectores."
+  "workspace.workflows.editor.connector.askUnstated": "«{tool}» no indica si cambia algo en {name}, así que la ejecución se detiene y pregunta antes de cada llamada. Si solo consulta, márcala como «Solo lee» en Contexto → Conectores.",
+  "consent.permission.undeclared": "Esta herramienta no indica si cambia algo, así que pregunta antes. Si solo consulta, puedes marcarla como «Solo lee» en Contexto → Conectores."
 }

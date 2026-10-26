@@ -1135,6 +1135,8 @@ export interface WorkflowRunStep {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+  /** A running step that is waiting for you (an approval or an answer). */
+  waiting?: boolean;
 }
 
 export interface WorkflowRunDetail {

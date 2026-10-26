@@ -3030,6 +3030,11 @@ pub struct ConsentPrompt {
     /// non-empty) to compose the expected-effect text — Rust sends the facts,
     /// not the composed English sentence.
     pub permission_level: PermissionLevel,
+    /// The tool declares nothing about what it does, so it asks because it
+    /// is unknown, not because it said it changes things. The user can mark
+    /// it as only reading (Context → Connectors).
+    #[serde(default)]
+    pub undeclared: bool,
     /// The tool's own description, as declared by the connector. Untrusted
     /// display data — redacted/truncated upstream like `arguments`.
     pub tool_description: String,

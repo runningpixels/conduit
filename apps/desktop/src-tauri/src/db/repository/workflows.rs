@@ -118,6 +118,9 @@ pub struct WorkflowRunStep {
     pub error: Option<String>,
     pub started_at: String,
     pub finished_at: Option<String>,
+    /// A running step that is waiting for the user (an approval or an answer).
+    #[serde(default)]
+    pub waiting: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -756,18 +759,31 @@ pub async fn get_run(
         Option<String>,
         String,
         Option<String>,
+        Option<String>,
     );
     let rows: Vec<StepRow> = sqlx::query_as(
-        "SELECT id, run_id, step_id, iteration, status, input_json, output_json, error, started_at, finished_at \
-         FROM workflow_run_steps WHERE run_id = ? ORDER BY started_at, rowid",
+        "SELECT id, run_id, step_id, iteration, status, input_json, output_json, error, started_at, finished_at, \
+         waiting_since FROM workflow_run_steps WHERE run_id = ? ORDER BY started_at, rowid",
     )
     .bind(run_id)
     .fetch_all(pool)
     .await?;
     let mut steps = Vec::with_capacity(rows.len());
-    for (id, run_id, step_id, iteration, status, input, output, error, started_at, finished_at) in
-        rows
+    for (
+        id,
+        run_id,
+        step_id,
+        iteration,
+        status,
+        input,
+        output,
+        error,
+        started_at,
+        finished_at,
+        waiting_since,
+    ) in rows
     {
+        let waiting = status == "running" && waiting_since.is_some();
         steps.push(WorkflowRunStep {
             id,
             run_id,
@@ -782,6 +798,7 @@ pub async fn get_run(
             error,
             started_at,
             finished_at,
+            waiting,
         });
     }
     let mut run = run_from(row);

@@ -3604,5 +3604,6 @@
   "settings.connectors.detail.markReadOnlyAria": "{tool} liest nur und läuft daher ohne Rückfrage",
   "workspace.workflows.editor.connector.toolUnstated": "{tool} – gibt nicht an, ob es etwas ändert, fragt dich zuerst",
   "settings.connectors.detail.unstatedHint": "Manche Tools geben nicht an, ob sie etwas ändern, und fragen daher vor jedem Aufruf. Hake „Liest nur“ bei einem Tool an, dem du zutraust, nur nachzuschlagen: Es läuft dann in Chats, Agenten und Workflows ohne Rückfrage.",
-  "workspace.workflows.editor.connector.askUnstated": "„{tool}“ gibt nicht an, ob es in {name} etwas ändert, daher hält der Lauf vor jedem Aufruf an und fragt. Wenn es nur nachschlägt, markiere es unter Kontext → Connectors als „Liest nur“."
+  "workspace.workflows.editor.connector.askUnstated": "„{tool}“ gibt nicht an, ob es in {name} etwas ändert, daher hält der Lauf vor jedem Aufruf an und fragt. Wenn es nur nachschlägt, markiere es unter Kontext → Connectors als „Liest nur“.",
+  "consent.permission.undeclared": "Dieses Tool gibt nicht an, ob es etwas ändert, daher fragt es zuerst. Wenn es nur nachschlägt, kannst du es unter Kontext → Connectors als „Liest nur“ markieren."
 }

@@ -3604,5 +3604,6 @@
   "settings.connectors.detail.markReadOnlyAria": "{tool} only reads, so it runs without asking",
   "workspace.workflows.editor.connector.toolUnstated": "{tool} — doesn’t say if it changes things, asks you first",
   "settings.connectors.detail.unstatedHint": "Some tools don’t say whether they change anything, so they ask before each call. Tick “Only reads” for a tool you trust to only look things up: it then runs without asking in chats, agents and workflows.",
-  "workspace.workflows.editor.connector.askUnstated": "“{tool}” doesn’t say whether it changes anything in {name}, so the run stops and asks before each call. If it only looks things up, mark it “Only reads” in Context → Connectors."
+  "workspace.workflows.editor.connector.askUnstated": "“{tool}” doesn’t say whether it changes anything in {name}, so the run stops and asks before each call. If it only looks things up, mark it “Only reads” in Context → Connectors.",
+  "consent.permission.undeclared": "This tool doesn’t say whether it changes anything, so it asks first. If it only looks things up, you can mark it “Only reads” in Context → Connectors."
 }

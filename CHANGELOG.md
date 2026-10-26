@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.16] - 2026-10-26
+
+HTML files in chat and Documents, a tidier Settings, and a security update.
+
+### Added
+
+- **HTML files** can be attached to a chat and added to Documents, alongside
+  PDF, Word, text, Markdown and CSV. The page's title and text are read;
+  scripts, styles and other code are left out.
+
+### Changed
+
+- **Settings:** Usage & cost and Updates have their own sections. About shows
+  the version, links to the website, source code and issue tracker, the
+  license, and where the app keeps its files on this machine. The command
+  palette opens the new sections directly.
+
+### Security
+
+- Raised undici, used only by the test suite, to 7.30.1
+  (GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472). The app
+  itself does not ship undici.
+
 ## [1.0.0-rc.15] - 2026-10-26
 
 Fixes found by running agents on a real shopping task, a crash on long tool
@@ -1527,7 +1550,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.15...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.16...HEAD
+[1.0.0-rc.16]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.15...v1.0.0-rc.16
 [1.0.0-rc.15]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.14...v1.0.0-rc.15
 [1.0.0-rc.14]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.13...v1.0.0-rc.14
 [1.0.0-rc.13]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.12...v1.0.0-rc.13

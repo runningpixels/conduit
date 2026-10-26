@@ -8,7 +8,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
 import type { AppSettings } from '@conduit/config-schema';
-import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
+import { ComposerModelPicker, menuCeiling, type ComposerModelPickerHandle } from './ComposerModelPicker';
 
 const settings = {
   activeProvider: 'anthropic',
@@ -378,5 +378,29 @@ describe('ComposerModelPicker — providers that list no models', () => {
     );
     fireEvent.click(screen.getByTitle('Switch model'));
     expect(await screen.findByLabelText('Model id for Ollama')).toHaveValue('qwen3:14b');
+  });
+});
+
+describe('menuCeiling', () => {
+  function box(el: HTMLElement, top: number) {
+    el.getBoundingClientRect = () => ({ top, bottom: top + 40 }) as DOMRect;
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('stops the menu at a clipping pane below the title bar, not at the title bar', () => {
+    document.body.innerHTML =
+      '<div class="titlebar"></div><section style="overflow-y:auto"><div><button></button></div></section>';
+    box(document.querySelector<HTMLElement>('.titlebar')!, -8);
+    box(document.querySelector<HTMLElement>('section')!, 78);
+    expect(menuCeiling(document.querySelector('button')!)).toBe(78);
+  });
+
+  it('falls back to the title bar when nothing above the trigger clips', () => {
+    document.body.innerHTML = '<div class="titlebar"></div><div><button></button></div>';
+    box(document.querySelector<HTMLElement>('.titlebar')!, -8);
+    expect(menuCeiling(document.querySelector('button')!)).toBe(32);
   });
 });

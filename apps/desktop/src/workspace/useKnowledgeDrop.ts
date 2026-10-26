@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
  * `src-tauri/src/commands/knowledge.rs`; the Rust extractor stays the real
  * authority and still refuses anything it can't read, by name.
  */
-export const KNOWLEDGE_EXTENSIONS = ['txt', 'md', 'markdown', 'mdown', 'text', 'csv', 'docx', 'pdf'];
+export const KNOWLEDGE_EXTENSIONS = ['txt', 'md', 'markdown', 'mdown', 'text', 'csv', 'docx', 'pdf', 'html', 'htm'];
 
 /** The dropped paths the knowledge base can take, in drop order. */
 export function knowledgeDropPaths(paths: string[]): string[] {

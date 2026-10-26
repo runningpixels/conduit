@@ -17,7 +17,7 @@ export const COMPOSER_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp';
 
 /**
  * What the "+" picker offers: images plus the documents the send path can
- * read (pdf, docx, txt, md, csv). Both the extension and the MIME type are
+ * read (pdf, docx, txt, md, csv, html). Both the extension and the MIME type are
  * listed because browsers/WebView2 match on either and report neither
  * reliably (a `.md` often has no MIME at all). This is only the picker's
  * filter, not the authority: Rust sniffs the bytes and `attachment_delivery`
@@ -30,11 +30,14 @@ export const COMPOSER_DOCUMENT_ACCEPT = [
   '.txt',
   '.md',
   '.csv',
+  '.html',
+  '.htm',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
   'text/markdown',
   'text/csv',
+  'text/html',
 ].join(',');
 
 export const COMPOSER_ATTACH_ACCEPT = `${COMPOSER_IMAGE_ACCEPT},${COMPOSER_DOCUMENT_ACCEPT}`;

@@ -53,8 +53,14 @@ quality gate; expanded there with automated survival/migration checks.
       in GitHub Actions secrets (never in the repo).
 - [ ] Matrix build (ubuntu/macos-aarch64/macos-x86_64/windows) green; each
       platform produced an updater-signed bundle + `.sig`.
-- [ ] GitHub Release created with all bundle assets attached.
+- [ ] GitHub Release created **as a draft** (by the `meta` job) with all bundle
+      assets attached. While it is a draft the previous release stays "latest",
+      so the website's download links keep working.
 - [ ] `manifest` job generated `<channel>/manifest.json` and attached it.
+- [ ] `manifest` job's "Publish the release" step ran: the release is public and,
+      on stable, "latest". If the run failed earlier, the release is still a
+      draft: fix the cause and publish it by hand (`gh release edit <tag>
+      --draft=false --latest`).
 - [ ] **No** notarization / signtool / GPG step ran (deferred — confirm absence).
 
 ## Host the manifest

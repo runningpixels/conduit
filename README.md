@@ -284,7 +284,9 @@ timings, and what an answer drew on in **Sources**.
 **Library** keeps the prompts you reuse, in folders and with tags. A prompt can
 have `{{variables}}` you fill in when you insert it into the composer. Its
 **Skills** tab holds `SKILL.md` skill packages: instructions and files the
-assistant loads for a chat when you add the skill.
+assistant loads for a chat when you add the skill. Import one from a GitHub
+link, or have the model draft one from a chat with **Make a skill from this
+chat** in the command palette.
 
 ![The Library: a "Review this diff" prompt with a diff variable, next to "Explain this error" and "Draft release notes"](./docs/assets/screenshot-library.webp)
 
@@ -348,6 +350,8 @@ dates, numbers and file sizes follow the language you pick.
   spend alert. A per-chat **reasoning effort** setting, and a model menu you
   can search.
 - **Settings search** and a keyboard shortcuts sheet (`Ctrl+/`, `⌘/` on macOS).
+- **Quick ask**: an optional system-wide shortcut that opens a small ask box
+  from anywhere.
 - **White-label branding**: a name, mark and colours from a `brand.md`.
 
 ![Usage & Cost in Settings for this month: an estimated $0.1294 across 574K input and 141K output tokens, a table of GLM 5.3 Flash and GLM 5.3 through OpenRouter with each model's tokens, cost and an Edit price button, a bar chart of cost per day, and the daily spend alert](./docs/assets/screenshot-usage.webp)
@@ -380,7 +384,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.16 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.17 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -419,7 +423,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.16 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.17 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

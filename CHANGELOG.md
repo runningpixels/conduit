@@ -7,6 +7,56 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.17] - 2026-10-28
+
+Continue a reply that hit the output limit, skills made from a chat or
+imported from GitHub, a quick-ask shortcut, and connector tools that stay out
+of the way until a model needs them.
+
+### Added
+
+- **Continue a cut-off reply.** When a reply stops at the output limit, the
+  note under it has a **Continue** button. The model picks up exactly where it
+  stopped, in the same message, with no new message from you. It works with
+  every provider.
+- **Make a skill from a chat.** The command palette's "Make a skill from this
+  chat" has the current model draft a skill's name, description and
+  instructions from what you asked. You edit the draft; nothing is saved until
+  you choose Save, which also turns the skill on for that chat. Tool output and
+  document text are never sent to the draft.
+- **Import a skill from GitHub.** Settings → Skills takes a
+  `github.com/owner/repo` link or a link to a folder in it. Only that folder is
+  unpacked, and scripts in a skill are never run. A name that already exists
+  now offers to replace the skill instead of failing.
+- **Quick ask shortcut.** Off by default. Set one in Settings → Chat and it
+  opens a small ask box from anywhere; Enter sends the question to the app,
+  which opens it like the Home ask box. Esc or clicking away hides the box. Not
+  available on Linux Wayland, where global shortcuts generally don't work.
+- **Tool search for many connectors.** When a chat would offer more than 20
+  connector tools, or their descriptions run long, the model gets a
+  `search_tools` tool instead of the whole list and loads the tools it finds
+  for that turn. With fewer tools nothing changes, and approvals work as
+  before.
+
+### Fixed
+
+- **Windows:** a connector started from a command, such as `node` or `npx`,
+  no longer opens a console window that reappears when you close it.
+- **Releases:** a new release stays a draft until every installer is
+  attached, so the website's download links no longer fail while a release is
+  being published.
+
+### Changed
+
+- Requests to OpenRouter use its current attribution header names and list
+  Conduit under general chat and personal agents.
+- Model prices refreshed from models.dev.
+
+### Security
+
+- Raised pulldown-cmark to 0.13.5 (exponential event growth with
+  `ENABLE_WIKILINKS`, which Conduit does not turn on).
+
 ## [1.0.0-rc.16] - 2026-10-26
 
 HTML files in chat and Documents, a tidier Settings, and a security update.
@@ -1550,7 +1600,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.16...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.17...HEAD
+[1.0.0-rc.17]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.16...v1.0.0-rc.17
 [1.0.0-rc.16]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.15...v1.0.0-rc.16
 [1.0.0-rc.15]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.14...v1.0.0-rc.15
 [1.0.0-rc.14]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.13...v1.0.0-rc.14

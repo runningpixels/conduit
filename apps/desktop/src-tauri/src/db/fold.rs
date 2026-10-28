@@ -121,6 +121,13 @@ pub fn fold(
                     created_at: now.to_string(),
                 });
             }
+            // A continued reply is open again until its next terminal event;
+            // its text joins the cut-off part because the continuation's own
+            // start of that block is never logged (`continue_reply::BlockJoin`).
+            ProviderEvent::ReplyContinued { .. } => {
+                finalized = false;
+                finish_reason = None;
+            }
             ProviderEvent::MessageComplete {
                 finish_reason: fr, ..
             } => {

@@ -3619,5 +3619,7 @@
   "settings.about.files.title": "Files on this machine",
   "workspace.commandPalette.command.usage": "Usage & cost",
   "workspace.commandPalette.command.updates": "Updates",
-  "shell.settingsSheet.about.intro": "Which version this is, where to find the project, and where {appName} keeps its files on this machine."
+  "shell.settingsSheet.about.intro": "Which version this is, where to find the project, and where {appName} keeps its files on this machine.",
+  "chat.assistant.continueReply": "Continue",
+  "chat.assistant.continueReplyLabel": "Continue this reply"
 }

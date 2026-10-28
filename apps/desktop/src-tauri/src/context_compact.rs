@@ -173,6 +173,7 @@ async fn summarize_range(
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     };
 
     let settings = state.settings()?;

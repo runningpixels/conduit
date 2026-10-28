@@ -738,6 +738,13 @@ pub struct ProviderRequest {
     /// web search on this turn" regardless of `AppSettings.web_search_enabled`.
     #[ts(optional)]
     pub web_search: Option<WebSearchRequest>,
+    /// Continue this assistant message instead of answering a new user
+    /// message: the reply the provider stopped at its output-token limit. The
+    /// new text is appended to that message; no user message is added. Only
+    /// the conversation's last reply, and only one that ended with `length`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub continue_message_id: Option<String>,
 }
 
 /// t0-8: a single non-streaming image-generation call. Distinct from
@@ -1055,6 +1062,13 @@ pub enum ProviderEvent {
     UserNote {
         request_id: String,
         text: String,
+    },
+    /// The user asked the app to continue this turn's reply, which stopped at
+    /// the output-token limit. The events after it extend the same reply: the
+    /// turn is open again until its next terminal event, and the text picks up
+    /// where the cut-off block ended. Adapters never produce it.
+    ReplyContinued {
+        request_id: String,
     },
 }
 

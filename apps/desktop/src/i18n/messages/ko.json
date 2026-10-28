@@ -3619,5 +3619,7 @@
   "settings.about.files.title": "이 컴퓨터의 파일",
   "workspace.commandPalette.command.usage": "사용량 및 비용",
   "workspace.commandPalette.command.updates": "업데이트",
-  "shell.settingsSheet.about.intro": "현재 버전, 프로젝트를 찾을 수 있는 곳, 그리고 {appName}이(가) 이 컴퓨터에서 파일을 보관하는 위치입니다."
+  "shell.settingsSheet.about.intro": "현재 버전, 프로젝트를 찾을 수 있는 곳, 그리고 {appName}이(가) 이 컴퓨터에서 파일을 보관하는 위치입니다.",
+  "chat.assistant.continueReply": "계속",
+  "chat.assistant.continueReplyLabel": "이 답변 이어서 쓰기"
 }

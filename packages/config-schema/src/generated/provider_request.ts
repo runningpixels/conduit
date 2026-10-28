@@ -11,4 +11,11 @@ export type ProviderRequest = { requestId: string, conversationId: string, model
  * serialize it onto the provider's hosted-search tool. Absent means "no
  * web search on this turn" regardless of `AppSettings.web_search_enabled`.
  */
-webSearch?: WebSearchRequest, };
+webSearch?: WebSearchRequest, 
+/**
+ * Continue this assistant message instead of answering a new user
+ * message: the reply the provider stopped at its output-token limit. The
+ * new text is appended to that message; no user message is added. Only
+ * the conversation's last reply, and only one that ended with `length`.
+ */
+continueMessageId?: string, };

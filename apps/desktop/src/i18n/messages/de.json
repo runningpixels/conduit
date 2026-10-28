@@ -3619,5 +3619,7 @@
   "settings.about.files.title": "Dateien auf diesem Rechner",
   "workspace.commandPalette.command.usage": "Nutzung & Kosten",
   "workspace.commandPalette.command.updates": "Updates",
-  "shell.settingsSheet.about.intro": "Welche Version das ist, wo du das Projekt findest und wo {appName} seine Dateien auf diesem Rechner speichert."
+  "shell.settingsSheet.about.intro": "Welche Version das ist, wo du das Projekt findest und wo {appName} seine Dateien auf diesem Rechner speichert.",
+  "chat.assistant.continueReply": "Weiterschreiben",
+  "chat.assistant.continueReplyLabel": "Diese Antwort weiterschreiben"
 }

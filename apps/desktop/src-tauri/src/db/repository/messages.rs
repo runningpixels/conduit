@@ -251,6 +251,20 @@ pub async fn apply_event_in_txn(
             .execute(&mut **tx)
             .await?;
         }
+        // The user continued a reply cut off at the output limit: the turn is
+        // open again, and its next terminal event sets the new ending. The
+        // continued text joins the cut-off block with no break because the
+        // stream drops the continuation's own start of that block
+        // (`continue_reply::BlockJoin`), so no `ContentBlockStart` reaches
+        // this part again. Mirrored in `fold`.
+        ProviderEvent::ReplyContinued { .. } => {
+            sqlx::query(
+                "UPDATE messages SET finalized = 0, finish_reason = NULL WHERE request_id = ?",
+            )
+            .bind(request_id)
+            .execute(&mut **tx)
+            .await?;
+        }
         ProviderEvent::MessageComplete { finish_reason, .. } => {
             sqlx::query(
                 "UPDATE messages SET finalized = 1, finish_reason = ? WHERE request_id = ?",
@@ -360,6 +374,80 @@ pub async fn get_message_id_by_request(
         .fetch_optional(pool)
         .await?;
     Ok(row.map(|(id,)| id))
+}
+
+/// One past the highest part index of the reply for `request_id` (0 when it
+/// has no parts): where a continued reply's new parts go, so the view's order
+/// (by index) stays the order the fold adds them in.
+pub async fn next_part_index(pool: &SqlitePool, request_id: &str) -> Result<usize, DbError> {
+    let (next,): (i64,) = sqlx::query_as(
+        "SELECT COALESCE(MAX(p.idx), -1) + 1 FROM message_parts p \
+         JOIN messages m ON m.id = p.message_id WHERE m.request_id = ?",
+    )
+    .bind(request_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(next.max(0) as usize)
+}
+
+/// An assistant reply as continuing it needs it (`continue_reply`).
+pub struct ReplyToContinue {
+    pub request_id: String,
+    pub finish_reason: Option<String>,
+    /// Its text parts in order: the model's own words so far.
+    pub text: String,
+    /// No user or assistant message comes after it in its conversation.
+    pub is_last: bool,
+}
+
+/// The assistant reply `message_id` of `conversation_id`, or `None` when the
+/// conversation has no such assistant reply.
+pub async fn reply_to_continue(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    message_id: &str,
+) -> Result<Option<ReplyToContinue>, DbError> {
+    let row: Option<(String, Option<String>, Option<String>, String)> = sqlx::query_as(
+        "SELECT role, request_id, finish_reason, created_at FROM messages \
+         WHERE id = ? AND conversation_id = ?",
+    )
+    .bind(message_id)
+    .bind(conversation_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((role, Some(request_id), finish_reason, created_at)) = row else {
+        return Ok(None);
+    };
+    if role != "assistant" {
+        return Ok(None);
+    }
+    let (later,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM messages WHERE conversation_id = ? AND id <> ? \
+         AND role IN ('user', 'assistant') AND created_at > ?",
+    )
+    .bind(conversation_id)
+    .bind(message_id)
+    .bind(&created_at)
+    .fetch_one(pool)
+    .await?;
+    let texts: Vec<(Option<String>,)> = sqlx::query_as(
+        "SELECT content FROM message_parts WHERE message_id = ? AND kind = 'text' ORDER BY idx",
+    )
+    .bind(message_id)
+    .fetch_all(pool)
+    .await?;
+    let text = texts
+        .into_iter()
+        .filter_map(|(content,)| content)
+        .filter(|content| !content.is_empty())
+        .collect::<Vec<_>>()
+        .join(ROUND_BREAK);
+    Ok(Some(ReplyToContinue {
+        request_id,
+        finish_reason,
+        text,
+        is_last: later == 0,
+    }))
 }
 
 // --- request-message persistence (user / system / developer messages) ---------

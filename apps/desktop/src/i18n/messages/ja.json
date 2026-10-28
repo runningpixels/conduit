@@ -3619,5 +3619,7 @@
   "settings.about.files.title": "このマシン上のファイル",
   "workspace.commandPalette.command.usage": "使用量と費用",
   "workspace.commandPalette.command.updates": "更新",
-  "shell.settingsSheet.about.intro": "このバージョン、プロジェクトの場所、{appName} がこのマシン上でファイルを保存する場所。"
+  "shell.settingsSheet.about.intro": "このバージョン、プロジェクトの場所、{appName} がこのマシン上でファイルを保存する場所。",
+  "chat.assistant.continueReply": "続ける",
+  "chat.assistant.continueReplyLabel": "この返信の続きを書く"
 }

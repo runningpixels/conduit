@@ -927,6 +927,7 @@ fn request_for(
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     }
 }
 

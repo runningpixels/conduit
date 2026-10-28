@@ -3892,6 +3892,7 @@ fn chat_request(conversation_id: &str) -> ProviderRequest {
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     }
 }
 
@@ -7566,8 +7567,15 @@ async fn a_helper_an_agent_hands_work_to_is_reachable_through_the_workflow() {
 
 // ── A step run as one of the user's agents, and routines ────────────────────
 
-#[tokio::test]
-async fn a_step_run_as_one_of_the_users_agents_uses_its_instructions_model_tools_and_helpers() {
+#[test]
+fn a_step_run_as_one_of_the_users_agents_uses_its_instructions_model_tools_and_helpers() {
+    on_the_apps_stack(
+        a_step_run_as_one_of_the_users_agents_uses_its_instructions_model_tools_and_helpers_body(),
+    );
+}
+
+async fn a_step_run_as_one_of_the_users_agents_uses_its_instructions_model_tools_and_helpers_body()
+{
     let model = EchoModel {
         tool_calls: vec![("ask_writer", json!({ "task": "Write it up" }))],
         offered_only: true,
@@ -7873,8 +7881,12 @@ async fn routines_are_listed_by_agent_with_their_last_result_and_turn_into_workf
 
 // ── Helpers side by side, stopped, and as a tree ────────────────────────────
 
-#[tokio::test]
-async fn a_runs_agents_come_back_as_a_tree_with_their_names_and_tokens() {
+#[test]
+fn a_runs_agents_come_back_as_a_tree_with_their_names_and_tokens() {
+    on_the_apps_stack(a_runs_agents_come_back_as_a_tree_with_their_names_and_tokens_body());
+}
+
+async fn a_runs_agents_come_back_as_a_tree_with_their_names_and_tokens_body() {
     let model = EchoModel {
         usage: Some(10),
         ..asks_the_researcher()

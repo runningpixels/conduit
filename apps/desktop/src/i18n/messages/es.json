@@ -3619,5 +3619,7 @@
   "settings.about.files.title": "Archivos en este PC",
   "workspace.commandPalette.command.usage": "Uso y costo",
   "workspace.commandPalette.command.updates": "Actualizaciones",
-  "shell.settingsSheet.about.intro": "Qué versión es, dónde encontrar el proyecto y dónde guarda {appName} sus archivos en este PC."
+  "shell.settingsSheet.about.intro": "Qué versión es, dónde encontrar el proyecto y dónde guarda {appName} sus archivos en este PC.",
+  "chat.assistant.continueReply": "Continuar",
+  "chat.assistant.continueReplyLabel": "Continuar esta respuesta"
 }

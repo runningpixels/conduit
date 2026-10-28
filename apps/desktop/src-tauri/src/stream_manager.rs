@@ -57,6 +57,9 @@ pub struct ProviderRoundBind<'a> {
     /// one (a workflow step with its own model). `None` is the chat's
     /// behaviour: the active provider.
     pub provider_override: Option<&'a str>,
+    /// A continued reply's first round: its text joins the reply's cut-off
+    /// block, with no break (`continue_reply::BlockJoin`). `None` otherwise.
+    pub continuing: Option<&'a crate::continue_reply::Continuation>,
 }
 
 /// Outcome of a single provider streaming round.
@@ -655,6 +658,60 @@ pub fn unstarted_draft_section(
     (named > 0 && unwritten.len() == named)
         .then(|| unwritten.into_iter().next())
         .flatten()
+}
+
+/// Whether `request` asks to continue a cut-off reply.
+pub fn wants_continuation(request: &ProviderRequest) -> bool {
+    request
+        .continue_message_id
+        .as_deref()
+        .is_some_and(|id| !id.trim().is_empty())
+}
+
+/// Open a continued reply again: the app's request is added to `request`
+/// (call after its messages are saved: this one must never be), and the
+/// marker is saved with the turn (the view and the fold both reopen it) and
+/// sent, so the live view does too. A boxed future from a plain function,
+/// like `StreamManager::begin_continuation`.
+fn reopen_continued_reply<'a>(
+    state: &'a AppState,
+    request: &'a mut ProviderRequest,
+    channel: &'a EventSink<ProviderEvent>,
+) -> futures::future::BoxFuture<'a, Result<(), String>> {
+    Box::pin(async move {
+        crate::continue_reply::push_nudge(request);
+        let marker = crate::continue_reply::marker(&request.request_id);
+        crate::db::repository::event_log::append_and_apply_batch(
+            &state.db,
+            &request.conversation_id,
+            &request.request_id,
+            std::slice::from_ref(&marker),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        let _ = channel.send(marker);
+        Ok(())
+    })
+}
+
+/// The rewriter for a continued reply's round (`None` for any other round),
+/// its new parts placed after the reply's. A boxed future, like
+/// `reopen_continued_reply`.
+fn block_join_for<'a>(
+    pool: &'a sqlx::SqlitePool,
+    persist_request_id: &'a str,
+    continuing: Option<&'a crate::continue_reply::Continuation>,
+) -> futures::future::BoxFuture<'a, Option<Box<crate::continue_reply::BlockJoin>>> {
+    Box::pin(async move {
+        let continuation = continuing?;
+        let next_index = messages::next_part_index(pool, persist_request_id)
+            .await
+            .unwrap_or(0);
+        Some(Box::new(crate::continue_reply::BlockJoin::new(
+            continuation.join_block_id.clone(),
+            next_index,
+        )))
+    })
 }
 
 /// The message that asks the model for the next section of a draft.
@@ -1578,6 +1635,50 @@ impl StreamManager {
         })
     }
 
+    /// Check and rewrite a request that continues a cut-off reply
+    /// (`continue_reply::prepare`); `Ok(None)` for any other request. Refused
+    /// while a stream is running in the conversation.
+    ///
+    /// Returns a boxed future from a plain function so its state is built
+    /// here and never in the caller's frame: helpers' turns nest inside other
+    /// turns, and a debug build's frames are large.
+    fn begin_continuation<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: &'a mut ProviderRequest,
+    ) -> futures::future::BoxFuture<'a, Result<Option<crate::continue_reply::Continuation>, String>>
+    {
+        Box::pin(async move {
+            if !wants_continuation(request) {
+                return Ok(None);
+            }
+            if self.active_turn(&request.conversation_id).is_some() {
+                return Err(crate::continue_reply::TURN_RUNNING.to_string());
+            }
+            crate::continue_reply::prepare(&state.db, request).await
+        })
+    }
+
+    /// [`Self::begin_continuation`], then, for a continuation, the app's
+    /// request added and the reply reopened (saved, and sent on `channel`).
+    /// Call after the request's messages are saved: the app's request must
+    /// never be. A boxed future, like [`Self::begin_continuation`].
+    fn start_continuation<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: &'a mut ProviderRequest,
+        channel: &'a EventSink<ProviderEvent>,
+    ) -> futures::future::BoxFuture<'a, Result<Option<crate::continue_reply::Continuation>, String>>
+    {
+        Box::pin(async move {
+            let Some(continuation) = self.begin_continuation(state, request).await? else {
+                return Ok(None);
+            };
+            reopen_continued_reply(state, request, channel).await?;
+            Ok(Some(continuation))
+        })
+    }
+
     /// Who holds `conversation_id`'s turn, if anyone.
     pub fn turn_holder(&self, conversation_id: &str) -> Option<TurnOwner> {
         self.turns
@@ -1728,7 +1829,7 @@ impl StreamManager {
     pub async fn start_chat_stream_with(
         &self,
         state: &AppState,
-        request: ProviderRequest,
+        mut request: ProviderRequest,
         channel: impl Into<EventSink<ProviderEvent>>,
         provider_override: Option<&str>,
     ) -> Result<StreamHandle, String> {
@@ -1739,6 +1840,14 @@ impl StreamManager {
             .unwrap_or_else(|| settings.active_provider.clone());
         let conversation_id = request.conversation_id.clone();
         let model_id = request.model_id.clone();
+        // A continued reply is checked, and takes the reply's request id,
+        // before anything is saved or registered.
+        if wants_continuation(&request) {
+            if let Some(holder) = self.turn_holder(&conversation_id) {
+                return Err(holder.busy_message(&TurnOwner::Chat));
+            }
+        }
+        let continuation = self.begin_continuation(state, &mut request).await?;
         let request_id = if request.request_id.trim().is_empty() {
             uuid::Uuid::new_v4().to_string()
         } else {
@@ -1787,6 +1896,12 @@ impl StreamManager {
 
         let mut provider_request = request;
         provider_request.request_id = request_id.clone();
+        if continuation.is_some() {
+            if let Err(e) = reopen_continued_reply(state, &mut provider_request, &channel).await {
+                self.forget_stream(&request_id);
+                return Err(e);
+            }
+        }
 
         // Delegate to the reusable round runner. For the single-round public API
         // we surface any setup or round-level error as before. There is no loop
@@ -1802,6 +1917,7 @@ impl StreamManager {
                     persist_request_id: &request_id,
                     release_active: true,
                     provider_override,
+                    continuing: continuation.as_ref(),
                 },
             )
             .await;
@@ -2133,6 +2249,8 @@ impl StreamManager {
 
         futures::pin_mut!(stream);
         let mut deltas = DeltaBuffer::default();
+        // A continued reply: its text goes on in the cut-off block.
+        let mut join = block_join_for(&pool, &persist_id, bind.continuing).await;
         loop {
             // Wait for the next event, but not past the moment the oldest
             // waiting delta is due: a provider that goes quiet mid-answer must
@@ -2147,9 +2265,15 @@ impl StreamManager {
                 },
                 None => stream.next().await,
             };
-            let Some(event) = next else { break };
+            let Some(mut event) = next else { break };
             if cancel.is_cancelled() {
                 break;
+            }
+            // A continued reply: its text goes on in the cut-off block.
+            if let Some(join) = join.as_mut() {
+                if !join.rewrite(&mut event) {
+                    continue;
+                }
             }
             if let ProviderEvent::Error { error, .. } = &event {
                 // Cancelled transport surfaces as a non-retryable error; treat
@@ -3527,6 +3651,7 @@ impl StreamManager {
             // user enabled search for the first round, the agent loop should
             // not silently drop it on continuation rounds.
             web_search: previous_request.web_search.clone(),
+            continue_message_id: None,
         })
     }
 
@@ -3681,7 +3806,7 @@ impl StreamManager {
         &self,
         state: &AppState,
         runtime: &crate::connector_runtime::ConnectorRuntimeManager,
-        initial_request: ProviderRequest,
+        mut initial_request: ProviderRequest,
         channel: impl Into<EventSink<ProviderEvent>>,
         runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
         provider_override: Option<&str>,
@@ -3689,11 +3814,6 @@ impl StreamManager {
     ) -> Result<StreamHandle, String> {
         let channel: EventSink<ProviderEvent> = channel.into();
         let runtime_channel: EventSink<ConnectorRuntimeEvent> = runtime_channel.into();
-        let request_id = if initial_request.request_id.trim().is_empty() {
-            uuid::Uuid::new_v4().to_string()
-        } else {
-            initial_request.request_id.clone()
-        };
         let conversation_id = initial_request.conversation_id.clone();
 
         // One turn per conversation: a second chat message, or a workflow's
@@ -3733,6 +3853,17 @@ impl StreamManager {
         messages::persist_request_messages(&pool, &initial_request.messages)
             .await
             .map_err(|e| e.to_string())?;
+        // A continued reply: checked (its history is already saved, so the
+        // line above saved nothing), given the reply's request id and the
+        // app's request (never saved), and reopened.
+        let continuation = self
+            .start_continuation(state, &mut initial_request, &channel)
+            .await?;
+        let request_id = if initial_request.request_id.trim().is_empty() {
+            uuid::Uuid::new_v4().to_string()
+        } else {
+            initial_request.request_id.clone()
+        };
         conversations::touch(&pool, &conversation_id)
             .await
             .map_err(|e| e.to_string())?;
@@ -3774,6 +3905,10 @@ impl StreamManager {
         let active_model_id = initial_request.model_id.clone();
         let mut current_request = initial_request;
         current_request.request_id = request_id.clone();
+        // A continued reply's first round joins its text onto the cut-off
+        // block. Kept until a round has written text or called a tool, so a
+        // retried first round still joins.
+        let mut continuing = continuation;
         let mut ended_with_pending_tools = false;
         let mut cumulative_usage: Option<provider_core::schema::ProviderUsage> = None;
         let mut successful_document_creates: u32 = 0;
@@ -3930,6 +4065,7 @@ impl StreamManager {
                     persist_request_id: &request_id,
                     release_active: false,
                     provider_override,
+                    continuing: continuing.as_ref(),
                 },
             );
             let mut steered_during_round: Option<String> = None;
@@ -3963,6 +4099,11 @@ impl StreamManager {
             };
             // The provider's next request may start (another helper's).
             drop(slot);
+            // Once a continued reply's round has written or called anything,
+            // later rounds are rounds of their own.
+            if outcome.produced_text || !outcome.completed_tool_calls.is_empty() {
+                continuing = None;
+            }
 
             if deadline.expired(tokio::time::Instant::now()) {
                 info!(
@@ -5064,6 +5205,7 @@ mod draft_continuation_tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         push_draft_continuation(
             &mut request,

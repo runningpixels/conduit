@@ -557,6 +557,7 @@ async fn run_turn_with_settings(
         }),
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     };
 
     let (result, events) = match sink_kind {
@@ -1882,6 +1883,7 @@ async fn usage_rows_after_turn(with_tools: bool) -> Vec<(String, String, i64, i6
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     };
 
     if with_tools {
@@ -1918,4 +1920,499 @@ async fn an_agent_turn_still_records_exactly_one_usage_row() {
         rows,
         vec![("ollama".to_string(), "scripted".to_string(), 2_720, 640)]
     );
+}
+
+// ── Continue a reply cut off at the output limit ─────────────────────────────
+
+/// One conversation the tests send several requests to, against one script.
+struct Chat {
+    pool: sqlx::SqlitePool,
+    state: AppState,
+    runtime: ConnectorRuntimeManager,
+    manager: StreamManager,
+    script: Script,
+    conversation_id: String,
+    _dir: tempfile::TempDir,
+}
+
+fn user_message(conversation_id: &str, id: &str, text: &str, at: &str) -> Message {
+    text_message_of(conversation_id, id, MessageRole::User, text, at)
+}
+
+fn text_message_of(
+    conversation_id: &str,
+    id: &str,
+    role: MessageRole,
+    text: &str,
+    at: &str,
+) -> Message {
+    Message {
+        id: id.into(),
+        conversation_id: conversation_id.into(),
+        role,
+        author_label: None,
+        provider_message_id: None,
+        request_id: None,
+        interrupted_at: None,
+        metadata: None,
+        parts: vec![MessagePart {
+            id: format!("{id}/p0"),
+            message_id: id.into(),
+            index: 0,
+            kind: MessagePartKind::Text,
+            content: Some(text.into()),
+            mime_type: None,
+            tool_call_id: None,
+            artifact_id: None,
+            attachment_id: None,
+            blob_ref: None,
+            metadata: None,
+            created_at: at.into(),
+        }],
+        created_at: at.into(),
+    }
+}
+
+impl Chat {
+    async fn new(rounds: Vec<Round>) -> Self {
+        let pool = common::setup_pool().await;
+        let conversation = conversations::create(&pool, None).await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let settings = AppSettings {
+            active_provider: "ollama".into(),
+            active_model: "scripted".into(),
+            agent: guardrails(25, 300),
+            ..AppSettings::default()
+        };
+        let state =
+            AppState::test_instance_with_settings(pool.clone(), test_paths(dir.path()), settings);
+        let runtime = ConnectorRuntimeManager::new_with(
+            Duration::from_millis(80),
+            Duration::from_millis(800),
+        );
+        let script = Script::new(rounds);
+        let resolver_script = script.clone();
+        let manager = StreamManager::with_adapter_resolver(Arc::new(move |_id: &str| {
+            Some(Box::new(ScriptedAdapter(resolver_script.clone())) as Box<dyn ProviderAdapter>)
+        }));
+        Self {
+            pool,
+            state,
+            runtime,
+            manager,
+            script,
+            conversation_id: conversation.id,
+            _dir: dir,
+        }
+    }
+
+    fn request(
+        &self,
+        request_id: &str,
+        messages: Vec<Message>,
+        continue_message_id: Option<&str>,
+        with_tools: bool,
+    ) -> ProviderRequest {
+        ProviderRequest {
+            request_id: request_id.into(),
+            conversation_id: self.conversation_id.clone(),
+            model_id: "scripted".into(),
+            messages,
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: if with_tools {
+                vec![tool("current_time", "Utilities")]
+            } else {
+                Vec::new()
+            },
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+            continue_message_id: continue_message_id.map(str::to_string),
+        }
+    }
+
+    /// Run `request` as the chat does: the agent loop when it declares tools,
+    /// the single-round stream when it doesn't.
+    async fn send(&self, request: ProviderRequest) -> (Result<(), String>, Vec<ProviderEvent>) {
+        let (sink, collected) = event_sink::collector::<ProviderEvent>();
+        let result = if request.tool_definitions.is_empty() {
+            self.manager
+                .start_chat_stream(&self.state, request, sink)
+                .await
+                .map(|_| ())
+        } else {
+            self.manager
+                .run_agent_turn(
+                    &self.state,
+                    &self.runtime,
+                    request,
+                    sink,
+                    EventSink::discard(),
+                )
+                .await
+                .map(|_| ())
+        };
+        let events = collected.lock().unwrap().clone();
+        (result, events)
+    }
+
+    async fn messages(&self) -> Vec<Message> {
+        conduit_desktop::db::repository::messages::load_conversation_messages(
+            &self.pool,
+            &self.conversation_id,
+        )
+        .await
+        .unwrap()
+    }
+
+    /// The conversation's assistant replies as (id, text, finish reason).
+    async fn replies(&self) -> Vec<(String, String, Option<String>)> {
+        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT id, finish_reason FROM messages \
+             WHERE conversation_id = ? AND role = 'assistant' ORDER BY created_at",
+        )
+        .bind(&self.conversation_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap();
+        let messages = self.messages().await;
+        rows.into_iter()
+            .map(|(id, finish_reason)| {
+                let text = messages
+                    .iter()
+                    .find(|m| m.id == id)
+                    .map(|m| {
+                        m.parts
+                            .iter()
+                            .filter(|p| p.kind == MessagePartKind::Text)
+                            .filter_map(|p| p.content.clone())
+                            .collect::<Vec<_>>()
+                            .join("|")
+                    })
+                    .unwrap_or_default();
+                (id, text, finish_reason)
+            })
+            .collect()
+    }
+
+    async fn logged_events(&self, request_id: &str) -> usize {
+        let (n,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM provider_event_log WHERE conversation_id = ? AND request_id = ?",
+        )
+        .bind(&self.conversation_id)
+        .bind(request_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap();
+        n as usize
+    }
+}
+
+/// An Anthropic-style round: it thinks in `block-0`, then writes `text` in
+/// `block-1` — ids the cut-off reply may already use for other parts.
+fn thinking_then_text_round(thought: &'static str, text: &'static str) -> Round {
+    Arc::new(move |rid: &str| {
+        let r = rid.to_string();
+        vec![
+            Step::Event(ProviderEvent::MessageStart {
+                request_id: r.clone(),
+                index: 0,
+            }),
+            Step::Event(ProviderEvent::ContentBlockStart {
+                request_id: r.clone(),
+                block_id: "block-0".into(),
+                index: 0,
+                block_kind: "thinking".into(),
+            }),
+            Step::Event(ProviderEvent::ReasoningDelta {
+                request_id: r.clone(),
+                block_id: "block-0".into(),
+                index: 0,
+                content: thought.into(),
+            }),
+            Step::Event(ProviderEvent::ContentBlockStart {
+                request_id: r.clone(),
+                block_id: "block-1".into(),
+                index: 1,
+                block_kind: "text".into(),
+            }),
+            Step::Event(ProviderEvent::ContentDelta {
+                request_id: r.clone(),
+                block_id: "block-1".into(),
+                index: 1,
+                content: text.into(),
+            }),
+            Step::Event(ProviderEvent::ContentBlockStop {
+                request_id: r.clone(),
+                block_id: "block-1".into(),
+                index: 1,
+            }),
+            Step::Event(ProviderEvent::MessageComplete {
+                request_id: r,
+                index: 2,
+                finish_reason: "stop".into(),
+            }),
+        ]
+    })
+}
+
+const ASKED_AT: &str = "2026-09-14T00:00:00Z";
+
+/// Send the first question, which the script cuts off at the limit, and
+/// return the cut-off reply's message id.
+async fn cut_off_reply(chat: &Chat, with_tools: bool) -> String {
+    let question = user_message(
+        &chat.conversation_id,
+        "user-1",
+        "Write the report",
+        ASKED_AT,
+    );
+    let (result, _) = chat
+        .send(chat.request("turn-1", vec![question], None, with_tools))
+        .await;
+    result.expect("the first turn runs");
+    let replies = chat.replies().await;
+    assert_eq!(replies.len(), 1);
+    assert_eq!(replies[0].2.as_deref(), Some("length"));
+    replies[0].0.clone()
+}
+
+/// The request the renderer sends to continue `reply_id`: its history ends
+/// with its own copy of the reply, under a request id of its choosing.
+fn continue_request(chat: &Chat, reply_id: &str, with_tools: bool) -> ProviderRequest {
+    let messages = vec![
+        user_message(
+            &chat.conversation_id,
+            "user-1",
+            "Write the report",
+            ASKED_AT,
+        ),
+        text_message_of(
+            &chat.conversation_id,
+            reply_id,
+            MessageRole::Assistant,
+            "The report covers",
+            ASKED_AT,
+        ),
+    ];
+    chat.request("renderer-id", messages, Some(reply_id), with_tools)
+}
+
+async fn continuing_appends_to_the_same_reply(with_tools: bool) {
+    let chat = Chat::new(vec![
+        finishing_with(text_round("The report covers"), "length"),
+        thinking_then_text_round("Where was I?", " three regions."),
+    ])
+    .await;
+    let reply_id = cut_off_reply(&chat, with_tools).await;
+
+    let (result, events) = chat
+        .send(continue_request(&chat, &reply_id, with_tools))
+        .await;
+    result.expect("the continuation runs");
+
+    // One reply, written further with nothing between the old text and the
+    // new: the reply stopped mid-sentence. Its new ending replaces `length`.
+    let replies = chat.replies().await;
+    assert_eq!(
+        replies,
+        vec![(
+            reply_id.clone(),
+            "The report covers three regions.".to_string(),
+            Some("stop".to_string())
+        )]
+    );
+    // The continuation's thinking is a part of its own, not glued onto the text.
+    let messages = chat.messages().await;
+    let reply = messages.iter().find(|m| m.id == reply_id).unwrap();
+    let reasoning: Vec<_> = reply
+        .parts
+        .iter()
+        .filter(|p| p.kind == MessagePartKind::Reasoning)
+        .filter_map(|p| p.content.as_deref())
+        .collect();
+    assert_eq!(reasoning, vec!["Where was I?"]);
+
+    // No new message: the user's question and the one reply.
+    assert_eq!(messages.len(), 2, "{messages:#?}");
+    assert!(messages
+        .iter()
+        .flat_map(|m| &m.parts)
+        .all(|p| p.content.as_deref() != Some(conduit_desktop::continue_reply::CONTINUE_NUDGE)));
+
+    // The provider saw the conversation, its cut-off reply as its own words,
+    // then the app's request.
+    let requests = chat.script.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 2);
+    let sent = &requests[1];
+    let roles: Vec<_> = sent.messages.iter().map(|m| m.role.clone()).collect();
+    assert_eq!(
+        roles,
+        vec![MessageRole::User, MessageRole::Assistant, MessageRole::User]
+    );
+    assert_eq!(
+        sent.messages[1].parts[0].content.as_deref(),
+        Some("The report covers")
+    );
+    assert_eq!(
+        sent.messages[2].parts[0].content.as_deref(),
+        Some(conduit_desktop::continue_reply::CONTINUE_NUDGE)
+    );
+
+    // The live events belong to the reply's own turn, and say it reopened.
+    assert!(events
+        .iter()
+        .all(|e| serde_json::to_value(e).unwrap()["requestId"] == "turn-1"));
+    assert!(matches!(
+        events.first(),
+        Some(ProviderEvent::ReplyContinued { .. })
+    ));
+
+    // The view and the fold of the log agree.
+    let report = conduit_desktop::db::reconcile::reconcile_all(&chat.pool)
+        .await
+        .unwrap();
+    assert!(report.mismatches.is_empty(), "{:?}", report.mismatches);
+}
+
+#[tokio::test]
+async fn continuing_a_cut_off_reply_appends_to_it_with_no_separator() {
+    continuing_appends_to_the_same_reply(true).await;
+}
+
+#[tokio::test]
+async fn continuing_a_cut_off_reply_without_tools_appends_to_it_too() {
+    continuing_appends_to_the_same_reply(false).await;
+}
+
+#[tokio::test]
+async fn a_reply_cut_off_again_can_be_continued_again() {
+    let chat = Chat::new(vec![
+        finishing_with(text_round("The report"), "length"),
+        finishing_with(text_round(" covers"), "length"),
+        text_round(" three regions."),
+    ])
+    .await;
+    let reply_id = cut_off_reply(&chat, true).await;
+    for _ in 0..2 {
+        let (result, _) = chat.send(continue_request(&chat, &reply_id, true)).await;
+        result.expect("the continuation runs");
+    }
+    assert_eq!(
+        chat.replies().await,
+        vec![(
+            reply_id,
+            "The report covers three regions.".to_string(),
+            Some("stop".to_string())
+        )]
+    );
+}
+
+#[tokio::test]
+async fn only_the_last_reply_can_be_continued() {
+    let chat = Chat::new(vec![
+        finishing_with(text_round("The report covers"), "length"),
+        text_round("Sure."),
+    ])
+    .await;
+    let reply_id = cut_off_reply(&chat, true).await;
+    let later = user_message(
+        &chat.conversation_id,
+        "user-2",
+        "Something else",
+        "2099-01-01T00:00:00Z",
+    );
+    let (result, _) = chat
+        .send(chat.request("turn-2", vec![later], None, true))
+        .await;
+    result.expect("the second turn runs");
+    let logged = chat.logged_events("turn-1").await;
+
+    let (result, _) = chat.send(continue_request(&chat, &reply_id, true)).await;
+    assert_eq!(
+        result.unwrap_err(),
+        conduit_desktop::continue_reply::NOT_LAST
+    );
+    assert_eq!(chat.logged_events("turn-1").await, logged);
+    assert_eq!(chat.script.rounds_started(), 2);
+}
+
+#[tokio::test]
+async fn a_reply_that_was_not_cut_off_is_not_continued() {
+    let chat = Chat::new(vec![text_round("Done.")]).await;
+    let question = user_message(&chat.conversation_id, "user-1", "Hi", ASKED_AT);
+    let (result, _) = chat
+        .send(chat.request("turn-1", vec![question], None, true))
+        .await;
+    result.expect("the turn runs");
+    let reply_id = chat.replies().await[0].0.clone();
+
+    for with_tools in [true, false] {
+        let (result, _) = chat
+            .send(continue_request(&chat, &reply_id, with_tools))
+            .await;
+        assert_eq!(
+            result.unwrap_err(),
+            conduit_desktop::continue_reply::NOT_CUT_OFF
+        );
+    }
+    assert_eq!(chat.script.rounds_started(), 1);
+    assert_eq!(chat.messages().await.len(), 2);
+}
+
+#[tokio::test]
+async fn a_message_from_another_chat_or_a_user_message_is_not_continued() {
+    let chat = Chat::new(vec![finishing_with(text_round("The report"), "length")]).await;
+    cut_off_reply(&chat, true).await;
+    for id in ["user-1", "no-such-message"] {
+        let (result, _) = chat.send(continue_request(&chat, id, true)).await;
+        assert_eq!(
+            result.unwrap_err(),
+            conduit_desktop::continue_reply::NOT_FOUND
+        );
+    }
+    assert_eq!(chat.script.rounds_started(), 1);
+}
+
+#[tokio::test]
+async fn a_reply_is_not_continued_while_a_turn_runs() {
+    let chat = Chat::new(vec![finishing_with(text_round("The report"), "length")]).await;
+    let reply_id = cut_off_reply(&chat, true).await;
+    let logged = chat.logged_events("turn-1").await;
+
+    use conduit_desktop::stream_manager::TurnOwner;
+    let held = chat
+        .manager
+        .try_begin_turn(&chat.conversation_id, TurnOwner::Chat)
+        .expect("the turn is free");
+    for with_tools in [true, false] {
+        let (result, _) = chat
+            .send(continue_request(&chat, &reply_id, with_tools))
+            .await;
+        assert_eq!(
+            result.unwrap_err(),
+            TurnOwner::Chat.busy_message(&TurnOwner::Chat)
+        );
+    }
+    drop(held);
+
+    // A tool-less stream running in the chat counts too.
+    let _running = chat
+        .manager
+        .register_stream_with_steer("other-stream", Some(&chat.conversation_id))
+        .expect("registered");
+    for with_tools in [true, false] {
+        let (result, _) = chat
+            .send(continue_request(&chat, &reply_id, with_tools))
+            .await;
+        assert_eq!(
+            result.unwrap_err(),
+            conduit_desktop::continue_reply::TURN_RUNNING
+        );
+    }
+    chat.manager.forget_stream("other-stream");
+    assert_eq!(chat.logged_events("turn-1").await, logged);
+    assert_eq!(chat.script.rounds_started(), 1);
 }

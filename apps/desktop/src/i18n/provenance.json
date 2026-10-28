@@ -3358,7 +3358,9 @@
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
     "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
-    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0",
+    "chat.assistant.continueReply": "2e02623966f9391facf6eaefc8b079ed5b630bee",
+    "chat.assistant.continueReplyLabel": "7f25f3bace13c42fc4edd7780b313a26d14a5f19"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6719,7 +6721,9 @@
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
     "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
-    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0",
+    "chat.assistant.continueReply": "2e02623966f9391facf6eaefc8b079ed5b630bee",
+    "chat.assistant.continueReplyLabel": "7f25f3bace13c42fc4edd7780b313a26d14a5f19"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -10080,7 +10084,9 @@
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
     "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
-    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0",
+    "chat.assistant.continueReply": "2e02623966f9391facf6eaefc8b079ed5b630bee",
+    "chat.assistant.continueReplyLabel": "7f25f3bace13c42fc4edd7780b313a26d14a5f19"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -13441,7 +13447,9 @@
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
     "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
-    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0",
+    "chat.assistant.continueReply": "2e02623966f9391facf6eaefc8b079ed5b630bee",
+    "chat.assistant.continueReplyLabel": "7f25f3bace13c42fc4edd7780b313a26d14a5f19"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -16802,7 +16810,9 @@
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
     "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
-    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0",
+    "chat.assistant.continueReply": "2e02623966f9391facf6eaefc8b079ed5b630bee",
+    "chat.assistant.continueReplyLabel": "7f25f3bace13c42fc4edd7780b313a26d14a5f19"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -20163,7 +20173,9 @@
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
     "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
-    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0",
+    "chat.assistant.continueReply": "2e02623966f9391facf6eaefc8b079ed5b630bee",
+    "chat.assistant.continueReplyLabel": "7f25f3bace13c42fc4edd7780b313a26d14a5f19"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -23524,6 +23536,8 @@
     "settings.about.files.title": "623d01757226c8b68d6cb9e3baa2628251c1098b",
     "workspace.commandPalette.command.usage": "1176ce88e1812bb1804dfa49fff35a045b0a0991",
     "workspace.commandPalette.command.updates": "c76d18079a076ee34ffc62b5b9bd0909da356dce",
-    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0"
+    "shell.settingsSheet.about.intro": "52c5813ee6472eada1dd322b8e15a6445d8ebfa0",
+    "chat.assistant.continueReply": "2e02623966f9391facf6eaefc8b079ed5b630bee",
+    "chat.assistant.continueReplyLabel": "7f25f3bace13c42fc4edd7780b313a26d14a5f19"
   }
 }

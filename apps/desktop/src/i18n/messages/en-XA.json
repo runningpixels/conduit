@@ -3619,5 +3619,7 @@
   "settings.about.files.title": "[Ḟîļéš öñ ťĥîš ḿàçĥîñé —————— ———]",
   "workspace.commandPalette.command.usage": "[Üšàĝé & çöšť —————]",
   "workspace.commandPalette.command.updates": "[Üṕḍàťéš ———]",
-  "shell.settingsSheet.about.intro": "[Ŵĥîçĥ ṽéŕšîöñ ťĥîš îš, ŵĥéŕé ťö ḟîñḍ ťĥé ṕŕöĵéçť, àñḍ ŵĥéŕé {appName} ķééṕš îťš ḟîļéš öñ ťĥîš ḿàçĥîñé. —————— —————— —————— —————— —————— —————— ——]"
+  "shell.settingsSheet.about.intro": "[Ŵĥîçĥ ṽéŕšîöñ ťĥîš îš, ŵĥéŕé ťö ḟîñḍ ťĥé ṕŕöĵéçť, àñḍ ŵĥéŕé {appName} ķééṕš îťš ḟîļéš öñ ťĥîš ḿàçĥîñé. —————— —————— —————— —————— —————— —————— ——]",
+  "chat.assistant.continueReply": "[Çöñťîñüé ————]",
+  "chat.assistant.continueReplyLabel": "[Çöñťîñüé ťĥîš ŕéṕļý —————— ——]"
 }

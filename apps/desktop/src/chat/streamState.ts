@@ -7,6 +7,7 @@ import type {
   ProviderUsage,
   ToolCallStatus,
 } from '@conduit/config-schema';
+import { mergeProviderUsage } from '../lib/contextWindows';
 import {
   advanceDocumentWriteScan,
   startDocumentWriteScan,
@@ -182,6 +183,9 @@ export interface AssistantStreamState {
   /// losing the user's intent.
   searchUnavailable?: { code: string; message: string };
   usage?: ProviderUsage;
+  /** A continued reply: what it had used before the continuation, which its
+   *  new usage adds to. */
+  usageBefore?: ProviderUsage;
   finishReason?: string;
   error?: string;
   /** `providerCode` of the error that ended the turn, e.g. `turn_time_limit_building`. */
@@ -366,6 +370,15 @@ function countSegments(
     if (s.kind === 'note') return s.noteId === id;
     return s.blockId === id;
   }).length;
+}
+
+/**
+ * The live state for continuing `reply`, a reply the output limit cut off:
+ * the reply as it stands, open again, so the continuation's text lands in the
+ * same turn, at the end of the block it stopped in.
+ */
+export function createContinuedStreamState(reply: AssistantStreamState): AssistantStreamState {
+  return applyProviderEvent(reply, { kind: 'replyContinued', requestId: reply.requestId });
 }
 
 /** Anthropic (and fold.rs) use `thinking`; some adapters use `reasoning`. */
@@ -625,7 +638,13 @@ function reduceProviderEvent(
       };
     }
     case 'usage':
-      return { ...state, usage: event.usage };
+      // A continued reply's usage adds to what the reply had used already.
+      return {
+        ...state,
+        usage: state.usageBefore
+          ? (mergeProviderUsage(state.usageBefore, event.usage) ?? event.usage)
+          : event.usage,
+      };
     // Both terminal events clear the phase. It described what the turn was
     // doing; once the turn is over it describes nothing, and leaving it set
     // means any future reader of `agentPhase` shows a finished turn as still
@@ -754,6 +773,19 @@ function reduceProviderEvent(
             | 'finalizing'
             | 'steering',
         },
+      };
+    case 'replyContinued':
+      // The reply stopped at the output limit and is being written further:
+      // it is open again until its next ending, and its text goes on in the
+      // same block (the backend sends the continuation under that block's id).
+      return {
+        ...state,
+        finishReason: undefined,
+        error: undefined,
+        errorCode: undefined,
+        interrupted: false,
+        streaming: true,
+        usageBefore: state.usage,
       };
     case 'userNote': {
       const noteId = `note-${(state.notes?.length ?? 0) + 1}`;

@@ -303,6 +303,7 @@ async fn build_continuation_request_with_no_tool_calls_produces_no_tool_message(
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     };
 
     let continuation = StreamManager::new()
@@ -457,6 +458,7 @@ async fn build_continuation_request_with_no_tool_results_uses_fallback_message()
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     };
 
     let continuation = StreamManager::new()
@@ -618,6 +620,7 @@ async fn tool_result_truncation_works_for_large_outputs() {
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     };
 
     let continuation = StreamManager::new()

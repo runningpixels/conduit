@@ -493,6 +493,57 @@ describe('AssistantMessage output limit', () => {
 
     expect(screen.queryByText(/output limit/)).toBeNull();
   });
+
+  it('offers to continue the last reply the limit cut off', () => {
+    const onContinue = vi.fn();
+    render(
+      <AssistantMessage
+        state={{ ...streaming(), streaming: false, finishReason: 'length' }}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+        onContinue={onContinue}
+      />,
+    );
+
+    // The advice about Max tokens stays next to it.
+    expect(screen.getByText(/Raise Max tokens/)).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'Continue this reply' });
+    expect(button).toHaveTextContent('Continue');
+    fireEvent.click(button);
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer Continue on an earlier reply, a finished one, a live one or while a turn runs', () => {
+    const cutOff = { ...streaming(), streaming: false, finishReason: 'length' };
+    const { rerender } = render(
+      <AssistantMessage state={cutOff} provider="openai" modelId="gpt-5.4-mini" isLast={false} onContinue={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Continue this reply' })).toBeNull();
+
+    rerender(
+      <AssistantMessage
+        state={{ ...cutOff, finishReason: 'stop' }}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+        onContinue={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Continue this reply' })).toBeNull();
+
+    rerender(
+      <AssistantMessage
+        state={{ ...cutOff, streaming: true }}
+        provider="openai"
+        modelId="gpt-5.4-mini"
+        onContinue={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Continue this reply' })).toBeNull();
+
+    // ChatView passes no `onContinue` while a turn is running.
+    rerender(<AssistantMessage state={cutOff} provider="openai" modelId="gpt-5.4-mini" />);
+    expect(screen.queryByRole('button', { name: 'Continue this reply' })).toBeNull();
+  });
 });
 
 describe('AssistantMessage document build stopped at the time limit', () => {

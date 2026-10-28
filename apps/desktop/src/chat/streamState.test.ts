@@ -3,6 +3,7 @@ import {
   applyConnectorRuntimeEvent,
   applyProviderEvent,
   createAssistantStreamState,
+  createContinuedStreamState,
   markInterrupted,
   rebuildAssistantStreamStateFromEvents,
   toolCallAwaitsRuntimeFinish,
@@ -972,5 +973,48 @@ describe('streamState turn segments timeline', () => {
       { kind: 'tool', toolCallId: 't1' },
       { kind: 'text', blockId: 'block-0' },
     ]);
+  });
+});
+
+describe('streamState continuing a cut-off reply', () => {
+  const cutOff = [
+    { kind: 'messageStart', requestId: 'req-1', index: 0 },
+    { kind: 'contentBlockStart', requestId: 'req-1', blockId: 'block-0', index: 0, blockKind: 'text' },
+    { kind: 'contentDelta', requestId: 'req-1', blockId: 'block-0', index: 0, content: 'The report covers' },
+    { kind: 'usage', requestId: 'req-1', usage: { inputTokens: 100n, outputTokens: 50n } },
+    { kind: 'messageComplete', requestId: 'req-1', index: 1, finishReason: 'length' },
+  ] as const;
+  const more = [
+    { kind: 'messageStart', requestId: 'req-1', index: 0 },
+    { kind: 'contentDelta', requestId: 'req-1', blockId: 'block-0', index: 0, content: ' three regions.' },
+    { kind: 'usage', requestId: 'req-1', usage: { inputTokens: 120n, outputTokens: 10n } },
+    { kind: 'messageComplete', requestId: 'req-1', index: 1, finishReason: 'stop' },
+  ] as const;
+
+  it('appends the new text to the same block of the same turn', () => {
+    const reply = rebuildAssistantStreamStateFromEvents('req-1', [...cutOff]);
+    let state = createContinuedStreamState(reply);
+    expect(state.streaming).toBe(true);
+    expect(state.finishReason).toBeUndefined();
+    expect(state.requestId).toBe('req-1');
+
+    for (const event of more) state = applyProviderEvent(state, event);
+    expect(state.blocks.map((b) => b.content)).toEqual(['The report covers three regions.']);
+    expect(state.segments.filter((s) => s.kind === 'text')).toHaveLength(1);
+    expect(state.finishReason).toBe('stop');
+    // The continuation's usage adds to the reply's.
+    expect(state.usage?.inputTokens).toBe(220n);
+    expect(state.usage?.outputTokens).toBe(60n);
+  });
+
+  it('replays a continued reply from its log as one reply', () => {
+    const state = rebuildAssistantStreamStateFromEvents('req-1', [
+      ...cutOff,
+      { kind: 'replyContinued', requestId: 'req-1' },
+      ...more,
+    ]);
+    expect(state.blocks.map((b) => b.content)).toEqual(['The report covers three regions.']);
+    expect(state.finishReason).toBe('stop');
+    expect(state.streaming).toBe(false);
   });
 });

@@ -229,6 +229,7 @@ fn request(
         generation_controls: low_effort(&settings.active_provider),
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     })
 }
 

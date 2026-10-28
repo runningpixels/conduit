@@ -6,6 +6,7 @@ import {
   exportSkillFolder,
   exportSkillZip,
   importSkillFolder,
+  importSkillGit,
   importSkillZip,
   listSkills,
   revealSkillsDir,
@@ -13,6 +14,15 @@ import {
 import { useRichT, useT, type Translate } from '../../i18n';
 import { PageEmpty, PageListItem } from '../../shell/PageFrame';
 import { embeddedLibraryFrame, type LibraryFrame } from './LibraryLayout';
+import { skillExistsName } from './skillExists';
+
+/** The "Import from GitHub" form: the link typed, and what went wrong. */
+interface GithubImport {
+  url: string;
+  error: string | null;
+  /** A skill of this name exists; the form asks whether to replace it. */
+  conflict: string | null;
+}
 
 interface SkillsSectionProps {
   onStatus: (message: string) => void;
@@ -45,6 +55,7 @@ export function SkillsSection({ onStatus, workspaceRoot, frame = embeddedLibrary
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [github, setGithub] = useState<GithubImport | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -85,8 +96,37 @@ export function SkillsSection({ onStatus, workspaceRoot, frame = embeddedLibrary
       importSkillFolder(t('settings.skills.dialog.importFolderTitle')),
     );
 
+  const openGithub = () => setGithub({ url: '', error: null, conflict: null });
+
+  async function importFromGithub(form: GithubImport, replace: boolean) {
+    const url = form.url.trim();
+    if (!url) return;
+    setBusy(true);
+    try {
+      const skill = await importSkillGit(url, replace);
+      setGithub(null);
+      setSelectedId(skill.id);
+      onStatus(t('settings.skills.status.importedGithub', { name: skill.name }));
+      await refresh();
+    } catch (e) {
+      const taken = replace ? null : skillExistsName(e);
+      setGithub(
+        taken !== null ? { ...form, error: null, conflict: taken } : { ...form, error: String(e), conflict: null },
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const githubButton = (
+    <button className="btn ghost" type="button" disabled={busy} onClick={openGithub}>
+      {t('settings.skills.actions.importGithub')}
+    </button>
+  );
+
   const actions = (
     <>
+      {githubButton}
       <button
         className="btn ghost"
         type="button"
@@ -139,7 +179,65 @@ export function SkillsSection({ onStatus, workspaceRoot, frame = embeddedLibrary
     );
 
   let detail: React.ReactNode;
-  if (selected) {
+  if (github) {
+    const form = github;
+    const heading = t('settings.skills.github.title');
+    detail = (
+      <form
+        className="library-detail library-editor"
+        aria-label={heading}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (form.conflict === null) void importFromGithub(form, false);
+        }}
+      >
+        <header className="library-detail-head">
+          <h3 className="library-detail-title">{heading}</h3>
+        </header>
+        <label className="field">
+          <span className="field-label">{t('settings.skills.github.urlLabel')}</span>
+          <input
+            className="library-input"
+            type="url"
+            autoFocus
+            spellCheck={false}
+            placeholder={t('settings.skills.github.urlPlaceholder')}
+            value={form.url}
+            disabled={busy}
+            onChange={(e) => setGithub({ url: e.target.value, error: null, conflict: null })}
+          />
+        </label>
+        <p className="library-detail-text">{t('settings.skills.github.scriptsNote')}</p>
+        {form.error ? (
+          <p className="library-detail-text skill-error" role="alert">
+            {form.error}
+          </p>
+        ) : null}
+        {form.conflict !== null ? (
+          <div className="library-editor-actions" role="alert">
+            <p className="library-detail-text skill-replace-prompt">
+              {t('settings.skills.replace.prompt', { name: form.conflict })}
+            </p>
+            <button className="btn ghost" type="button" disabled={busy} onClick={() => setGithub({ ...form, conflict: null })}>
+              {t('common.actions.cancel')}
+            </button>
+            <button className="btn primary" type="button" disabled={busy} onClick={() => void importFromGithub(form, true)}>
+              {t('settings.skills.replace.confirm')}
+            </button>
+          </div>
+        ) : (
+          <div className="library-editor-actions">
+            <button className="btn ghost" type="button" disabled={busy} onClick={() => setGithub(null)}>
+              {t('common.actions.cancel')}
+            </button>
+            <button className="btn primary" type="submit" disabled={busy || !form.url.trim()}>
+              {busy ? t('settings.skills.github.importing') : t('settings.skills.github.import')}
+            </button>
+          </div>
+        )}
+      </form>
+    );
+  } else if (selected) {
     const skill = selected;
     detail = (
       <article className="library-detail" aria-labelledby={`skill-title-${skill.id}`}>
@@ -236,9 +334,12 @@ export function SkillsSection({ onStatus, workspaceRoot, frame = embeddedLibrary
         title={t('shell.library.skills.empty.title')}
         body={tr('settings.skills.empty.hint')}
         action={
-          <button className="btn primary" type="button" disabled={busy} onClick={importFolder}>
-            {t('settings.skills.actions.importFolder')}
-          </button>
+          <>
+            <button className="btn primary" type="button" disabled={busy} onClick={importFolder}>
+              {t('settings.skills.actions.importFolder')}
+            </button>
+            {githubButton}
+          </>
         }
       />
     );

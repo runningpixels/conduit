@@ -96,11 +96,9 @@ fn fake_embed(text: &str) -> Vec<f32> {
 
 impl EchoModel {
     fn reply_for(&self, request: &ProviderRequest) -> String {
-        if request
-            .system_prompt
-            .as_deref()
-            .is_some_and(|s| s.contains("You design workflows"))
-        {
+        if request.system_prompt.as_deref().is_some_and(|s| {
+            s.contains("You design workflows") || s.contains("You write Agent Skills")
+        }) {
             let mut drafts = self.drafts.lock().unwrap();
             if !drafts.is_empty() {
                 return if drafts.len() > 1 {
@@ -4693,6 +4691,210 @@ mod drafting {
             .await
             .unwrap_err();
         assert_eq!(error, "That chat no longer exists.");
+    }
+}
+
+// ── Drafting a skill from a chat ─────────────────────────────────────────────
+
+mod skill_drafting {
+    use super::*;
+    use conduit_desktop::db::repository::messages;
+    use conduit_desktop::skill_draft::{self, SkillDraft};
+    use provider_core::schema::{Message, MessagePart, MessagePartKind, MessageRole};
+
+    const TRANSCRIPT: &str = "User: Pull this week's sales numbers and write a short report.\nAssistant used tools:\n  - web_fetch {\"url\":\"https://example.com/sales\"} -> done";
+
+    fn valid_reply() -> String {
+        json!({
+            "name": "weekly-sales-report",
+            "description": "Writes a short weekly sales report. Use when the user asks for this week's numbers.",
+            "body": "1. Fetch the sales page.\n2. Summarize the totals."
+        })
+        .to_string()
+    }
+
+    fn with_drafts(replies: Vec<String>) -> EchoModel {
+        EchoModel {
+            drafts: Arc::new(Mutex::new(replies)),
+            usage: Some(100),
+            ..EchoModel::default()
+        }
+    }
+
+    async fn draft(h: &Harness) -> Result<SkillDraft, String> {
+        skill_draft::draft_within(
+            &h.state,
+            &h.streams,
+            TRANSCRIPT,
+            &CancellationToken::new(),
+            skill_draft::DRAFT_TIMEOUT,
+        )
+        .await
+    }
+
+    fn last_text(request: &ProviderRequest) -> String {
+        request.messages.last().unwrap().parts[0]
+            .content
+            .clone()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_chat_becomes_a_valid_skill_draft_and_nothing_is_saved() {
+        let h = Harness::new(with_drafts(vec![valid_reply()])).await;
+        let draft = draft(&h).await.unwrap();
+        assert_eq!(draft.name, "weekly-sales-report");
+        assert!(draft.description.starts_with("Writes a short weekly"));
+        assert!(draft.body.contains("Summarize the totals"));
+        let wire = serde_json::to_value(&draft).unwrap();
+        for key in ["name", "description", "body"] {
+            assert!(wire.get(key).is_some(), "{key}");
+        }
+
+        let requests = h.model.requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].model_id, "echo");
+        assert!(requests[0].tool_definitions.is_empty());
+        let sent = last_text(&requests[0]);
+        assert!(
+            sent.contains("<chat>") && sent.contains("web_fetch"),
+            "{sent}"
+        );
+        // Recorded in the hidden drafting conversation, not a chat.
+        assert!(conversations::list(&h.state.db).await.unwrap().is_empty());
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT provider_id, model_id FROM usage_summary")
+                .fetch_all(&h.state.db)
+                .await
+                .unwrap();
+        assert_eq!(rows, vec![("ollama".to_string(), "echo".to_string())]);
+        // Nothing written to the skills folder.
+        assert!(!conduit_desktop::skills::conduit_skills_dir(&h.state.paths.root).exists());
+    }
+
+    #[tokio::test]
+    async fn a_name_that_is_not_valid_is_normalised_without_a_repair() {
+        let reply = json!({
+            "name": "Weekly Sales Report!",
+            "description": "Use when: the user wants \"the numbers\".",
+            "body": "Do it."
+        })
+        .to_string();
+        let h = Harness::new(with_drafts(vec![reply])).await;
+        let draft = draft(&h).await.unwrap();
+        assert_eq!(draft.name, "weekly-sales-report");
+        assert_eq!(h.model.requests.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_bad_reply_is_sent_back_once_and_a_fixed_one_is_used() {
+        let missing = json!({ "name": "x", "description": "" }).to_string();
+        let h = Harness::new(with_drafts(vec![missing, valid_reply()])).await;
+        let first = draft(&h).await.unwrap();
+        assert_eq!(first.name, "weekly-sales-report");
+        let requests = h.model.requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 2);
+        let sent = last_text(&requests[1]);
+        assert!(sent.starts_with("Fix these problems"), "{sent}");
+        assert!(sent.contains("\"description\" is missing"), "{sent}");
+        assert!(sent.contains("\"body\" is missing"), "{sent}");
+        assert_eq!(requests[1].messages.len(), 3);
+
+        let h = Harness::new(with_drafts(vec!["Sure!".into(), valid_reply()])).await;
+        draft(&h).await.unwrap();
+        let requests = h.model.requests.lock().unwrap().clone();
+        assert!(last_text(&requests[1]).contains("wasn't valid JSON"));
+    }
+
+    #[tokio::test]
+    async fn a_reply_still_invalid_after_the_repair_is_given_up_on() {
+        let too_long = json!({
+            "name": "report",
+            "description": "x".repeat(2000),
+            "body": "Do it."
+        })
+        .to_string();
+        let h = Harness::new(with_drafts(vec![too_long])).await;
+        let error = draft(&h).await.unwrap_err();
+        assert_eq!(error, skill_draft::NOTHING_USABLE);
+        assert_eq!(h.model.requests.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn skill_drafting_that_runs_too_long_is_stopped() {
+        let h = Harness::new(EchoModel {
+            hang: true,
+            ..EchoModel::default()
+        })
+        .await;
+        let started = std::time::Instant::now();
+        let error = skill_draft::draft_within(
+            &h.state,
+            &h.streams,
+            TRANSCRIPT,
+            &CancellationToken::new(),
+            std::time::Duration::from_millis(300),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("took too long"), "{error}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[tokio::test]
+    async fn a_chat_draft_can_be_cancelled_and_an_empty_chat_is_refused() {
+        let h = Harness::new(EchoModel {
+            hang: true,
+            ..EchoModel::default()
+        })
+        .await;
+        let pool = &h.state.db;
+        let chat = conversations::create(pool, None).await.unwrap();
+        let error = skill_draft::draft_from_chat(&h.state, &h.streams, &chat.id)
+            .await
+            .unwrap_err();
+        assert_eq!(error, "That chat has no messages to make a skill from.");
+
+        let id = uuid::Uuid::new_v4().to_string();
+        messages::insert_message(
+            pool,
+            &Message {
+                id: id.clone(),
+                conversation_id: chat.id.clone(),
+                role: MessageRole::User,
+                author_label: None,
+                provider_message_id: None,
+                request_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: vec![MessagePart {
+                    id: format!("{id}/p0"),
+                    message_id: id,
+                    index: 0,
+                    kind: MessagePartKind::Text,
+                    content: Some("Write the weekly report.".to_string()),
+                    mime_type: None,
+                    tool_call_id: None,
+                    artifact_id: None,
+                    attachment_id: None,
+                    blob_ref: None,
+                    metadata: None,
+                    created_at: "2026-10-27T10:00:00.000Z".to_string(),
+                }],
+                created_at: "2026-10-27T10:00:00.000Z".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        tokio::spawn(async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(skill_draft::cancel_current());
+        });
+        let error = skill_draft::draft_from_chat(&h.state, &h.streams, &chat.id)
+            .await
+            .unwrap_err();
+        assert_eq!(error, "Drafting was stopped.");
+        assert!(!skill_draft::cancel_current());
     }
 }
 

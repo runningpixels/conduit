@@ -43,6 +43,7 @@ pub mod page_server;
 pub mod paths;
 pub mod research;
 pub mod search;
+pub mod skill_draft;
 pub mod skills;
 pub mod slide_charts;
 pub mod slide_html;

@@ -1,9 +1,7 @@
 use crate::event_sink::EventSink;
 use crate::{
     agent_tools,
-    db::repository::{
-        connectors, conversations, drafts, event_log, messages, tool_calls, usage_summary,
-    },
+    db::repository::{conversations, drafts, event_log, messages, tool_calls, usage_summary},
     state::AppState,
 };
 use futures::StreamExt;
@@ -875,7 +873,7 @@ pub fn turn_time_limit_error(
 }
 
 /// What executing one round's tool calls produced.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone)]
 pub struct ToolRoundTally {
     /// New documents created this round.
     pub documents_created: u32,
@@ -885,6 +883,25 @@ pub struct ToolRoundTally {
     pub web_cap_refusals: u32,
     /// `write_section` calls that succeeded this round.
     pub sections_written: u32,
+    /// Connector tools `search_tools` found this round, to declare from the
+    /// next round on (see [`load_found_tools`]).
+    pub found_tools: Vec<provider_core::schema::ToolDefinition>,
+}
+
+/// Declare the connector tools `search_tools` found, so the rest of the turn
+/// can call them: [`partition_declared_tool_calls`] runs only declared tools,
+/// and a deferred tool no search found stays undeclared. Already declared
+/// ones are not added twice. Nothing carries over to the next turn: each turn
+/// starts from the tools the chat offers.
+pub fn load_found_tools(
+    declared: &mut Vec<provider_core::schema::ToolDefinition>,
+    found: Vec<provider_core::schema::ToolDefinition>,
+) {
+    for def in found {
+        if !declared.iter().any(|d| d.name == def.name) {
+            declared.push(def);
+        }
+    }
 }
 
 /// True when a `write_*` call is asking to create a new document (no usable
@@ -2652,6 +2669,7 @@ impl StreamManager {
         let mut document_writes_succeeded = 0u32;
         let mut sections_written = 0u32;
         let mut web_cap_refusals = 0u32;
+        let mut found_tools: Vec<provider_core::schema::ToolDefinition> = Vec::new();
 
         // The round's hand-offs first, side by side, when there are several;
         // the loop below records their results in call order. A lone one
@@ -2946,6 +2964,20 @@ impl StreamManager {
                     &call.arguments,
                 )
                 .await;
+                // The connector tools a tool search found are declared from
+                // the next round on (by the loop, see `load_found_tools`).
+                if tool_name == agent_tools::SEARCH_TOOLS_TOOL {
+                    if let Ok(exec) = &outcome {
+                        if !exec.is_error {
+                            found_tools.extend(
+                                crate::connector_runtime::catalog::found_tool_definitions(
+                                    &catalog,
+                                    &exec.output,
+                                ),
+                            );
+                        }
+                    }
+                }
                 // Local search results are sources like a provider's hosted
                 // search: show them in Activity and Sources, and save them so
                 // a reloaded chat still has them.
@@ -3093,6 +3125,7 @@ impl StreamManager {
             document_writes_succeeded,
             web_cap_refusals,
             sections_written,
+            found_tools,
         }
     }
 
@@ -4673,6 +4706,7 @@ impl StreamManager {
                 current_request.tool_definitions =
                     narrow_tools_after_document_create(&current_request.tool_definitions);
             }
+            load_found_tools(&mut current_request.tool_definitions, tally.found_tools);
 
             // Past a web cap, calls are answered with a refusal that tells the
             // model to answer. The tools stay declared: removing them made the
@@ -4831,51 +4865,7 @@ impl StreamManager {
 pub(crate) async fn build_connector_tool_catalog(
     state: &AppState,
 ) -> Result<crate::connector_runtime::catalog::ConnectorToolCatalog, String> {
-    use crate::connector_runtime::catalog::{build_connector_tool_catalog, ConnectorToolSnapshot};
-    use std::collections::HashMap;
-
-    let pool = &state.db;
-    let defs = connectors::list_definitions(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    let grants = connectors::list_grants(pool, None)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut grant_by_version: HashMap<String, String> = HashMap::new();
-    for grant in grants {
-        match grant_by_version.get(&grant.connector_version_id) {
-            Some(existing) if existing == "active" => {}
-            _ => {
-                grant_by_version.insert(grant.connector_version_id.clone(), grant.status.clone());
-            }
-        }
-    }
-
-    let mut snapshots = Vec::new();
-    let mut capabilities_by_version = HashMap::new();
-    for def in defs {
-        let versions = connectors::list_versions(pool, &def.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        for version in versions {
-            let caps = connectors::list_capabilities(pool, &version.id)
-                .await
-                .map_err(|e| e.to_string())?;
-            capabilities_by_version.insert(version.id.clone(), caps);
-            snapshots.push(ConnectorToolSnapshot {
-                connector_version_id: version.id.clone(),
-                connector_id: def.id.clone(),
-                connector_name: def.name.clone(),
-                grant_status: grant_by_version.get(&version.id).cloned(),
-                support_state: version.support_state.clone(),
-            });
-        }
-    }
-
-    Ok(build_connector_tool_catalog(
-        &snapshots,
-        &capabilities_by_version,
-    ))
+    crate::connector_runtime::catalog::load_connector_tool_catalog(&state.db).await
 }
 
 /// Persist one `usage_summary` row for a request, keyed by the assistant

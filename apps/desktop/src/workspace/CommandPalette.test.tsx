@@ -251,6 +251,23 @@ describe('CommandPalette prefix modes', () => {
     expect(props.onClose).toHaveBeenCalled();
   });
 
+  it('offers Make a skill from this chat when a chat is open, by > or by typing "skill"', () => {
+    const onMakeSkillFromChat = vi.fn();
+    const props = renderPalette({ onMakeSkillFromChat });
+    type('>skill');
+    expect(screen.getByRole('option', { name: /Make a skill from this chat/ })).toBeInTheDocument();
+    type('skill');
+    fireEvent.click(screen.getByRole('option', { name: /Make a skill from this chat/ }));
+    expect(onMakeSkillFromChat).toHaveBeenCalledTimes(1);
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('does not offer Make a skill from this chat without a chat', () => {
+    renderPalette();
+    type('>skill');
+    expect(screen.queryByRole('option', { name: /Make a skill from this chat/ })).not.toBeInTheDocument();
+  });
+
   it('does not offer Save chat as workflow in the default mode when it is not wired', () => {
     renderPalette();
     type('workflow');

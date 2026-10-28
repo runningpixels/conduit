@@ -48,7 +48,12 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { builtinToolDefinitions } from './agentTools';
+import {
+  builtinToolDefinitions,
+  SEARCH_TOOLS_DESCRIPTION,
+  SEARCH_TOOLS_TOOL_NAME,
+  selectBuiltinTurnTools,
+} from './agentTools';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rustFile = join(here, '..', '..', 'src-tauri', 'src', 'agent_tools.rs');
@@ -192,6 +197,32 @@ describe('TS builtin tool definitions match Rust definition metadata (consistenc
     }
 
     expect(mismatched, `TS/Rust definition mismatch(es):\n  ${mismatched.join('\n  ')}`).toEqual([]);
+  });
+});
+
+describe('search_tools: both sides define it, and only tool search offers it', () => {
+  const rustSrc = readFileSync(rustFile, 'utf8');
+
+  it('the description is word for word the same as Rust SEARCH_TOOLS_DESCRIPTION', () => {
+    const m = rustSrc.match(/pub const SEARCH_TOOLS_DESCRIPTION: &str = "((?:[^"\\]|\\.)*)";/);
+    expect(m, 'SEARCH_TOOLS_DESCRIPTION not found in agent_tools.rs').not.toBeNull();
+    const rust = (m?.[1] ?? '').replace(/\\(.)/g, '$1');
+    expect(SEARCH_TOOLS_DESCRIPTION).toBe(rust);
+  });
+
+  it('no turn selection offers it on its own', () => {
+    const settings = { memoryEnabled: true, workspaceToolsEnabled: true, workspaceRoot: 'C:/w' };
+    const prompts = ['hello', 'write a report', 'make a deck about cats', 'edit the document'];
+    for (const prompt of prompts) {
+      const names = selectBuiltinTurnTools(prompt, settings).tools.map((t) => t.name);
+      expect(names, prompt).not.toContain(SEARCH_TOOLS_TOOL_NAME);
+    }
+    for (const stage of ['storyline', 'slides'] as const) {
+      const names = selectBuiltinTurnTools('go', settings, null, undefined, undefined, stage).tools.map(
+        (t) => t.name,
+      );
+      expect(names, stage).not.toContain(SEARCH_TOOLS_TOOL_NAME);
+    }
   });
 });
 

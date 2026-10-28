@@ -88,13 +88,14 @@ pub fn validate_shortcut(raw: &str) -> Result<String, String> {
     if trimmed.chars().count() > MAX_SHORTCUT_CHARS {
         return Err("The quick ask shortcut is too long.".to_string());
     }
-    let parsed = Shortcut::from_str(trimmed)
-        .map_err(|e| format!("\u{201c}{trimmed}\u{201d} isn't a shortcut: {e}"))?;
+    let needs =
+        || format!("\u{201c}{trimmed}\u{201d} needs Ctrl, Alt, Shift or Super plus one other key.");
+    // The parser's own message names the library and asks for bug reports;
+    // say what is wrong in the app's words instead.
+    let parsed = Shortcut::from_str(trimmed).map_err(|_| needs())?;
     let modifiers = Modifiers::SHIFT | Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
     if !parsed.mods.intersects(modifiers) {
-        return Err(format!(
-            "\u{201c}{trimmed}\u{201d} needs Ctrl, Alt, Shift or Super plus one other key."
-        ));
+        return Err(needs());
     }
     Ok(trimmed.to_string())
 }
@@ -300,6 +301,11 @@ mod tests {
         ] {
             assert!(validate_shortcut(bad).is_err(), "{bad:?} must be rejected");
         }
+        // The message is the app's own, not the parser's (which names the
+        // library and links its issue tracker).
+        let err = validate_shortcut("Shift").unwrap_err();
+        assert!(err.contains("needs Ctrl, Alt, Shift or Super"), "{err}");
+        assert!(!err.contains("github"), "{err}");
         assert!(validate_shortcut(&format!("Ctrl+{}", "A".repeat(80))).is_err());
     }
 

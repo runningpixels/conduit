@@ -118,7 +118,7 @@ impl OpenAiAdapter {
     /// `pub(crate)`, not private: `openai_preset.rs`'s OpenRouter preset reuses
     /// this directly for its `/images` call, so OpenRouter's image requests
     /// carry the exact same auth + extra headers (e.g. `HTTP-Referer`,
-    /// `X-Title`) its chat requests already do, rather than a second,
+    /// `X-OpenRouter-Title`) its chat requests already do, rather than a second,
     /// possibly-drifting copy of this logic.
     pub(crate) fn request_headers(
         &self,

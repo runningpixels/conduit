@@ -16,9 +16,12 @@ use serde_json::{json, Value};
 use std::pin::Pin;
 use tokio_util::sync::CancellationToken;
 
+// OpenRouter app attribution: the referer credits requests to Conduit's public
+// app page, the title names it, and the categories place it in the marketplace.
 const OPENROUTER_HEADERS: &[(&str, &str)] = &[
     ("HTTP-Referer", "https://conduitllm.com"),
-    ("X-Title", "Conduit"),
+    ("X-OpenRouter-Title", "Conduit"),
+    ("X-OpenRouter-Categories", "general-chat,personal-agent"),
 ];
 
 /// Registry wrapper around a configured `OpenAiAdapter` preset.
@@ -232,7 +235,7 @@ impl ProviderAdapter for OpenAiPresetAdapter {
         // Reuses the inner `OpenAiAdapter`'s auth/base-url resolution
         // (`request_headers`/`base_url`, bumped to `pub(crate)` for this)
         // rather than duplicating it, so OpenRouter's image requests carry
-        // the exact same Bearer token + `HTTP-Referer`/`X-Title` headers its
+        // the exact same Bearer token + `HTTP-Referer`/`X-OpenRouter-Title` headers its
         // chat requests already do.
         let headers = self.0.request_headers(ctx)?;
         let mut body = json!({

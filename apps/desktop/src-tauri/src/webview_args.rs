@@ -98,7 +98,7 @@ fn bypass_rule(entry: &str) -> Option<String> {
 /// hosts every artifact frame. Nothing in the app itself uses WebRTC. Media
 /// capture (`enable-media-stream`) is a separate setting and isn't touched.
 #[cfg(target_os = "linux")]
-pub fn disable_webrtc(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+pub fn disable_webrtc<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
     window.with_webview(|webview| {
         use webkit2gtk::{SettingsExt, WebViewExt};
         if let Some(settings) = webview.inner().settings() {

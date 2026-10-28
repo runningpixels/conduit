@@ -461,7 +461,48 @@ async fn run_turn_with_settings(
     sink_kind: Sink,
     tweak: fn(&mut AppSettings),
 ) -> (Result<(), String>, Turn) {
+    run_turn_seeded(
+        rounds,
+        agent,
+        max_tokens,
+        extra_tools,
+        provider,
+        local_only,
+        sink_kind,
+        tweak,
+        false,
+    )
+    .await
+}
+
+/// With `connectors`, the database holds an "Issue Tracker" connector with
+/// three tools (and an active grant, but no process to run them).
+#[allow(clippy::too_many_arguments)]
+async fn run_turn_seeded(
+    rounds: Vec<Round>,
+    agent: AgentGuardrails,
+    max_tokens: Option<u32>,
+    extra_tools: &[&str],
+    provider: Provider,
+    local_only: bool,
+    sink_kind: Sink,
+    tweak: fn(&mut AppSettings),
+    connectors: bool,
+) -> (Result<(), String>, Turn) {
     let pool = common::setup_pool().await;
+    if connectors {
+        common::seed_connector_tools(
+            &pool,
+            "tracker",
+            "Issue Tracker",
+            &[
+                ("create_issue", "Open a new issue in a project."),
+                ("close_issue", "Close an issue."),
+                ("list_projects", "List the projects you can see."),
+            ],
+        )
+        .await;
+    }
     let conversation = conversations::create(&pool, None).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
     let keychain_mode = match provider {
@@ -805,6 +846,125 @@ async fn a_round_calling_only_undeclared_tools_reports_an_empty_turn() {
         matches!(turn.terminal(), ProviderEvent::Error { .. }),
         "got {:?}",
         turn.terminal()
+    );
+}
+
+// Tool search. A chat over the connector-tool threshold declares
+// `search_tools` and none of the connector tools; what a search finds is
+// declared from the next round on.
+
+async fn run_tool_search_turn(rounds: Vec<Round>) -> Turn {
+    let (result, turn) = run_turn_seeded(
+        rounds,
+        guardrails(25, 300),
+        None,
+        &["search_tools"],
+        Provider::Local,
+        true,
+        Sink::Webview,
+        |_| {},
+        true,
+    )
+    .await;
+    result.expect("turn runs");
+    turn
+}
+
+fn declares(request: &ProviderRequest, name: &str) -> bool {
+    request.tool_definitions.iter().any(|d| d.name == name)
+}
+
+#[tokio::test]
+async fn a_tool_found_by_search_tools_is_declared_and_called_in_the_next_round() {
+    let turn = run_tool_search_turn(vec![
+        tool_round(
+            // "create" matches create_issue only ("issue" would also match
+            // the connector's name, and so every tool of it).
+            vec![("search_tools", json!({ "query": "create" }))],
+            Duration::ZERO,
+        ),
+        tool_round(
+            vec![("Issue_Tracker__create_issue", json!({ "title": "Bug" }))],
+            Duration::ZERO,
+        ),
+        text_round("Done."),
+    ])
+    .await;
+
+    assert!(!declares(&turn.requests[0], "Issue_Tracker__create_issue"));
+    assert!(declares(&turn.requests[1], "Issue_Tracker__create_issue"));
+    assert!(
+        !declares(&turn.requests[1], "Issue_Tracker__list_projects"),
+        "only what the search found is loaded"
+    );
+    assert_eq!(
+        turn.tool_executions().first(),
+        Some(&("search_tools".to_string(), false))
+    );
+    // Had the connector call been dropped as undeclared, round 2 would have
+    // ended the turn with an empty-turn error and no third round.
+    assert_eq!(turn.rounds_started, 3);
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::MessageComplete { finish_reason, .. } if finish_reason == "stop"),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_deferred_tool_never_searched_for_is_dropped() {
+    let turn = run_tool_search_turn(vec![
+        tool_round(
+            vec![("Issue_Tracker__create_issue", json!({ "title": "Bug" }))],
+            Duration::ZERO,
+        ),
+        text_round("never requested"),
+    ])
+    .await;
+
+    assert_eq!(turn.rounds_started, 1);
+    assert!(turn.tool_executions().is_empty());
+    assert!(
+        matches!(turn.terminal(), ProviderEvent::Error { .. }),
+        "got {:?}",
+        turn.terminal()
+    );
+}
+
+#[tokio::test]
+async fn a_search_with_no_match_loads_nothing() {
+    let turn = run_tool_search_turn(vec![
+        tool_round(
+            vec![("search_tools", json!({ "query": "weather forecast" }))],
+            Duration::ZERO,
+        ),
+        text_round("No weather tool."),
+    ])
+    .await;
+
+    assert_eq!(turn.rounds_started, 2);
+    assert_eq!(
+        turn.requests[1]
+            .tool_definitions
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect::<Vec<_>>(),
+        turn.requests[0]
+            .tool_definitions
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect::<Vec<_>>()
+    );
+    // The connector names reach the model in the tool result.
+    assert!(
+        turn.requests[1]
+            .messages
+            .iter()
+            .any(|m| m.parts.iter().any(|p| p
+                .content
+                .as_deref()
+                .is_some_and(|c| c.contains("Issue Tracker")))),
+        "the tool result lists the connector names"
     );
 }
 

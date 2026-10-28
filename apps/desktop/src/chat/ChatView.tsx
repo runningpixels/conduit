@@ -162,6 +162,7 @@ import { resolveSearchBackend, resolveWebSearchForTurn, type SearchBackend } fro
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
 import {
+  applyToolSearch,
   buildConnectorToolCatalog,
   isConnectorCallable,
   makeInvokeConnectorToolRequest,
@@ -2006,7 +2007,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             ? selectBuiltinWebTools(searchBackend)
             : []
           : selectTurnWebTools(searchBackend, settings);
-    return dedupeToolsByName([...builtinTools, ...webTools, ...connectorTools]);
+    // Many connector tools: offer `search_tools` instead of all of them. The
+    // bindings above keep the full catalog, so a found tool still runs.
+    return applyToolSearch(dedupeToolsByName([...builtinTools, ...webTools]), connectorTools).offered;
   }
 
   function applyRuntimeEventToActiveStream(
@@ -2216,10 +2219,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       if (windowTokens != null && windowTokens > 0) {
         const priorForEstimate = override?.history ?? turns;
         const keptForEstimate = historyForProviderRequest(priorForEstimate, activeCompaction);
-        const estimateTools = selectTurnTools(trimmed, {
-          ...settings,
-          imageGenerationConsentAcknowledged: imageGenerationConsented(),
-        });
+        // Count the connector tools the turn will actually offer (or
+        // `search_tools` in their place): with many connectors they are
+        // a large part of the prompt.
+        const estimateTools = applyToolSearch(
+          selectTurnTools(trimmed, {
+            ...settings,
+            imageGenerationConsentAcknowledged: imageGenerationConsented(),
+          }),
+          await loadConnectorToolDefinitions(),
+        ).offered;
         const systemPrompt = composeSystemPrompt(
           [baseSystemPrompt(), turnSystemAppendix(estimateTools)],
           resolveUserInstructions(settings, conversationUserInstructions),

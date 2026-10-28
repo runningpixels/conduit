@@ -58,6 +58,12 @@ pub const CALCULATOR_TOOL: &str = "calculator";
 pub const ASK_USER_TOOL: &str = "ask_user";
 /// t1-5: propose a memory fact. Writes `pending` until the user saves it.
 pub const REMEMBER_TOOL: &str = "remember";
+/// Finds connector tools by what they do and loads the matches for the rest
+/// of the turn. Offered only when a chat has too many connector tools to send
+/// them all (`applyToolSearch` in `chat/connectorTools.ts`).
+pub const SEARCH_TOOLS_TOOL: &str = "search_tools";
+/// `search_tools`' description, the same in `chat/agentTools.ts`.
+pub const SEARCH_TOOLS_DESCRIPTION: &str = "Find connector tools. More connector tools are available than are listed here. Describe what you need to do (an action, a service, or a connector name, e.g. \"create issue\" or \"calendar events\"); the matching tools are returned and loaded, so you can call them by name in your next step. If nothing matches, the result lists the connector names: search again with other words.";
 
 // Web tools (ReadOnly/SideEffectful, search-gated)
 pub const WEB_SEARCH_TOOL: &str = "web_search";
@@ -546,6 +552,17 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             host_config: None,
         },
         ToolDefinition {
+            tool_id: SEARCH_TOOLS_TOOL.to_string(),
+            name: SEARCH_TOOLS_TOOL.to_string(),
+            description: SEARCH_TOOLS_DESCRIPTION.to_string(),
+            input_schema: json_schema(&[("query", "string", true), ("limit", "integer", false)]),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Connectors".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
             tool_id: ASK_USER_TOOL.to_string(),
             name: ASK_USER_TOOL.to_string(),
             description: "Ask the user a short structured question mid-turn (up to 4 fields). Provide `title` and `fields` (array of {id, prompt, type: text|choice, options?}). Wait for the user's answers before continuing.".to_string(),
@@ -923,6 +940,7 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | UUID_TOOL
             | RANDOM_TOOL
             | CALCULATOR_TOOL
+            | SEARCH_TOOLS_TOOL
             | ASK_USER_TOOL
             | REMEMBER_TOOL
             | WEB_SEARCH_TOOL
@@ -1113,6 +1131,16 @@ pub async fn execute_builtin_tool(
                 "min": min,
                 "max": max,
             }))
+        }
+        SEARCH_TOOLS_TOOL => {
+            let input: SearchToolsInput = parse_args(tool_name, arguments)?;
+            let catalog =
+                crate::connector_runtime::catalog::load_connector_tool_catalog(ctx.db).await?;
+            Ok(crate::connector_runtime::catalog::search_tools_output(
+                &catalog,
+                &input.query,
+                crate::connector_runtime::catalog::search_tools_limit(input.limit.as_ref()),
+            ))
         }
         CALCULATOR_TOOL => {
             let input: CalculatorInput = parse_args(tool_name, arguments)?;
@@ -3399,6 +3427,14 @@ struct CalculatorInput {
 }
 
 #[derive(Debug, Deserialize)]
+struct SearchToolsInput {
+    query: String,
+    /// A number, or a numeric string from a model that quotes it.
+    #[serde(default)]
+    limit: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
 struct WebSearchInput {
     query: String,
 }
@@ -3793,6 +3829,7 @@ mod tests {
         assert!(is_builtin_tool_name(WRITE_BRAND_THEME_TOOL));
         assert!(is_builtin_tool_name(REMEMBER_TOOL));
         assert!(is_builtin_tool_name(GENERATE_IMAGE_TOOL));
+        assert!(is_builtin_tool_name(SEARCH_TOOLS_TOOL));
         assert!(!is_builtin_tool_name("nonexistent_tool"));
     }
 
@@ -3988,7 +4025,8 @@ mod tests {
         // + replace_in_deck + update_slots (Slides phase 2) = 36
         // + start_deck (Slides Studio) = 37
         // + 5 draft tools (Writing) = 42
-        assert_eq!(defs.len(), 42);
+        // + search_tools (connector tool search) = 43
+        assert_eq!(defs.len(), 43);
     }
 
     #[test]

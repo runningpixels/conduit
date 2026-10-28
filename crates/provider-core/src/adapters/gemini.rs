@@ -1046,6 +1046,7 @@ mod tests {
             attachments: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         let body = build_payload(&NormalizedRequest { request });
@@ -1153,6 +1154,7 @@ mod tests {
                 user_location: None,
                 include_sources: None,
             }),
+            continue_message_id: None,
         };
 
         let body = build_payload(&NormalizedRequest { request });
@@ -1231,6 +1233,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         let body = build_payload(&NormalizedRequest { request });
         let parts = body
@@ -1284,6 +1287,7 @@ mod tests {
             }),
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         let body = build_payload(&NormalizedRequest { request });
         assert!(body.get("tools").is_some());
@@ -1311,6 +1315,7 @@ mod tests {
             }),
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         build_payload(&NormalizedRequest { request })
     }

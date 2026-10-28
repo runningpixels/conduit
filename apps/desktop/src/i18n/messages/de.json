@@ -3620,6 +3620,8 @@
   "workspace.commandPalette.command.usage": "Nutzung & Kosten",
   "workspace.commandPalette.command.updates": "Updates",
   "shell.settingsSheet.about.intro": "Welche Version das ist, wo du das Projekt findest und wo {appName} seine Dateien auf diesem Rechner speichert.",
+  "chat.assistant.continueReply": "Weiterschreiben",
+  "chat.assistant.continueReplyLabel": "Diese Antwort weiterschreiben",
   "settings.skills.actions.importGithub": "Von GitHub importieren",
   "settings.skills.github.title": "Von GitHub importieren",
   "settings.skills.github.urlLabel": "GitHub-Link",

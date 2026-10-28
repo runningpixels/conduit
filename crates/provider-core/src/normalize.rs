@@ -225,6 +225,7 @@ mod tests {
             }),
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         assert!(validate(request).is_ok());
@@ -244,6 +245,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         assert!(validate(request).is_err());
@@ -285,6 +287,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         assert!(validate(request).is_ok());
@@ -307,6 +310,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         assert!(validate(request).is_err());
@@ -331,6 +335,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         assert!(validate(request).is_err());

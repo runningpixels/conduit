@@ -2347,6 +2347,7 @@ mod tests {
                 user_location: None,
                 include_sources: Some(true),
             }),
+            continue_message_id: None,
         };
         let body = build_payload(&NormalizedRequest { request }, false, "openrouter");
         assert!(body.get("messages").is_some(), "chat-completions shape");
@@ -2416,6 +2417,7 @@ mod tests {
                 user_location: None,
                 include_sources: None,
             }),
+            continue_message_id: None,
         };
         let body = build_payload(&NormalizedRequest { request }, false, "openrouter");
         let tools = body["tools"].as_array().expect("function tools still sent");
@@ -2630,6 +2632,7 @@ mod tests {
                 }),
                 include_sources: Some(true),
             }),
+            continue_message_id: None,
         };
 
         let body = build_payload(&NormalizedRequest { request }, false, "openai");
@@ -2717,6 +2720,7 @@ mod tests {
                 user_location: None,
                 include_sources: None,
             }),
+            continue_message_id: None,
         };
 
         let body = build_payload(&NormalizedRequest { request }, false, "openai");
@@ -2767,6 +2771,7 @@ mod tests {
                 user_location: None,
                 include_sources: None,
             }),
+            continue_message_id: None,
         };
 
         let body = build_payload(&NormalizedRequest { request }, false, "openai");
@@ -2801,6 +2806,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         let body = build_payload(&NormalizedRequest { request }, false, "openai");
@@ -2849,6 +2855,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         // Web search is not on the request itself, but the catalog is exposing
         // a hosted tool. build_payload should still emit it as a hosted tool
@@ -2916,6 +2923,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         let body = build_payload(&NormalizedRequest { request }, true, "openai");
@@ -3464,6 +3472,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         let normalized = crate::normalize::validate(request).expect("valid");
         let body = build_payload(&normalized, false, "openai");
@@ -3832,6 +3841,7 @@ mod deepseek_payload_tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         }
     }
 

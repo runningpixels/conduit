@@ -3620,6 +3620,8 @@
   "workspace.commandPalette.command.usage": "用量与费用",
   "workspace.commandPalette.command.updates": "更新",
   "shell.settingsSheet.about.intro": "当前版本、项目所在位置，以及 {appName} 在这台机器上存放文件的位置。",
+  "chat.assistant.continueReply": "继续",
+  "chat.assistant.continueReplyLabel": "继续写这条回复",
   "settings.skills.actions.importGithub": "从 GitHub 导入",
   "settings.skills.github.title": "从 GitHub 导入",
   "settings.skills.github.urlLabel": "GitHub 链接",

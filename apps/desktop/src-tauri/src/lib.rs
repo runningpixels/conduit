@@ -19,6 +19,7 @@ pub mod branding;
 pub mod commands;
 pub mod connector_runtime;
 pub mod context_compact;
+pub mod continue_reply;
 pub mod conversation_export;
 pub mod credentials;
 pub mod db;

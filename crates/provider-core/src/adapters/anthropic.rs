@@ -1037,6 +1037,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         let body = build_payload(&NormalizedRequest { request });
         let content = body
@@ -1095,6 +1096,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search,
+            continue_message_id: None,
         }
     }
 

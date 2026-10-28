@@ -6,11 +6,13 @@ const {
   listSkills,
   importSkillFolder,
   importSkillZip,
+  importSkillGit,
   revealSkillsDir,
   deleteManagedSkill,
   exportSkillFolder,
   exportSkillZip,
 } = vi.hoisted(() => ({
+  importSkillGit: vi.fn(),
   listSkills: vi.fn(),
   importSkillFolder: vi.fn(),
   importSkillZip: vi.fn(),
@@ -22,6 +24,7 @@ const {
 
 vi.mock('../../ipc/client', () => ({
   listSkills,
+  importSkillGit,
   importSkillFolder,
   importSkillZip,
   revealSkillsDir,
@@ -142,5 +145,64 @@ describe('SkillsSection', () => {
     expect(await screen.findByText('No skills yet', { selector: '.page-empty-title' })).toBeInTheDocument();
     // Header action + empty-state action.
     expect(screen.getAllByRole('button', { name: 'Import folder' })).toHaveLength(2);
+  });
+
+  it('imports a skill from a GitHub link, asking before it replaces one', async () => {
+    const onStatus = vi.fn();
+    const url = 'https://github.com/anthropics/skills/tree/main/skills/pdf';
+    importSkillGit.mockReset();
+    importSkillGit
+      .mockRejectedValueOnce({ code: 'error.skills.exists', params: { name: 'pdf' }, fallback: 'A skill named "pdf" already exists.' })
+      .mockResolvedValueOnce({
+        id: 'conduit:pdf',
+        name: 'pdf',
+        description: 'PDF tools',
+        source: 'conduit',
+        path: '/data/skills/pdf',
+        hasScripts: true,
+        hasReferences: false,
+        hasAssets: false,
+      });
+    render(<SkillsSection onStatus={onStatus} />);
+    await screen.findByRole('heading', { name: 'demo-skill' });
+    fireEvent.click(screen.getByRole('button', { name: 'Import from GitHub' }));
+    expect(screen.getByText('Scripts in imported skills are never run.')).toBeInTheDocument();
+    const field = screen.getByLabelText('GitHub link');
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+    fireEvent.change(field, { target: { value: url } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(importSkillGit).toHaveBeenCalledWith(url, false));
+    expect(await screen.findByText('A skill named pdf exists. Replace it?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
+    await waitFor(() => expect(importSkillGit).toHaveBeenLastCalledWith(url, true));
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith('Imported pdf'));
+    // The form closes once the skill is in.
+    expect(screen.queryByLabelText('GitHub link')).toBeNull();
+  });
+
+  it('shows why a GitHub import failed, and cancelling the replace prompt keeps the form', async () => {
+    importSkillGit.mockReset();
+    importSkillGit
+      .mockRejectedValueOnce('Only skills on github.com can be imported.')
+      .mockRejectedValueOnce({ code: 'error.skills.exists', params: { name: 'pdf' }, fallback: 'exists' });
+    render(<SkillsSection onStatus={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'demo-skill' });
+    fireEvent.click(screen.getByRole('button', { name: 'Import from GitHub' }));
+    fireEvent.change(screen.getByLabelText('GitHub link'), { target: { value: 'https://gitlab.com/a/b' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(await screen.findByText('Only skills on github.com can be imported.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(await screen.findByText('A skill named pdf exists. Replace it?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('A skill named pdf exists. Replace it?')).toBeNull();
+    expect(screen.getByLabelText('GitHub link')).toBeInTheDocument();
+    expect(importSkillGit).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers the GitHub import in the empty state too', async () => {
+    listSkills.mockResolvedValue([]);
+    render(<SkillsSection onStatus={vi.fn()} />);
+    await screen.findByText('No skills yet', { selector: '.page-empty-title' });
+    expect(screen.getAllByRole('button', { name: 'Import from GitHub' })).toHaveLength(2);
   });
 });

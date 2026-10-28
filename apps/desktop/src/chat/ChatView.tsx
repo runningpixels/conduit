@@ -261,6 +261,9 @@ export interface ChatViewHandle {
   /// M1 (t1-8, D13): a native window drop landed on the composer; forwarded
   /// so it attaches the paths the same way an HTML5 drop's files would.
   handleComposerDrop: (paths: string[]) => void;
+  /** Read the skills and this chat's enabled ones again (a skill was just
+   *  made from the chat and turned on outside the composer). */
+  reloadSkills: () => void;
 }
 
 export interface RunStatus {
@@ -1092,6 +1095,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   );
   const [discoveredSkills, setDiscoveredSkills] = useState<SkillSummary[]>([]);
   const [enabledSkillIds, setEnabledSkillIds] = useState<string[]>([]);
+  /** Bumped to read the skills again (see `reloadSkills`). */
+  const [skillsReloadToken, setSkillsReloadToken] = useState(0);
   const enabledSkillIdsRef = useRef<string[]>([]);
   enabledSkillIdsRef.current = enabledSkillIds;
   const [discoveredCollections, setDiscoveredCollections] = useState<KnowledgeCollection[]>([]);
@@ -1595,7 +1600,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return () => {
       cancelled = true;
     };
-  }, [conversationId, conversationWorkspaceRoot]);
+  }, [conversationId, conversationWorkspaceRoot, skillsReloadToken]);
 
   // Knowledge base collections + this conversation's attachments. Unlike the
   // skills discovery effect above (keyed only on conversationId/workspaceRoot,
@@ -2897,6 +2902,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       composerRef.current?.openChatSettings();
       return true;
     },
+    reloadSkills: () => setSkillsReloadToken((n) => n + 1),
   }));
 
   function handleWebSearchToggle() {

@@ -173,6 +173,7 @@ const IPC_EXPORTS = [
   'listSkills', 'getSkillPromptBlock', 'listConversationSkills', 'setConversationSkills',
   'importSkillFolder', 'importSkillZip', 'exportSkillFolder', 'exportSkillZip',
   'deleteManagedSkill', 'revealSkillsDir',
+  'importSkillGit', 'draftSkillFromChat', 'cancelSkillDraft', 'saveSkillDraft',
   'listMemoryItems', 'createMemoryItem', 'updateMemoryItem', 'deleteMemoryItem',
   'acceptMemoryItem', 'getMemoryPromptBlock',
   'previewConversationExport', 'exportConversationDialog', 'exportDeckHtml', 'exportDeckPdf',

@@ -169,6 +169,17 @@ describe('applyToolSearch', () => {
     expect(split.deferred).toEqual(connectors);
   });
 
+  it('names the connected connectors in the search_tools description', () => {
+    const connectors = [
+      ...tools(TOOL_SEARCH_MAX_TOOLS),
+      { ...connectorTool(99), name: 'Files__read_file', displayGroup: 'Files' },
+    ];
+    const search = applyToolSearch(builtin, connectors).offered.find(
+      (tool) => tool.name === SEARCH_TOOLS_TOOL_NAME,
+    );
+    expect(search?.description).toMatch(/Connected: Tracker, Files\.$/);
+  });
+
   it('defers a few connector tools whose definitions are too long', () => {
     const connectors = tools(3, Math.ceil(TOOL_SEARCH_MAX_CHARS / 3) + 1);
     expect(JSON.stringify(connectors).length).toBeGreaterThan(TOOL_SEARCH_MAX_CHARS);

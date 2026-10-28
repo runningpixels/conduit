@@ -128,9 +128,25 @@ export function applyToolSearch(
     return { offered: dedupeToolsByName([...builtin, ...connectorDefs]), deferred: [] };
   }
   return {
-    offered: dedupeToolsByName([...builtin, searchToolsDefinition()]),
+    offered: dedupeToolsByName([...builtin, searchToolsWithConnectors(connectorDefs)]),
     deferred: connectorDefs,
   };
+}
+
+/** `search_tools`, its description naming the connectors it searches: told
+ *  only that "more tools are available", models guess that the one they need
+ *  isn't there and give up without searching. */
+function searchToolsWithConnectors(connectorDefs: ToolDefinition[]): ToolDefinition {
+  const def = searchToolsDefinition();
+  const connectors = [
+    ...new Set(
+      connectorDefs
+        .map((tool) => tool.displayGroup ?? tool.name.split('__')[0])
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ];
+  if (connectors.length === 0) return def;
+  return { ...def, description: `${def.description} Connected: ${connectors.join(', ')}.` };
 }
 
 export function makeInvokeConnectorToolRequest(

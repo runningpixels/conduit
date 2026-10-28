@@ -2260,7 +2260,7 @@ impl StreamManager {
         let mut released: std::collections::VecDeque<ProviderEvent> =
             std::collections::VecDeque::new();
         loop {
-            let mut event = if let Some(event) = released.pop_front() {
+            let event = if let Some(event) = released.pop_front() {
                 event
             } else {
                 // Wait for the next event, but not past the moment the oldest

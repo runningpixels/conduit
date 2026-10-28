@@ -72,8 +72,8 @@ fn repeated_prefix(old: &str, new: &str) -> usize {
     let longest = body
         .char_indices()
         .map(|(at, c)| at + c.len_utf8())
-        .filter(|&end| old.ends_with(&body[..end]))
-        .last();
+        .rev()
+        .find(|&end| old.ends_with(&body[..end]));
     match longest {
         Some(end) if body[..end].chars().count() >= MIN_REPEAT => lead + end,
         _ => 0,

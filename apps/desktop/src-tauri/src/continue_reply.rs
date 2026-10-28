@@ -35,6 +35,51 @@ use crate::db::repository::{event_log, messages};
 pub const CONTINUE_NUDGE: &str =
     "Continue exactly where you stopped. Do not repeat anything or add a preamble.";
 
+/// How much of the cut-off text the continuation is checked against for a
+/// repeat, in characters.
+const TAIL_CHARS: usize = 600;
+/// How much of the cut-off text the nudge quotes, in characters.
+const QUOTE_CHARS: usize = 80;
+/// The shortest repeat of the cut-off text that is removed, in characters.
+/// Shorter matches (a letter, a short word) can be the real next text.
+const MIN_REPEAT: usize = 6;
+
+/// The app's request to continue, quoting where the reply stopped: models
+/// that are only told to continue often start the last sentence again.
+pub fn nudge(tail: &str) -> String {
+    let quote = last_chars(tail.trim_end(), QUOTE_CHARS);
+    if quote.trim().is_empty() {
+        return CONTINUE_NUDGE.to_string();
+    }
+    format!("{CONTINUE_NUDGE} Your reply stopped right after: \"…{quote}\". Write only what comes next.")
+}
+
+/// The last `n` characters of `text` (on a character boundary).
+fn last_chars(text: &str, n: usize) -> &str {
+    match text.char_indices().rev().nth(n.saturating_sub(1)) {
+        Some((at, _)) if n > 0 => &text[at..],
+        _ if n == 0 => "",
+        _ => text,
+    }
+}
+
+/// The length in bytes of the longest start of `new` that repeats the end of
+/// `old`, if it is at least [`MIN_REPEAT`] characters; 0 otherwise. Leading
+/// whitespace in `new` is part of the repeat when the rest is.
+fn repeated_prefix(old: &str, new: &str) -> usize {
+    let lead = new.len() - new.trim_start().len();
+    let body = &new[lead..];
+    let longest = body
+        .char_indices()
+        .map(|(at, c)| at + c.len_utf8())
+        .filter(|&end| old.ends_with(&body[..end]))
+        .last();
+    match longest {
+        Some(end) if body[..end].chars().count() >= MIN_REPEAT => lead + end,
+        _ => 0,
+    }
+}
+
 /// The finish reason of a reply that stopped at the output-token limit.
 const LENGTH: &str = provider_core::output_limits::FINISH_REASON_LENGTH;
 
@@ -51,6 +96,9 @@ pub struct Continuation {
     /// The block the cut-off text was written in; the new text joins it.
     /// `None` when the reply had no text yet.
     pub join_block_id: Option<String>,
+    /// The end of the cut-off text: quoted in the nudge, and what a repeat at
+    /// the start of the continuation is checked against.
+    pub tail: String,
 }
 
 /// Check that `request` may continue its `continue_message_id`, and rewrite
@@ -86,6 +134,7 @@ pub async fn prepare(
             .await
             .map_err(|e| e.to_string())?;
 
+    let tail = last_chars(&reply.text, TAIL_CHARS).to_string();
     request.request_id = reply.request_id;
     // The renderer's history ends with its copy of the reply; the stored one
     // is what the model wrote.
@@ -104,13 +153,20 @@ pub async fn prepare(
         );
         request.messages.push(message);
     }
-    Ok(Some(Continuation { join_block_id }))
+    Ok(Some(Continuation {
+        join_block_id,
+        tail,
+    }))
 }
 
 /// Add the app's request to continue. Call after the request's messages are
 /// saved: this message must never be.
-pub fn push_nudge(request: &mut ProviderRequest) {
-    let message = text_message(&request.conversation_id, MessageRole::User, CONTINUE_NUDGE);
+pub fn push_nudge(request: &mut ProviderRequest, continuation: &Continuation) {
+    let message = text_message(
+        &request.conversation_id,
+        MessageRole::User,
+        &nudge(&continuation.tail),
+    );
     request.messages.push(message);
 }
 
@@ -164,23 +220,96 @@ pub struct BlockJoin {
     /// The provider's id for the text block that continues `target`.
     joined: Option<String>,
     renamed: HashMap<String, String>,
+    /// The end of the cut-off text. Emptied once the start of the joined text
+    /// is known not to repeat it (or the repeat is removed).
+    tail: String,
+    /// The joined text held back while it could still be a repeat of `tail`,
+    /// with the delta it came in (re-sent with the kept text).
+    held: Option<(ProviderEvent, String)>,
 }
 
 impl BlockJoin {
-    /// `next_index` is one past the reply's highest part index.
-    pub fn new(target: Option<String>, next_index: usize) -> Self {
+    /// `next_index` is one past the reply's highest part index; `tail` is the
+    /// end of the cut-off text ([`Continuation::tail`]).
+    pub fn new(target: Option<String>, next_index: usize, tail: String) -> Self {
         let tag = Uuid::new_v4().simple().to_string();
+        let tail = if target.is_some() {
+            tail
+        } else {
+            String::new()
+        };
         Self {
             target,
             next_index,
             tag: tag[..8].to_string(),
             joined: None,
             renamed: HashMap::new(),
+            tail,
+            held: None,
         }
     }
 
+    /// The events to save and show for `event`, rewritten: none, the event,
+    /// or held-back text followed by the event.
+    ///
+    /// Models asked to continue often start the last sentence again. So the
+    /// joined text is held back while it could still be a repeat of the end
+    /// of the cut-off text; once it can't be (or the block ends), the repeat
+    /// is removed and the rest is sent on.
+    pub fn rewrite(&mut self, mut event: ProviderEvent) -> Vec<ProviderEvent> {
+        if !self.tail.is_empty() {
+            if let ProviderEvent::ContentDelta {
+                block_id, content, ..
+            } = &event
+            {
+                let joining = self.joined.as_deref() == Some(block_id.as_str())
+                    || (self.joins(block_id) && !self.renamed.contains_key(block_id));
+                if joining {
+                    if self.joined.is_none() {
+                        self.joined = Some(block_id.clone());
+                    }
+                    let mut text = self.held.take().map(|(_, t)| t).unwrap_or_default();
+                    text.push_str(content);
+                    if self.tail.contains(text.as_str()) {
+                        self.held = Some((event, text));
+                        return Vec::new();
+                    }
+                    return self.release(event, text).into_iter().collect();
+                }
+            }
+            if let Some((held, text)) = self.held.take() {
+                // Something else came first: the held text is all there is.
+                let mut out: Vec<ProviderEvent> = self.release(held, text).into_iter().collect();
+                if self.keep(&mut event) {
+                    out.push(event);
+                }
+                return out;
+            }
+        }
+        if self.keep(&mut event) {
+            vec![event]
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// `delta` carrying `text` with any repeat of the tail removed; `None`
+    /// when it was all repeat. Ends the check for a repeat.
+    fn release(&mut self, mut delta: ProviderEvent, text: String) -> Option<ProviderEvent> {
+        let repeat = repeated_prefix(&self.tail, &text);
+        self.tail.clear();
+        let kept = text[repeat..].to_string();
+        if kept.is_empty() {
+            return None;
+        }
+        if let ProviderEvent::ContentDelta { content, .. } = &mut delta {
+            *content = kept;
+        }
+        self.keep(&mut delta).then_some(delta)
+    }
+
     /// Rewrite `event` in place, as it is saved and shown. `false` drops it.
-    pub fn rewrite(&mut self, event: &mut ProviderEvent) -> bool {
+    fn keep(&mut self, event: &mut ProviderEvent) -> bool {
         match event {
             ProviderEvent::ContentBlockStart {
                 block_id,
@@ -250,8 +379,110 @@ impl BlockJoin {
 mod tests {
     use super::*;
 
-    fn pass(join: &mut BlockJoin, mut event: ProviderEvent) -> Option<ProviderEvent> {
-        join.rewrite(&mut event).then_some(event)
+    fn pass(join: &mut BlockJoin, event: ProviderEvent) -> Option<ProviderEvent> {
+        let mut out = join.rewrite(event);
+        assert!(out.len() <= 1, "expected at most one event: {out:?}");
+        out.pop()
+    }
+
+    fn says(id: &str, content: &str) -> ProviderEvent {
+        ProviderEvent::ContentDelta {
+            request_id: "r".into(),
+            block_id: id.into(),
+            index: 0,
+            content: content.into(),
+        }
+    }
+
+    fn stop(id: &str) -> ProviderEvent {
+        ProviderEvent::ContentBlockStop {
+            request_id: "r".into(),
+            block_id: id.into(),
+            index: 0,
+        }
+    }
+
+    /// The text a stream of deltas comes out as, after the join.
+    fn joined_text(tail: &str, deltas: &[&str]) -> String {
+        let mut join = BlockJoin::new(Some("block-0".into()), 1, tail.into());
+        let mut events = Vec::new();
+        events.extend(join.rewrite(start("p-0", "text")));
+        for d in deltas {
+            events.extend(join.rewrite(says("p-0", d)));
+        }
+        events.extend(join.rewrite(stop("p-0")));
+        events
+            .iter()
+            .filter_map(|e| match e {
+                ProviderEvent::ContentDelta {
+                    block_id, content, ..
+                } => {
+                    assert_eq!(block_id, "block-0");
+                    Some(content.as_str())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    const TAIL: &str = "The tide cannot keep up.\n\nWhat happens instead is that the ocean basins act as vast resonators";
+
+    #[test]
+    fn a_restarted_sentence_is_not_written_twice() {
+        let text = joined_text(
+            TAIL,
+            &[
+                "What happens instead ",
+                "is that the ocean basins act ",
+                "as vast resonators, each with",
+                " its own period.",
+            ],
+        );
+        assert_eq!(text, ", each with its own period.");
+    }
+
+    #[test]
+    fn a_repeat_with_leading_space_is_removed_too() {
+        let text = joined_text(TAIL, &[" act as vast resonators", ", each basin"]);
+        assert_eq!(text, ", each basin");
+    }
+
+    #[test]
+    fn text_that_does_not_repeat_is_kept_whole() {
+        assert_eq!(
+            joined_text(TAIL, &[", each with ", "its own period."]),
+            ", each with its own period."
+        );
+        // A short match can be the real next word.
+        assert_eq!(joined_text("it ended with the", &["the end"]), "the end");
+    }
+
+    #[test]
+    fn a_continuation_that_only_repeats_adds_nothing() {
+        assert_eq!(joined_text(TAIL, &["act as vast resonators"]), "");
+    }
+
+    #[test]
+    fn held_text_is_sent_before_the_event_that_ends_it() {
+        let mut join = BlockJoin::new(Some("block-0".into()), 1, TAIL.into());
+        assert!(join.rewrite(start("p-0", "text")).is_empty());
+        assert!(join.rewrite(says("p-0", "basins")).is_empty());
+        let out = join.rewrite(stop("p-0"));
+        assert_eq!(out.len(), 2);
+        assert!(
+            matches!(&out[0], ProviderEvent::ContentDelta { content, .. } if content == "basins")
+        );
+        assert!(matches!(&out[1], ProviderEvent::ContentBlockStop { .. }));
+    }
+
+    #[test]
+    fn the_nudge_quotes_where_the_reply_stopped() {
+        let nudge = nudge(TAIL);
+        assert!(nudge.starts_with(CONTINUE_NUDGE));
+        assert!(nudge.contains("act as vast resonators\""));
+        assert_eq!(super::nudge("  "), CONTINUE_NUDGE);
+        assert_eq!(last_chars("héllo", 3), "llo");
+        assert_eq!(last_chars("hé", 5), "hé");
     }
 
     fn start(id: &str, kind: &str) -> ProviderEvent {
@@ -301,7 +532,7 @@ mod tests {
 
     #[test]
     fn the_first_text_block_continues_the_cut_off_one_without_starting_again() {
-        let mut join = BlockJoin::new(Some("block-1".into()), 3);
+        let mut join = BlockJoin::new(Some("block-1".into()), 3, String::new());
         assert!(pass(&mut join, start("block-0", "text")).is_none());
         let delta = pass(&mut join, text("block-0")).unwrap();
         assert_eq!(block_of(&delta).0, "block-1");
@@ -309,7 +540,7 @@ mod tests {
 
     #[test]
     fn reasoning_and_later_blocks_get_ids_and_indexes_of_their_own() {
-        let mut join = BlockJoin::new(Some("block-0".into()), 3);
+        let mut join = BlockJoin::new(Some("block-0".into()), 3, String::new());
         let thinking = pass(&mut join, start("block-0", "thinking")).unwrap();
         assert_ne!(block_of(&thinking).0, "block-0");
         assert_eq!(block_of(&thinking).1, 3);
@@ -328,7 +559,7 @@ mod tests {
 
     #[test]
     fn text_without_a_block_start_still_joins() {
-        let mut join = BlockJoin::new(Some("block-0".into()), 1);
+        let mut join = BlockJoin::new(Some("block-0".into()), 1, String::new());
         assert_eq!(
             block_of(&pass(&mut join, text("gemini-text-0")).unwrap()).0,
             "block-0"
@@ -337,7 +568,7 @@ mod tests {
 
     #[test]
     fn a_reply_with_no_text_yet_gets_a_new_text_block() {
-        let mut join = BlockJoin::new(None, 2);
+        let mut join = BlockJoin::new(None, 2, String::new());
         let started = pass(&mut join, start("block-0", "text")).unwrap();
         assert!(block_of(&started).0.starts_with("block-0@"));
         assert_eq!(block_of(&started).1, 2);
@@ -345,7 +576,7 @@ mod tests {
 
     #[test]
     fn other_events_pass_through() {
-        let mut join = BlockJoin::new(Some("block-0".into()), 1);
+        let mut join = BlockJoin::new(Some("block-0".into()), 1, String::new());
         let event = ProviderEvent::MessageStart {
             request_id: "r".into(),
             index: 0,

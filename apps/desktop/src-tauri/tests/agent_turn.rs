@@ -2237,10 +2237,11 @@ async fn continuing_appends_to_the_same_reply(with_tools: bool) {
 
     // No new message: the user's question and the one reply.
     assert_eq!(messages.len(), 2, "{messages:#?}");
-    assert!(messages
-        .iter()
-        .flat_map(|m| &m.parts)
-        .all(|p| p.content.as_deref() != Some(conduit_desktop::continue_reply::CONTINUE_NUDGE)));
+    assert!(messages.iter().flat_map(|m| &m.parts).all(|p| !p
+        .content
+        .as_deref()
+        .unwrap_or_default()
+        .starts_with(conduit_desktop::continue_reply::CONTINUE_NUDGE)));
 
     // The provider saw the conversation, its cut-off reply as its own words,
     // then the app's request.
@@ -2258,7 +2259,7 @@ async fn continuing_appends_to_the_same_reply(with_tools: bool) {
     );
     assert_eq!(
         sent.messages[2].parts[0].content.as_deref(),
-        Some(conduit_desktop::continue_reply::CONTINUE_NUDGE)
+        Some(conduit_desktop::continue_reply::nudge("The report covers").as_str())
     );
 
     // The live events belong to the reply's own turn, and say it reopened.

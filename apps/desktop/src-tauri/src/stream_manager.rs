@@ -676,10 +676,11 @@ pub fn wants_continuation(request: &ProviderRequest) -> bool {
 fn reopen_continued_reply<'a>(
     state: &'a AppState,
     request: &'a mut ProviderRequest,
+    continuation: &'a crate::continue_reply::Continuation,
     channel: &'a EventSink<ProviderEvent>,
 ) -> futures::future::BoxFuture<'a, Result<(), String>> {
     Box::pin(async move {
-        crate::continue_reply::push_nudge(request);
+        crate::continue_reply::push_nudge(request, continuation);
         let marker = crate::continue_reply::marker(&request.request_id);
         crate::db::repository::event_log::append_and_apply_batch(
             &state.db,
@@ -710,6 +711,7 @@ fn block_join_for<'a>(
         Some(Box::new(crate::continue_reply::BlockJoin::new(
             continuation.join_block_id.clone(),
             next_index,
+            continuation.tail.clone(),
         )))
     })
 }
@@ -1674,7 +1676,7 @@ impl StreamManager {
             let Some(continuation) = self.begin_continuation(state, request).await? else {
                 return Ok(None);
             };
-            reopen_continued_reply(state, request, channel).await?;
+            reopen_continued_reply(state, request, &continuation, channel).await?;
             Ok(Some(continuation))
         })
     }
@@ -1896,8 +1898,10 @@ impl StreamManager {
 
         let mut provider_request = request;
         provider_request.request_id = request_id.clone();
-        if continuation.is_some() {
-            if let Err(e) = reopen_continued_reply(state, &mut provider_request, &channel).await {
+        if let Some(continuation) = continuation.as_ref() {
+            if let Err(e) =
+                reopen_continued_reply(state, &mut provider_request, continuation, &channel).await
+            {
                 self.forget_stream(&request_id);
                 return Err(e);
             }
@@ -2251,30 +2255,44 @@ impl StreamManager {
         let mut deltas = DeltaBuffer::default();
         // A continued reply: its text goes on in the cut-off block.
         let mut join = block_join_for(&pool, &persist_id, bind.continuing).await;
+        // Events the join released together (held-back text, then the event
+        // that ended it); handled before reading the stream again.
+        let mut released: std::collections::VecDeque<ProviderEvent> =
+            std::collections::VecDeque::new();
         loop {
-            // Wait for the next event, but not past the moment the oldest
-            // waiting delta is due: a provider that goes quiet mid-answer must
-            // not leave what it already sent unsaved for as long as it is quiet.
-            let next = match deltas.deadline() {
-                Some(deadline) => tokio::select! {
-                    next = stream.next() => next,
-                    () = tokio::time::sleep_until(deadline) => {
-                        deltas.flush(&pool, &conversation_id, &persist_id, None).await;
-                        continue;
-                    }
-                },
-                None => stream.next().await,
-            };
-            let Some(mut event) = next else { break };
-            if cancel.is_cancelled() {
-                break;
-            }
-            // A continued reply: its text goes on in the cut-off block.
-            if let Some(join) = join.as_mut() {
-                if !join.rewrite(&mut event) {
-                    continue;
+            let mut event = if let Some(event) = released.pop_front() {
+                event
+            } else {
+                // Wait for the next event, but not past the moment the oldest
+                // waiting delta is due: a provider that goes quiet mid-answer
+                // must not leave what it already sent unsaved for as long as
+                // it is quiet.
+                let next = match deltas.deadline() {
+                    Some(deadline) => tokio::select! {
+                        next = stream.next() => next,
+                        () = tokio::time::sleep_until(deadline) => {
+                            deltas.flush(&pool, &conversation_id, &persist_id, None).await;
+                            continue;
+                        }
+                    },
+                    None => stream.next().await,
+                };
+                let Some(event) = next else { break };
+                if cancel.is_cancelled() {
+                    break;
                 }
-            }
+                // A continued reply: its text goes on in the cut-off block,
+                // without repeating the end of what was cut off.
+                match join.as_mut() {
+                    Some(join) => {
+                        let mut out = join.rewrite(event).into_iter();
+                        let Some(first) = out.next() else { continue };
+                        released.extend(out);
+                        first
+                    }
+                    None => event,
+                }
+            };
             if let ProviderEvent::Error { error, .. } = &event {
                 // Cancelled transport surfaces as a non-retryable error; treat
                 // it as an abort rather than a turn-ending provider failure.

@@ -1405,6 +1405,45 @@ export async function importSkillZip(
   return invokeCommand<SkillSummary | null>('import_skill_zip', { dialogTitle, filterName });
 }
 
+/** Import a skill from a GitHub repository or folder link. A taken name
+ *  rejects with `error.skills.exists` (see `skillExistsName`); retry with
+ *  `replace: true` to overwrite the managed skill. */
+export async function importSkillGit(url: string, replace = false): Promise<SkillSummary> {
+  return invokeCommand<SkillSummary>('import_skill_git', { url, replace });
+}
+
+/** A skill drafted from a chat, before it is saved. */
+export interface SkillDraft {
+  name: string;
+  description: string;
+  body: string;
+}
+
+/** Draft a skill from what happened in a chat (never saved). */
+export async function draftSkillFromChat(conversationId: string): Promise<SkillDraft> {
+  return invokeCommand<SkillDraft>('draft_skill_from_chat', { conversationId });
+}
+
+/** Stop the skill draft in progress; resolves false when nothing was drafting. */
+export async function cancelSkillDraft(): Promise<boolean> {
+  return invokeCommand<boolean>('cancel_skill_draft', {});
+}
+
+/** Save a skill draft and turn it on for `conversationId`. */
+export async function saveSkillDraft(
+  draft: SkillDraft,
+  conversationId: string | null,
+  replace = false,
+): Promise<SkillSummary> {
+  return invokeCommand<SkillSummary>('save_skill_draft', {
+    name: draft.name,
+    description: draft.description,
+    body: draft.body,
+    replace,
+    conversationId,
+  });
+}
+
 export async function exportSkillFolder(
   skillId: string,
   dialogTitle: string,

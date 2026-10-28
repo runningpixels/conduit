@@ -201,6 +201,22 @@ kbd {
   pointer-events: none;
 }
 
+/* ── Make a skill from this chat ───────────────────────────────────────── */
+.skill-draft-dialog { width: min(640px, 100%); max-height: calc(100vh - 96px); overflow-y: auto; }
+.skill-draft-dialog textarea {
+  width: 100%;
+  border: var(--space-1) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  padding: var(--space-8) var(--space-10);
+  font: 400 var(--fs-xl)/1.45 var(--font-ui);
+  resize: vertical;
+}
+.skill-draft-dialog .skill-draft-body { font-family: var(--font-mono); }
+.skill-draft-dialog textarea:focus { border-color: var(--line-hi); }
+.skill-draft-hint { color: var(--ink-3); font-size: var(--fs-md); }
+
 /* ── Keyboard shortcuts sheet (Mod+/) ──────────────────────────────────── */
 .shortcuts-sheet { width: min(480px, 100%); max-height: calc(100vh - 96px); overflow-y: auto; }
 .shortcuts-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }

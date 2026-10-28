@@ -884,16 +884,19 @@ pub fn import_skill_github_zip(
     replace: bool,
 ) -> Result<SkillSummary, String> {
     let tmp = extract_zip(std::io::Cursor::new(zip), Some(&source.path))?;
-    let package = find_extracted_skill_dir(tmp.path()).map_err(|_| {
-        if source.path.is_empty() {
+    // The skill must be exactly where the link points. Unlike a zip, a
+    // repository often holds skills (and templates) in folders below, and
+    // importing one of those would not be what was linked.
+    if !tmp.path().join("SKILL.md").is_file() {
+        return Err(if source.path.is_empty() {
             "No SKILL.md at the top of that repository. Link to the skill's folder instead."
                 .to_string()
         } else {
             "No SKILL.md in that folder. Link to the folder that holds the skill's SKILL.md."
                 .to_string()
-        }
-    })?;
-    import_skill_dir_with(conduit_skills, &package, replace)
+        });
+    }
+    import_skill_dir_with(conduit_skills, tmp.path(), replace)
 }
 
 pub fn delete_managed_skill(conduit_skills: &Path, skill_id_str: &str) -> Result<(), String> {
@@ -1372,6 +1375,17 @@ mod tests {
                 .unwrap();
         let err = import_skill_github_zip(&conduit, &bytes, &missing, false).unwrap_err();
         assert!(err.contains("No SKILL.md"), "{err}");
+
+        // A repository whose root has exactly one folder with a SKILL.md
+        // (anthropics/skills has `template/`): linking the root must not
+        // import that folder.
+        let one_below = github_zip(&[
+            ("README.md", "Repo readme"),
+            ("template/SKILL.md", &sample_skill_md("template-skill", "")),
+        ]);
+        let err = import_skill_github_zip(&conduit, &one_below, &root, false).unwrap_err();
+        assert!(err.contains("No SKILL.md at the top"), "{err}");
+        assert!(!conduit.join("template-skill").exists());
     }
 
     #[test]

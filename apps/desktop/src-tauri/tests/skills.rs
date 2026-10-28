@@ -2,8 +2,9 @@
 mod common;
 
 use conduit_desktop::db::repository::{conversations, messages, skills as skill_repo};
+use conduit_desktop::skill_draft::{self, SkillDraft};
 use conduit_desktop::skills::{
-    compose_skill_prompt_block, discover_skills, import_skill_dir, SkillRoots,
+    compose_skill_prompt_block, discover_skills, exists_error_name, import_skill_dir, SkillRoots,
 };
 use provider_core::schema::{Message, MessagePart, MessagePartKind, MessageRole};
 
@@ -56,6 +57,58 @@ async fn enablement_persists_and_fork_copies_it() {
         .unwrap();
     let forked = skill_repo::list_enabled(&pool, &fork.id).await.unwrap();
     assert_eq!(forked, vec!["conduit:pdf-processing"]);
+}
+
+#[tokio::test]
+async fn a_saved_draft_is_listed_and_on_for_its_chat() {
+    let pool = common::setup_pool().await;
+    let convo = conversations::create(&pool, Some("Weekly report"))
+        .await
+        .unwrap();
+    skill_repo::set_enabled(&pool, &convo.id, &["claude:pdf-processing".into()])
+        .await
+        .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let conduit = tmp.path().join("skills");
+    let draft = SkillDraft {
+        name: "weekly-report".into(),
+        description: "Writes the weekly report. Use when: the user asks for \"this week\".".into(),
+        body: "1. Gather the numbers.\n2. Always mention DRAFTED-SKILL.".into(),
+    };
+    let saved = skill_draft::save(&pool, &conduit, &draft, false, Some(&convo.id))
+        .await
+        .unwrap();
+    assert_eq!(saved.id, "conduit:weekly-report");
+
+    let roots = SkillRoots {
+        conduit: conduit.clone(),
+        ..SkillRoots::default()
+    };
+    let listed = discover_skills(&roots);
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, "conduit:weekly-report");
+    assert_eq!(listed[0].description, draft.description);
+    assert_eq!(listed[0].parse_error, None);
+
+    // Turned on alongside what the chat already had.
+    let enabled = skill_repo::list_enabled(&pool, &convo.id).await.unwrap();
+    assert_eq!(
+        enabled,
+        vec!["claude:pdf-processing", "conduit:weekly-report"]
+    );
+    let on = compose_skill_prompt_block(&roots, &enabled);
+    assert!(on.contains("DRAFTED-SKILL"), "{on}");
+
+    // Saving again under the same name is a conflict until replace is asked.
+    let err = skill_draft::save(&pool, &conduit, &draft, false, Some(&convo.id))
+        .await
+        .unwrap_err();
+    assert_eq!(exists_error_name(&err), Some("weekly-report"));
+    skill_draft::save(&pool, &conduit, &draft, true, Some(&convo.id))
+        .await
+        .unwrap();
+    let enabled = skill_repo::list_enabled(&pool, &convo.id).await.unwrap();
+    assert_eq!(enabled.len(), 2);
 }
 
 #[test]

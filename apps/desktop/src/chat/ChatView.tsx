@@ -162,6 +162,7 @@ import { resolveSearchBackend, resolveWebSearchForTurn, type SearchBackend } fro
 import type { ConnectorCapability, ConnectorRuntimeEvent } from '../ipc/contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
 import {
+  applyToolSearch,
   buildConnectorToolCatalog,
   isConnectorCallable,
   makeInvokeConnectorToolRequest,
@@ -260,6 +261,9 @@ export interface ChatViewHandle {
   /// M1 (t1-8, D13): a native window drop landed on the composer; forwarded
   /// so it attaches the paths the same way an HTML5 drop's files would.
   handleComposerDrop: (paths: string[]) => void;
+  /** Read the skills and this chat's enabled ones again (a skill was just
+   *  made from the chat and turned on outside the composer). */
+  reloadSkills: () => void;
 }
 
 export interface RunStatus {
@@ -1091,6 +1095,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   );
   const [discoveredSkills, setDiscoveredSkills] = useState<SkillSummary[]>([]);
   const [enabledSkillIds, setEnabledSkillIds] = useState<string[]>([]);
+  /** Bumped to read the skills again (see `reloadSkills`). */
+  const [skillsReloadToken, setSkillsReloadToken] = useState(0);
   const enabledSkillIdsRef = useRef<string[]>([]);
   enabledSkillIdsRef.current = enabledSkillIds;
   const [discoveredCollections, setDiscoveredCollections] = useState<KnowledgeCollection[]>([]);
@@ -1594,7 +1600,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return () => {
       cancelled = true;
     };
-  }, [conversationId, conversationWorkspaceRoot]);
+  }, [conversationId, conversationWorkspaceRoot, skillsReloadToken]);
 
   // Knowledge base collections + this conversation's attachments. Unlike the
   // skills discovery effect above (keyed only on conversationId/workspaceRoot,
@@ -2006,7 +2012,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             ? selectBuiltinWebTools(searchBackend)
             : []
           : selectTurnWebTools(searchBackend, settings);
-    return dedupeToolsByName([...builtinTools, ...webTools, ...connectorTools]);
+    // Many connector tools: offer `search_tools` instead of all of them. The
+    // bindings above keep the full catalog, so a found tool still runs.
+    return applyToolSearch(dedupeToolsByName([...builtinTools, ...webTools]), connectorTools).offered;
   }
 
   function applyRuntimeEventToActiveStream(
@@ -2216,10 +2224,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       if (windowTokens != null && windowTokens > 0) {
         const priorForEstimate = override?.history ?? turns;
         const keptForEstimate = historyForProviderRequest(priorForEstimate, activeCompaction);
-        const estimateTools = selectTurnTools(trimmed, {
-          ...settings,
-          imageGenerationConsentAcknowledged: imageGenerationConsented(),
-        });
+        // Count the connector tools the turn will actually offer (or
+        // `search_tools` in their place): with many connectors they are
+        // a large part of the prompt.
+        const estimateTools = applyToolSearch(
+          selectTurnTools(trimmed, {
+            ...settings,
+            imageGenerationConsentAcknowledged: imageGenerationConsented(),
+          }),
+          await loadConnectorToolDefinitions(),
+        ).offered;
         const systemPrompt = composeSystemPrompt(
           [baseSystemPrompt(), turnSystemAppendix(estimateTools)],
           resolveUserInstructions(settings, conversationUserInstructions),
@@ -2888,6 +2902,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       composerRef.current?.openChatSettings();
       return true;
     },
+    reloadSkills: () => setSkillsReloadToken((n) => n + 1),
   }));
 
   function handleWebSearchToggle() {

@@ -828,7 +828,7 @@ pub async fn draft_within(
 /// One model reply, or why there isn't one: stopped, out of time, or the
 /// provider's own error.
 #[allow(clippy::too_many_arguments)]
-async fn ask_model(
+pub(crate) async fn ask_model(
     state: &AppState,
     streams: &StreamManager,
     conversation_id: &str,
@@ -932,7 +932,7 @@ fn request_for(
 
 /// The hidden conversation drafting is recorded in (so its usage counts like
 /// any other model call), created on first use.
-async fn drafting_conversation(state: &AppState) -> Result<String, String> {
+pub(crate) async fn drafting_conversation(state: &AppState) -> Result<String, String> {
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT id FROM conversations WHERE kind = 'automation' AND title = ? \
          AND id NOT IN (SELECT conversation_id FROM workflows WHERE conversation_id IS NOT NULL) \
@@ -1368,6 +1368,20 @@ struct Call {
 /// to hand to the model: no tool outputs and no document text, secrets
 /// redacted, at most [`MAX_TRANSCRIPT_CHARS`] with the newest turns kept.
 pub async fn chat_transcript(state: &AppState, conversation_id: &str) -> Result<String, String> {
+    chat_transcript_or(
+        state,
+        conversation_id,
+        "That chat has no messages to turn into a workflow.",
+    )
+    .await
+}
+
+/// [`chat_transcript`], failing with `empty` when the user said nothing.
+pub(crate) async fn chat_transcript_or(
+    state: &AppState,
+    conversation_id: &str,
+    empty: &str,
+) -> Result<String, String> {
     conversations::get(&state.db, conversation_id)
         .await
         .map_err(|e| e.to_string())?
@@ -1415,7 +1429,7 @@ pub async fn chat_transcript(state: &AppState, conversation_id: &str) -> Result<
         }
     }
     if !turns.iter().any(|t| t.user && !t.text.trim().is_empty()) {
-        return Err("That chat has no messages to turn into a workflow.".to_string());
+        return Err(empty.to_string());
     }
     Ok(format_transcript(&turns))
 }

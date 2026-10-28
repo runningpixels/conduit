@@ -213,6 +213,19 @@ function brandThemeInputSchema(): Record<string, unknown> {
   };
 }
 
+/** The built-in that finds deferred connector tools (Rust: `SEARCH_TOOLS_TOOL`). */
+export const SEARCH_TOOLS_TOOL_NAME = 'search_tools';
+/** Word for word the same as Rust's `SEARCH_TOOLS_DESCRIPTION`. */
+export const SEARCH_TOOLS_DESCRIPTION =
+  'Find connector tools. More connector tools are available than are listed here. Describe what you need to do (an action, a service, or a connector name, e.g. "create issue" or "calendar events"); the matching tools are returned and loaded, so you can call them by name in your next step. If nothing matches, the result lists the connector names: search again with other words.';
+
+/** The `search_tools` definition. */
+export function searchToolsDefinition(): ToolDefinition {
+  const def = builtinToolDefinitions().find((tool) => tool.name === SEARCH_TOOLS_TOOL_NAME);
+  if (!def) throw new Error('search_tools is missing from builtinToolDefinitions');
+  return def;
+}
+
 export function builtinToolDefinitions(): ToolDefinition[] {
   return [
   {
@@ -392,6 +405,19 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     ]),
     permissionLevel: 'readOnly',
     displayGroup: 'Utilities',
+  },
+  {
+    // Offered only when a chat has too many connector tools to send them all
+    // (`applyToolSearch` in `connectorTools.ts`); never by the turn selectors.
+    toolId: SEARCH_TOOLS_TOOL_NAME,
+    name: SEARCH_TOOLS_TOOL_NAME,
+    description: SEARCH_TOOLS_DESCRIPTION,
+    inputSchema: schema([
+      { name: 'query', type: 'string', required: true },
+      { name: 'limit', type: 'integer' },
+    ]),
+    permissionLevel: 'readOnly',
+    displayGroup: 'Connectors',
   },
   {
     toolId: 'ask_user',

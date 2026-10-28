@@ -133,6 +133,7 @@ import {
 import { useFocusTrap } from './shell/useFocusTrap';
 import { useHotkeys } from './workspace/useHotkeys';
 import { ShortcutsSheet } from './workspace/ShortcutsSheet';
+import { SkillDraftDialog } from './workspace/SkillDraftDialog';
 import { useWindowTitle } from './shell/useWindowTitle';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
@@ -530,6 +531,8 @@ export default function App() {
     setPendingSendResearch(false);
   }, []);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  /** The chat "Make a skill from this chat" is drafting from; null when closed. */
+  const [skillDraftChatId, setSkillDraftChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [toasts, setToasts] = useState<StatusState[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -4361,6 +4364,17 @@ export default function App() {
       )}
 
       <ShortcutsSheet open={shortcutsOpen} onClose={closeShortcuts} />
+      {skillDraftChatId ? (
+        <SkillDraftDialog
+          conversationId={skillDraftChatId}
+          onClose={() => setSkillDraftChatId(null)}
+          onSaved={(skill) => {
+            setSkillDraftChatId(null);
+            chatViewRef.current?.reloadSkills();
+            setStatus(makeStatus(t('workspace.skillDraft.saved', { name: skill.name }), 'success'));
+          }}
+        />
+      ) : null}
       <AppDetailsDialog
         target={appDetailsTarget}
         onClose={() => setAppDetailsTarget(null)}
@@ -4439,6 +4453,9 @@ export default function App() {
           setWorkflowsDraftRequest({ nonce: Date.now(), conversationId: activeConversationId });
           setDestination('workflows');
         }}
+        onMakeSkillFromChat={
+          activeConversationId ? () => setSkillDraftChatId(activeConversationId) : undefined
+        }
         onDeleteChat={handleDeleteChatRequest}
         onDeleteAllHistory={handleDeleteAllHistory}
         onSelectModel={handleSelectModel}

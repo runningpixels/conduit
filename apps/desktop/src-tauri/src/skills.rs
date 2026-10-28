@@ -291,15 +291,68 @@ fn unquote(value: &str) -> String {
     let value = value.trim();
     if value.len() >= 2 {
         let bytes = value.as_bytes();
-        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
-            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
-        {
-            return value[1..value.len() - 1]
-                .replace("\\\"", "\"")
-                .replace("\\'", "'");
+        let inner = &value[1..value.len() - 1];
+        if bytes[0] == b'"' && bytes[value.len() - 1] == b'"' {
+            // YAML double quotes: backslash escapes. Unknown escapes are kept
+            // as written.
+            let mut out = String::with_capacity(inner.len());
+            let mut chars = inner.chars();
+            while let Some(c) = chars.next() {
+                if c != '\\' {
+                    out.push(c);
+                    continue;
+                }
+                match chars.next() {
+                    Some('"') => out.push('"'),
+                    Some('\\') => out.push('\\'),
+                    Some('\'') => out.push('\''),
+                    Some('n') => out.push('\n'),
+                    Some('t') => out.push('\t'),
+                    Some(other) => {
+                        out.push('\\');
+                        out.push(other);
+                    }
+                    None => out.push('\\'),
+                }
+            }
+            return out;
+        }
+        if bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'' {
+            // YAML single quotes: `''` is a quote.
+            return inner.replace("''", "'").replace("\\'", "'");
         }
     }
     value.to_string()
+}
+
+/// A SKILL.md with the given frontmatter and body. The description is put on
+/// one line and double-quoted, so colons, quotes and `#` survive both YAML
+/// readers and [`parse_skill_md`].
+pub fn format_skill_md(name: &str, description: &str, body: &str) -> String {
+    let description = description.split_whitespace().collect::<Vec<_>>().join(" ");
+    let quoted = description.replace('\\', "\\\\").replace('"', "\\\"");
+    let body = body.trim().replace("\r\n", "\n");
+    format!("---\nname: {name}\ndescription: \"{quoted}\"\n---\n\n{body}\n")
+}
+
+/// `raw` made into a valid skill name: lowercase, anything else turned into
+/// hyphens, at most 64 characters. `None` when nothing usable is left.
+pub fn normalize_skill_name(raw: &str) -> Option<String> {
+    let mut s = String::new();
+    for c in raw.trim().chars() {
+        let c = c.to_ascii_lowercase();
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            s.push(c);
+        } else if !s.ends_with('-') {
+            s.push('-');
+        }
+    }
+    let mut s = s.trim_matches('-').to_string();
+    if s.len() > 64 {
+        s.truncate(64);
+        s = s.trim_end_matches('-').to_string();
+    }
+    is_valid_skill_name(&s).then_some(s)
 }
 
 pub fn discover_skills(roots: &SkillRoots) -> Vec<SkillSummary> {
@@ -356,6 +409,10 @@ fn scan_dir(
             Some(n) => n.to_string(),
             None => continue,
         };
+        // Hidden folders: a replace in progress stages its copy in one.
+        if dir_name.starts_with('.') {
+            continue;
+        }
         let skill_md = path.join("SKILL.md");
         if !skill_md.is_file() {
             continue;
@@ -425,27 +482,7 @@ fn summarize_package(dir: &Path, dir_name: &str, source: SkillSource) -> SkillSu
 }
 
 fn slug_fallback(dir_name: &str) -> String {
-    let mut s: String = dir_name
-        .chars()
-        .map(|c| {
-            if c.is_ascii_uppercase() {
-                c.to_ascii_lowercase()
-            } else if c.is_ascii_lowercase() || c.is_ascii_digit() {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    while s.contains("--") {
-        s = s.replace("--", "-");
-    }
-    let s = s.trim_matches('-').to_string();
-    if is_valid_skill_name(&s) {
-        s
-    } else {
-        "unnamed-skill".into()
-    }
+    normalize_skill_name(dir_name).unwrap_or_else(|| "unnamed-skill".into())
 }
 
 pub fn compose_skill_prompt_block(roots: &SkillRoots, skill_ids: &[String]) -> String {
@@ -604,7 +641,37 @@ fn truncate_chars(text: &str, max: usize) -> String {
     s
 }
 
+/// Start of the error an import returns when the managed folder already has
+/// a skill of that name: `skill-exists:<name> <English sentence>`. The command
+/// layer turns it into a coded error the renderer can ask "Replace it?" on.
+pub const EXISTS_ERROR_PREFIX: &str = "skill-exists:";
+
+fn exists_error(name: &str) -> String {
+    format!("{EXISTS_ERROR_PREFIX}{name} A skill named \"{name}\" already exists.")
+}
+
+/// The skill name in an [`EXISTS_ERROR_PREFIX`] error, or `None` for any
+/// other error.
+pub fn exists_error_name(error: &str) -> Option<&str> {
+    let rest = error.strip_prefix(EXISTS_ERROR_PREFIX)?;
+    Some(rest.split_once(' ').map_or(rest, |(name, _)| name))
+}
+
+/// Copy the package at `src` into the managed folder. A skill of the same
+/// name there is an [`EXISTS_ERROR_PREFIX`] error unless `replace` is set.
 pub fn import_skill_dir(conduit_skills: &Path, src: &Path) -> Result<SkillSummary, String> {
+    import_skill_dir_with(conduit_skills, src, false)
+}
+
+/// [`import_skill_dir`], replacing a managed skill of the same name when
+/// `replace` is set. Only a real package folder inside the managed folder is
+/// ever replaced; skills elsewhere (`~/.claude/skills`, a workspace, the
+/// brand) are never touched, since an import only writes the managed folder.
+pub fn import_skill_dir_with(
+    conduit_skills: &Path,
+    src: &Path,
+    replace: bool,
+) -> Result<SkillSummary, String> {
     let src = src
         .canonicalize()
         .map_err(|e| format!("could not resolve skill folder: {e}"))?;
@@ -616,15 +683,220 @@ pub fn import_skill_dir(conduit_skills: &Path, src: &Path) -> Result<SkillSummar
     let (fm, _) = parse_skill_md(&text)?;
     fs::create_dir_all(conduit_skills).map_err(|e| e.to_string())?;
     let dest = conduit_skills.join(&fm.name);
-    if dest.exists() {
+    match fs::symlink_metadata(&dest) {
+        Err(_) => copy_dir_no_symlinks(&src, &dest)?,
+        Ok(_) if !replace => return Err(exists_error(&fm.name)),
+        Ok(meta) => {
+            let root = conduit_skills.canonicalize().map_err(|e| e.to_string())?;
+            let managed = !meta.file_type().is_symlink()
+                && meta.is_dir()
+                && dest.join("SKILL.md").is_file()
+                && dest
+                    .canonicalize()
+                    .is_ok_and(|d| d.parent() == Some(root.as_path()));
+            if !managed {
+                return Err(format!(
+                    "\"{}\" is not a skill in the {} skills folder, so it can't be replaced.",
+                    fm.name,
+                    crate::brand::app_name()
+                ));
+            }
+            replace_dir(conduit_skills, &src, &dest, &fm.name)?;
+        }
+    }
+    Ok(summarize_package(&dest, &fm.name, SkillSource::Managed))
+}
+
+/// Swap `dest` for a copy of `src`: the copy is staged in a hidden folder
+/// first, so a failed copy leaves the old skill in place.
+fn replace_dir(root: &Path, src: &Path, dest: &Path, name: &str) -> Result<(), String> {
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let staging = root.join(format!(".{name}.incoming-{tag}"));
+    let old = root.join(format!(".{name}.old-{tag}"));
+    if let Err(e) = copy_dir_no_symlinks(src, &staging) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+    if let Err(e) = fs::rename(dest, &old) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(format!("could not replace the old skill: {e}"));
+    }
+    if let Err(e) = fs::rename(&staging, dest) {
+        let _ = fs::rename(&old, dest);
+        let _ = fs::remove_dir_all(&staging);
+        return Err(format!("could not replace the old skill: {e}"));
+    }
+    let _ = fs::remove_dir_all(&old);
+    Ok(())
+}
+
+/// Write a new skill (`<managed root>/<name>/SKILL.md`) from its parts. The
+/// result must parse like any other SKILL.md, so a bad name or description is
+/// an error here rather than a broken package on disk.
+pub fn save_skill(
+    conduit_skills: &Path,
+    name: &str,
+    description: &str,
+    body: &str,
+    replace: bool,
+) -> Result<SkillSummary, String> {
+    let name = name.trim();
+    if !is_valid_skill_name(name) {
         return Err(format!(
-            "a {} skill named {:?} already exists",
-            crate::brand::app_name(),
-            fm.name
+            "\"{name}\" can't be a skill name: use lowercase letters, numbers and single hyphens (1–64 characters)."
         ));
     }
-    copy_dir_no_symlinks(&src, &dest)?;
-    Ok(summarize_package(&dest, &fm.name, SkillSource::Managed))
+    if body.trim().is_empty() {
+        return Err("A skill needs instructions.".into());
+    }
+    let text = format_skill_md(name, description, body);
+    parse_skill_md(&text)?;
+    let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let package = tmp.path().join(name);
+    fs::create_dir_all(&package).map_err(|e| e.to_string())?;
+    fs::write(package.join("SKILL.md"), text).map_err(|e| e.to_string())?;
+    import_skill_dir_with(conduit_skills, &package, replace)
+}
+
+// ── Importing from GitHub ────────────────────────────────────────────────────
+
+/// A skill folder on GitHub, from a URL the user pasted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitHubSkillSource {
+    pub owner: String,
+    pub repo: String,
+    /// A branch, tag or commit; `HEAD` (the default branch) when the URL names none.
+    pub git_ref: String,
+    /// The folder inside the repository, `/`-separated; empty for the root.
+    pub path: String,
+}
+
+impl GitHubSkillSource {
+    /// The archive of the whole repository at `git_ref`.
+    pub fn zip_url(&self) -> String {
+        format!(
+            "https://codeload.github.com/{}/{}/zip/{}",
+            self.owner, self.repo, self.git_ref
+        )
+    }
+}
+
+const GITHUB_URL_HELP: &str = "Paste a GitHub link like https://github.com/owner/repo or https://github.com/owner/repo/tree/main/path/to/skill.";
+
+fn github_segment_ok(segment: &str, allow_plus: bool) -> bool {
+    !segment.is_empty()
+        && segment != "."
+        && segment != ".."
+        && segment.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') || (allow_plus && c == '+')
+        })
+}
+
+/// Read a GitHub URL: `https://github.com/{owner}/{repo}` or
+/// `https://github.com/{owner}/{repo}/tree/{ref}/{path...}`.
+///
+/// A branch name may itself contain slashes (`feature/x`), and the URL does
+/// not say where the branch ends and the folder begins. Only the common case
+/// is handled: the ref is the single segment after `tree/`, and the rest is
+/// the folder. A branch with a slash in its name fails to download (GitHub
+/// answers 404) rather than importing the wrong folder.
+pub fn parse_github_skill_url(raw: &str) -> Result<GitHubSkillSource, String> {
+    let raw = raw.trim();
+    // `Url::parse` resolves `..` away, so look for it before parsing.
+    let lowered = raw.to_ascii_lowercase();
+    if raw.split(['/', '\\', '?', '#']).any(|s| s == "..")
+        || lowered.contains("%2e%2e")
+        || lowered.contains("%2f")
+        || raw.contains('\\')
+    {
+        return Err(format!(
+            "That link isn't a safe GitHub address. {GITHUB_URL_HELP}"
+        ));
+    }
+    let url = url::Url::parse(raw).map_err(|_| format!("That isn't a link. {GITHUB_URL_HELP}"))?;
+    if url.scheme() != "https" {
+        return Err(format!(
+            "Only https links can be imported. {GITHUB_URL_HELP}"
+        ));
+    }
+    let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+    if host != "github.com" && host != "www.github.com" {
+        return Err(format!(
+            "Only skills on github.com can be imported. {GITHUB_URL_HELP}"
+        ));
+    }
+    if !url.username().is_empty() || url.password().is_some() || url.port().is_some() {
+        return Err(GITHUB_URL_HELP.to_string());
+    }
+    let segments: Vec<&str> = url
+        .path_segments()
+        .map(|s| s.filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+    let (owner, repo, rest) = match segments.as_slice() {
+        [owner, repo, rest @ ..] => (*owner, repo.strip_suffix(".git").unwrap_or(repo), rest),
+        _ => {
+            return Err(format!(
+                "That link doesn't name a repository. {GITHUB_URL_HELP}"
+            ))
+        }
+    };
+    if !github_segment_ok(owner, false) || !github_segment_ok(repo, false) {
+        return Err(format!(
+            "That link doesn't name a repository. {GITHUB_URL_HELP}"
+        ));
+    }
+    let (git_ref, path) = match rest {
+        [] => ("HEAD".to_string(), String::new()),
+        ["tree", git_ref, path @ ..] => {
+            if !github_segment_ok(git_ref, true) {
+                return Err(format!(
+                    "That link's branch name can't be read. {GITHUB_URL_HELP}"
+                ));
+            }
+            if path.iter().any(|s| !github_segment_ok(s, true)) {
+                return Err(format!(
+                    "That link's folder can't be read. {GITHUB_URL_HELP}"
+                ));
+            }
+            (git_ref.to_string(), path.join("/"))
+        }
+        _ => {
+            return Err(format!(
+                "Link to the repository or to the skill's folder. {GITHUB_URL_HELP}"
+            ))
+        }
+    };
+    Ok(GitHubSkillSource {
+        owner: owner.to_string(),
+        repo: repo.to_string(),
+        git_ref,
+        path,
+    })
+}
+
+/// Import the skill in `source.path` from a GitHub archive of the repository
+/// (`zip` is the downloaded bytes). Only that folder is extracted, with every
+/// check a zip import has.
+pub fn import_skill_github_zip(
+    conduit_skills: &Path,
+    zip: &[u8],
+    source: &GitHubSkillSource,
+    replace: bool,
+) -> Result<SkillSummary, String> {
+    let tmp = extract_zip(std::io::Cursor::new(zip), Some(&source.path))?;
+    // The skill must be exactly where the link points. Unlike a zip, a
+    // repository often holds skills (and templates) in folders below, and
+    // importing one of those would not be what was linked.
+    if !tmp.path().join("SKILL.md").is_file() {
+        return Err(if source.path.is_empty() {
+            "No SKILL.md at the top of that repository. Link to the skill's folder instead."
+                .to_string()
+        } else {
+            "No SKILL.md in that folder. Link to the folder that holds the skill's SKILL.md."
+                .to_string()
+        });
+    }
+    import_skill_dir_with(conduit_skills, tmp.path(), replace)
 }
 
 pub fn delete_managed_skill(conduit_skills: &Path, skill_id_str: &str) -> Result<(), String> {
@@ -734,14 +1006,29 @@ fn add_dir_to_zip(
 
 pub fn import_skill_zip(conduit_skills: &Path, zip_path: &Path) -> Result<SkillSummary, String> {
     let file = fs::File::open(zip_path).map_err(|e| format!("could not open zip: {e}"))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("invalid zip: {e}"))?;
+    let tmp = extract_zip(file, None)?;
+    let package = find_extracted_skill_dir(tmp.path())?;
+    import_skill_dir(conduit_skills, &package)
+}
+
+/// Extract a zip into a new temporary folder. With `subfolder`, the archive is
+/// taken to hold one top folder (as GitHub's do: `{repo}-{ref}/…`), and only
+/// the entries under `{top}/{subfolder}/` are extracted, relative to it; the
+/// rest are skipped unread and don't count toward the size caps.
+fn extract_zip<R: Read + std::io::Seek>(
+    reader: R,
+    subfolder: Option<&str>,
+) -> Result<tempfile::TempDir, String> {
+    let mut archive = zip::ZipArchive::new(reader).map_err(|e| format!("invalid zip: {e}"))?;
     let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let wanted: Option<Vec<&str>> =
+        subfolder.map(|s| s.split('/').filter(|s| !s.is_empty()).collect());
     let mut total = 0u64;
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
             .map_err(|e| format!("zip entry {i}: {e}"))?;
-        if entry.is_dir() {
+        if entry.is_dir() || entry.is_symlink() {
             continue;
         }
         let Some(enclosed) = entry.enclosed_name() else {
@@ -750,6 +1037,30 @@ pub fn import_skill_zip(conduit_skills: &Path, zip_path: &Path) -> Result<SkillS
         if !is_safe_rel(&enclosed) {
             return Err("zip contains an unsafe path".into());
         }
+        let enclosed = match &wanted {
+            None => enclosed,
+            Some(wanted) => {
+                let parts: Vec<&str> = enclosed
+                    .components()
+                    .filter_map(|c| match c {
+                        Component::Normal(s) => s.to_str(),
+                        _ => None,
+                    })
+                    .collect();
+                // The first part is the archive's top folder.
+                let Some(inner) = parts.get(1..) else {
+                    continue;
+                };
+                if inner.len() <= wanted.len() || inner[..wanted.len()] != wanted[..] {
+                    continue;
+                }
+                let rel: PathBuf = inner[wanted.len()..].iter().collect();
+                if !is_safe_rel(&rel) {
+                    return Err("zip contains an unsafe path".into());
+                }
+                rel
+            }
+        };
         let size = entry.size();
         if size > MAX_ZIP_FILE_BYTES {
             return Err("zip entry is larger than 5 MB".into());
@@ -772,8 +1083,7 @@ pub fn import_skill_zip(conduit_skills: &Path, zip_path: &Path) -> Result<SkillS
         }
         out.write_all(&buf).map_err(|e| e.to_string())?;
     }
-    let package = find_extracted_skill_dir(tmp.path())?;
-    import_skill_dir(conduit_skills, &package)
+    Ok(tmp)
 }
 
 fn find_extracted_skill_dir(root: &Path) -> Result<PathBuf, String> {
@@ -928,5 +1238,224 @@ mod tests {
         let again = import_skill_zip(&conduit, &zip).unwrap();
         assert_eq!(again.name, "pdf-processing");
         assert!(conduit.join("pdf-processing").join("SKILL.md").is_file());
+    }
+
+    #[test]
+    fn format_skill_md_round_trips_a_description_with_colons_and_quotes() {
+        let description = "Use when: the user says \"ship it\" or 'deploy' # not a comment \\ ok";
+        let body = "# Steps\r\n\r\n1. Check: the build.\n---\nKeep going.";
+        let text = format_skill_md("ship-it", description, body);
+        let (fm, parsed_body) = parse_skill_md(&text).unwrap();
+        assert_eq!(fm.name, "ship-it");
+        assert_eq!(fm.description, description);
+        assert_eq!(
+            parsed_body.trim(),
+            "# Steps\n\n1. Check: the build.\n---\nKeep going."
+        );
+        // Line breaks in a description are folded onto one line.
+        let text = format_skill_md("ship-it", "One.\nTwo:  three", "Do it.");
+        assert_eq!(
+            parse_skill_md(&text).unwrap().0.description,
+            "One. Two: three"
+        );
+    }
+
+    #[test]
+    fn names_are_normalised_into_valid_skill_names() {
+        assert_eq!(
+            normalize_skill_name("PDF Helper").as_deref(),
+            Some("pdf-helper")
+        );
+        assert_eq!(
+            normalize_skill_name("  Weekly -- report!! ").as_deref(),
+            Some("weekly-report")
+        );
+        assert_eq!(normalize_skill_name("***"), None);
+        let long = normalize_skill_name(&"a-".repeat(60)).unwrap();
+        assert!(long.len() <= 64 && is_valid_skill_name(&long), "{long}");
+    }
+
+    #[test]
+    fn github_urls_name_a_repo_or_a_folder_in_it() {
+        let root = parse_github_skill_url("https://github.com/anthropics/skills").unwrap();
+        assert_eq!(
+            root,
+            GitHubSkillSource {
+                owner: "anthropics".into(),
+                repo: "skills".into(),
+                git_ref: "HEAD".into(),
+                path: String::new(),
+            }
+        );
+        assert_eq!(
+            root.zip_url(),
+            "https://codeload.github.com/anthropics/skills/zip/HEAD"
+        );
+        let git = parse_github_skill_url("https://github.com/anthropics/skills.git/").unwrap();
+        assert_eq!(git.repo, "skills");
+
+        let tree =
+            parse_github_skill_url("https://github.com/anthropics/skills/tree/main/skills/pdf")
+                .unwrap();
+        assert_eq!(tree.git_ref, "main");
+        assert_eq!(tree.path, "skills/pdf");
+        assert_eq!(
+            tree.zip_url(),
+            "https://codeload.github.com/anthropics/skills/zip/main"
+        );
+    }
+
+    #[test]
+    fn github_urls_elsewhere_or_climbing_out_are_refused() {
+        for bad in [
+            "https://gitlab.com/anthropics/skills",
+            "https://github.com.evil.com/anthropics/skills",
+            "http://github.com/anthropics/skills",
+            "https://github.com/anthropics/skills/tree/main/../../etc",
+            "https://github.com/anthropics/skills/tree/main/skills/%2e%2e/x",
+            "https://github.com/anthropics/../skills",
+            "https://github.com/anthropics",
+            "https://github.com/anthropics/skills/blob/main/skills/pdf/SKILL.md",
+            "https://user:pw@github.com/anthropics/skills",
+            "not a url",
+        ] {
+            assert!(parse_github_skill_url(bad).is_err(), "{bad}");
+        }
+    }
+
+    /// A zip laid out like a GitHub archive: everything under `skills-main/`.
+    fn github_zip(files: &[(&str, &str)]) -> Vec<u8> {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, text) in files {
+            zip.start_file(format!("skills-main/{name}"), options)
+                .unwrap();
+            zip.write_all(text.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn a_github_archive_extracts_only_the_named_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let conduit = tmp.path().join("skills");
+        let bytes = github_zip(&[
+            ("README.md", "Repo readme"),
+            ("skills/pdf/SKILL.md", &sample_skill_md("pdf", "")),
+            ("skills/pdf/reference.md", "PDF reference"),
+            ("skills/pdf/scripts/fill.py", "print('no')"),
+            ("skills/docx/SKILL.md", &sample_skill_md("docx", "")),
+            (
+                "skills/pdf-extra/SKILL.md",
+                &sample_skill_md("pdf-extra", ""),
+            ),
+        ]);
+        let source =
+            parse_github_skill_url("https://github.com/anthropics/skills/tree/main/skills/pdf")
+                .unwrap();
+        let imported = import_skill_github_zip(&conduit, &bytes, &source, false).unwrap();
+        assert_eq!(imported.id, "conduit:pdf");
+        assert!(imported.has_scripts);
+        let pkg = conduit.join("pdf");
+        assert!(pkg.join("SKILL.md").is_file());
+        assert!(pkg.join("reference.md").is_file());
+        assert!(pkg.join("scripts").join("fill.py").is_file());
+        assert!(!pkg.join("README.md").exists());
+        assert!(!conduit.join("docx").exists());
+        assert!(!conduit.join("pdf-extra").exists());
+
+        // The repository root has no SKILL.md and many below it.
+        let root = parse_github_skill_url("https://github.com/anthropics/skills").unwrap();
+        let err = import_skill_github_zip(&conduit, &bytes, &root, false).unwrap_err();
+        assert!(err.contains("No SKILL.md"), "{err}");
+        // A folder that isn't there.
+        let missing =
+            parse_github_skill_url("https://github.com/anthropics/skills/tree/main/skills/nope")
+                .unwrap();
+        let err = import_skill_github_zip(&conduit, &bytes, &missing, false).unwrap_err();
+        assert!(err.contains("No SKILL.md"), "{err}");
+
+        // A repository whose root has exactly one folder with a SKILL.md
+        // (anthropics/skills has `template/`): linking the root must not
+        // import that folder.
+        let one_below = github_zip(&[
+            ("README.md", "Repo readme"),
+            ("template/SKILL.md", &sample_skill_md("template-skill", "")),
+        ]);
+        let err = import_skill_github_zip(&conduit, &one_below, &root, false).unwrap_err();
+        assert!(err.contains("No SKILL.md at the top"), "{err}");
+        assert!(!conduit.join("template-skill").exists());
+    }
+
+    #[test]
+    fn an_existing_name_is_a_conflict_until_replace_is_asked_for() {
+        let tmp = tempfile::tempdir().unwrap();
+        let conduit = tmp.path().join("skills");
+        save_skill(
+            &conduit,
+            "weekly-report",
+            "Writes the weekly report.",
+            "First.",
+            false,
+        )
+        .unwrap();
+        let err = save_skill(
+            &conduit,
+            "weekly-report",
+            "Writes it: v2.",
+            "Second.",
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(exists_error_name(&err), Some("weekly-report"), "{err}");
+        assert!(exists_error_name("some other error").is_none());
+        let text = fs::read_to_string(conduit.join("weekly-report").join("SKILL.md")).unwrap();
+        assert!(text.contains("First."));
+
+        let replaced =
+            save_skill(&conduit, "weekly-report", "Writes it: v2.", "Second.", true).unwrap();
+        assert_eq!(replaced.description, "Writes it: v2.");
+        let text = fs::read_to_string(conduit.join("weekly-report").join("SKILL.md")).unwrap();
+        assert!(text.contains("Second.") && !text.contains("First."));
+        // Nothing staged is left behind, and the list shows one skill.
+        let names: Vec<String> = fs::read_dir(&conduit)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, vec!["weekly-report"]);
+
+        // A GitHub import of an existing name conflicts the same way.
+        let bytes = github_zip(&[("SKILL.md", &sample_skill_md("weekly-report", ""))]);
+        let source = parse_github_skill_url("https://github.com/a/skills").unwrap();
+        let err = import_skill_github_zip(&conduit, &bytes, &source, false).unwrap_err();
+        assert_eq!(exists_error_name(&err), Some("weekly-report"));
+        import_skill_github_zip(&conduit, &bytes, &source, true).unwrap();
+        let text = fs::read_to_string(conduit.join("weekly-report").join("SKILL.md")).unwrap();
+        assert!(text.contains("BANANA-SKILL"));
+    }
+
+    #[test]
+    fn a_name_that_is_not_a_managed_package_is_not_replaced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let conduit = tmp.path().join("skills");
+        // A stray file where the skill folder would go.
+        fs::create_dir_all(&conduit).unwrap();
+        fs::write(conduit.join("notes"), "mine").unwrap();
+        let err = save_skill(&conduit, "notes", "Takes notes.", "Do it.", true).unwrap_err();
+        assert!(err.contains("can't be replaced"), "{err}");
+        assert_eq!(fs::read_to_string(conduit.join("notes")).unwrap(), "mine");
+    }
+
+    #[test]
+    fn a_saved_skill_needs_a_valid_name_and_instructions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let conduit = tmp.path().join("skills");
+        assert!(save_skill(&conduit, "Bad Name", "Desc.", "Body", false).is_err());
+        assert!(save_skill(&conduit, "ok", "", "Body", false).is_err());
+        assert!(save_skill(&conduit, "ok", &"x".repeat(1025), "Body", false).is_err());
+        assert!(save_skill(&conduit, "ok", "Desc.", "  ", false).is_err());
+        assert!(!conduit.join("ok").exists());
     }
 }

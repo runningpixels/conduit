@@ -931,6 +931,120 @@ fn declaring_nothing_runs_nothing() {
     assert_eq!(undeclared.len(), 1);
 }
 
+// ---------------------------------------------------------------------------
+// Tool search: deferred connector tools are declared only once found.
+// ---------------------------------------------------------------------------
+
+async fn tracker_catalog() -> conduit_desktop::connector_runtime::catalog::ConnectorToolCatalog {
+    let pool = common::setup_pool().await;
+    common::seed_connector_tools(
+        &pool,
+        "tracker",
+        "Issue Tracker",
+        &[
+            ("create_issue", "Open a new issue in a project."),
+            ("close_issue", "Close an issue."),
+            ("list_projects", "List the projects you can see."),
+        ],
+    )
+    .await;
+    common::seed_connector_tools(
+        &pool,
+        "calendar",
+        "Team Calendar",
+        &[("list_events", "Upcoming meetings on a day.")],
+    )
+    .await;
+    conduit_desktop::connector_runtime::catalog::load_connector_tool_catalog(&pool)
+        .await
+        .expect("catalog loads")
+}
+
+/// What a chat over the threshold declares: built-ins plus `search_tools`,
+/// none of the connector tools.
+fn deferred_turn_tools() -> Vec<provider_core::schema::ToolDefinition> {
+    vec![tool_def("current_time"), tool_def("search_tools")]
+}
+
+#[tokio::test]
+async fn a_tool_found_by_search_tools_runs_in_the_next_round() {
+    use conduit_desktop::connector_runtime::catalog::{
+        found_tool_definitions, search_tools_output,
+    };
+    use conduit_desktop::stream_manager::{load_found_tools, partition_declared_tool_calls};
+
+    let catalog = tracker_catalog().await;
+    let mut declared = deferred_turn_tools();
+
+    // Round 1: the model searches.
+    let output = search_tools_output(&catalog, "create an issue", 8);
+    assert_eq!(output["tools"][0]["name"], "Issue_Tracker__create_issue");
+    assert_eq!(output["tools"][0]["connector"], "Issue Tracker");
+    assert_eq!(
+        output["tools"][0]["summary"],
+        "Open a new issue in a project."
+    );
+    load_found_tools(&mut declared, found_tool_definitions(&catalog, &output));
+    // Loading the same tools again does not declare them twice.
+    load_found_tools(&mut declared, found_tool_definitions(&catalog, &output));
+    assert_eq!(
+        declared
+            .iter()
+            .filter(|d| d.name == "Issue_Tracker__create_issue")
+            .count(),
+        1
+    );
+
+    // Round 2: the found tool is declared, so it runs.
+    let (runnable, undeclared) =
+        partition_declared_tool_calls(vec![call("Issue_Tracker__create_issue", "c2")], &declared);
+    assert_eq!(runnable.len(), 1);
+    assert!(undeclared.is_empty());
+}
+
+#[tokio::test]
+async fn a_deferred_tool_never_loaded_is_still_dropped() {
+    use conduit_desktop::connector_runtime::catalog::{
+        found_tool_definitions, search_tools_output,
+    };
+    use conduit_desktop::stream_manager::{load_found_tools, partition_declared_tool_calls};
+
+    let catalog = tracker_catalog().await;
+    assert!(
+        catalog
+            .tool_definitions
+            .iter()
+            .any(|d| d.name == "Team_Calendar__list_events"),
+        "the tool exists in the full catalog"
+    );
+    let mut declared = deferred_turn_tools();
+    let output = search_tools_output(&catalog, "create issue", 8);
+    load_found_tools(&mut declared, found_tool_definitions(&catalog, &output));
+
+    // A calendar tool nobody searched for stays undeclared and is dropped.
+    let (runnable, undeclared) =
+        partition_declared_tool_calls(vec![call("Team_Calendar__list_events", "c1")], &declared);
+    assert!(runnable.is_empty());
+    assert_eq!(undeclared.len(), 1);
+}
+
+#[tokio::test]
+async fn a_search_with_no_matches_returns_the_connector_names() {
+    use conduit_desktop::connector_runtime::catalog::{
+        found_tool_definitions, search_tools_output,
+    };
+
+    let catalog = tracker_catalog().await;
+    let output = search_tools_output(&catalog, "weather forecast", 8);
+    assert_eq!(output["ok"], true);
+    assert_eq!(output["tools"], json!([]));
+    assert_eq!(
+        output["connectors"],
+        json!(["Issue Tracker", "Team Calendar"])
+    );
+    assert!(found_tool_definitions(&catalog, &output).is_empty());
+}
+
 /// Only the mid-stream error path puts an `Error` on the channel. The other
 /// four return before touching it, so the loop owes the terminal event; without
 /// it the backend goes silent and the renderer waits forever.

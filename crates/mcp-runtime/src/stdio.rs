@@ -129,6 +129,14 @@ impl StdioTransport {
             .stdout(ProcessStdio::piped())
             .stderr(ProcessStdio::piped())
             .kill_on_drop(true);
+        // The release app has no console, so Windows would open a console
+        // window for a console program like `node` or an `npx.cmd` shim. The
+        // connector talks over the pipes above; it never needs one.
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
 
         // Redact env values for the spawn trace.
         let env_summary: Vec<String> = config

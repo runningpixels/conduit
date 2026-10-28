@@ -32,8 +32,10 @@ use uuid::Uuid;
 use crate::db::repository::{event_log, messages};
 
 /// What the app asks the model for. Not a chat message: it is never saved.
-pub const CONTINUE_NUDGE: &str =
-    "Continue exactly where you stopped. Do not repeat anything or add a preamble.";
+pub const CONTINUE_NUDGE: &str = "Continue your reply exactly where it stopped, with no preamble.";
+
+/// How many of the reply's last words the model is asked to repeat.
+const ANCHOR_WORDS: usize = 4;
 
 /// How much of the cut-off text the continuation is checked against for a
 /// repeat, in characters.
@@ -44,14 +46,50 @@ const QUOTE_CHARS: usize = 80;
 /// Shorter matches (a letter, a short word) can be the real next text.
 const MIN_REPEAT: usize = 6;
 
-/// The app's request to continue, quoting where the reply stopped: models
-/// that are only told to continue often start the last sentence again.
+/// The app's request to continue. Models told only to continue often start
+/// the last sentence again, and can't tell whether the reply stopped between
+/// words ("…a rotary motion. In" + "a basin" reads "Ina basin"). So the model
+/// is asked to begin by repeating the reply's last few words: [`BlockJoin`]
+/// removes that repeat, and the space after it lands where it belongs.
 pub fn nudge(tail: &str) -> String {
-    let quote = last_chars(tail.trim_end(), QUOTE_CHARS);
-    if quote.trim().is_empty() {
-        return CONTINUE_NUDGE.to_string();
+    match anchor(tail) {
+        Some(anchor) => format!(
+            "{CONTINUE_NUDGE} Begin by repeating its last words exactly, \"{anchor}\", then carry straight on."
+        ),
+        None => {
+            let quote = last_chars(tail.trim_end(), QUOTE_CHARS);
+            if quote.trim().is_empty() {
+                return CONTINUE_NUDGE.to_string();
+            }
+            format!("{CONTINUE_NUDGE} It stopped right after: \"…{quote}\". Write only what comes next.")
+        }
     }
-    format!("{CONTINUE_NUDGE} Your reply stopped right after: \"…{quote}\". Write only what comes next.")
+}
+
+/// The reply's last few words on its last line, for the model to repeat; `None`
+/// when they are too short to be removed reliably as a repeat.
+fn anchor(tail: &str) -> Option<&str> {
+    let text = tail.trim_end();
+    let line = &text[text.rfind('\n').map_or(0, |at| at + 1)..];
+    let mut start = 0;
+    let mut words = 0;
+    let mut in_word = false;
+    for (at, c) in line.char_indices().rev() {
+        if c.is_whitespace() {
+            if in_word {
+                words += 1;
+                if words == ANCHOR_WORDS {
+                    start = at + c.len_utf8();
+                    break;
+                }
+            }
+            in_word = false;
+        } else {
+            in_word = true;
+        }
+    }
+    let anchor = last_chars(&line[start..], QUOTE_CHARS).trim_start();
+    (anchor.chars().count() >= MIN_REPEAT).then_some(anchor)
 }
 
 /// The last `n` characters of `text` (on a character boundary).
@@ -458,6 +496,20 @@ mod tests {
     }
 
     #[test]
+    fn the_repeated_last_words_put_the_space_back() {
+        // The model repeats the anchor it was asked for; what follows keeps
+        // its own leading space.
+        let tail = "into a rotary motion. In";
+        assert_eq!(
+            joined_text(
+                tail,
+                &["rotary motion.", " In a basin like", " the North Sea"]
+            ),
+            " a basin like the North Sea"
+        );
+    }
+
+    #[test]
     fn a_continuation_that_only_repeats_adds_nothing() {
         assert_eq!(joined_text(TAIL, &["act as vast resonators"]), "");
     }
@@ -476,10 +528,21 @@ mod tests {
     }
 
     #[test]
-    fn the_nudge_quotes_where_the_reply_stopped() {
+    fn the_nudge_asks_for_the_last_words_again() {
         let nudge = nudge(TAIL);
         assert!(nudge.starts_with(CONTINUE_NUDGE));
-        assert!(nudge.contains("act as vast resonators\""));
+        assert!(nudge.contains("\"act as vast resonators\""), "{nudge}");
+        assert_eq!(
+            anchor("one two\nthree four five six seven"),
+            Some("four five six seven")
+        );
+        assert_eq!(
+            anchor("into a rotary motion. In"),
+            Some("a rotary motion. In")
+        );
+        // Too short to remove reliably: say where it stopped instead.
+        assert_eq!(anchor("words\n\nIn"), None);
+        assert!(super::nudge("words\n\nIn").contains("stopped right after: \"…words\n\nIn\""));
         assert_eq!(super::nudge("  "), CONTINUE_NUDGE);
         assert_eq!(last_chars("héllo", 3), "llo");
         assert_eq!(last_chars("hé", 5), "hé");

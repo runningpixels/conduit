@@ -3422,6 +3422,13 @@ pub struct AppSettings {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub daily_spend_alert_usd: Option<f64>,
+    /// The system-wide shortcut that opens the small quick-ask box, in the
+    /// global-shortcut plugin's syntax (e.g. `Ctrl+Shift+Space`). `None` — the
+    /// default, and what every settings file written before this field reads
+    /// as — means off: nothing is registered with the OS.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub quick_ask_shortcut: Option<String>,
 }
 
 /// The largest daily spend alert accepted, in US dollars. A typo guard (an
@@ -3504,6 +3511,7 @@ impl Default for AppSettings {
             memory_enabled: true,
             accent: AccentOverride::default(),
             daily_spend_alert_usd: None,
+            quick_ask_shortcut: None,
         }
     }
 }
@@ -3635,6 +3643,11 @@ pub struct SettingsPatch {
     #[ts(optional)]
     #[serde(default, deserialize_with = "clearable")]
     pub daily_spend_alert_usd: Option<Option<f64>>,
+    /// Set or clear the quick-ask shortcut. `Some(None)` — a JSON `null` —
+    /// turns it off; a value needs a modifier and one other key.
+    #[ts(optional)]
+    #[serde(default, deserialize_with = "clearable")]
+    pub quick_ask_shortcut: Option<Option<String>>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

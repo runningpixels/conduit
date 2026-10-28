@@ -60,7 +60,34 @@ pub fn update_settings(
     patch: SettingsPatch,
 ) -> Result<AppSettings, AppError> {
     let close_to_tray = patch.close_to_tray;
-    let settings = state.update_settings(patch)?;
+    // The quick-ask shortcut is registered before it is saved, so a key
+    // another app holds is refused here and Settings shows why. A whole-
+    // settings save carries the shortcut unchanged: only a change touches the
+    // OS (to retry one that failed at startup, clear it and set it again).
+    let shortcut_change = match &patch.quick_ask_shortcut {
+        Some(next) => {
+            let next = next
+                .as_deref()
+                .map(crate::quick_ask::validate_shortcut)
+                .transpose()?;
+            let current = state.settings()?.quick_ask_shortcut;
+            (next != current).then_some((current, next))
+        }
+        None => None,
+    };
+    if let Some((current, next)) = &shortcut_change {
+        crate::quick_ask::apply_shortcut(&app, current.as_deref(), next.as_deref())?;
+    }
+    let settings = match state.update_settings(patch) {
+        Ok(settings) => settings,
+        Err(error) => {
+            // Not saved: put the registered shortcut back as it was.
+            if let Some((current, next)) = &shortcut_change {
+                let _ = crate::quick_ask::apply_shortcut(&app, next.as_deref(), current.as_deref());
+            }
+            return Err(error);
+        }
+    };
     if let Some(enabled) = close_to_tray {
         crate::tray::ensure_tray(&app, enabled)
             .map_err(|e| AppError::from(format!("failed to update the tray icon: {e}")))?;

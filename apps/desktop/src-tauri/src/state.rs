@@ -650,6 +650,11 @@ impl AppState {
         if let Some(value) = patch.daily_spend_alert_usd {
             settings.daily_spend_alert_usd = normalize_daily_spend_alert(value)?;
         }
+        if let Some(value) = patch.quick_ask_shortcut {
+            settings.quick_ask_shortcut = value
+                .map(|raw| crate::quick_ask::validate_shortcut(&raw))
+                .transpose()?;
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())

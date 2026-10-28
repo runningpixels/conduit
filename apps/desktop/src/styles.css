@@ -61,3 +61,6 @@
 
 /* Writing: the draft studio (outline, editor, selection toolbar) and its page: writing/*.tsx, pages/WritingPage.tsx */
 @import './styles/writing-studio.css';
+
+/* Quick ask: the shortcut's small ask window and its Settings recorder (quickAsk/*.tsx) */
+@import './styles/quick-ask.css';

@@ -222,4 +222,11 @@ accent: AccentOverride,
  * before this field reads as — means off. Validated by
  * [`daily_spend_alert_is_valid`] on write.
  */
-dailySpendAlertUsd?: number | null, };
+dailySpendAlertUsd?: number | null, 
+/**
+ * The system-wide shortcut that opens the small quick-ask box, in the
+ * global-shortcut plugin's syntax (e.g. `Ctrl+Shift+Space`). `None` — the
+ * default, and what every settings file written before this field reads
+ * as — means off: nothing is registered with the OS.
+ */
+quickAskShortcut?: string | null, };

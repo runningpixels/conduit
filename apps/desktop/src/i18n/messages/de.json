@@ -3619,5 +3619,19 @@
   "settings.about.files.title": "Dateien auf diesem Rechner",
   "workspace.commandPalette.command.usage": "Nutzung & Kosten",
   "workspace.commandPalette.command.updates": "Updates",
-  "shell.settingsSheet.about.intro": "Welche Version das ist, wo du das Projekt findest und wo {appName} seine Dateien auf diesem Rechner speichert."
+  "shell.settingsSheet.about.intro": "Welche Version das ist, wo du das Projekt findest und wo {appName} seine Dateien auf diesem Rechner speichert.",
+  "shell.settingsSheet.chat.quickAsk.label": "Tastenkürzel für Schnellfragen",
+  "shell.settingsSheet.chat.quickAsk.help": "Öffnet von überall ein kleines Fragefeld. Aus, bis du Tasten wählst.",
+  "shell.settingsSheet.chat.quickAsk.off": "Aus",
+  "shell.settingsSheet.chat.quickAsk.recording": "Tasten drücken…",
+  "shell.settingsSheet.chat.quickAsk.recorderAriaLabel": "Tastenkürzel für Schnellfragen: hier fokussieren, dann eine Tastenkombination drücken",
+  "shell.settingsSheet.chat.quickAsk.clear": "Löschen",
+  "shell.settingsSheet.chat.quickAsk.needsModifier": "Halte Strg, Alt oder Umschalt zusammen mit einer weiteren Taste.",
+  "shell.settingsSheet.chat.quickAsk.failed": "{shortcut} konnte nicht festgelegt werden. Vielleicht verwendet es eine andere App.",
+  "shell.settingsSheet.chat.quickAsk.unsupported": "Hier nicht verfügbar: Globale Tastenkürzel funktionieren in einer Wayland-Sitzung nicht.",
+  "shell.settingsSheet.chat.quickAsk.saved": "Schnellfragen öffnen sich mit {shortcut}.",
+  "shell.settingsSheet.chat.quickAsk.cleared": "Das Tastenkürzel für Schnellfragen ist aus.",
+  "home.quickAsk.label": "{appName} fragen",
+  "home.quickAsk.placeholder": "Frag einfach…",
+  "home.quickAsk.hint": "Enter zum Senden. Umschalt+Enter für eine neue Zeile. Esc zum Schließen."
 }

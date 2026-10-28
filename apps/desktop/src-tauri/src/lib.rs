@@ -40,6 +40,7 @@ pub mod message_preview;
 pub mod page_llm;
 pub mod page_server;
 pub mod paths;
+pub mod quick_ask;
 pub mod research;
 pub mod search;
 pub mod skills;

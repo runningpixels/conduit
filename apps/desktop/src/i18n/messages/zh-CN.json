@@ -3619,5 +3619,19 @@
   "settings.about.files.title": "这台机器上的文件",
   "workspace.commandPalette.command.usage": "用量与费用",
   "workspace.commandPalette.command.updates": "更新",
-  "shell.settingsSheet.about.intro": "当前版本、项目所在位置，以及 {appName} 在这台机器上存放文件的位置。"
+  "shell.settingsSheet.about.intro": "当前版本、项目所在位置，以及 {appName} 在这台机器上存放文件的位置。",
+  "shell.settingsSheet.chat.quickAsk.label": "快速提问快捷键",
+  "shell.settingsSheet.chat.quickAsk.help": "在任何地方打开一个小提问框。选择按键之前保持关闭。",
+  "shell.settingsSheet.chat.quickAsk.off": "关闭",
+  "shell.settingsSheet.chat.quickAsk.recording": "请按下按键…",
+  "shell.settingsSheet.chat.quickAsk.recorderAriaLabel": "快速提问快捷键：先聚焦此处，再按下组合键",
+  "shell.settingsSheet.chat.quickAsk.clear": "清除",
+  "shell.settingsSheet.chat.quickAsk.needsModifier": "请按住 Ctrl、Alt 或 Shift，同时按另一个键。",
+  "shell.settingsSheet.chat.quickAsk.failed": "无法设置 {shortcut}。可能有其他应用正在使用它。",
+  "shell.settingsSheet.chat.quickAsk.unsupported": "此处不可用：全局快捷键在 Wayland 会话中无法使用。",
+  "shell.settingsSheet.chat.quickAsk.saved": "按 {shortcut} 打开快速提问。",
+  "shell.settingsSheet.chat.quickAsk.cleared": "快速提问快捷键已关闭。",
+  "home.quickAsk.label": "向 {appName} 提问",
+  "home.quickAsk.placeholder": "想问什么都可以…",
+  "home.quickAsk.hint": "按 Enter 发送，Shift+Enter 换行，Esc 关闭。"
 }

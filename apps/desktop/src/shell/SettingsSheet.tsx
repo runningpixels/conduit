@@ -36,6 +36,7 @@ import { PromptsSection } from '../workspace/settings/PromptsSection';
 import { SkillsSection } from '../workspace/settings/SkillsSection';
 import { MemorySection } from '../workspace/settings/MemorySection';
 import { UsageSection } from '../workspace/settings/UsageSection';
+import { QuickAskSetting } from '../quickAsk/QuickAskSetting';
 import {
   readReduceMotion,
   writeReduceMotion,
@@ -547,6 +548,7 @@ export function SettingsSheet({
                     </option>
                   </select>
                 </div>
+                <QuickAskSetting settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
                 <div className="srow">
                   <span className="srow-text">
                     <b>{t('shell.settingsSheet.chat.autoCompact.label')}</b>

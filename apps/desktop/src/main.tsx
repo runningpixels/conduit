@@ -5,6 +5,8 @@ import './styles.css';
 import App from './App';
 import { PresenterApp } from './slides/PresenterApp';
 import { parsePresenterRoute } from './slides/presentCore';
+import { QuickAskApp } from './quickAsk/QuickAskApp';
+import { isQuickAskRoute } from './quickAsk/route';
 import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
 import { applyCachedBrand } from './brand/applyBrand';
 import { installWindowResizeFlag } from './workspace/windowResizing';
@@ -34,6 +36,13 @@ applyUiReadability(readUiFontSize(), readUiDensity());
 const presenterDeckId = parsePresenterRoute(window.location.search);
 const bootTheme = presenterDeckId ? 'dark' : resolveTheme('system');
 if (presenterDeckId) document.documentElement.setAttribute('data-theme', 'dark');
+/* The quick-ask window (`?ask=1`): Home's ask box alone, light or dark as the
+ * app is (QuickAskApp reads the setting; the system's until then). */
+const quickAsk = !presenterDeckId && isQuickAskRoute(window.location.search);
+if (quickAsk) {
+  document.documentElement.dataset.window = 'ask';
+  document.documentElement.setAttribute('data-theme', bootTheme);
+}
 applyCachedBrand(bootTheme);
 /* The main colour (ADR-011) lives in AppSettings too; replay its cache the
  * same way. After the brand, so an active brand makes it stand down. */
@@ -64,7 +73,7 @@ void bootstrapI18n(devLocale ?? undefined).then(({ preference, messages }) => {
         initialMessages={messages}
         overridden={devLocale !== null}
       >
-        {presenterDeckId ? <PresenterApp deckId={presenterDeckId} /> : <App />}
+        {presenterDeckId ? <PresenterApp deckId={presenterDeckId} /> : quickAsk ? <QuickAskApp /> : <App />}
       </I18nProvider>
     </React.StrictMode>,
   );

@@ -92,4 +92,9 @@ accent?: AccentOverride,
  * Set or clear the daily spend alert (US dollars). `Some(None)` — a JSON
  * `null` — turns it off; a value must pass `daily_spend_alert_is_valid`.
  */
-dailySpendAlertUsd?: number | null, };
+dailySpendAlertUsd?: number | null, 
+/**
+ * Set or clear the quick-ask shortcut. `Some(None)` — a JSON `null` —
+ * turns it off; a value needs a modifier and one other key.
+ */
+quickAskShortcut?: string | null, };

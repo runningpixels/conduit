@@ -11,6 +11,7 @@ use conduit_desktop::{
     brand,
     commands::*,
     connector_runtime::ConnectorRuntimeManager,
+    quick_ask::{self, QuickAsk},
     research::ResearchRuns,
     state::AppState,
     stream_manager::StreamManager,
@@ -125,6 +126,8 @@ fn main() {
         .manage(DocumentChanges::default())
         // Research runs planning or running, each with its stop token.
         .manage(ResearchRuns::default())
+        // The question sent from the quick-ask box, waiting for the page.
+        .manage(QuickAsk::default())
         .register_uri_scheme_protocol(artifact_frames::SCHEME, |ctx, request| {
             ctx.app_handle().state::<ArtifactFrames>().respond(&request)
         })
@@ -459,6 +462,12 @@ fn main() {
             stop_research,
             cancel_research,
             get_research_run,
+            // Quick ask: the optional shortcut's small ask box.
+            submit_quick_ask,
+            hide_quick_ask,
+            open_quick_ask,
+            take_pending_quick_ask,
+            get_quick_ask_status,
         ])
         .setup(|app| {
             // The main window is built here, not from tauri.conf.json, so its
@@ -467,6 +476,7 @@ fn main() {
             // `webview_args`). The config entry has `create: false`.
             let settings = app.state::<AppState>().settings().ok();
             let close_to_tray = settings.as_ref().is_some_and(|s| s.close_to_tray);
+            let quick_ask_shortcut = settings.as_ref().and_then(|s| s.quick_ask_shortcut.clone());
             let allowlist = settings
                 .map(|s| s.artifact_remote_allowlist)
                 .unwrap_or_default();
@@ -505,6 +515,12 @@ fn main() {
             #[cfg(target_os = "linux")]
             webview_args::disable_webrtc(&_window)?;
             tray::ensure_tray(app.handle(), close_to_tray)?;
+            // The optional quick-ask shortcut. Added here, not on the builder,
+            // so a system without global shortcuts (no X server, Wayland) only
+            // logs; a key taken by another app shows in Settings. Neither
+            // stops the app from starting.
+            quick_ask::init_plugin(app.handle());
+            quick_ask::register_at_boot(app.handle(), quick_ask_shortcut.as_deref());
             // The tray menu shows the running count; the page hears it too.
             let handle = app.handle().clone();
             app.state::<std::sync::Arc<RunningWorkflows>>()
@@ -557,6 +573,17 @@ fn main() {
                 if let Some(state) = window.try_state::<AppState>() {
                     state.record_dropped_paths(paths.clone(), std::time::Instant::now());
                 }
+            }
+            // The quick-ask box hides when it loses focus, and closing it
+            // (Alt+F4) only hides it, so the next shortcut press is instant.
+            tauri::WindowEvent::Focused(false) if window.label() == quick_ask::ASK_WINDOW => {
+                let _ = window.hide();
+            }
+            tauri::WindowEvent::CloseRequested { api, .. }
+                if window.label() == quick_ask::ASK_WINDOW =>
+            {
+                api.prevent_close();
+                let _ = window.hide();
             }
             // Keep running in the tray: closing the main window hides it, so
             // scheduled workflows keep running. Quit is in the tray menu.

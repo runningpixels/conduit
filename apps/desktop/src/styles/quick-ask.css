@@ -1,0 +1,64 @@
+/* Quick ask: the small always-on-top ask window (quickAsk/QuickAskApp.tsx)
+ * and its shortcut recorder in Settings → Chat (quickAsk/QuickAskSetting.tsx).
+ * The window reuses Home's ask box (.home-ask*); these rules only fit it to a
+ * borderless window with nothing else in it. */
+
+html[data-window="ask"],
+html[data-window="ask"] body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--card);
+}
+html[data-window="ask"] #root { height: 100%; }
+
+.quick-ask {
+  box-sizing: border-box;
+  height: 100%;
+  display: flex;
+}
+.quick-ask-box {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 100%;
+  border-radius: 0;
+  border-color: var(--accent-line);
+}
+.quick-ask-input {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.quick-ask-hint-line { font-size: var(--fs-lg); }
+
+/* Settings row: the recorder and its Clear button. */
+.quick-ask-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+.quick-ask-recorder {
+  box-sizing: border-box;
+  width: 180px;
+  height: 28px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-2xl);
+  text-align: center;
+  cursor: pointer;
+}
+.quick-ask-recorder:focus-visible,
+.quick-ask-recorder[data-recording] {
+  outline: 0;
+  border-color: var(--accent-line);
+  box-shadow: var(--glow);
+  color: var(--ink);
+}
+.srow-text small.quick-ask-hint { color: var(--ink-2); }
+.srow-text small.quick-ask-error { color: var(--err); }

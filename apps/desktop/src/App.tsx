@@ -109,6 +109,7 @@ import {
 } from './workflows/documentUpdates';
 import { WorkflowUpdateBanner } from './workflows/WorkflowUpdateBanner';
 import { useTrayLabels } from './shell/useTrayLabels';
+import { useQuickAsk } from './quickAsk/useQuickAsk';
 import { IdeasSheet } from './ideas/IdeasSheet';
 import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
@@ -3395,6 +3396,16 @@ export default function App() {
       }
     },
     [handleStartDeck, openFreshChat, setStatusMessage],
+  );
+  // The quick-ask shortcut's box sent a question: ask it as Home's box does,
+  // once the workspace is up (a question sent during boot or onboarding waits).
+  useQuickAsk(
+    onboarding != null &&
+      onboarding.onboardingCompleted &&
+      onboarding.hasProviderCredential &&
+      !onboarding.migrationRecovery &&
+      activeConversationId != null,
+    handleHomeAsk,
   );
   /** Home's deck chip: a new deck from the box text, opening on its storyline. */
   const handleHomeStartDeck = useCallback(

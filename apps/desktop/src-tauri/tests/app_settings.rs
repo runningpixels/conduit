@@ -1,5 +1,6 @@
 //! Per-app settings: the view, slot and cap validation, the stored-data
-//! viewer, the export file and the storage rollup. Commands are driven through
+//! viewer, the export file and the storage rollup. At the end, the app-wide
+//! quick-ask shortcut setting (`AppSettings.quick_ask_shortcut`). Commands are driven through
 //! their `_impl` bodies (`tauri::State` can't be built outside a running app).
 
 #[path = "common/mod.rs"]
@@ -254,4 +255,86 @@ async fn storage_writes_roll_up_and_deleting_the_app_removes_settings_and_activi
             .unwrap();
         assert_eq!(n, 0, "{table} is cascaded away");
     }
+}
+
+// --- App-wide settings: the quick-ask shortcut -------------------------------
+
+async fn fresh_state() -> (tempfile::TempDir, AppState) {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = conduit_desktop::paths::resolve_in(dir.path()).unwrap();
+    let state = AppState::load_with_paths(paths, "Conduit-test")
+        .await
+        .expect("load state");
+    (dir, state)
+}
+
+fn shortcut_patch(json: &str) -> provider_core::schema::SettingsPatch {
+    serde_json::from_str(json).expect("patch deserializes")
+}
+
+#[tokio::test]
+async fn the_quick_ask_shortcut_is_off_by_default() {
+    let (_dir, state) = fresh_state().await;
+    assert_eq!(state.settings().unwrap().quick_ask_shortcut, None);
+    // A patch without the field leaves it alone.
+    state.update_settings(shortcut_patch("{}")).unwrap();
+    assert_eq!(state.settings().unwrap().quick_ask_shortcut, None);
+}
+
+#[tokio::test]
+async fn the_quick_ask_shortcut_round_trips_and_clears() {
+    let (dir, state) = fresh_state().await;
+    let saved = state
+        .update_settings(shortcut_patch(
+            r#"{"quickAskShortcut":" Ctrl+Shift+Space "}"#,
+        ))
+        .unwrap();
+    assert_eq!(
+        saved.quick_ask_shortcut.as_deref(),
+        Some("Ctrl+Shift+Space")
+    );
+
+    // Persisted: a fresh load from the same folder reads it back.
+    drop(state);
+    let paths = conduit_desktop::paths::resolve_in(dir.path()).unwrap();
+    let state = AppState::load_with_paths(paths, "Conduit-test")
+        .await
+        .expect("reload state");
+    assert_eq!(
+        state.settings().unwrap().quick_ask_shortcut.as_deref(),
+        Some("Ctrl+Shift+Space")
+    );
+
+    // A whole-settings save (the renderer's auto-save) carries it unchanged.
+    let whole = serde_json::to_string(&state.settings().unwrap()).unwrap();
+    state.update_settings(shortcut_patch(&whole)).unwrap();
+    assert_eq!(
+        state.settings().unwrap().quick_ask_shortcut.as_deref(),
+        Some("Ctrl+Shift+Space")
+    );
+
+    // JSON null clears it.
+    let cleared = state
+        .update_settings(shortcut_patch(r#"{"quickAskShortcut":null}"#))
+        .unwrap();
+    assert_eq!(cleared.quick_ask_shortcut, None);
+}
+
+#[tokio::test]
+async fn an_invalid_quick_ask_shortcut_is_refused_and_not_saved() {
+    let (_dir, state) = fresh_state().await;
+    state
+        .update_settings(shortcut_patch(r#"{"quickAskShortcut":"Alt+Q"}"#))
+        .unwrap();
+    for bad in ["\"\"", "\"Ctrl+Shift\"", "\"Q\""] {
+        let patch = shortcut_patch(&format!(r#"{{"quickAskShortcut":{bad}}}"#));
+        assert!(
+            state.update_settings(patch).is_err(),
+            "{bad} must be refused"
+        );
+    }
+    assert_eq!(
+        state.settings().unwrap().quick_ask_shortcut.as_deref(),
+        Some("Alt+Q")
+    );
 }

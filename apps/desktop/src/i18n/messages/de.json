@@ -3634,6 +3634,8 @@
   "home.quickAsk.label": "{appName} fragen",
   "home.quickAsk.placeholder": "Frag einfach…",
   "home.quickAsk.hint": "Enter zum Senden. Umschalt+Enter für eine neue Zeile. Esc zum Schließen.",
+  "chat.assistant.continueReply": "Weiterschreiben",
+  "chat.assistant.continueReplyLabel": "Diese Antwort weiterschreiben",
   "settings.skills.actions.importGithub": "Von GitHub importieren",
   "settings.skills.github.title": "Von GitHub importieren",
   "settings.skills.github.urlLabel": "GitHub-Link",

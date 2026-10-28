@@ -241,6 +241,7 @@ fn build_provider_request(
         }),
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     }
 }
 

@@ -3634,6 +3634,8 @@
   "home.quickAsk.label": "Ask {appName}",
   "home.quickAsk.placeholder": "Ask anything…",
   "home.quickAsk.hint": "Enter to send. Shift+Enter for a new line. Esc to close.",
+  "chat.assistant.continueReply": "Continue",
+  "chat.assistant.continueReplyLabel": "Continue this reply",
   "settings.skills.actions.importGithub": "Import from GitHub",
   "settings.skills.github.title": "Import from GitHub",
   "settings.skills.github.urlLabel": "GitHub link",

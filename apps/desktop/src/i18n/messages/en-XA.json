@@ -3634,6 +3634,8 @@
   "home.quickAsk.label": "[Àšķ {appName} ——]",
   "home.quickAsk.placeholder": "[Àšķ àñýťĥîñĝ… ——————]",
   "home.quickAsk.hint": "[Éñťéŕ ťö šéñḍ. Šĥîḟť+Éñťéŕ ḟöŕ à ñéŵ ļîñé. Éšç ťö çļöšé. —————— —————— —————— —————]",
+  "chat.assistant.continueReply": "[Çöñťîñüé ————]",
+  "chat.assistant.continueReplyLabel": "[Çöñťîñüé ťĥîš ŕéṕļý —————— ——]",
   "settings.skills.actions.importGithub": "[Îḿṕöŕť ḟŕöḿ ĜîťĤüḅ —————— ——]",
   "settings.skills.github.title": "[Îḿṕöŕť ḟŕöḿ ĜîťĤüḅ —————— ——]",
   "settings.skills.github.urlLabel": "[ĜîťĤüḅ ļîñķ —————]",

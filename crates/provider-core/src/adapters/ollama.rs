@@ -660,6 +660,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         let body = build_payload(&NormalizedRequest {
             request: request.clone(),
@@ -782,6 +783,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
 
         let body = build_payload(&NormalizedRequest {
@@ -872,6 +874,7 @@ mod tests {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         let body = build_payload(&NormalizedRequest { request });
         let images = body

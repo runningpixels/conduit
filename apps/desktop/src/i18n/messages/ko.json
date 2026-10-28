@@ -3634,6 +3634,8 @@
   "home.quickAsk.label": "{appName}에게 질문",
   "home.quickAsk.placeholder": "무엇이든 물어보세요…",
   "home.quickAsk.hint": "Enter로 전송, Shift+Enter로 줄 바꿈, Esc로 닫기.",
+  "chat.assistant.continueReply": "계속",
+  "chat.assistant.continueReplyLabel": "이 답변 이어서 쓰기",
   "settings.skills.actions.importGithub": "GitHub에서 가져오기",
   "settings.skills.github.title": "GitHub에서 가져오기",
   "settings.skills.github.urlLabel": "GitHub 링크",

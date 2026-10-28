@@ -207,6 +207,7 @@ fn request(turns: &[(&str, Vec<&attachments::Attachment>)]) -> ProviderRequest {
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     }
 }
 

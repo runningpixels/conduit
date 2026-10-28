@@ -113,6 +113,7 @@ import {
   applyConnectorRuntimeEvent,
   applyProviderEvent,
   createAssistantStreamState,
+  createContinuedStreamState,
   createReattachedStreamState,
   markInterrupted,
   toolCallAwaitsRuntimeFinish,
@@ -906,6 +907,10 @@ interface HandleSendOverride {
   /** Start a Research run with this text instead of a normal reply. Only an
    *  explicit choice (the composer's Research toggle, Home's chip) sets this. */
   research?: boolean;
+  /** Write this reply further instead of answering a new message: the last
+   *  reply, cut off at the output limit. `text` is then the question it
+   *  answers (it picks the turn's tools), and no user turn is added. */
+  continueReply?: { turn: ChatTurn; messageId: string; requestId: string };
 }
 
 /** The exact arguments a deferred `handleSend(...)` call needs to resume
@@ -2171,7 +2176,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   ) {
     const trimmed = (override?.text ?? prompt).trim();
     const attachments = override?.attachments ?? composerAttachments ?? [];
-    if ((!trimmed && attachments.length === 0) || !conversationId) return;
+    // Continuing a cut-off reply adds no message: the reply is written further.
+    const continuing = override?.continueReply;
+    if ((!trimmed && attachments.length === 0 && !continuing) || !conversationId) return;
     // A chat started from an idea says what it needs, in any language: the
     // intent checks below read English only.
     const pickedIdea =
@@ -2204,6 +2211,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // `handleWebSearchToggle` (there is no toggle here to intercept; the
     // composer's Send button is the only trigger).
     if (
+      !continuing &&
       looksLikeImageGenerationRequest(trimmed) &&
       defaultImageModel(settings.activeProvider) != null &&
       !imageGenerationConsented() &&
@@ -2217,7 +2225,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // t1-3: auto-compact older turns before the pending user message is sent.
     // Compaction reads DB messages only — never the in-flight composer turn.
     let activeCompaction = compactionRef.current;
-    if (settings.contextCompactEnabled) {
+    if (settings.contextCompactEnabled && !continuing) {
       const windowTokens = activeContextWindow;
       const threshold =
         settings.contextCompactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT;
@@ -2288,10 +2296,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ...(knowledgeRefs.length > 0 ? { knowledgeRefs } : {}),
       ...(agent ? { agent } : {}),
     };
-    const history = [...(override?.history ?? turns), userTurn];
+    // A continuation's history ends with the reply it writes further.
+    const history = continuing
+      ? (override?.history ?? turns)
+      : [...(override?.history ?? turns), userTurn];
     // The first message of a new chat: was it an idea? (on this device only)
     if (!override && turns.length === 0) noteFirstMessage();
-    setTurns(history);
+    if (!continuing) setTurns(history);
     if (!override) setPrompt('');
     // Ask the backend, whose rule decides what is sent (DeepSeek's answer is
     // per model, from the bundled models.dev snapshot); the TS mirror only
@@ -2327,7 +2338,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             settings.activeProvider,
             settings.providerEndpoints,
           );
-    const priorHistory = history.slice(0, -1);
+    // The turns before this turn's question: the new one's, or, continuing,
+    // the one the reply answers.
+    const lastUserIndex = history.map((turn) => turn.role).lastIndexOf('user');
+    const priorHistory = !continuing
+      ? history.slice(0, -1)
+      : lastUserIndex >= 0
+        ? history.slice(0, lastUserIndex)
+        : history;
     // A document open or written in this chat is in scope for every turn that
     // does not ask for a new one, in any language (`resolveTurnDocumentScope`).
     // Deck and draft chats route their own tools.
@@ -2350,17 +2368,18 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       activeArtifact,
       { forceEdit: documentScope.forceEdit, fromScope: documentScope.fromScope },
     );
-    const providerHistory = [
-      ...historyForProviderRequest(priorHistory, activeCompaction),
-      userTurn,
-    ];
+    const providerHistory = continuing
+      ? historyForProviderRequest(history, activeCompaction)
+      : [...historyForProviderRequest(priorHistory, activeCompaction), userTurn];
     const draftRunIds = draftChat ? draftSourcesOf(draft).researchRunIds : [];
     const [skillBlock, memoryBlock, resourceBlock, knowledgeContext, draftResearch] = await Promise.all([
       getSkillPromptBlock(enabledSkillIdsRef.current, conversationWorkspaceRoot).catch(
         () => skillPromptBlock,
       ),
       getMemoryPromptBlock().catch(() => memoryPromptBlock),
-      readAttachedResources(attachedResourcesRef.current),
+      // Resources picked in the composer belong to the next message, not to
+      // a reply being continued.
+      readAttachedResources(continuing ? [] : attachedResourcesRef.current),
       readKnowledgeContext(
         conversationId,
         enabledCollectionIdsRef.current,
@@ -2375,17 +2394,19 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     ]);
     // Surface anything the gate refused or truncated, then clear the chips:
     // the content belongs to this turn only.
-    setSkippedResources(resourceBlock.skipped);
-    if (attachedResourcesRef.current.length > 0) setAttachedResources([]);
-    if (composerKnowledgeRefsRef.current.length > 0) setComposerKnowledgeRefs([]);
-    if (composerAgentRef.current) setComposerAgent(null);
+    if (!continuing) {
+      setSkippedResources(resourceBlock.skipped);
+      if (attachedResourcesRef.current.length > 0) setAttachedResources([]);
+      if (composerKnowledgeRefsRef.current.length > 0) setComposerKnowledgeRefs([]);
+      if (composerAgentRef.current) setComposerAgent(null);
+    }
     // Same "belongs to this turn only" rule for knowledge retrieval: named
     // documents the reinjection gate refused, and whole collections that
     // could not be searched, are two different problems (one document's text
     // vs. a whole collection unreachable) and stay in separate notices.
     setKnowledgeRefusedTitles(knowledgeContext.refusedTitles);
     setKnowledgeUnavailableCollections(knowledgeContext.unavailableCollections);
-    if (knowledgeContext.citations.length > 0) {
+    if (knowledgeContext.citations.length > 0 && !continuing) {
       setTurnCitations((prev) => ({ ...prev, [userTurn.id]: knowledgeContext.citations }));
     }
     const extraSystemSections = joinExtraSystemSections(
@@ -2394,7 +2415,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       resourceBlock.text,
       knowledgeContext.text,
     );
-    const request = buildProviderRequest(
+    const built = buildProviderRequest(
       settings,
       trimmed,
       providerHistory,
@@ -2417,8 +2438,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         artifacts,
       },
     );
+    // A continuation runs under the reply's own request id: its events extend
+    // that turn, and the live bubble takes the reply's place in the thread.
+    const request: ProviderRequest = continuing
+      ? { ...built, requestId: continuing.requestId, continueMessageId: continuing.messageId }
+      : built;
     // Keep the chat-bar search toggle armed until the user turns it off.
-    const initialStream = createAssistantStreamState(request.requestId, searchBackend);
+    const initialStream =
+      continuing && continuing.turn.streamState
+        ? createContinuedStreamState(continuing.turn.streamState)
+        : createAssistantStreamState(request.requestId, searchBackend);
     setActiveTurnOutputLimit(request.generationControls?.maxTokens ?? undefined);
     setActiveTurnDocumentWriteHeld(
       toolDefinitions.some((tool) => isDocumentContentTool(tool.name)) &&
@@ -2448,6 +2477,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // turn rendered as a blank "stream complete". Await a promise that only
     // resolves on the terminal `messageComplete`/`error` event instead.
     let terminalError: string | null = null;
+    // Whether the backend took the turn: a continuation it refused leaves the
+    // reply as it was.
+    let streamStarted = false;
     const streamDone = new Promise<void>((resolve) => {
       let settled = false;
       const finish = () => {
@@ -2463,6 +2495,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         if (!active || active.requestId !== request.requestId) {
           return;
         }
+        streamStarted = true;
         if (currentConversationIdRef.current !== conversationId) {
           // The user moved to another chat mid-turn. Render nothing, but keep
           // the turn's state and let it end: dropping the terminal event here
@@ -2622,7 +2655,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         // before any event. Surface it and resolve so the finally block
         // finalizes the turn with the error rather than hanging on `streamDone`.
         terminalError = describeInvokeError(error);
-        if (isWorkflowBusyRefusal(terminalError)) {
+        if (!continuing && isWorkflowBusyRefusal(terminalError)) {
           // A workflow holds this conversation: nothing was stored, so the
           // message goes back to the composer instead of staying in the thread.
           setTurns((current) => current.filter((turn) => turn.id !== userTurn.id));
@@ -2666,7 +2699,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       onStatus(makeStatus(describeInvokeError(error), 'error', 'chat'));
     } finally {
       const finalState = streamStateRef.current;
-      if (currentConversationIdRef.current === conversationId && finalState) {
+      // A continuation the backend refused (the status line says why) leaves
+      // the reply as it was, still offering Continue.
+      const continuationRefused = Boolean(continuing) && !streamStarted;
+      if (currentConversationIdRef.current === conversationId && finalState && !continuationRefused) {
         const content = finalState.blocks.map((block) => block.content).join('');
         const errorText = finalState.error ?? (terminalError ?? undefined);
         const hasToolCalls = finalState.toolCalls.length > 0;
@@ -2714,7 +2750,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           // Skip when the turn ended with an error: the turn already says why,
           // and a guess here ("No artifact content detected") contradicts it.
           // Not in a deck or draft chat: there the turn writes the deck or draft, not a document.
-          if (!deck && !draft && looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded && !errorText) {
+          if (!deck && !draft && !continuing && looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded && !errorText) {
             const failedDocTools = failedDocumentToolCalls(finalState);
             const hasFences = detectArtifactCandidates(content).length > 0;
             if (failedDocTools.length > 0) {
@@ -3392,6 +3428,31 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     await commitMessageEdit(lastUser.id, lastUser.content);
   }
 
+  /** Continue the last reply, which the output limit cut off: the same reply
+   *  is written further, from where it stopped. No message is added. */
+  async function continueLastReply() {
+    if (!conversationId || activeRequestRef.current) return;
+    const current = turnsRef.current;
+    const reply = current[current.length - 1];
+    const requestId = reply?.streamState?.requestId;
+    if (!reply || reply.role !== 'assistant' || !requestId) return;
+    if (reply.streamState?.finishReason !== 'length') return;
+    let messageId = reply.id;
+    try {
+      messageId = (await getMessageIdByRequest(requestId)) ?? reply.id;
+    } catch {
+      /* the turn's own id is the stored one once the thread has loaded */
+    }
+    const question = [...current].reverse().find((turn) => turn.role === 'user');
+    await handleSend({
+      text: question?.content ?? '',
+      history: current,
+      knowledgeRefs: question?.knowledgeRefs ?? [],
+      agent: question?.agent,
+      continueReply: { turn: reply, messageId, requestId },
+    });
+  }
+
   async function retryLastPromptWithoutLimit() {
     const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
     if (!lastUser) return;
@@ -3766,6 +3827,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     isLast={turn.id === visibleTurns[visibleTurns.length - 1]?.id}
                     onRetry={() => void retryLastPrompt()}
                     onRetryWithoutLimit={effectiveMaxTokens ? () => void retryLastPromptWithoutLimit() : undefined}
+                    onContinue={activeRequestId ? undefined : () => void continueLastReply()}
                     onContinueBuilding={() =>
                       void handleSend({
                         text: t('chat.documentBuild.continuePrompt'),

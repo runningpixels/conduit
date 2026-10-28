@@ -3634,6 +3634,8 @@
   "home.quickAsk.label": "{appName} に質問",
   "home.quickAsk.placeholder": "何でも聞いてください…",
   "home.quickAsk.hint": "Enter で送信、Shift+Enter で改行、Esc で閉じます。",
+  "chat.assistant.continueReply": "続ける",
+  "chat.assistant.continueReplyLabel": "この返信の続きを書く",
   "settings.skills.actions.importGithub": "GitHub からインポート",
   "settings.skills.github.title": "GitHub からインポート",
   "settings.skills.github.urlLabel": "GitHub のリンク",

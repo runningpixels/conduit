@@ -456,6 +456,7 @@ fn text_request(conversation: &str, model_id: &str, system: &str, text: &str) ->
         generation_controls: None,
         response_format: None,
         web_search: None,
+        continue_message_id: None,
     }
 }
 

@@ -3634,6 +3634,8 @@
   "home.quickAsk.label": "向 {appName} 提问",
   "home.quickAsk.placeholder": "想问什么都可以…",
   "home.quickAsk.hint": "按 Enter 发送，Shift+Enter 换行，Esc 关闭。",
+  "chat.assistant.continueReply": "继续",
+  "chat.assistant.continueReplyLabel": "继续写这条回复",
   "settings.skills.actions.importGithub": "从 GitHub 导入",
   "settings.skills.github.title": "从 GitHub 导入",
   "settings.skills.github.urlLabel": "GitHub 链接",

@@ -3634,6 +3634,8 @@
   "home.quickAsk.label": "Demander à {appName}",
   "home.quickAsk.placeholder": "Posez votre question…",
   "home.quickAsk.hint": "Entrée pour envoyer. Maj+Entrée pour un retour à la ligne. Échap pour fermer.",
+  "chat.assistant.continueReply": "Continuer",
+  "chat.assistant.continueReplyLabel": "Continuer cette réponse",
   "settings.skills.actions.importGithub": "Importer depuis GitHub",
   "settings.skills.github.title": "Importer depuis GitHub",
   "settings.skills.github.urlLabel": "Lien GitHub",

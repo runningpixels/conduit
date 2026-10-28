@@ -49,6 +49,9 @@ interface AssistantMessageProps {
   onRetry?: () => void;
   /** Continue a document build that stopped at the turn time limit. */
   onContinueBuilding?: () => void;
+  /** Write this reply further from where the output limit cut it off. Pass it
+   *  only while no turn is running; it shows on the last reply only. */
+  onContinue?: () => void;
   /** Send the last prompt again without the Max tokens limit that cut this
    *  turn short. Only passed when such a limit is set. */
   onRetryWithoutLimit?: () => void;
@@ -125,6 +128,7 @@ export function AssistantMessage({
   onStatus,
   onRetry,
   onContinueBuilding,
+  onContinue,
   onRetryWithoutLimit,
   outputLimit,
   onDelete,
@@ -306,6 +310,24 @@ export function AssistantMessage({
           {t('chat.assistant.cutOff')}
         </p>
       )}
+      {/* Continue writes the same reply further, from where it stopped. Only
+          the last reply, and only when no turn is running (the caller passes
+          `onContinue` only then). */}
+      {!state.streaming &&
+        !state.error &&
+        state.finishReason === 'length' &&
+        isLast &&
+        onContinue && (
+          <button
+            type="button"
+            className="act turn-continue-building"
+            aria-label={t('chat.assistant.continueReplyLabel')}
+            title={t('chat.assistant.continueReplyLabel')}
+            onClick={onContinue}
+          >
+            {t('chat.assistant.continueReply')}
+          </button>
+        )}
       {state.toolCalls.some((tc) => tc.handoff) && <HandoffTotals state={state} />}
       {messageId && onOpenArtifact && (
         <AssistantArtifactStrip

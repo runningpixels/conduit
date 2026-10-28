@@ -185,6 +185,33 @@ pub async fn load_events(
         .collect()
 }
 
+/// The block the turn's latest text was written in: where a continued reply
+/// picks up. `None` when the turn wrote no text.
+pub async fn last_text_block_id(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    request_id: &str,
+) -> Result<Option<String>, DbError> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT payload FROM provider_event_log \
+         WHERE conversation_id = ? AND request_id = ? AND event_kind = 'contentDelta' \
+         ORDER BY sequence DESC LIMIT 1",
+    )
+    .bind(conversation_id)
+    .bind(request_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((payload,)) = row else {
+        return Ok(None);
+    };
+    match serde_json::from_str::<ProviderEvent>(&payload)
+        .map_err(|e| DbError::Query(format!("decode ProviderEvent: {e}")))?
+    {
+        ProviderEvent::ContentDelta { block_id, .. } => Ok(Some(block_id)),
+        _ => Ok(None),
+    }
+}
+
 /// One logged event with the time it was saved.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -297,5 +324,6 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         // Live only: never logged (`agents::handoff::live_only`).
         ProviderEvent::HandoffUsage { .. } => "handoffUsage",
         ProviderEvent::UserNote { .. } => "userNote",
+        ProviderEvent::ReplyContinued { .. } => "replyContinued",
     }
 }

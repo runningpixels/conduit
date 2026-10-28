@@ -453,6 +453,7 @@ impl Studio {
             generation_controls: None,
             response_format: None,
             web_search: None,
+            continue_message_id: None,
         };
         let turn_id = request.request_id.clone();
         let run = manager.run_agent_turn(&self.state, &runtime, request, channel, runtime_channel);

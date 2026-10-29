@@ -113,6 +113,8 @@ import type {
   CommandRuleSuggestion,
   WorkflowQuestion,
   ConversationFolder,
+  ConversationProject,
+  ProjectSettings,
   KnowledgeCollection,
   KnowledgeContext,
   KnowledgeDocument,
@@ -512,6 +514,28 @@ export async function setConversationFolder(
 
 export async function listConversationFolders(): Promise<ConversationFolder[]> {
   return invokeCommand<ConversationFolder[]>('list_conversation_folders');
+}
+
+/** The project the chat is in, or null when it is in no folder. */
+export async function getConversationProject(
+  conversationId: string,
+): Promise<ConversationProject | null> {
+  return invokeCommand<ConversationProject | null>('get_conversation_project', { conversationId });
+}
+
+export async function getProjectSettings(folderId: string): Promise<ProjectSettings> {
+  return invokeCommand<ProjectSettings>('get_project_settings', { folderId });
+}
+
+/** Save all of a folder's project settings; returns what was stored. */
+export async function setProjectSettings(settings: ProjectSettings): Promise<ProjectSettings> {
+  return invokeCommand<ProjectSettings>('set_project_settings', {
+    folderId: settings.folderId,
+    userInstructions: settings.userInstructions,
+    workspaceRoot: settings.workspaceRoot,
+    skillIds: settings.skillIds,
+    collectionIds: settings.collectionIds,
+  });
 }
 
 export async function createConversationFolder(name: string): Promise<ConversationFolder> {

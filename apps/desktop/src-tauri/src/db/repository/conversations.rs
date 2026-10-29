@@ -815,6 +815,15 @@ pub async fn fork_at(
     .execute(&mut *tx)
     .await?;
 
+    sqlx::query(
+        "INSERT INTO conversation_collections (conversation_id, collection_id) \
+         SELECT ?, collection_id FROM conversation_collections WHERE conversation_id = ?",
+    )
+    .bind(&fork_id)
+    .bind(source_conversation_id)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
 
     Ok(Conversation {
@@ -940,6 +949,15 @@ pub async fn fork_before(
     sqlx::query(
         "INSERT INTO conversation_skills (conversation_id, skill_id) \
          SELECT ?, skill_id FROM conversation_skills WHERE conversation_id = ?",
+    )
+    .bind(&fork_id)
+    .bind(source_conversation_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO conversation_collections (conversation_id, collection_id) \
+         SELECT ?, collection_id FROM conversation_collections WHERE conversation_id = ?",
     )
     .bind(&fork_id)
     .bind(source_conversation_id)

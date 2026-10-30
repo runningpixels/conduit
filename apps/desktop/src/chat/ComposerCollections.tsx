@@ -3,6 +3,7 @@ import type { KnowledgeCollection, KnowledgeDocument } from '../ipc/contracts';
 import { listKnowledgeDocuments } from '../ipc/client';
 import { ChevronDown, ChevronRight } from '../icons';
 import { useT } from '../i18n';
+import { fitPopover } from './fitPopover';
 
 interface ComposerCollectionsProps {
   open: boolean;
@@ -66,6 +67,7 @@ export function ComposerCollections({
       role="dialog"
       aria-label={t('chat.knowledge.ariaLabel')}
       className="chat-settings-pop"
+      ref={fitPopover}
     >
       <p className="chat-settings-pop-lead">{t('chat.knowledge.intro')}</p>
       {collections.length === 0 ? (

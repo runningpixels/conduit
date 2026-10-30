@@ -9,6 +9,7 @@ import {
 import { useT } from '../i18n';
 import type { ConversationProject } from '../ipc/contracts';
 import { projectHasSettings } from './projectSummary';
+import { fitPopover } from './fitPopover';
 
 interface ComposerChatSettingsProps {
   open: boolean;
@@ -91,6 +92,7 @@ export function ComposerChatSettings({
       role="dialog"
       aria-label={t('chat.composerSettings.ariaLabel')}
       className="chat-settings-pop"
+      ref={fitPopover}
     >
       <p className="chat-settings-pop-lead">
         {hasOverride ? t('chat.composerSettings.overrideLead') : t('chat.composerSettings.defaultLead')}

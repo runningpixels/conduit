@@ -1,6 +1,7 @@
 import type { ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
 import { groupByConnector, isStale, sameResource, toResourceRef } from './connectorCapabilities';
 import { useT } from '../i18n';
+import { fitPopover } from './fitPopover';
 
 interface ComposerMcpResourcesProps {
   open: boolean;
@@ -31,6 +32,7 @@ export function ComposerMcpResources({
       role="dialog"
       aria-label={t('chat.mcpResources.ariaLabel')}
       className="chat-settings-pop"
+      ref={fitPopover}
     >
       <p className="chat-settings-pop-lead">{t('chat.mcpResources.intro')}</p>
       {resources.length === 0 ? (

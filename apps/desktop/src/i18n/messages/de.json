@@ -2181,7 +2181,7 @@
   "shell.sidebar.folderDialog.createButton": "Erstellen",
   "shell.sidebar.folderDialog.nameAriaLabel": "Projektname",
   "shell.sidebar.folderDialog.nameLabel": "Name",
-  "shell.sidebar.folderDialog.newBody": "Benenne ein Projekt, um Chats zu gruppieren. In seinen Einstellungen kannst du allen Chats darin Anweisungen, Dokumente und Skills geben.",
+  "shell.sidebar.folderDialog.newBody": "Benenne ein Projekt, um Chats zu gruppieren. In seinen Einstellungen kannst du allen Chats darin Anweisungen, Dokumente, Skills und einen Arbeitsordner geben.",
   "shell.sidebar.folderDialog.newTitle": "Neues Projekt",
   "shell.sidebar.folderDialog.renameBody": "Wähle einen neuen Namen für dieses Projekt.",
   "shell.sidebar.folderDialog.renameTitle": "Projekt umbenennen",
@@ -3680,5 +3680,10 @@
   "chat.composerSettings.fromSettings": "Deine Anweisungen aus den Einstellungen",
   "chat.composerSettings.projectInstructions": "Anweisungen aus dem Projekt „{name}“",
   "chat.composerSettings.projectCollections": "{count, plural, one {# Dokumentsammlung} other {# Dokumentsammlungen}} aus dem Projekt „{name}“",
-  "chat.composerSettings.projectSkills": "{count, plural, one {# Skill} other {# Skills}} aus dem Projekt „{name}“"
+  "chat.composerSettings.projectSkills": "{count, plural, one {# Skill} other {# Skills}} aus dem Projekt „{name}“",
+  "shell.projects.settings.folder": "Arbeitsordner",
+  "shell.projects.settings.folderHint": "Neue Chats in diesem Projekt starten in diesem Ordner, sodass das Modell seine Dateien lesen und schreiben kann. Enthält er eine AGENTS.md, wird sie mit jeder Nachricht mitgeschickt. Chats, die schon im Projekt sind, behalten ihren Ordner.",
+  "shell.projects.settings.folderNone": "Kein Arbeitsordner.",
+  "shell.projects.settings.folderChoose": "Ordner wählen…",
+  "shell.projects.settings.folderRemove": "Ordner entfernen"
 }

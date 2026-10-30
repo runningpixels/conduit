@@ -40,6 +40,10 @@ pub async fn set_project_settings(
     if let Some(text) = user_instructions.as_deref() {
         crate::validation::validate_user_instructions(text)?;
     }
+    // Blank clears the working folder; anything else must be a real directory.
+    if let Some(root) = workspace_root.as_deref().filter(|r| !r.trim().is_empty()) {
+        crate::commands::chat::checked_workspace_root(root)?;
+    }
     let db = &state.db;
     // The lists can be refused (a bad skill id, a deleted collection), so they
     // go first: a refusal then leaves the instructions as they were.

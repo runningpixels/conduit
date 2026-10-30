@@ -2181,7 +2181,7 @@
   "shell.sidebar.folderDialog.createButton": "Crear",
   "shell.sidebar.folderDialog.nameAriaLabel": "Nombre del proyecto",
   "shell.sidebar.folderDialog.nameLabel": "Nombre",
-  "shell.sidebar.folderDialog.newBody": "Asigna un nombre al proyecto para agrupar chats. En su configuración puedes dar a todos sus chats instrucciones, documentos y skills.",
+  "shell.sidebar.folderDialog.newBody": "Asigna un nombre al proyecto para agrupar chats. En su configuración puedes dar a todos sus chats instrucciones, documentos, skills y una carpeta de trabajo.",
   "shell.sidebar.folderDialog.newTitle": "Nuevo proyecto",
   "shell.sidebar.folderDialog.renameBody": "Elige un nombre nuevo para este proyecto.",
   "shell.sidebar.folderDialog.renameTitle": "Cambiar el nombre del proyecto",
@@ -3680,5 +3680,10 @@
   "chat.composerSettings.fromSettings": "Tus instrucciones de la configuración",
   "chat.composerSettings.projectInstructions": "Instrucciones del proyecto «{name}»",
   "chat.composerSettings.projectCollections": "{count, plural, one {# colección de documentos} other {# colecciones de documentos}} del proyecto «{name}»",
-  "chat.composerSettings.projectSkills": "{count, plural, one {# skill} other {# skills}} del proyecto «{name}»"
+  "chat.composerSettings.projectSkills": "{count, plural, one {# skill} other {# skills}} del proyecto «{name}»",
+  "shell.projects.settings.folder": "Carpeta de trabajo",
+  "shell.projects.settings.folderHint": "Los chats nuevos de este proyecto empiezan en esta carpeta, así el modelo puede leer y escribir sus archivos. Si tiene un AGENTS.md, se envía con cada mensaje. Los chats que ya están en el proyecto conservan su carpeta.",
+  "shell.projects.settings.folderNone": "Sin carpeta de trabajo.",
+  "shell.projects.settings.folderChoose": "Elegir carpeta…",
+  "shell.projects.settings.folderRemove": "Quitar carpeta"
 }

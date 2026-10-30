@@ -85,7 +85,8 @@ div.agent-card:hover { background: var(--card); }
 }
 /* Project settings borrow the agent editor's layout. */
 .project-settings-dialog .agent-editor-head p { margin: var(--sp-1) 0 0; }
-.project-settings-dialog textarea { min-height: 260px; }
+.project-settings-dialog textarea { min-height: 180px; }
+.project-settings-folder { margin: var(--sp-2) 0 0; font-family: var(--font-mono); font-size: var(--fs-5xl); overflow-wrap: anywhere; }
 .project-settings-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
 /* Cards like Apps: a tile and name, what it is doing, what it may use, and
  * the last 30 days as three numbers. The whole card opens its workflow. */

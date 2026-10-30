@@ -2181,7 +2181,7 @@
   "shell.sidebar.folderDialog.createButton": "Créer",
   "shell.sidebar.folderDialog.nameAriaLabel": "Nom du projet",
   "shell.sidebar.folderDialog.nameLabel": "Nom",
-  "shell.sidebar.folderDialog.newBody": "Nommez un projet pour regrouper des conversations. Dans ses réglages, vous pouvez donner à toutes ses conversations des instructions, des documents et des skills.",
+  "shell.sidebar.folderDialog.newBody": "Nommez un projet pour regrouper des conversations. Dans ses réglages, vous pouvez donner à toutes ses conversations des instructions, des documents, des skills et un dossier de travail.",
   "shell.sidebar.folderDialog.newTitle": "Nouveau projet",
   "shell.sidebar.folderDialog.renameBody": "Choisissez un nouveau nom pour ce projet.",
   "shell.sidebar.folderDialog.renameTitle": "Renommer le projet",
@@ -3680,5 +3680,10 @@
   "chat.composerSettings.fromSettings": "Vos instructions des réglages",
   "chat.composerSettings.projectInstructions": "Instructions du projet « {name} »",
   "chat.composerSettings.projectCollections": "{count, plural, one {# collection de documents} other {# collections de documents}} du projet « {name} »",
-  "chat.composerSettings.projectSkills": "{count, plural, one {# skill} other {# skills}} du projet « {name} »"
+  "chat.composerSettings.projectSkills": "{count, plural, one {# skill} other {# skills}} du projet « {name} »",
+  "shell.projects.settings.folder": "Dossier de travail",
+  "shell.projects.settings.folderHint": "Les nouvelles conversations de ce projet démarrent dans ce dossier : le modèle peut lire et écrire ses fichiers. S’il contient un AGENTS.md, celui-ci accompagne chaque message. Les conversations déjà dans le projet gardent leur dossier.",
+  "shell.projects.settings.folderNone": "Aucun dossier de travail.",
+  "shell.projects.settings.folderChoose": "Choisir un dossier…",
+  "shell.projects.settings.folderRemove": "Retirer le dossier"
 }

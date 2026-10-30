@@ -182,6 +182,73 @@ async fn setters_refuse_an_unknown_folder_or_a_bad_skill_id() {
 }
 
 #[tokio::test]
+async fn a_new_chat_in_a_project_starts_in_its_working_folder() {
+    let pool = common::setup_pool().await;
+    let enc = Encryption::off();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_string_lossy().to_string();
+    let folder = conversations::create_folder(&pool, "Ferry").await.unwrap();
+    projects::set_settings(&pool, &enc, &folder.id, None, Some(&root))
+        .await
+        .unwrap();
+
+    let conv = conversations::create(&pool, None).await.unwrap();
+    assert!(projects::place_new_chat(&pool, &conv.id, &folder.id)
+        .await
+        .unwrap());
+    let got = conversations::get(&pool, &conv.id).await.unwrap().unwrap();
+    assert_eq!(
+        projects::folder_of_conversation(&pool, &conv.id)
+            .await
+            .unwrap(),
+        Some(folder.id.clone())
+    );
+    assert_eq!(got.workspace_root.as_deref(), Some(root.as_str()));
+
+    // Copied, not looked up: changing the project leaves the chat where it is.
+    projects::set_settings(&pool, &enc, &folder.id, None, None)
+        .await
+        .unwrap();
+    let after = conversations::get(&pool, &conv.id).await.unwrap().unwrap();
+    assert_eq!(after.workspace_root.as_deref(), Some(root.as_str()));
+}
+
+#[tokio::test]
+async fn a_new_chat_skips_a_missing_working_folder_or_unknown_project() {
+    let pool = common::setup_pool().await;
+    let enc = Encryption::off();
+    let folder = conversations::create_folder(&pool, "Ferry").await.unwrap();
+    let plain = conversations::create(&pool, None).await.unwrap();
+    assert!(!projects::place_new_chat(&pool, &plain.id, &folder.id)
+        .await
+        .unwrap());
+
+    let gone = tempfile::tempdir().unwrap();
+    let gone_root = gone.path().to_string_lossy().to_string();
+    drop(gone);
+    projects::set_settings(&pool, &enc, &folder.id, None, Some(&gone_root))
+        .await
+        .unwrap();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    assert!(!projects::place_new_chat(&pool, &conv.id, &folder.id)
+        .await
+        .unwrap());
+    let got = conversations::get(&pool, &conv.id).await.unwrap().unwrap();
+    assert_eq!(
+        projects::folder_of_conversation(&pool, &conv.id)
+            .await
+            .unwrap(),
+        Some(folder.id.clone())
+    );
+    assert_eq!(got.workspace_root, None);
+
+    let loose = conversations::create(&pool, None).await.unwrap();
+    assert!(projects::place_new_chat(&pool, &loose.id, "no-such-folder")
+        .await
+        .is_err());
+}
+
+#[tokio::test]
 async fn deleting_the_folder_deletes_its_settings() {
     let pool = common::setup_pool().await;
     let enc = Encryption::off();

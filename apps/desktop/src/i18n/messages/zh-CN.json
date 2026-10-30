@@ -2181,7 +2181,7 @@
   "shell.sidebar.folderDialog.createButton": "创建",
   "shell.sidebar.folderDialog.nameAriaLabel": "项目名称",
   "shell.sidebar.folderDialog.nameLabel": "名称",
-  "shell.sidebar.folderDialog.newBody": "为分组聊天的项目取个名字。在项目设置中，可以为其中的每个聊天提供说明、文档和技能。",
+  "shell.sidebar.folderDialog.newBody": "为分组聊天的项目取个名字。在项目设置中，可以为其中的每个聊天提供说明、文档、技能和工作文件夹。",
   "shell.sidebar.folderDialog.newTitle": "新建项目",
   "shell.sidebar.folderDialog.renameBody": "为此项目选择一个新名称。",
   "shell.sidebar.folderDialog.renameTitle": "重命名项目",
@@ -3680,5 +3680,10 @@
   "chat.composerSettings.fromSettings": "设置中的说明",
   "chat.composerSettings.projectInstructions": "项目“{name}”的说明",
   "chat.composerSettings.projectCollections": "项目“{name}”的 {count, plural, other {# 个文档集合}}",
-  "chat.composerSettings.projectSkills": "项目“{name}”的 {count, plural, other {# 个技能}}"
+  "chat.composerSettings.projectSkills": "项目“{name}”的 {count, plural, other {# 个技能}}",
+  "shell.projects.settings.folder": "工作文件夹",
+  "shell.projects.settings.folderHint": "此项目中的新聊天从这个文件夹开始，模型可以读写其中的文件。如果文件夹里有 AGENTS.md，它会随每条消息一起发送。已在项目中的聊天保留原来的文件夹。",
+  "shell.projects.settings.folderNone": "没有工作文件夹。",
+  "shell.projects.settings.folderChoose": "选择文件夹…",
+  "shell.projects.settings.folderRemove": "移除文件夹"
 }

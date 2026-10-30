@@ -342,8 +342,11 @@ dates, numbers and file sizes follow the language you pick.
   Privacy & data → Remove all examples** deletes them.
 - **Ideas**: a page of things to try, each starting a chat with the prompt
   filled in, chosen on your device from what you've tried.
-- **Conversations** can be pinned, archived, filed in folders and exported; the
-  chat list shows which chat is running or needs you.
+- **Conversations** can be pinned, archived and exported; the chat list shows
+  which chat is running or needs you.
+- **Projects** group chats and give every chat in one the same instructions,
+  document collections, skills and working folder (whose `AGENTS.md` is read).
+  A chat can add its own on top.
 - **Vision attachments, Mermaid diagrams and KaTeX maths** in replies.
 - **Usage & Cost** counts every model call, priced from a bundled catalog,
   OpenRouter's listed prices and your own overrides, with an optional daily
@@ -402,7 +405,7 @@ left is checking it on real installs before calling it final.
 | Agent run-control — follow-up queue, interrupt/steer, per-tool approval memory | Working |
 | Context gauge with automatic compaction | Working |
 | Skills (`SKILL.md`) and user-approved encrypted memory | Working |
-| Conversation pin, archive and folders | Working |
+| Conversation pin, archive and projects (shared instructions, documents, skills, working folder) | Working |
 | Image and document attachments (PDF, Word, text, Markdown, CSV, HTML), Mermaid/KaTeX, conversation export | Working |
 | Usage & Cost — every model call, catalog and listed prices with overrides, daily spend alert | Working |
 | Web search (hosted OpenAI/Gemini/Anthropic/OpenRouter + Exa, Tavily, Brave, SearXNG) | Working |

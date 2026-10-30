@@ -474,8 +474,9 @@ export async function getRequestEventLog(
   return invokeCommand<RequestEventLog>('get_request_event_log', { conversationId, requestId });
 }
 
-export async function createConversation(title?: string): Promise<Conversation> {
-  return invokeCommand<Conversation>('create_conversation', { title });
+/** Start a chat; with `folderId`, inside that project and in its working folder. */
+export async function createConversation(title?: string, folderId?: string): Promise<Conversation> {
+  return invokeCommand<Conversation>('create_conversation', { title, folderId });
 }
 
 export async function listConversations(): Promise<ConversationSummary[]> {

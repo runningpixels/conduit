@@ -2961,8 +2961,7 @@ export default function App() {
   const handleNewChatInFolder = useCallback(
     async (folderId: string) => {
       try {
-        const created = await createConversation();
-        await setConversationFolder(created.id, folderId);
+        const created = await createConversation(undefined, folderId);
         setActiveConversationId(created.id);
         clearWorkspaceArtifactSelection();
         await refreshConversations();
@@ -4415,6 +4414,10 @@ export default function App() {
           onOpenDocuments={() => {
             setProjectSettingsFolderId(null);
             openDocuments();
+          }}
+          workspaceConsented={settings.workspaceToolsConsentAcknowledged === true}
+          onAllowWorkspace={async () => {
+            setSettings(await updateSettings({ workspaceToolsConsentAcknowledged: true }));
           }}
         />
       ) : null}

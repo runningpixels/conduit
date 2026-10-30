@@ -2181,7 +2181,7 @@
   "shell.sidebar.folderDialog.createButton": "Criar",
   "shell.sidebar.folderDialog.nameAriaLabel": "Nome do projeto",
   "shell.sidebar.folderDialog.nameLabel": "Nome",
-  "shell.sidebar.folderDialog.newBody": "Dê um nome a um projeto para agrupar chats. Nas configurações dele, você pode dar a todos os chats dentro dele instruções, documentos e skills.",
+  "shell.sidebar.folderDialog.newBody": "Dê um nome a um projeto para agrupar chats. Nas configurações dele, você pode dar a todos os chats dentro dele instruções, documentos, skills e uma pasta de trabalho.",
   "shell.sidebar.folderDialog.newTitle": "Novo projeto",
   "shell.sidebar.folderDialog.renameBody": "Escolha um novo nome para este projeto.",
   "shell.sidebar.folderDialog.renameTitle": "Renomear projeto",
@@ -3680,5 +3680,10 @@
   "chat.composerSettings.fromSettings": "Suas instruções das configurações",
   "chat.composerSettings.projectInstructions": "Instruções do projeto “{name}”",
   "chat.composerSettings.projectCollections": "{count, plural, one {# coleção de documentos} other {# coleções de documentos}} do projeto “{name}”",
-  "chat.composerSettings.projectSkills": "{count, plural, one {# skill} other {# skills}} do projeto “{name}”"
+  "chat.composerSettings.projectSkills": "{count, plural, one {# skill} other {# skills}} do projeto “{name}”",
+  "shell.projects.settings.folder": "Pasta de trabalho",
+  "shell.projects.settings.folderHint": "Os novos chats deste projeto começam nesta pasta, então o modelo pode ler e gravar os arquivos dela. Se ela tiver um AGENTS.md, ele vai junto com cada mensagem. Os chats que já estão no projeto mantêm a pasta deles.",
+  "shell.projects.settings.folderNone": "Nenhuma pasta de trabalho.",
+  "shell.projects.settings.folderChoose": "Escolher pasta…",
+  "shell.projects.settings.folderRemove": "Remover pasta"
 }

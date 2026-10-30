@@ -2181,7 +2181,7 @@
   "shell.sidebar.folderDialog.createButton": "Create",
   "shell.sidebar.folderDialog.nameAriaLabel": "Project name",
   "shell.sidebar.folderDialog.nameLabel": "Name",
-  "shell.sidebar.folderDialog.newBody": "Name a project to group chats. In its settings you can give every chat in it instructions, documents and skills.",
+  "shell.sidebar.folderDialog.newBody": "Name a project to group chats. In its settings you can give every chat in it instructions, documents, skills and a working folder.",
   "shell.sidebar.folderDialog.newTitle": "New project",
   "shell.sidebar.folderDialog.renameBody": "Choose a new name for this project.",
   "shell.sidebar.folderDialog.renameTitle": "Rename project",
@@ -3680,5 +3680,10 @@
   "chat.composerSettings.fromSettings": "Your instructions from Settings",
   "chat.composerSettings.projectInstructions": "Instructions from the project “{name}”",
   "chat.composerSettings.projectCollections": "{count, plural, one {# document collection} other {# document collections}} from the project “{name}”",
-  "chat.composerSettings.projectSkills": "{count, plural, one {# skill} other {# skills}} from the project “{name}”"
+  "chat.composerSettings.projectSkills": "{count, plural, one {# skill} other {# skills}} from the project “{name}”",
+  "shell.projects.settings.folder": "Working folder",
+  "shell.projects.settings.folderHint": "New chats in this project start in this folder, so the model can read and write its files. If it has an AGENTS.md, that goes with every message. Chats already in the project keep their folder.",
+  "shell.projects.settings.folderNone": "No working folder.",
+  "shell.projects.settings.folderChoose": "Choose folder…",
+  "shell.projects.settings.folderRemove": "Remove folder"
 }

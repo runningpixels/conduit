@@ -1,8 +1,11 @@
 /// A project's settings: instructions, Documents collections and skills that
 /// every chat in the project (folder) uses, on top of the app's and before the
-/// chat's own. Laid out like the agent editor, whose classes it borrows.
+/// chat's own, and the working folder new chats in it start in. Laid out like
+/// the agent editor, whose classes it borrows.
 ///
 /// Escape is caught in the capture phase, like the other dialogs over a page.
+/// Choosing a folder asks for the workspace tools consent first, as a chat's
+/// folder chip does.
 
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useFocusTrap } from '../shell/useFocusTrap';
@@ -12,8 +15,10 @@ import {
   getProjectSettings,
   listKnowledgeCollections,
   listSkills,
+  pickWorkspaceFolder,
   setProjectSettings,
 } from '../ipc/client';
+import { WorkspaceToolsConsentDialog } from '../workspace/settings/WorkspaceToolsConsentDialog';
 import type { ConversationFolder, KnowledgeCollection, ProjectSettings, SkillSummary } from '../ipc/contracts';
 
 function errorText(e: unknown): string {
@@ -30,12 +35,18 @@ export function ProjectSettingsDialog({
   onClose,
   onSaved,
   onOpenDocuments,
+  workspaceConsented,
+  onAllowWorkspace,
 }: {
   folder: ConversationFolder;
   onClose: () => void;
   onSaved: (saved: ProjectSettings) => void;
   /// Go to where documents are added to a collection.
   onOpenDocuments?: () => void;
+  /// Whether the workspace tools consent has been given.
+  workspaceConsented: boolean;
+  /// Record the workspace tools consent.
+  onAllowWorkspace: () => Promise<void>;
 }) {
   const t = useT();
   const titleId = useId();
@@ -49,13 +60,19 @@ export function ProjectSettingsDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [askConsent, setAskConsent] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const askConsentRef = useRef(false);
+  askConsentRef.current = askConsent;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        // Escape answers the consent question first, then closes the dialog.
+        if (askConsentRef.current) setAskConsent(false);
+        else onClose();
       }
     }
     document.addEventListener('keydown', onKeyDown, true);
@@ -115,6 +132,24 @@ export function ProjectSettingsDialog({
     } catch (e) {
       setProblem(errorText(e));
     }
+  }
+
+  async function chooseFolder() {
+    setPicking(true);
+    try {
+      const path = await pickWorkspaceFolder();
+      if (path) set((d) => ({ ...d, workspaceRoot: path }));
+    } catch (e) {
+      setProblem(errorText(e));
+    } finally {
+      setPicking(false);
+    }
+  }
+
+  function onChooseFolder() {
+    if (picking) return;
+    if (workspaceConsented) void chooseFolder();
+    else setAskConsent(true);
   }
 
   async function submit(event: FormEvent) {
@@ -179,6 +214,32 @@ export function ProjectSettingsDialog({
                   onChange={(e) => set((d) => ({ ...d, userInstructions: e.target.value }))}
                 />
               </label>
+
+              <fieldset className="wf-tools agent-editor-group" disabled={!draft}>
+                <legend>{t('shell.projects.settings.folder')}</legend>
+                <p className="wf-muted">{t('shell.projects.settings.folderHint')}</p>
+                {draft?.workspaceRoot ? (
+                  <p className="project-settings-folder" title={draft.workspaceRoot}>
+                    {draft.workspaceRoot}
+                  </p>
+                ) : (
+                  <p className="wf-muted">{t('shell.projects.settings.folderNone')}</p>
+                )}
+                <div className="project-settings-actions">
+                  <button type="button" className="btn ghost" disabled={picking} onClick={onChooseFolder}>
+                    {t('shell.projects.settings.folderChoose')}
+                  </button>
+                  {draft?.workspaceRoot ? (
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={() => set((d) => ({ ...d, workspaceRoot: null }))}
+                    >
+                      {t('shell.projects.settings.folderRemove')}
+                    </button>
+                  ) : null}
+                </div>
+              </fieldset>
             </section>
 
             <section className="agent-editor-col">
@@ -267,6 +328,18 @@ export function ProjectSettingsDialog({
             </button>
           </div>
         </footer>
+
+        {/* Inside the form so the focus trap reaches it. */}
+        <WorkspaceToolsConsentDialog
+          visible={askConsent}
+          onAllow={() => {
+            setAskConsent(false);
+            void onAllowWorkspace()
+              .then(() => chooseFolder())
+              .catch((e: unknown) => setProblem(errorText(e)));
+          }}
+          onDeny={() => setAskConsent(false)}
+        />
       </form>
     </div>
   );

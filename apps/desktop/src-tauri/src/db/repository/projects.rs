@@ -2,14 +2,21 @@
 //! Documents collections, a working folder).
 //!
 //! A project is a `conversation_folders` row; these tables only add settings.
-//! Nothing is copied into chats: the chat's folder is looked up when a message
-//! is sent, so editing a project, or moving a chat in or out, applies to the
-//! next message. Rows cascade-delete with the folder.
+//! Nothing but the working folder is copied into chats: the chat's folder is
+//! looked up when a message is sent, so editing a project, or moving a chat in
+//! or out, applies to the next message. A new chat in a project starts in its
+//! working folder (`place_new_chat`). Rows cascade-delete with the folder.
+
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
-use crate::{db::DbError, encryption::Encryption, time::now_iso8601};
+use crate::{
+    db::{repository::conversations, DbError},
+    encryption::Encryption,
+    time::now_iso8601,
+};
 
 /// A folder's project settings, with instructions decrypted.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,6 +101,31 @@ pub async fn for_conversation(
         name,
         settings: get_settings(pool, enc, &folder_id).await?,
     }))
+}
+
+/// Put a new chat in a folder. When the project has a working folder that
+/// still exists, the chat starts in it: the one setting copied rather than
+/// looked up, so the chat can still change it and editing the project leaves
+/// existing chats where they are. Returns whether a working folder was set.
+pub async fn place_new_chat(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    folder_id: &str,
+) -> Result<bool, DbError> {
+    conversations::set_folder(pool, conversation_id, Some(folder_id)).await?;
+    let root: Option<Option<String>> =
+        sqlx::query_scalar("SELECT workspace_root FROM project_settings WHERE folder_id = ?")
+            .bind(folder_id)
+            .fetch_optional(pool)
+            .await?;
+    let Some(root) = root
+        .flatten()
+        .filter(|r| !r.trim().is_empty() && Path::new(r.trim()).is_dir())
+    else {
+        return Ok(false);
+    };
+    conversations::set_workspace_root(pool, conversation_id, Some(root.trim())).await?;
+    Ok(true)
 }
 
 /// Set a folder's instructions and working folder. Blank values clear them.

@@ -2181,7 +2181,7 @@
   "shell.sidebar.folderDialog.createButton": "作成",
   "shell.sidebar.folderDialog.nameAriaLabel": "プロジェクト名",
   "shell.sidebar.folderDialog.nameLabel": "名前",
-  "shell.sidebar.folderDialog.newBody": "チャットをまとめるプロジェクトに名前を付けます。プロジェクトの設定で、その中のすべてのチャットに指示、ドキュメント、スキルを与えられます。",
+  "shell.sidebar.folderDialog.newBody": "チャットをまとめるプロジェクトに名前を付けます。プロジェクトの設定で、その中のすべてのチャットに指示、ドキュメント、スキル、作業フォルダーを与えられます。",
   "shell.sidebar.folderDialog.newTitle": "新しいプロジェクト",
   "shell.sidebar.folderDialog.renameBody": "このプロジェクトの新しい名前を入力します。",
   "shell.sidebar.folderDialog.renameTitle": "プロジェクト名を変更",
@@ -3680,5 +3680,10 @@
   "chat.composerSettings.fromSettings": "設定の指示",
   "chat.composerSettings.projectInstructions": "プロジェクト「{name}」の指示",
   "chat.composerSettings.projectCollections": "プロジェクト「{name}」のドキュメントコレクション {count, plural, other {# 件}}",
-  "chat.composerSettings.projectSkills": "プロジェクト「{name}」のスキル {count, plural, other {# 件}}"
+  "chat.composerSettings.projectSkills": "プロジェクト「{name}」のスキル {count, plural, other {# 件}}",
+  "shell.projects.settings.folder": "作業フォルダー",
+  "shell.projects.settings.folderHint": "このプロジェクトの新しいチャットはこのフォルダーで始まり、モデルはそのファイルを読み書きできます。AGENTS.md があれば、すべてのメッセージと一緒に送られます。すでにプロジェクト内にあるチャットのフォルダーは変わりません。",
+  "shell.projects.settings.folderNone": "作業フォルダーはありません。",
+  "shell.projects.settings.folderChoose": "フォルダーを選択…",
+  "shell.projects.settings.folderRemove": "フォルダーを外す"
 }

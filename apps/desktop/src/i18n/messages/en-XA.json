@@ -2181,7 +2181,7 @@
   "shell.sidebar.folderDialog.createButton": "[Çŕéàťé ———]",
   "shell.sidebar.folderDialog.nameAriaLabel": "[Ṕŕöĵéçť ñàḿé —————]",
   "shell.sidebar.folderDialog.nameLabel": "[Ñàḿé ——]",
-  "shell.sidebar.folderDialog.newBody": "[Ñàḿé à ṕŕöĵéçť ťö ĝŕöüṕ çĥàťš. Îñ îťš šéťťîñĝš ýöü çàñ ĝîṽé éṽéŕý çĥàť îñ îť îñšťŕüçťîöñš, ḍöçüḿéñťš àñḍ šķîļļš. —————— —————— —————— —————— —————— —————— —————— ———]",
+  "shell.sidebar.folderDialog.newBody": "[Ñàḿé à ṕŕöĵéçť ťö ĝŕöüṕ çĥàťš. Îñ îťš šéťťîñĝš ýöü çàñ ĝîṽé éṽéŕý çĥàť îñ îť îñšťŕüçťîöñš, ḍöçüḿéñťš, šķîļļš àñḍ à ŵöŕķîñĝ ḟöļḍéŕ. —————— —————— —————— —————— —————— —————— —————— —————— ————]",
   "shell.sidebar.folderDialog.newTitle": "[Ñéŵ ṕŕöĵéçť —————]",
   "shell.sidebar.folderDialog.renameBody": "[Çĥööšé à ñéŵ ñàḿé ḟöŕ ťĥîš ṕŕöĵéçť. —————— —————— ——]",
   "shell.sidebar.folderDialog.renameTitle": "[Ŕéñàḿé ṕŕöĵéçť ——————]",
@@ -3680,5 +3680,10 @@
   "chat.composerSettings.fromSettings": "[Ýöüŕ îñšťŕüçťîöñš ḟŕöḿ Šéťťîñĝš —————— —————— —]",
   "chat.composerSettings.projectInstructions": "[Îñšťŕüçťîöñš ḟŕöḿ ťĥé ṕŕöĵéçť “{name}” —————— —————— —]",
   "chat.composerSettings.projectCollections": "[{count, plural, one {# ḍöçüḿéñť çöļļéçťîöñ} other {# ḍöçüḿéñť çöļļéçťîöñš}} ḟŕöḿ ťĥé ṕŕöĵéçť “{name}” —————— —————— —————— —————— —]",
-  "chat.composerSettings.projectSkills": "[{count, plural, one {# šķîļļ} other {# šķîļļš}} ḟŕöḿ ťĥé ṕŕöĵéçť “{name}” —————— —————— ——]"
+  "chat.composerSettings.projectSkills": "[{count, plural, one {# šķîļļ} other {# šķîļļš}} ḟŕöḿ ťĥé ṕŕöĵéçť “{name}” —————— —————— ——]",
+  "shell.projects.settings.folder": "[Ŵöŕķîñĝ ḟöļḍéŕ ——————]",
+  "shell.projects.settings.folderHint": "[Ñéŵ çĥàťš îñ ťĥîš ṕŕöĵéçť šťàŕť îñ ťĥîš ḟöļḍéŕ, šö ťĥé ḿöḍéļ çàñ ŕéàḍ àñḍ ŵŕîťé îťš ḟîļéš. Îḟ îť ĥàš àñ ÀĜÉÑŤŠ.ḿḍ, ťĥàť ĝöéš ŵîťĥ éṽéŕý ḿéššàĝé. Çĥàťš àļŕéàḍý îñ ťĥé ṕŕöĵéçť ķééṕ ťĥéîŕ ḟöļḍéŕ. —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————]",
+  "shell.projects.settings.folderNone": "[Ñö ŵöŕķîñĝ ḟöļḍéŕ. —————— ——]",
+  "shell.projects.settings.folderChoose": "[Çĥööšé ḟöļḍéŕ… ——————]",
+  "shell.projects.settings.folderRemove": "[Ŕéḿöṽé ḟöļḍéŕ ——————]"
 }

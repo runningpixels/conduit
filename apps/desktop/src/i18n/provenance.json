@@ -2166,7 +2166,7 @@
     "shell.sidebar.folderDialog.createButton": "6e157c5da4410b7e9de85f5c93026b9176e69064",
     "shell.sidebar.folderDialog.nameAriaLabel": "ab9773fcf6b2b1d912277311c0cae0550ee30f13",
     "shell.sidebar.folderDialog.nameLabel": "709a23220f2c3d64d1e1d6d18c4d5280f8d82fca",
-    "shell.sidebar.folderDialog.newBody": "e7ea9951b54facc90248132fa27b0eea0a13f3f7",
+    "shell.sidebar.folderDialog.newBody": "4bcfb04d7045a7e84a2161e721c58ffae9b48fd2",
     "shell.sidebar.folderDialog.newTitle": "e5bcbe241fab3ba265fd7c73f973cd93072e27d9",
     "shell.sidebar.folderDialog.renameBody": "eac074cb06f56056ab0a8e7ec2678e99e2de6c66",
     "shell.sidebar.folderDialog.renameTitle": "633018f5a71735c3725999bb81c93aafe1d0ca6c",
@@ -3419,7 +3419,12 @@
     "chat.composerSettings.fromSettings": "41348455aa9f4d314563932de6fa856b7f658be5",
     "chat.composerSettings.projectInstructions": "75006b91a2c7ab81c781e6bfe9810cd30b8d7712",
     "chat.composerSettings.projectCollections": "91472cc63423730e6031878cff94764807654def",
-    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7"
+    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7",
+    "shell.projects.settings.folder": "00e69ecb9bc845d2960b9ee57f4120fe4635cb89",
+    "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
+    "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
+    "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -5588,7 +5593,7 @@
     "shell.sidebar.folderDialog.createButton": "6e157c5da4410b7e9de85f5c93026b9176e69064",
     "shell.sidebar.folderDialog.nameAriaLabel": "ab9773fcf6b2b1d912277311c0cae0550ee30f13",
     "shell.sidebar.folderDialog.nameLabel": "709a23220f2c3d64d1e1d6d18c4d5280f8d82fca",
-    "shell.sidebar.folderDialog.newBody": "e7ea9951b54facc90248132fa27b0eea0a13f3f7",
+    "shell.sidebar.folderDialog.newBody": "4bcfb04d7045a7e84a2161e721c58ffae9b48fd2",
     "shell.sidebar.folderDialog.newTitle": "e5bcbe241fab3ba265fd7c73f973cd93072e27d9",
     "shell.sidebar.folderDialog.renameBody": "eac074cb06f56056ab0a8e7ec2678e99e2de6c66",
     "shell.sidebar.folderDialog.renameTitle": "633018f5a71735c3725999bb81c93aafe1d0ca6c",
@@ -6841,7 +6846,12 @@
     "chat.composerSettings.fromSettings": "41348455aa9f4d314563932de6fa856b7f658be5",
     "chat.composerSettings.projectInstructions": "75006b91a2c7ab81c781e6bfe9810cd30b8d7712",
     "chat.composerSettings.projectCollections": "91472cc63423730e6031878cff94764807654def",
-    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7"
+    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7",
+    "shell.projects.settings.folder": "00e69ecb9bc845d2960b9ee57f4120fe4635cb89",
+    "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
+    "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
+    "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -9010,7 +9020,7 @@
     "shell.sidebar.folderDialog.createButton": "6e157c5da4410b7e9de85f5c93026b9176e69064",
     "shell.sidebar.folderDialog.nameAriaLabel": "ab9773fcf6b2b1d912277311c0cae0550ee30f13",
     "shell.sidebar.folderDialog.nameLabel": "709a23220f2c3d64d1e1d6d18c4d5280f8d82fca",
-    "shell.sidebar.folderDialog.newBody": "e7ea9951b54facc90248132fa27b0eea0a13f3f7",
+    "shell.sidebar.folderDialog.newBody": "4bcfb04d7045a7e84a2161e721c58ffae9b48fd2",
     "shell.sidebar.folderDialog.newTitle": "e5bcbe241fab3ba265fd7c73f973cd93072e27d9",
     "shell.sidebar.folderDialog.renameBody": "eac074cb06f56056ab0a8e7ec2678e99e2de6c66",
     "shell.sidebar.folderDialog.renameTitle": "633018f5a71735c3725999bb81c93aafe1d0ca6c",
@@ -10263,7 +10273,12 @@
     "chat.composerSettings.fromSettings": "41348455aa9f4d314563932de6fa856b7f658be5",
     "chat.composerSettings.projectInstructions": "75006b91a2c7ab81c781e6bfe9810cd30b8d7712",
     "chat.composerSettings.projectCollections": "91472cc63423730e6031878cff94764807654def",
-    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7"
+    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7",
+    "shell.projects.settings.folder": "00e69ecb9bc845d2960b9ee57f4120fe4635cb89",
+    "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
+    "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
+    "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -12432,7 +12447,7 @@
     "shell.sidebar.folderDialog.createButton": "6e157c5da4410b7e9de85f5c93026b9176e69064",
     "shell.sidebar.folderDialog.nameAriaLabel": "ab9773fcf6b2b1d912277311c0cae0550ee30f13",
     "shell.sidebar.folderDialog.nameLabel": "709a23220f2c3d64d1e1d6d18c4d5280f8d82fca",
-    "shell.sidebar.folderDialog.newBody": "e7ea9951b54facc90248132fa27b0eea0a13f3f7",
+    "shell.sidebar.folderDialog.newBody": "4bcfb04d7045a7e84a2161e721c58ffae9b48fd2",
     "shell.sidebar.folderDialog.newTitle": "e5bcbe241fab3ba265fd7c73f973cd93072e27d9",
     "shell.sidebar.folderDialog.renameBody": "eac074cb06f56056ab0a8e7ec2678e99e2de6c66",
     "shell.sidebar.folderDialog.renameTitle": "633018f5a71735c3725999bb81c93aafe1d0ca6c",
@@ -13685,7 +13700,12 @@
     "chat.composerSettings.fromSettings": "41348455aa9f4d314563932de6fa856b7f658be5",
     "chat.composerSettings.projectInstructions": "75006b91a2c7ab81c781e6bfe9810cd30b8d7712",
     "chat.composerSettings.projectCollections": "91472cc63423730e6031878cff94764807654def",
-    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7"
+    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7",
+    "shell.projects.settings.folder": "00e69ecb9bc845d2960b9ee57f4120fe4635cb89",
+    "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
+    "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
+    "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -15854,7 +15874,7 @@
     "shell.sidebar.folderDialog.createButton": "6e157c5da4410b7e9de85f5c93026b9176e69064",
     "shell.sidebar.folderDialog.nameAriaLabel": "ab9773fcf6b2b1d912277311c0cae0550ee30f13",
     "shell.sidebar.folderDialog.nameLabel": "709a23220f2c3d64d1e1d6d18c4d5280f8d82fca",
-    "shell.sidebar.folderDialog.newBody": "e7ea9951b54facc90248132fa27b0eea0a13f3f7",
+    "shell.sidebar.folderDialog.newBody": "4bcfb04d7045a7e84a2161e721c58ffae9b48fd2",
     "shell.sidebar.folderDialog.newTitle": "e5bcbe241fab3ba265fd7c73f973cd93072e27d9",
     "shell.sidebar.folderDialog.renameBody": "eac074cb06f56056ab0a8e7ec2678e99e2de6c66",
     "shell.sidebar.folderDialog.renameTitle": "633018f5a71735c3725999bb81c93aafe1d0ca6c",
@@ -17107,7 +17127,12 @@
     "chat.composerSettings.fromSettings": "41348455aa9f4d314563932de6fa856b7f658be5",
     "chat.composerSettings.projectInstructions": "75006b91a2c7ab81c781e6bfe9810cd30b8d7712",
     "chat.composerSettings.projectCollections": "91472cc63423730e6031878cff94764807654def",
-    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7"
+    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7",
+    "shell.projects.settings.folder": "00e69ecb9bc845d2960b9ee57f4120fe4635cb89",
+    "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
+    "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
+    "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -19276,7 +19301,7 @@
     "shell.sidebar.folderDialog.createButton": "6e157c5da4410b7e9de85f5c93026b9176e69064",
     "shell.sidebar.folderDialog.nameAriaLabel": "ab9773fcf6b2b1d912277311c0cae0550ee30f13",
     "shell.sidebar.folderDialog.nameLabel": "709a23220f2c3d64d1e1d6d18c4d5280f8d82fca",
-    "shell.sidebar.folderDialog.newBody": "e7ea9951b54facc90248132fa27b0eea0a13f3f7",
+    "shell.sidebar.folderDialog.newBody": "4bcfb04d7045a7e84a2161e721c58ffae9b48fd2",
     "shell.sidebar.folderDialog.newTitle": "e5bcbe241fab3ba265fd7c73f973cd93072e27d9",
     "shell.sidebar.folderDialog.renameBody": "eac074cb06f56056ab0a8e7ec2678e99e2de6c66",
     "shell.sidebar.folderDialog.renameTitle": "633018f5a71735c3725999bb81c93aafe1d0ca6c",
@@ -20529,7 +20554,12 @@
     "chat.composerSettings.fromSettings": "41348455aa9f4d314563932de6fa856b7f658be5",
     "chat.composerSettings.projectInstructions": "75006b91a2c7ab81c781e6bfe9810cd30b8d7712",
     "chat.composerSettings.projectCollections": "91472cc63423730e6031878cff94764807654def",
-    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7"
+    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7",
+    "shell.projects.settings.folder": "00e69ecb9bc845d2960b9ee57f4120fe4635cb89",
+    "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
+    "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
+    "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -22698,7 +22728,7 @@
     "shell.sidebar.folderDialog.createButton": "6e157c5da4410b7e9de85f5c93026b9176e69064",
     "shell.sidebar.folderDialog.nameAriaLabel": "ab9773fcf6b2b1d912277311c0cae0550ee30f13",
     "shell.sidebar.folderDialog.nameLabel": "709a23220f2c3d64d1e1d6d18c4d5280f8d82fca",
-    "shell.sidebar.folderDialog.newBody": "e7ea9951b54facc90248132fa27b0eea0a13f3f7",
+    "shell.sidebar.folderDialog.newBody": "4bcfb04d7045a7e84a2161e721c58ffae9b48fd2",
     "shell.sidebar.folderDialog.newTitle": "e5bcbe241fab3ba265fd7c73f973cd93072e27d9",
     "shell.sidebar.folderDialog.renameBody": "eac074cb06f56056ab0a8e7ec2678e99e2de6c66",
     "shell.sidebar.folderDialog.renameTitle": "633018f5a71735c3725999bb81c93aafe1d0ca6c",
@@ -23951,6 +23981,11 @@
     "chat.composerSettings.fromSettings": "41348455aa9f4d314563932de6fa856b7f658be5",
     "chat.composerSettings.projectInstructions": "75006b91a2c7ab81c781e6bfe9810cd30b8d7712",
     "chat.composerSettings.projectCollections": "91472cc63423730e6031878cff94764807654def",
-    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7"
+    "chat.composerSettings.projectSkills": "5b46c16b7272ab84de68aff4c3e5835c3b71e2a7",
+    "shell.projects.settings.folder": "00e69ecb9bc845d2960b9ee57f4120fe4635cb89",
+    "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
+    "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
+    "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
   }
 }

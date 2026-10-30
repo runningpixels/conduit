@@ -297,17 +297,29 @@ pub async fn request_event_log(
 // Conversation CRUD
 // ---------------------------------------------------------------------------
 
+/// Start a chat, in a project when `folder_id` is given. Its working folder is
+/// the project's, else the Settings default when workspace tools are on.
 #[tauri::command]
 pub async fn create_conversation(
     state: State<'_, AppState>,
     title: Option<String>,
+    folder_id: Option<String>,
 ) -> Result<Conversation, String> {
     let created = conversations::create(&state.db, title.as_deref())
         .await
         .map_err(|e| e.to_string())?;
-    // Inherit Settings default workspace when enabled for new chats.
+    let mut has_root = false;
+    if let Some(folder_id) = folder_id.as_deref() {
+        has_root =
+            crate::db::repository::projects::place_new_chat(&state.db, &created.id, folder_id)
+                .await
+                .map_err(|e| e.to_string())?;
+    }
     let settings = state.settings().unwrap_or_default();
-    if settings.workspace_tools_enabled && settings.workspace_tools_consent_acknowledged {
+    if !has_root
+        && settings.workspace_tools_enabled
+        && settings.workspace_tools_consent_acknowledged
+    {
         if let Some(root) = settings
             .workspace_root
             .as_ref()
@@ -317,14 +329,17 @@ pub async fn create_conversation(
             conversations::set_workspace_root(&state.db, &created.id, Some(root))
                 .await
                 .map_err(|e| e.to_string())?;
-            return conversations::get(&state.db, &created.id)
-                .await
-                .map_err(|e| e.to_string())?
-                .ok_or_else(|| "conversation not found after create".to_string())
-                .and_then(|c| conversation_for_ipc(&state.encryption, c));
+            has_root = true;
         }
     }
-    Ok(created)
+    if !has_root && folder_id.is_none() {
+        return Ok(created);
+    }
+    conversations::get(&state.db, &created.id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "conversation not found after create".to_string())
+        .and_then(|c| conversation_for_ipc(&state.encryption, c))
 }
 
 #[tauri::command]
@@ -449,6 +464,22 @@ pub async fn delete_conversation_folder(
         .map_err(|e| e.to_string())
 }
 
+/// A working folder must be an absolute path to an existing directory.
+pub(crate) fn checked_workspace_root(path: &str) -> Result<&str, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("workspace_root must not be empty".into());
+    }
+    let p = std::path::Path::new(trimmed);
+    if !p.is_absolute() {
+        return Err("workspace_root must be an absolute path".into());
+    }
+    if !p.is_dir() {
+        return Err("workspace_root must be an existing directory".into());
+    }
+    Ok(trimmed)
+}
+
 /// Bind a workspace folder to a conversation, or turn folder access off for
 /// it. `workspace_root` must be an absolute existing directory; binding one
 /// also turns folder access back on. `null` clears the chat's folder and turns
@@ -462,17 +493,7 @@ pub async fn set_conversation_workspace(
     workspace_root: Option<String>,
 ) -> Result<Conversation, String> {
     if let Some(ref path) = workspace_root {
-        let trimmed = path.trim();
-        if trimmed.is_empty() {
-            return Err("workspace_root must not be empty".into());
-        }
-        let p = std::path::Path::new(trimmed);
-        if !p.is_absolute() {
-            return Err("workspace_root must be an absolute path".into());
-        }
-        if !p.is_dir() {
-            return Err("workspace_root must be an existing directory".into());
-        }
+        let trimmed = checked_workspace_root(path)?;
         conversations::set_workspace_root(&state.db, &conversation_id, Some(trimmed))
             .await
             .map_err(|e| e.to_string())?;

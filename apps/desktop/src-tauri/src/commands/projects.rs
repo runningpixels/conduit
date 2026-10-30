@@ -37,6 +37,9 @@ pub async fn set_project_settings(
     skill_ids: Vec<String>,
     collection_ids: Vec<String>,
 ) -> Result<ProjectSettings, String> {
+    if let Some(text) = user_instructions.as_deref() {
+        crate::validation::validate_user_instructions(text)?;
+    }
     let db = &state.db;
     // The lists can be refused (a bad skill id, a deleted collection), so they
     // go first: a refusal then leaves the instructions as they were.

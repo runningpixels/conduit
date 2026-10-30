@@ -99,6 +99,38 @@ async fn settings_round_trip_and_blank_values_clear() {
 }
 
 #[tokio::test]
+async fn a_folder_lists_whether_it_has_settings() {
+    let pool = common::setup_pool().await;
+    let enc = Encryption::off();
+    let folder = conversations::create_folder(&pool, "Ferry").await.unwrap();
+    let has = |pool: SqlitePool| async move {
+        conversations::list_folders(&pool).await.unwrap()[0].has_settings
+    };
+    assert!(!has(pool.clone()).await);
+
+    projects::set_skills(&pool, &folder.id, &["conduit:pdf".into()])
+        .await
+        .unwrap();
+    assert!(has(pool.clone()).await);
+    projects::set_skills(&pool, &folder.id, &[]).await.unwrap();
+    assert!(!has(pool.clone()).await);
+
+    projects::set_settings(&pool, &enc, &folder.id, None, Some("C:/ferry"))
+        .await
+        .unwrap();
+    let renamed = conversations::rename_folder(&pool, &folder.id, "Ferry app")
+        .await
+        .unwrap();
+    assert!(renamed.has_settings);
+
+    // Blanks are stored as no settings.
+    projects::set_settings(&pool, &enc, &folder.id, Some("  "), None)
+        .await
+        .unwrap();
+    assert!(!has(pool.clone()).await);
+}
+
+#[tokio::test]
 async fn instructions_are_encrypted_at_rest() {
     let pool = common::setup_pool().await;
     let enc = Encryption::on_with_key(generate_key(), 1);

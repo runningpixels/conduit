@@ -10,7 +10,7 @@ import {
   saveAttachment,
   saveDroppedAttachment,
 } from '../ipc/client';
-import { AgentsIcon, AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { AgentsIcon, AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ProjectIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
 import { researchUnavailableReasonId, webSearchUnavailableReasonId } from './researchAvailability';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
 import { ComposerMcpResources } from './ComposerMcpResources';
@@ -40,7 +40,8 @@ import { ComposerDocumentPicker, documentOptionId, type DocumentPickerOption } f
 import { findHashTrigger, type HashTrigger } from './hashTrigger';
 import { findAtTrigger, type AtTrigger } from './atTrigger';
 import { ComposerAgentPicker, agentOptionId, type AgentPickerOption } from './ComposerAgentPicker';
-import type { KnowledgeCollection, SkillSummary } from '../ipc/contracts';
+import type { ConversationProject, KnowledgeCollection, SkillSummary } from '../ipc/contracts';
+import { projectHasSettings } from './projectSummary';
 import { previewText, type QueuedMessage } from './messageQueue';
 import { useT } from '../i18n';
 import { Menu } from '../workspace/Menu';
@@ -119,6 +120,10 @@ export interface ComposerProps {
     generationControls: GenerationControls | null,
     userInstructions: string | null,
   ) => void;
+  /** The project (folder with settings) the chat is in: shown as a chip, and
+   *  in the chat settings as what it adds. */
+  project?: ConversationProject | null;
+  onOpenProjectSettings?: (folderId: string) => void;
   /** Discovered SKILL.md packages and which ones are on for this chat. */
   skills?: SkillSummary[];
   enabledSkillIds?: string[];
@@ -212,6 +217,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   generationControls = null,
   userInstructions = null,
   onSaveChatSettings,
+  project = null,
+  onOpenProjectSettings,
   skills = [],
   enabledSkillIds = [],
   onToggleSkill,
@@ -1137,6 +1144,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       });
     }
   }
+  // The project is not turned off from here: moving the chat out of it is.
+  if (project && projectHasSettings(project)) {
+    chips.push({
+      id: 'project',
+      label: project.name,
+      icon: <ProjectIcon />,
+      title: t('chat.composer.project.chipTitle', { name: project.name }),
+      onOpen: onOpenProjectSettings ? () => onOpenProjectSettings(project.folderId) : undefined,
+      removeLabel: '',
+    });
+  }
   if (onSaveChatSettings && (generationControls || userInstructions)) {
     chips.push({
       id: 'chatSettings',
@@ -1498,6 +1516,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   userInstructions: settings.userInstructions,
                 }}
                 override={{ generationControls, userInstructions }}
+                project={project}
+                onOpenProjectSettings={onOpenProjectSettings}
                 onClose={closePop}
                 onSave={onSaveChatSettings}
                 onOpenSettingsDefaults={

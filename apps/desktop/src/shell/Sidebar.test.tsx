@@ -349,7 +349,7 @@ describe('Sidebar', () => {
           ]}
         />,
       );
-      expect(screen.getByText('Folders')).toBeTruthy();
+      expect(screen.getByText('Projects')).toBeTruthy();
       expect(screen.getByText('Work')).toBeTruthy();
       expect(screen.getByText('Empty')).toBeTruthy();
       expect(screen.getByText('Client notes')).toBeTruthy();
@@ -379,6 +379,78 @@ describe('Sidebar', () => {
       });
       expect(onSetConversationFolder).toHaveBeenCalledWith('c1', 'f-work');
       void rowEl;
+    });
+  });
+
+  describe('projects', () => {
+    const work: ConversationFolder = { id: 'f-work', name: 'Work', createdAt: '2026-08-01T00:00:00Z' };
+
+    function openProjectMenu(name = 'Work') {
+      fireEvent.click(screen.getByRole('button', { name: `Actions for ${name}` }));
+    }
+
+    it('starts a chat in the project and opens its settings from the ⋯ menu', () => {
+      const onNewChatInFolder = vi.fn();
+      const onOpenProjectSettings = vi.fn();
+      render(
+        <Sidebar
+          {...props}
+          folders={[work]}
+          onNewChatInFolder={onNewChatInFolder}
+          onOpenProjectSettings={onOpenProjectSettings}
+        />,
+      );
+      openProjectMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'New chat here' }));
+      expect(onNewChatInFolder).toHaveBeenCalledWith('f-work');
+
+      openProjectMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Project settings' }));
+      expect(onOpenProjectSettings).toHaveBeenCalledWith('f-work');
+    });
+
+    it('asks before deleting a project, and says its chats are kept', () => {
+      const onDeleteFolder = vi.fn();
+      render(<Sidebar {...props} folders={[work]} onDeleteFolder={onDeleteFolder} />);
+      openProjectMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+      expect(onDeleteFolder).not.toHaveBeenCalled();
+      const dialog = screen.getByRole('alertdialog', { name: 'Delete project?' });
+      expect(dialog.textContent).toContain('Its chats are kept');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(onDeleteFolder).not.toHaveBeenCalled();
+
+      openProjectMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(onDeleteFolder).toHaveBeenCalledWith('f-work');
+    });
+
+    it('renames from the ⋯ menu', () => {
+      const onRenameFolder = vi.fn();
+      render(<Sidebar {...props} folders={[work]} onRenameFolder={onRenameFolder} />);
+      openProjectMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+      const input = screen.getByRole('textbox', { name: 'Project name' });
+      fireEvent.change(input, { target: { value: 'Clients' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(onRenameFolder).toHaveBeenCalledWith('f-work', 'Clients');
+    });
+
+    it('tells a project with settings from a plain folder', () => {
+      render(
+        <Sidebar
+          {...props}
+          folders={[{ ...work, hasSettings: true }, { id: 'f-plain', name: 'Plain', createdAt: work.createdAt }]}
+          onRenameFolder={vi.fn()}
+        />,
+      );
+      const project = screen.getByText('Work').closest('button')!;
+      const plain = screen.getByText('Plain').closest('button')!;
+      expect(project.textContent).toContain('has project settings');
+      expect(plain.textContent).not.toContain('has project settings');
     });
   });
 

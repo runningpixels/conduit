@@ -55,3 +55,45 @@ describe('ComposerChatSettings reasoning effort', () => {
     expect((screen.getByLabelText(/Reasoning effort/) as HTMLSelectElement).value).toBe('medium');
   });
 });
+
+describe('ComposerChatSettings instructions', () => {
+  const project = {
+    folderId: 'f1',
+    name: 'Ferry',
+    userInstructions: 'Use British English.',
+    workspaceRoot: null,
+    skillIds: ['conduit:pdf'],
+    collectionIds: ['c1', 'c2'],
+  };
+
+  // Instructions stack (Settings, then the project, then the chat), so the
+  // field must not start from the Settings text: saving would send it twice.
+  it('holds only the chat’s own instructions and lists what else is used', () => {
+    const onOpenProjectSettings = vi.fn();
+    render(
+      <ComposerChatSettings
+        open
+        streaming={false}
+        defaults={{ userInstructions: 'Default voice.' }}
+        override={{}}
+        project={project}
+        onOpenProjectSettings={onOpenProjectSettings}
+        onClose={() => {}}
+        onSave={() => {}}
+      />,
+    );
+    expect((screen.getByLabelText(/User instructions/) as HTMLTextAreaElement).value).toBe('');
+    expect(screen.getByText('Your instructions from Settings')).toBeTruthy();
+    expect(screen.getByText('Instructions from the project “Ferry”')).toBeTruthy();
+    expect(screen.getByText('2 document collections from the project “Ferry”')).toBeTruthy();
+    expect(screen.getByText('1 skill from the project “Ferry”')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Project settings' }));
+    expect(onOpenProjectSettings).toHaveBeenCalledWith('f1');
+  });
+
+  it('lists nothing when there is nothing else', () => {
+    renderPopover({ userInstructions: 'Mine.' });
+    expect((screen.getByLabelText(/User instructions/) as HTMLTextAreaElement).value).toBe('Mine.');
+    expect(screen.queryByText('This chat also uses:')).toBeNull();
+  });
+});

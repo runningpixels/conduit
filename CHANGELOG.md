@@ -35,6 +35,11 @@ skills and working folder.
 
 ### Fixed
 
+- **Going back to an older version no longer empties your chats.** A version
+  that finds your data was last opened by a newer one now says so and leaves
+  the data alone, instead of setting the database aside and starting empty.
+  This protects going back to this release or later; see the note below for
+  rc.17 and earlier.
 - The composer's popovers (chat settings, skills, documents, connector prompts
   and resources) open downward when there is no room above, so in a new, empty
   chat their top is no longer cut off.

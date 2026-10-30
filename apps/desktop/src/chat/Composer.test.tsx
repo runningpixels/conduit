@@ -624,6 +624,30 @@ describe('Composer "+" menu', () => {
       expect(onWorkspaceClear).toHaveBeenCalledTimes(1);
     });
 
+    it('names the project the chat is in and opens its settings, with no ×', () => {
+      const onOpenProjectSettings = vi.fn();
+      const project = {
+        folderId: 'f1',
+        name: 'Ferry',
+        userInstructions: 'Use British English.',
+        workspaceRoot: null,
+        skillIds: [],
+        collectionIds: [],
+      };
+      renderComposer({ project, onOpenProjectSettings });
+      const row = screen.getByRole('group', { name: 'Active in this chat' });
+      expect(row).toHaveTextContent('Ferry');
+      fireEvent.click(screen.getByRole('button', { name: 'Ferry' }));
+      expect(onOpenProjectSettings).toHaveBeenCalledWith('f1');
+      expect(row.querySelectorAll('button')).toHaveLength(1);
+    });
+
+    it('shows no chip for a plain folder', () => {
+      const project = { folderId: 'f1', name: 'Plain', userInstructions: null, workspaceRoot: null, skillIds: [], collectionIds: [] };
+      renderComposer({ project });
+      expect(screen.queryByRole('group', { name: 'Active in this chat' })).toBeNull();
+    });
+
     it('opens the folder menu from the folder chip', () => {
       renderComposer({ onWorkspacePick: vi.fn(), onWorkspaceClear: vi.fn(), workspaceRoot: 'C:/work/garden' });
       fireEvent.click(screen.getByRole('button', { name: 'garden' }));

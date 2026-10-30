@@ -30,7 +30,18 @@ pub struct ConversationFolder {
     pub id: String,
     pub name: String,
     pub created_at: String,
+    /// The folder carries project settings (instructions, documents, skills or
+    /// a working folder), so the rail can tell a project from a plain folder.
+    #[serde(default)]
+    pub has_settings: bool,
 }
+
+/// SQL for [`ConversationFolder::has_settings`] of the folder aliased `f`.
+const FOLDER_HAS_SETTINGS_SQL: &str =
+    "(EXISTS (SELECT 1 FROM project_settings ps WHERE ps.folder_id = f.id \
+     AND (ps.user_instructions IS NOT NULL OR ps.workspace_root IS NOT NULL)) \
+     OR EXISTS (SELECT 1 FROM project_skills k WHERE k.folder_id = f.id) \
+     OR EXISTS (SELECT 1 FROM project_collections c WHERE c.folder_id = f.id))";
 
 const FOLDER_NAME_MAX_CHARS: usize = 80;
 
@@ -545,6 +556,7 @@ pub async fn create_folder(pool: &SqlitePool, name: &str) -> Result<Conversation
             id,
             name,
             created_at: now,
+            has_settings: false,
         }),
         Err(sqlx::Error::Database(err)) if err.is_unique_violation() => Err(DbError::Query(
             format!("a folder named \"{name}\" already exists"),
@@ -578,15 +590,17 @@ pub async fn rename_folder(
             }
         }
     }
-    let created_at: String =
-        sqlx::query_scalar("SELECT created_at FROM conversation_folders WHERE id = ?")
-            .bind(id)
-            .fetch_one(pool)
-            .await?;
+    let (created_at, has_settings): (String, bool) = sqlx::query_as(&format!(
+        "SELECT f.created_at, {FOLDER_HAS_SETTINGS_SQL} FROM conversation_folders f WHERE f.id = ?"
+    ))
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
     Ok(ConversationFolder {
         id: id.to_string(),
         name,
         created_at,
+        has_settings,
     })
 }
 
@@ -605,17 +619,19 @@ pub async fn delete_folder(pool: &SqlitePool, id: &str) -> Result<(), DbError> {
 
 /// List folders alphabetically by name.
 pub async fn list_folders(pool: &SqlitePool) -> Result<Vec<ConversationFolder>, DbError> {
-    let rows: Vec<(String, String, String)> = sqlx::query_as(
-        "SELECT id, name, created_at FROM conversation_folders ORDER BY name COLLATE NOCASE",
-    )
+    let rows: Vec<(String, String, String, bool)> = sqlx::query_as(&format!(
+        "SELECT f.id, f.name, f.created_at, {FOLDER_HAS_SETTINGS_SQL} \
+         FROM conversation_folders f ORDER BY f.name COLLATE NOCASE"
+    ))
     .fetch_all(pool)
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, name, created_at)| ConversationFolder {
+        .map(|(id, name, created_at, has_settings)| ConversationFolder {
             id,
             name,
             created_at,
+            has_settings,
         })
         .collect())
 }

@@ -6,6 +6,8 @@
  *
  * t0-5 adds pin / archive / one-level folders on this list: Pinned → Folders →
  * Recent (day groups) → Archived (collapsed). Context menu + drag onto a folder.
+ * Folders are shown as projects: each has a ⋯ menu (New chat here, Project
+ * settings, Rename, Delete), and one with settings gets its own icon.
  *
  * A row's actions menu opens from right-click, from the row's ⋯ button, or from
  * the keyboard (Shift+F10 or the ContextMenu key) — right-click alone left it
@@ -34,9 +36,11 @@ import {
   PencilIcon,
   PinIcon,
   PlusIcon,
+  ProjectIcon,
   SearchIcon,
   SettingsIcon,
   SidebarIcon,
+  SlidersIcon,
   TrashIcon,
 } from '../icons';
 
@@ -83,6 +87,10 @@ interface SidebarProps {
   onCreateFolder?: (name: string) => Promise<ConversationFolder | void> | ConversationFolder | void;
   onRenameFolder?: (folderId: string, name: string) => void;
   onDeleteFolder?: (folderId: string) => void;
+  /** Start a chat inside a project. */
+  onNewChatInFolder?: (folderId: string) => void;
+  /** Open a project's settings dialog. */
+  onOpenProjectSettings?: (folderId: string) => void;
 }
 
 const DRAG_TYPE = 'text/conduit-conversation-id';
@@ -149,6 +157,8 @@ export function Sidebar({
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
+  onNewChatInFolder,
+  onOpenProjectSettings,
 }: SidebarProps) {
   const t = useT();
   const tr = useRichT();
@@ -160,12 +170,18 @@ export function Sidebar({
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [folderDialog, setFolderDialog] = useState<
-    { mode: 'create'; moveId?: string } | { mode: 'rename'; folderId: string; name: string } | null
+    | { mode: 'create'; moveId?: string }
+    | { mode: 'rename'; folderId: string; name: string }
+    | { mode: 'delete'; folderId: string; name: string }
+    | null
   >(null);
   const [folderName, setFolderName] = useState('');
+  /** The project whose ⋯ menu is open, and where. */
+  const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
   /** The row control that opened the actions menu; focus returns to it. */
   const contextTriggerRef = useRef<HTMLElement | null>(null);
+  const folderMenuTriggerRef = useRef<HTMLElement | null>(null);
 
   const closeMenu = () => setMenuOpen(false);
   const closeContextMenu = () => setContextMenu(null);
@@ -269,6 +285,11 @@ export function Sidebar({
   }
 
   async function commitFolderDialog() {
+    if (folderDialog?.mode === 'delete') {
+      onDeleteFolder?.(folderDialog.folderId);
+      setFolderDialog(null);
+      return;
+    }
     const name = folderName.trim();
     if (!name || !folderDialog) return;
     if (folderDialog.mode === 'create') {
@@ -369,6 +390,8 @@ export function Sidebar({
     ? conversations.find((row) => row.id === contextMenu.conversationId)
     : undefined;
 
+  const menuFolder = folderMenu ? folders.find((folder) => folder.id === folderMenu.folderId) : undefined;
+  const hasFolderMenu = Boolean(onNewChatInFolder || onOpenProjectSettings || onRenameFolder || onDeleteFolder);
   const showFolders = folders.length > 0 || Boolean(onCreateFolder);
   const hasList = conversations.length > 0 || folders.length > 0;
 
@@ -487,31 +510,28 @@ export function Sidebar({
                             }))
                           }
                         >
-                          <FolderIcon />
+                          {folder.hasSettings ? <ProjectIcon /> : <FolderIcon />}
                           <span className="sb-folder-name" title={folder.name}>{folder.name}</span>
+                          {folder.hasSettings ? (
+                            <span className="sr-only">{t('shell.sidebar.folder.hasSettings')}</span>
+                          ) : null}
                           <span className="sb-folder-count">{rows.length}</span>
                         </button>
-                        {onRenameFolder && (
+                        {hasFolderMenu && (
                           <button
-                            className="sb-folder-edit"
+                            className="sb-folder-more"
                             type="button"
-                            aria-label={t('shell.sidebar.folder.renameAriaLabel', { name: folder.name })}
-                            onClick={() => {
-                              setFolderName(folder.name);
-                              setFolderDialog({ mode: 'rename', folderId: folder.id, name: folder.name });
+                            aria-label={t('shell.sidebar.folder.moreAriaLabel', { name: folder.name })}
+                            title={t('shell.sidebar.folder.moreAriaLabel', { name: folder.name })}
+                            aria-haspopup="menu"
+                            aria-expanded={folderMenu?.folderId === folder.id}
+                            onClick={(event) => {
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              folderMenuTriggerRef.current = event.currentTarget;
+                              setFolderMenu({ folderId: folder.id, x: rect.left, y: rect.bottom + 2 });
                             }}
                           >
-                            {t('common.actions.rename')}
-                          </button>
-                        )}
-                        {onDeleteFolder && (
-                          <button
-                            className="sb-folder-edit"
-                            type="button"
-                            aria-label={t('shell.sidebar.folder.deleteAriaLabel', { name: folder.name })}
-                            onClick={() => onDeleteFolder(folder.id)}
-                          >
-                            {t('common.actions.delete')}
+                            <MoreIcon />
                           </button>
                         )}
                       </div>
@@ -749,7 +769,102 @@ export function Sidebar({
         </Menu>
       )}
 
-      {folderDialog && (
+      {menuFolder && folderMenu && (
+        <Menu
+          open
+          onClose={() => setFolderMenu(null)}
+          triggerRef={folderMenuTriggerRef}
+          className="menu convo-menu"
+          label={t('shell.sidebar.folder.moreAriaLabel', { name: menuFolder.name })}
+          anchorPoint={{ x: folderMenu.x, y: folderMenu.y }}
+          dismissOnOutsidePress
+        >
+          {onNewChatInFolder && (
+            <MenuItem
+              icon={<PlusIcon />}
+              label={t('shell.sidebar.folder.newChatHere')}
+              onClick={() => {
+                setFolderMenu(null);
+                onNewChatInFolder(menuFolder.id);
+              }}
+            />
+          )}
+          {onOpenProjectSettings && (
+            <MenuItem
+              icon={<SlidersIcon />}
+              label={t('shell.sidebar.folder.projectSettings')}
+              onClick={() => {
+                setFolderMenu(null);
+                onOpenProjectSettings(menuFolder.id);
+              }}
+            />
+          )}
+          {onRenameFolder && (
+            <MenuItem
+              icon={<PencilIcon />}
+              label={t('common.actions.rename')}
+              onClick={() => {
+                setFolderMenu(null);
+                setFolderName(menuFolder.name);
+                setFolderDialog({ mode: 'rename', folderId: menuFolder.id, name: menuFolder.name });
+              }}
+            />
+          )}
+          {onDeleteFolder && (
+            <>
+              <div className="menu-sep" />
+              <MenuItem
+                icon={<TrashIcon />}
+                label={t('common.actions.delete')}
+                danger
+                onClick={() => {
+                  setFolderMenu(null);
+                  setFolderDialog({ mode: 'delete', folderId: menuFolder.id, name: menuFolder.name });
+                }}
+              />
+            </>
+          )}
+        </Menu>
+      )}
+
+      {folderDialog?.mode === 'delete' && (
+        <div
+          className="cu-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setFolderDialog(null);
+          }}
+        >
+          <div
+            className="cu-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label={t('shell.sidebar.folderDialog.deleteTitle')}
+            onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setFolderDialog(null);
+              }
+            }}
+          >
+            <h2 className="cu-dialog-title">{t('shell.sidebar.folderDialog.deleteTitle')}</h2>
+            <div className="cu-dialog-body">
+              {t('shell.sidebar.folderDialog.deleteBody', { name: folderDialog.name })}
+            </div>
+            <div className="cu-dialog-actions">
+              <button className="btn ghost" type="button" autoFocus onClick={() => setFolderDialog(null)}>
+                {t('common.actions.cancel')}
+              </button>
+              <button className="btn danger" type="button" onClick={() => void commitFolderDialog()}>
+                {t('common.actions.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {folderDialog && folderDialog.mode !== 'delete' && (
         <div
           className="cu-dialog-backdrop"
           role="presentation"

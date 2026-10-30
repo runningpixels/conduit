@@ -490,8 +490,7 @@ html[data-window-resizing] *::after { transition: none !important; }
   justify-content: space-between;
   gap: 8px;
 }
-.sb-group-action,
-.sb-folder-edit {
+.sb-group-action {
   font-size: var(--fs-sm);
   font-weight: 500;
   letter-spacing: 0;
@@ -499,8 +498,26 @@ html[data-window-resizing] *::after { transition: none !important; }
   color: var(--ink-3);
   padding: 0 4px;
 }
-.sb-group-action:hover,
-.sb-folder-edit:hover { color: var(--ink); }
+.sb-group-action:hover { color: var(--ink); }
+/* A project's ⋯ menu: shown like a chat row's, on hover or focus, and lit
+   while its menu is open. */
+.sb-folder-more {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity var(--tap), background var(--tap), color var(--tap);
+}
+.sb-folder-more svg { width: 14px; height: 14px; }
+.sb-folder-head:hover .sb-folder-more,
+.sb-folder-head:focus-within .sb-folder-more,
+.sb-folder-more[aria-expanded="true"] { opacity: 1; }
+.sb-folder-more:hover,
+.sb-folder-more[aria-expanded="true"] { background: var(--card-hi); color: var(--ink); }
 .sb-group-toggle {
   width: 100%;
   display: flex;
@@ -930,6 +947,7 @@ html[data-panel-overlay="open"] .body > .doc-panel {
     pointer-events: auto;
   }
   .convo-row:has(.convo-del) .convo-more { right: 40px; }
+  .sb-folder-more { width: 32px; height: 32px; opacity: 1; }
   .convo-meta { opacity: 1; }
   .convo-row .convo,
   .convo-row:hover .convo,
@@ -937,8 +955,7 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   .convo-row:has(.convo-del) .convo,
   .convo-row:has(.convo-del):hover .convo,
   .convo-row:has(.convo-del):focus-within .convo { padding-right: 84px; }
-  .sb-group-action,
-  .sb-folder-edit { min-height: 32px; padding: 0 var(--sp-2); }
+  .sb-group-action { min-height: 32px; padding: 0 var(--sp-2); }
 }
 
 /* ── Ideas (docs/plans/ideas-and-discovery.md) ─────────────────────────────── */

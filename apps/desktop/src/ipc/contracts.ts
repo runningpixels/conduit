@@ -592,6 +592,8 @@ export interface ConversationFolder {
   id: string;
   name: string;
   createdAt: string;
+  /** The folder carries project settings, so it reads as a project in the rail. */
+  hasSettings?: boolean;
 }
 
 /** A folder's settings for every chat in it (a project). Empty when none are set. */

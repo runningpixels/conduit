@@ -134,6 +134,7 @@ import { useFocusTrap } from './shell/useFocusTrap';
 import { useHotkeys } from './workspace/useHotkeys';
 import { ShortcutsSheet } from './workspace/ShortcutsSheet';
 import { SkillDraftDialog } from './workspace/SkillDraftDialog';
+import { ProjectSettingsDialog } from './projects/ProjectSettingsDialog';
 import { useWindowTitle } from './shell/useWindowTitle';
 import { CommandPalette } from './workspace/CommandPalette';
 import { refreshArtifactList } from './workspace/useArtifacts';
@@ -518,6 +519,10 @@ export default function App() {
   useWindowTitle(activeConversationSummary?.displayTitle);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversationFolders, setConversationFolders] = useState<ConversationFolder[]>([]);
+  /** The project whose settings dialog is open. */
+  const [projectSettingsFolderId, setProjectSettingsFolderId] = useState<string | null>(null);
+  /** Bumped when a project's settings are saved, so the open chat reads them again. */
+  const [projectsVersion, setProjectsVersion] = useState(0);
   const [convoProviders, setConvoProviders] = useState<Record<string, string>>(readConvoProviders);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [connectorCount, setConnectorCount] = useState<number | undefined>(undefined);
@@ -2952,6 +2957,30 @@ export default function App() {
     [refreshConversations],
   );
 
+  /** A new chat filed in a project from the start, so its first message already uses the project. */
+  const handleNewChatInFolder = useCallback(
+    async (folderId: string) => {
+      try {
+        const created = await createConversation();
+        await setConversationFolder(created.id, folderId);
+        setActiveConversationId(created.id);
+        clearWorkspaceArtifactSelection();
+        await refreshConversations();
+        setStatus(makeStatus(t('app.status.newChatStarted'), 'success'));
+      } catch (error) {
+        setStatus(makeStatus(error instanceof Error ? error.message : t('app.status.createChatFailed'), 'error'));
+      }
+    },
+    [clearWorkspaceArtifactSelection, refreshConversations],
+  );
+
+  const handleProjectSettingsSaved = useCallback(async () => {
+    setProjectSettingsFolderId(null);
+    setProjectsVersion((v) => v + 1);
+    setStatus(makeStatus(t('app.status.projectSettingsSaved'), 'success'));
+    await refreshConversations();
+  }, [refreshConversations]);
+
   const handleDeleteFolder = useCallback(
     async (folderId: string) => {
       try {
@@ -3183,6 +3212,13 @@ export default function App() {
   });
 
   const openDocuments = useCallback(() => setDestination('documents'), []);
+
+  const projectSettingsFolder = projectSettingsFolderId
+    ? conversationFolders.find((folder) => folder.id === projectSettingsFolderId)
+    : undefined;
+  /** Changes when the open chat's project might have: it moved, or a project was saved. */
+  const activeFolderId = conversations.find((row) => row.id === activeConversationId)?.folderId ?? null;
+  const projectKey = `${activeFolderId ?? ''}:${projectsVersion}`;
 
   // ── Ideas ────────────────────────────────────────────────────────────────
   // Collections decide whether "Ask your documents" is ready; re-read when
@@ -3817,6 +3853,11 @@ export default function App() {
           onCreateFolder={handleCreateFolder}
           onRenameFolder={(folderId, name) => void handleRenameFolder(folderId, name)}
           onDeleteFolder={(folderId) => void handleDeleteFolder(folderId)}
+          onNewChatInFolder={(folderId) => {
+            hideSidebarOverlay();
+            void handleNewChatInFolder(folderId);
+          }}
+          onOpenProjectSettings={setProjectSettingsFolderId}
           runStatus={runStatus}
         />
 
@@ -3941,6 +3982,8 @@ export default function App() {
             // composer re-reads them when you come back to the chat.
             settingsOpen={destination !== 'chats'}
             documentsOpen={documentsOpen}
+            projectKey={projectKey}
+            onOpenProjectSettings={setProjectSettingsFolderId}
             onSelectModel={handleSelectModel}
             onStatus={setStatusMessage}
             conversationId={activeConversationId}
@@ -4364,6 +4407,17 @@ export default function App() {
       )}
 
       <ShortcutsSheet open={shortcutsOpen} onClose={closeShortcuts} />
+      {projectSettingsFolder ? (
+        <ProjectSettingsDialog
+          folder={projectSettingsFolder}
+          onClose={() => setProjectSettingsFolderId(null)}
+          onSaved={() => void handleProjectSettingsSaved()}
+          onOpenDocuments={() => {
+            setProjectSettingsFolderId(null);
+            openDocuments();
+          }}
+        />
+      ) : null}
       {skillDraftChatId ? (
         <SkillDraftDialog
           conversationId={skillDraftChatId}

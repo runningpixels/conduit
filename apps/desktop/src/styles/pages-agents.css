@@ -83,6 +83,10 @@ div.agent-card:hover { background: var(--card); }
 @media (max-width: 760px) {
   .agent-editor-body { grid-template-columns: minmax(0, 1fr); }
 }
+/* Project settings borrow the agent editor's layout. */
+.project-settings-dialog .agent-editor-head p { margin: var(--sp-1) 0 0; }
+.project-settings-dialog textarea { min-height: 260px; }
+.project-settings-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
 /* Cards like Apps: a tile and name, what it is doing, what it may use, and
  * the last 30 days as three numbers. The whole card opens its workflow. */
 .agents-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin: 0 0 var(--sp-5); }

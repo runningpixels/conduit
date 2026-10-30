@@ -114,6 +114,13 @@ export const ShieldIcon = (p: IconProps) => (
 export const FolderIcon = (p: IconProps) => (
   <Svg {...p}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></Svg>
 );
+/** A folder with settings of its own: a project. */
+export const ProjectIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    <circle cx="12" cy="13.5" r="2.5" fill="currentColor" stroke="none" />
+  </Svg>
+);
 export const PinIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 17v4" />

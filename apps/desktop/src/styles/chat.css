@@ -2247,6 +2247,19 @@
   font-size: var(--fs-xl);
   color: var(--ink-2);
 }
+/* What else goes into this chat's prompt, before its own instructions. */
+.chat-settings-pop-also {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--r-sm);
+  background: var(--card-hi);
+  font-size: var(--fs-xl);
+  color: var(--ink-2);
+}
+.chat-settings-pop-also p { margin: 0; }
+.chat-settings-pop-also ul { margin: 0; padding-left: 1.2em; }
+.chat-settings-pop-also .btn { justify-self: start; }
 .chat-settings-pop-error {
   margin: 0;
   font-size: var(--fs-xl);

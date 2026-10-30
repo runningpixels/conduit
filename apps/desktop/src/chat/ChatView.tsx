@@ -399,6 +399,11 @@ interface ChatViewProps {
   /** t1-8: the Documents sheet. Collections change there, so its closing is a
    *  refresh trigger for the composer's collection list, like Settings is. */
   documentsOpen?: boolean;
+  /** Changes when the chat's project may have (moved, or its settings saved):
+   *  the composer reads the project again. */
+  projectKey?: string;
+  /** Open the settings of the project (folder) the chat is in. */
+  onOpenProjectSettings?: (folderId: string) => void;
   /// Renderer-only conversation → last-used provider map (sidebar row dots).
   /// Falls back to `settings.activeProvider` for per-turn hue + model line.
   convoProviders?: Record<string, string>;
@@ -997,6 +1002,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onHideIdeas,
   settingsOpen = false,
   documentsOpen = false,
+  projectKey = '',
+  onOpenProjectSettings,
     convoProviders = {},
     compact = false,
     pendingAgentView = null,
@@ -1682,7 +1689,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return () => {
       cancelled = true;
     };
-  }, [conversationId, settingsOpen]);
+  }, [conversationId, settingsOpen, projectKey]);
 
   const projectSkillIds = conversationProject?.skillIds;
   useEffect(() => {
@@ -4212,6 +4219,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onWorkspaceClear={() => void handleWorkspaceClear()}
         generationControls={conversationGenerationControls}
         userInstructions={conversationUserInstructions}
+        project={conversationProject}
+        onOpenProjectSettings={onOpenProjectSettings}
         onSaveChatSettings={(controls, instructions) =>
           void handleSaveChatSettings(controls, instructions)
         }

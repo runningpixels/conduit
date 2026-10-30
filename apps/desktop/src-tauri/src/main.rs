@@ -60,8 +60,15 @@ fn main() {
     // before building the app so `AppState` (with `db: DbPool`) is ready to
     // `.manage()`. A migration failure returns a user-safe `MigrationRecovery`
     // rather than panicking — the renderer surfaces it.
-    let state = tauri::async_runtime::block_on(AppState::load(app_name))
-        .expect("failed to initialize desktop state");
+    let state = match tauri::async_runtime::block_on(AppState::load(app_name)) {
+        Ok(state) => state,
+        Err(error) => {
+            // A release build has no console, so a panic here closed the app
+            // with no window and no word. Say why instead.
+            show_startup_error(app_name, &error.to_string());
+            std::process::exit(1);
+        }
+    };
 
     // A research run still planning or running at launch was cut off when the
     // app closed; mark it failed before anything can start a new one.
@@ -673,4 +680,16 @@ fn start_page_server(app: &tauri::AppHandle, https_scheme: bool) {
     let frames = app.state::<ArtifactFrames>().inner().clone();
     tauri::async_runtime::spawn(page_server::serve(listener, frames, server.config.clone()));
     app.manage(server);
+}
+
+/// Tell the user why the app cannot start, in a native message box: there is
+/// no window yet to show it in.
+fn show_startup_error(app_name: &str, message: &str) {
+    eprintln!("{app_name}: {message}");
+    let _ = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Error)
+        .set_title(format!("{app_name} can't start"))
+        .set_description(message)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
 }

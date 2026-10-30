@@ -132,6 +132,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 #   `shell:allow-open` in window capability).
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
+# A native message box when the app cannot start (no window exists yet). Same
+# version and features as tauri-plugin-dialog uses, so nothing new is built.
+rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }
 tauri-plugin-shell = "2"
 # Desktop notifications for scheduled workflow runs (shown from Rust; the
 # renderer passes the translated text through `notify_workflow_run`).

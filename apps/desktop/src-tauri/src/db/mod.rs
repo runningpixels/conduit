@@ -47,6 +47,12 @@ pub enum DbError {
     MigrationHistoryMismatch,
     #[error("migration recovery I/O failed: {0}")]
     RecoveryIo(String),
+    /// The store was migrated by a newer build. Not corruption: this build is
+    /// too old to read it, and the file is left exactly as it was.
+    #[error(
+        "Your data was last opened by a newer version of this app (database version {found};          this version knows up to {known}). Install the latest version to open it.          Nothing was changed."
+    )]
+    NewerThanApp { found: i64, known: i64 },
 }
 
 impl From<sqlx::Error> for DbError {

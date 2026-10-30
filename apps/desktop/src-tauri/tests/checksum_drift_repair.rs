@@ -171,7 +171,7 @@ async fn a_schema_that_really_diverged_is_not_silently_re_stamped() {
 }
 
 #[tokio::test]
-async fn a_store_from_a_newer_build_is_not_re_stamped() {
+async fn a_store_from_a_newer_build_is_refused_and_left_alone() {
     let (_guard, db_path) = seeded_store().await;
 
     // A version this build has never heard of: the user ran a newer Conduit and
@@ -190,11 +190,33 @@ async fn a_store_from_a_newer_build_is_not_re_stamped() {
 
     tamper_checksum(&db_path, 1).await;
 
-    let (_fresh, recovery) = migrations::open_with_migrations(&db_path)
+    // Nor set aside: going back to an older release used to back the store up
+    // and start the user on an empty database. Now it refuses and leaves it.
+    let size_before = std::fs::metadata(&db_path).unwrap().len();
+    let error = migrations::open_with_migrations(&db_path)
         .await
-        .expect("reopen after downgrade");
+        .expect_err("a store ahead of this build must be refused");
     assert!(
-        recovery.is_some(),
-        "a store ahead of this build must not be re-stamped in place"
+        matches!(
+            error,
+            db::DbError::NewerThanApp { found: 9999, known } if known == migrations::latest_known_version()
+        ),
+        "unexpected error: {error}"
     );
+    assert_eq!(std::fs::metadata(&db_path).unwrap().len(), size_before);
+    let backups: Vec<_> = std::fs::read_dir(db_path.parent().unwrap())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains(".corrupt-"))
+        .collect();
+    assert!(backups.is_empty(), "the store must not be set aside");
+
+    // The data is all still there for the newer build.
+    let pool = db::init_pool(&db_path).await.expect("reopen");
+    let title: String = sqlx::query_scalar("SELECT title FROM conversations WHERE id = 'c1'")
+        .fetch_one(&pool)
+        .await
+        .expect("conversation kept");
+    assert_eq!(title, "survivor");
+    pool.close().await;
 }

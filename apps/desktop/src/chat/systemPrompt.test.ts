@@ -68,8 +68,37 @@ describe('mergeGenerationControls', () => {
 });
 
 describe('resolveUserInstructions', () => {
-  it('uses conversation text when set', () => {
-    expect(resolveUserInstructions(settings, 'Chat only.')).toBe('Chat only.');
+  it('passes a single source through unlabelled', () => {
+    expect(resolveUserInstructions({} as AppSettings, 'Chat only.')).toBe('Chat only.');
+    expect(
+      resolveUserInstructions({} as AppSettings, null, { name: 'Ferry', userInstructions: 'Use British English.' }),
+    ).toBe('Use British English.');
+  });
+
+  it('stacks settings, project and chat, labelled, most specific last', () => {
+    const result = resolveUserInstructions(settings, 'Keep it short.', {
+      name: 'Ferry',
+      userInstructions: 'Use British English.',
+    })!;
+    const app = result.indexOf('### From your settings\n\nBe a pirate.');
+    const project = result.indexOf('### From the project "Ferry"\n\nUse British English.');
+    const chat = result.indexOf('### From this chat\n\nKeep it short.');
+    expect(app).toBeGreaterThanOrEqual(0);
+    expect(project).toBeGreaterThan(app);
+    expect(chat).toBeGreaterThan(project);
+    expect(result).toContain('more specific ones take precedence');
+  });
+
+  it('keeps the settings when a chat adds its own', () => {
+    const result = resolveUserInstructions(settings, 'Chat only.')!;
+    expect(result).toContain('Be a pirate.');
+    expect(result).toContain('Chat only.');
+  });
+
+  it('skips a project without instructions', () => {
+    expect(resolveUserInstructions(settings, null, { name: 'Ferry', userInstructions: null })).toBe(
+      'Be a pirate.',
+    );
   });
 
   it('inherits settings when conversation override is null or empty', () => {

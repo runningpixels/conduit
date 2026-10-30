@@ -251,10 +251,35 @@ describe('buildProviderRequest message id uniqueness (regression: saved user tur
     expect(req.systemPrompt).toContain('You are a helpful assistant');
     expect(req.systemPrompt).toContain('## User instructions');
     expect(req.systemPrompt).toContain('Always end with BANANA.');
-    expect(req.systemPrompt).not.toContain('Default voice.');
+    // Stacked, not replaced: the app's instructions come first.
+    expect(req.systemPrompt!.indexOf('Default voice.')).toBeLessThan(
+      req.systemPrompt!.indexOf('Always end with BANANA.'),
+    );
     expect(req.systemPrompt!.indexOf('You are a helpful assistant')).toBeLessThan(
       req.systemPrompt!.indexOf('## User instructions'),
     );
+  });
+
+  it("stacks the project's instructions between the app's and the chat's", () => {
+    const req = buildProviderRequest(
+      { ...baseSettings, userInstructions: 'Default voice.' },
+      'hi',
+      [userTurn('u1', 'hi')],
+      'c1',
+      [],
+      undefined,
+      undefined,
+      {
+        userInstructions: 'Always end with BANANA.',
+        project: { name: 'Ferry', userInstructions: 'Use British English.' },
+      },
+    );
+    const prompt = req.systemPrompt!;
+    expect(prompt.indexOf('Default voice.')).toBeLessThan(prompt.indexOf('Use British English.'));
+    expect(prompt.indexOf('Use British English.')).toBeLessThan(
+      prompt.indexOf('Always end with BANANA.'),
+    );
+    expect(prompt).toContain('### From the project "Ferry"');
   });
 
   it('inherits settings instructions when the conversation override is cleared', () => {

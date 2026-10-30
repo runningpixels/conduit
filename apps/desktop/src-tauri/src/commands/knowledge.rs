@@ -26,6 +26,7 @@ use tauri::State;
 
 use crate::{
     db::repository::knowledge as repo,
+    db::repository::projects,
     knowledge::{
         extract,
         ingest::{self, EmbeddingConfig, IngestOutcome},
@@ -757,9 +758,10 @@ pub async fn retrieve_knowledge_context(
     // D6: a `#` reference narrows retrieval to exactly the named documents —
     // they can come from a collection this chat never attached, and naming
     // one outranks excluding it. Without references, D1 applies: search the
-    // chat's attached collections, minus whatever it has excluded.
+    // chat's attached collections and its project's, minus whatever the chat
+    // has excluded.
     let (groups, filter) = if references.is_empty() {
-        let enabled = repo::list_enabled(&state.db, &conversation_id)
+        let enabled = projects::effective_collections(&state.db, &conversation_id)
             .await
             .map_err(db_err)?;
         if enabled.is_empty() {

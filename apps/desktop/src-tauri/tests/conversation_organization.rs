@@ -1,7 +1,7 @@
 //! t0-5: pin, archive, and one-level conversation folders.
 mod common;
 
-use conduit_desktop::db::repository::conversations;
+use conduit_desktop::db::repository::{conversations, knowledge};
 
 #[tokio::test]
 async fn pin_persists_and_does_not_bump_updated_at() {
@@ -158,6 +158,20 @@ async fn fork_inherits_folder_not_pin_or_archive() {
     conversations::set_pinned(&pool, &conv.id, true)
         .await
         .unwrap();
+    let collection = knowledge::create_collection(
+        &pool,
+        knowledge::NewCollection {
+            name: "Docs".into(),
+            provider_id: "fake".into(),
+            embedding_model: "fake-embed".into(),
+            embedding_dimensions: 4,
+        },
+    )
+    .await
+    .unwrap();
+    knowledge::set_enabled(&pool, &conv.id, std::slice::from_ref(&collection.id))
+        .await
+        .unwrap();
 
     use conduit_desktop::db::repository::messages;
     use provider_core::schema::{Message, MessagePart, MessagePartKind, MessageRole};
@@ -197,4 +211,9 @@ async fn fork_inherits_folder_not_pin_or_archive() {
     assert_eq!(forked.folder_id.as_deref(), Some(folder.id.as_str()));
     assert!(forked.pinned_at.is_none());
     assert!(forked.archived_at.is_none());
+    // A fork keeps the Documents collections, as it keeps skills.
+    assert_eq!(
+        knowledge::list_enabled(&pool, &fork.id).await.unwrap(),
+        vec![collection.id]
+    );
 }

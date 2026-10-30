@@ -46,6 +46,7 @@ import {
   listConversationSkills,
   setConversationSkills,
   getSkillPromptBlock,
+  getConversationProject,
   getMemoryPromptBlock,
   listKnowledgeCollections,
   listConversationCollections,
@@ -67,6 +68,7 @@ import {
 import type {
   WorkflowModel,
   Conversation,
+  ConversationProject,
   SkillSummary,
   KnowledgeCollection,
   KnowledgeCitation,
@@ -88,7 +90,13 @@ import {
   CONDUIT_ARTIFACT_SYSTEM_APPENDIX,
   looksLikeArtifactCreationRequest,
 } from './artifactPrompt';
-import { composeSystemPrompt, joinExtraSystemSections, mergeGenerationControls, resolveUserInstructions } from './systemPrompt';
+import {
+  composeSystemPrompt,
+  joinExtraSystemSections,
+  mergeGenerationControls,
+  resolveUserInstructions,
+  type ProjectInstructions,
+} from './systemPrompt';
 import type { KnowledgeRef, TurnAttachment } from './composerTypes';
 import { UserTurnAttachments } from './UserTurnAttachments';
 import { UserTurnKnowledgeRefs } from './UserTurnKnowledgeRefs';
@@ -435,6 +443,8 @@ export function baseSystemPrompt(): string {
 export interface ChatRequestOverrides {
   generationControls?: GenerationControls | null;
   userInstructions?: string | null;
+  /** The project the chat is in: its instructions stack between the app's and the chat's. */
+  project?: ProjectInstructions | null;
   /** Journaled compaction summary injected as a developer prompt. */
   compactionSummary?: string | null;
   /** Enabled skills + workspace AGENTS.md (t1-4). */
@@ -670,7 +680,7 @@ export function buildProviderRequest(
         : [CONDUIT_ARTIFACT_SYSTEM_APPENDIX(toolDefinitions.map((tool) => tool.name), { network: artifactNetworkAvailable(settings) })]),
       ...(isBrandIntent ? [CONDUIT_BRAND_SYSTEM_APPENDIX()] : []),
     ],
-    resolveUserInstructions(settings, chatOverrides?.userInstructions),
+    resolveUserInstructions(settings, chatOverrides?.userInstructions, chatOverrides?.project),
     chatOverrides?.extraSystemSections,
   );
 
@@ -762,6 +772,20 @@ const EMPTY_KNOWLEDGE_CONTEXT: KnowledgeContext = {
  * failing outright the same way `readAttachedResources` does -- an empty
  * context, never a lost turn.
  */
+/** The chat's own ids, then those its project adds. */
+function withProjectIds(own: string[], fromProject: string[] | undefined): string[] {
+  return [...own, ...(fromProject ?? []).filter((id) => !own.includes(id))];
+}
+
+/** The project the chat is in, or null (also when it can't be read). */
+async function readConversationProject(conversationId: string): Promise<ConversationProject | null> {
+  try {
+    return await getConversationProject(conversationId);
+  } catch {
+    return null;
+  }
+}
+
 async function readKnowledgeContext(
   conversationId: string | null,
   collectionIds: string[],
@@ -989,7 +1013,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   /** The rules for the sources a draft turn uses. */
   const draftPromptSources = (): DraftPromptSources => ({
     webSearch: draftWebOn,
-    documents: enabledCollectionIdsRef.current.length > 0,
+    documents:
+      withProjectIds(enabledCollectionIdsRef.current, conversationProjectRef.current?.collectionIds)
+        .length > 0,
   });
   /** The tool-teaching system appendix the token estimates count. */
   const turnSystemAppendix = (tools: ToolDefinition[]) =>
@@ -1108,6 +1134,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [enabledCollectionIds, setEnabledCollectionIds] = useState<string[]>([]);
   const enabledCollectionIdsRef = useRef<string[]>([]);
   enabledCollectionIdsRef.current = enabledCollectionIds;
+  /** The project (folder settings) the chat is in; read again before every send. */
+  const [conversationProject, setConversationProject] = useState<ConversationProject | null>(null);
+  const conversationProjectRef = useRef<ConversationProject | null>(null);
+  conversationProjectRef.current = conversationProject;
   /** M2 (t1-8, D1/D2): documents this chat leaves out of retrieval. */
   const [excludedDocumentIds, setExcludedDocumentIds] = useState<string[]>([]);
   const excludedDocumentIdsRef = useRef<string[]>([]);
@@ -1643,12 +1673,25 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }, [conversationId, settingsOpen, documentsOpen, knowledgeReloadToken, draftSourcesRevision]);
 
   useEffect(() => {
+    setConversationProject(null);
+    if (!conversationId) return;
+    let cancelled = false;
+    void readConversationProject(conversationId).then((project) => {
+      if (!cancelled) setConversationProject(project);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, settingsOpen]);
+
+  const projectSkillIds = conversationProject?.skillIds;
+  useEffect(() => {
     if (!conversationId) {
       setSkillPromptBlock('');
       return;
     }
     let cancelled = false;
-    void getSkillPromptBlock(enabledSkillIds, conversationWorkspaceRoot)
+    void getSkillPromptBlock(withProjectIds(enabledSkillIds, projectSkillIds), conversationWorkspaceRoot)
       .then((block) => {
         if (!cancelled) setSkillPromptBlock(block);
       })
@@ -1658,7 +1701,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     return () => {
       cancelled = true;
     };
-  }, [conversationId, enabledSkillIds, conversationWorkspaceRoot]);
+  }, [conversationId, enabledSkillIds, projectSkillIds, conversationWorkspaceRoot]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2244,7 +2287,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         ).offered;
         const systemPrompt = composeSystemPrompt(
           [baseSystemPrompt(), turnSystemAppendix(estimateTools)],
-          resolveUserInstructions(settings, conversationUserInstructions),
+          resolveUserInstructions(settings, conversationUserInstructions, conversationProject),
           joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
         );
         const est = estimatePromptTokens({
@@ -2372,17 +2415,22 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       ? historyForProviderRequest(history, activeCompaction)
       : [...historyForProviderRequest(priorHistory, activeCompaction), userTurn];
     const draftRunIds = draftChat ? draftSourcesOf(draft).researchRunIds : [];
+    // Read the project now, not when the chat opened: it may have been
+    // edited, or the chat moved in or out of it, since.
+    const project = conversationId ? await readConversationProject(conversationId) : null;
+    setConversationProject(project);
     const [skillBlock, memoryBlock, resourceBlock, knowledgeContext, draftResearch] = await Promise.all([
-      getSkillPromptBlock(enabledSkillIdsRef.current, conversationWorkspaceRoot).catch(
-        () => skillPromptBlock,
-      ),
+      getSkillPromptBlock(
+        withProjectIds(enabledSkillIdsRef.current, project?.skillIds),
+        conversationWorkspaceRoot,
+      ).catch(() => skillPromptBlock),
       getMemoryPromptBlock().catch(() => memoryPromptBlock),
       // Resources picked in the composer belong to the next message, not to
       // a reply being continued.
       readAttachedResources(continuing ? [] : attachedResourcesRef.current),
       readKnowledgeContext(
         conversationId,
-        enabledCollectionIdsRef.current,
+        withProjectIds(enabledCollectionIdsRef.current, project?.collectionIds),
         trimmed,
         knowledgeRefs.map((ref) => ref.documentId),
       ),
@@ -2428,6 +2476,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           ? { ...conversationGenerationControls, ...override.generationControls }
           : conversationGenerationControls,
         userInstructions: conversationUserInstructions,
+        project,
         compactionSummary: activeCompaction?.summaryText ?? null,
         extraSystemSections,
         deck,
@@ -3247,7 +3296,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     });
     const systemPrompt = composeSystemPrompt(
       [baseSystemPrompt(), turnSystemAppendix(toolDefinitions)],
-      resolveUserInstructions(settings, conversationUserInstructions),
+      resolveUserInstructions(settings, conversationUserInstructions, conversationProject),
       joinExtraSystemSections(skillPromptBlock, memoryPromptBlock),
     );
     const compactionDev = compaction?.summaryText
@@ -3268,6 +3317,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     settings,
     imageGenerationConsented,
     conversationUserInstructions,
+    conversationProject,
     conversationWorkspaceRoot,
     skillPromptBlock,
     memoryPromptBlock,

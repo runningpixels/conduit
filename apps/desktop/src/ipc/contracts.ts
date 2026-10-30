@@ -594,6 +594,20 @@ export interface ConversationFolder {
   createdAt: string;
 }
 
+/** A folder's settings for every chat in it (a project). Empty when none are set. */
+export interface ProjectSettings {
+  folderId: string;
+  userInstructions: string | null;
+  workspaceRoot: string | null;
+  skillIds: string[];
+  collectionIds: string[];
+}
+
+/** The project a chat is in: its folder's name plus that folder's settings. */
+export interface ConversationProject extends ProjectSettings {
+  name: string;
+}
+
 // =============================================================================
 // Knowledge base (t1-6)
 // =============================================================================

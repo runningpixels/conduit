@@ -64,16 +64,32 @@ export function mergeGenerationControls(
   return out;
 }
 
-/** Effective user instructions: conversation override, else settings default. */
+/** The project a chat is in, as far as its instructions go. */
+export interface ProjectInstructions {
+  name: string;
+  userInstructions?: string | null;
+}
+
+/**
+ * Effective user instructions, stacked: the app's, then the project's, then
+ * the chat's. One source is passed through as is; with more than one, each is
+ * labelled so the model (and anyone reading the prompt) can tell them apart,
+ * and the more specific ones win where they disagree.
+ */
 export function resolveUserInstructions(
   settings: AppSettings,
   conversationInstructions?: string | null,
+  project?: ProjectInstructions | null,
 ): string | undefined {
-  const fromChat = conversationInstructions?.trim();
-  if (fromChat) return fromChat;
-  if (conversationInstructions != null && conversationInstructions.trim() === '') {
-    // Empty override still inherits — clearing restores default (t0-6 AC).
-  }
-  const fromSettings = settings.userInstructions?.trim();
-  return fromSettings || undefined;
+  const sources = [
+    { label: 'From your settings', text: settings.userInstructions?.trim() },
+    { label: `From the project "${project?.name ?? ''}"`, text: project?.userInstructions?.trim() },
+    { label: 'From this chat', text: conversationInstructions?.trim() },
+  ].filter((s): s is { label: string; text: string } => Boolean(s.text));
+  if (sources.length === 0) return undefined;
+  if (sources.length === 1) return sources[0].text;
+  return [
+    'Where these disagree, the later, more specific ones take precedence.',
+    ...sources.map((s) => `### ${s.label}\n\n${s.text}`),
+  ].join('\n\n');
 }

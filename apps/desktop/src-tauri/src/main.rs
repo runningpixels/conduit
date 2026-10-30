@@ -345,6 +345,10 @@ fn main() {
             get_skill_prompt_block,
             list_conversation_skills,
             set_conversation_skills,
+            // Projects: folder settings for every chat in it
+            get_conversation_project,
+            get_project_settings,
+            set_project_settings,
             import_skill_folder,
             import_skill_zip,
             import_skill_git,

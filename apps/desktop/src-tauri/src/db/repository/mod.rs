@@ -28,6 +28,7 @@ pub mod memory;
 pub mod messages;
 pub mod page_llm;
 pub mod page_storage;
+pub mod projects;
 pub mod prompts;
 pub mod search;
 pub mod skills;

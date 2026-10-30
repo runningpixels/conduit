@@ -136,6 +136,19 @@ pub async fn open_with_migrations(
     db_path: &Path,
 ) -> Result<(SqlitePool, Option<MigrationRecovery>), DbError> {
     let pool = init_pool(db_path).await?;
+
+    // A store a newer build migrated is not corrupt; this build is just too old
+    // to read it. Refuse and leave the file alone. Treating it as a failed
+    // migration set the user's data aside and started them on an empty
+    // database whenever they went back to an older release.
+    if let Some(found) = newer_than_this_build(&pool).await {
+        pool.close().await;
+        return Err(DbError::NewerThanApp {
+            found,
+            known: latest_known_version(),
+        });
+    }
+
     let first_attempt = run_migrations(&pool).await;
 
     // A checksum mismatch is not corruption on its own — see
@@ -181,6 +194,23 @@ pub async fn open_with_migrations(
             Ok((fresh, Some(recovery)))
         }
     }
+}
+
+/// The newest migration this build carries.
+pub fn latest_known_version() -> i64 {
+    MIGRATOR.iter().map(|m| m.version).max().unwrap_or(0)
+}
+
+/// The store's newest applied migration, when it is one this build does not
+/// know. `None` for a fresh file (no `_sqlx_migrations` yet) or any store this
+/// build can migrate.
+async fn newer_than_this_build(pool: &SqlitePool) -> Option<i64> {
+    let applied: Option<i64> = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations")
+        .fetch_one(pool)
+        .await
+        .ok()
+        .flatten();
+    applied.filter(|v| *v > latest_known_version())
 }
 
 /// Does this migration error mean "the file changed", as opposed to real

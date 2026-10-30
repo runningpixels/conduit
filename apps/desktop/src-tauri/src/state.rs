@@ -196,7 +196,14 @@ impl AppState {
 
         let (db, migration_recovery) = db::migrations::open_with_migrations(&paths.database)
             .await
-            .map_err(|e| format!("failed to initialize local database: {e}"))?;
+            .map_err(|e| {
+                // A newer store's message already says what happened and what to do.
+                if matches!(e, db::DbError::NewerThanApp { .. }) {
+                    e.to_string()
+                } else {
+                    format!("failed to initialize local database: {e}")
+                }
+            })?;
 
         // White-label Mode A: apply the on-disk brand (if any) before anything
         // else in this function that formats a user-visible product name —

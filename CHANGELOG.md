@@ -7,6 +7,49 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.18] - 2026-10-30
+
+Projects: give every chat in a folder the same instructions, documents,
+skills and working folder.
+
+### Added
+
+- **Projects.** The rail's Folders are now Projects. Any project can have
+  settings that every chat in it uses: **instructions**, **Documents
+  collections** searched in each chat, **skills** turned on in each chat, and a
+  **working folder**. Open them from the project's ⋯ menu → **Project
+  settings**. A project with no settings is just a folder, as before.
+- Instructions stack: your Settings instructions, then the project's, then the
+  chat's own, each labelled for the model. A chat's own collections and skills
+  are added to the project's. Settings are read when a message is sent, so
+  editing a project, or moving a chat in or out of one, applies to its next
+  message.
+- **New chat here** in a project's ⋯ menu starts a chat inside it, in the
+  project's working folder, so the model can read and write files there and
+  the folder's `AGENTS.md` goes with every message. Chats already in the
+  project keep their own folder, and any chat can still change it.
+- In a chat, a project chip in the composer opens the project's settings, and
+  the chat settings popover lists what the chat also uses from Settings and
+  the project. A project's ⋯ menu also has Rename and Delete; deleting asks
+  first and keeps the chats.
+
+### Fixed
+
+- The composer's popovers (chat settings, skills, documents, connector prompts
+  and resources) open downward when there is no room above, so in a new, empty
+  chat their top is no longer cut off.
+
+### Changed
+
+- Model prices refreshed from models.dev.
+
+### Note
+
+- This release adds a database migration. If you go back to rc.17 or earlier
+  afterwards, that version cannot open your data: it sets the database aside
+  as `conduit.sqlite.corrupt-<time>.bak` in your data folder and starts empty.
+  Your data is still in that file; reinstall rc.18 or later and put it back.
+
 ## [1.0.0-rc.17] - 2026-10-28
 
 Continue a reply that hit the output limit, skills made from a chat or
@@ -1600,7 +1643,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.17...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.18...HEAD
+[1.0.0-rc.18]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.17...v1.0.0-rc.18
 [1.0.0-rc.17]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.16...v1.0.0-rc.17
 [1.0.0-rc.16]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.15...v1.0.0-rc.16
 [1.0.0-rc.15]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.14...v1.0.0-rc.15

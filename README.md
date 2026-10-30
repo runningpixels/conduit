@@ -387,7 +387,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.17 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.18 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -426,7 +426,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.17 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.18 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

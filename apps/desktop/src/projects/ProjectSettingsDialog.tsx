@@ -41,6 +41,7 @@ export function ProjectSettingsDialog({
   const titleId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   useFocusTrap(formRef, true);
+  const instructionsRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState<ProjectSettings | null>(null);
   const [collections, setCollections] = useState<KnowledgeCollection[] | null>(null);
   const [skills, setSkills] = useState<SkillSummary[] | null>(null);
@@ -91,6 +92,13 @@ export function ProjectSettingsDialog({
       cancelled = true;
     };
   }, [folder.id]);
+
+  // The field is disabled until the settings load, so `autoFocus` would do
+  // nothing; focus it once they have (the opener's menu hands focus back first).
+  const loaded = draft !== null;
+  useEffect(() => {
+    if (loaded) instructionsRef.current?.focus();
+  }, [loaded]);
 
   function set(fn: (d: ProjectSettings) => ProjectSettings) {
     setDraft((d) => (d ? fn(d) : d));
@@ -164,7 +172,7 @@ export function ProjectSettingsDialog({
                 <textarea
                   className="mem-input"
                   rows={12}
-                  autoFocus
+                  ref={instructionsRef}
                   disabled={!draft}
                   placeholder={t('shell.projects.settings.instructionsPlaceholder')}
                   value={draft?.userInstructions ?? ''}

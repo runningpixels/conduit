@@ -108,6 +108,12 @@ describe('ProjectSettingsDialog', () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 
+  it('puts focus in the instructions once the settings load', async () => {
+    render(<ProjectSettingsDialog folder={folder} onClose={() => {}} onSaved={() => {}} />);
+    const instructions = await screen.findByDisplayValue('Use British English.');
+    await waitFor(() => expect(document.activeElement).toBe(instructions));
+  });
+
   it('closes on Escape', async () => {
     const onClose = vi.fn();
     render(<ProjectSettingsDialog folder={folder} onClose={onClose} onSaved={() => {}} />);

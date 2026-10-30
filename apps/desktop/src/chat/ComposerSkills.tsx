@@ -1,6 +1,7 @@
 import { appName } from '../brand';
 import type { SkillSource, SkillSummary } from '../ipc/contracts';
 import { useT, type Translate } from '../i18n';
+import { fitPopover } from './fitPopover';
 
 interface ComposerSkillsProps {
   open: boolean;
@@ -44,7 +45,13 @@ export function ComposerSkills({
   const usable = skills.filter((s) => !s.parseError);
 
   return (
-    <div id="composer-skills" role="dialog" aria-label={t('chat.skills.ariaLabel')} className="chat-settings-pop">
+    <div
+      id="composer-skills"
+      role="dialog"
+      aria-label={t('chat.skills.ariaLabel')}
+      className="chat-settings-pop"
+      ref={fitPopover}
+    >
       <p className="chat-settings-pop-lead">
         {t('chat.skills.intro')}
       </p>

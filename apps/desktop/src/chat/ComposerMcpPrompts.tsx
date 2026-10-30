@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import type { ConnectorPromptInfo } from '../ipc/contracts';
 import { groupByConnector, isStale } from './connectorCapabilities';
 import { useT } from '../i18n';
+import { fitPopover } from './fitPopover';
 
 interface ComposerMcpPromptsProps {
   open: boolean;
@@ -32,6 +33,7 @@ export function ComposerMcpPrompts({
       role="dialog"
       aria-label={t('chat.mcpPrompts.ariaLabel')}
       className="chat-settings-pop"
+      ref={fitPopover}
     >
       <p className="chat-settings-pop-lead">{t('chat.mcpPrompts.intro')}</p>
       {prompts.length === 0 ? (

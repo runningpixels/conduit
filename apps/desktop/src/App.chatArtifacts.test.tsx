@@ -284,8 +284,10 @@ describe('the panel remembers the artifact open in each chat', { timeout: 30_000
     writeLastArtifact('cA', 'gone');
     const ipc = await boot();
     await waitFor(() => expect(listShown()).toBe(true));
+    // The list can show before the chat's artifacts arrive; forgetting waits
+    // for them, so it is an effect that lands after the list.
+    await waitFor(() => expect(readLastArtifact('cA')).toBeUndefined());
     expect(ipc.getArtifact).not.toHaveBeenCalledWith('gone');
-    expect(readLastArtifact('cA')).toBeUndefined();
   });
 
   // Bug #6: an open that resolves after the reader moved to another chat put

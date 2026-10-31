@@ -3694,5 +3694,13 @@
   "chat.replyVersions.restored": "La nouvelle tentative n’a donné aucune réponse : la réponse précédente est rétablie.",
   "chat.retryModel.title": "Réessayer avec un autre modèle",
   "workspace.commandPalette.command.retryWithModel": "Réessayer avec un autre modèle…",
-  "app.status.nothingToRetry": "Aucune réponse à réessayer"
+  "app.status.nothingToRetry": "Aucune réponse à réessayer",
+  "chat.replyVersions.compare": "Comparer",
+  "chat.replyVersions.compareTitle": "Afficher les versions côte à côte",
+  "inspector.tabs.compare": "Comparer",
+  "inspector.compare.ariaLabel": "Versions de la réponse, côte à côte",
+  "inspector.compare.empty": "Cette réponse n’a qu’une version.",
+  "inspector.compare.inUse": "Utilisée",
+  "inspector.compare.use": "Utiliser celle-ci",
+  "inspector.compare.fork": "Bifurquer depuis cette version"
 }

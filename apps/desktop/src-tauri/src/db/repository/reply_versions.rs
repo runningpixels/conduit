@@ -10,10 +10,19 @@
 //! Versions are numbered by `retry_sequence`. The reply in use has sequence 0
 //! until it is first superseded, and 0 always sorts last: it is the newest.
 
+use std::collections::HashSet;
+
+use provider_core::schema::Message;
 use serde::Serialize;
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
-use crate::{db::DbError, time::now_iso8601};
+use crate::{
+    db::{
+        repository::{conversations, messages},
+        DbError,
+    },
+    time::now_iso8601,
+};
 
 /// How many versions the reply to `user_message_id` has, and which one the
 /// chat uses (1-based, in the order they were written; 0 when none is).
@@ -23,6 +32,17 @@ pub struct ReplyVersionInfo {
     pub user_message_id: String,
     pub count: u32,
     pub current: u32,
+}
+
+/// One version of a reply, for Compare: its rows, in order.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplyVersion {
+    /// 1-based, in the order the versions were written.
+    pub position: u32,
+    /// The version the chat uses.
+    pub current: bool,
+    pub messages: Vec<Message>,
 }
 
 /// The versions of `user_message_id`'s reply in order, as sequences, and the
@@ -253,4 +273,85 @@ pub(crate) async fn superseded_for(
         out.extend(rows);
     }
     Ok(out)
+}
+
+/// Every version of the reply to `user_message_id`, in order, with its rows.
+/// Empty when the reply has no kept versions.
+pub async fn versions(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    user_message_id: &str,
+) -> Result<Vec<ReplyVersion>, DbError> {
+    let mut tx = pool.begin().await?;
+    let (order, current) = version_order(&mut tx, conversation_id, user_message_id).await?;
+    let live: HashSet<String> = live_reply_ids(&mut tx, conversation_id, user_message_id)
+        .await?
+        .into_iter()
+        .collect();
+    let hidden: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT id, retry_sequence FROM messages \
+         WHERE conversation_id = ? AND retry_of_message_id = ? AND superseded_at IS NOT NULL",
+    )
+    .bind(conversation_id)
+    .bind(user_message_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    if hidden.is_empty() {
+        return Ok(Vec::new());
+    }
+    let all = messages::load_messages(pool, conversation_id, true).await?;
+    Ok(order
+        .iter()
+        .enumerate()
+        .map(|(i, seq)| {
+            let in_use = current == Some(i);
+            let ids: HashSet<&str> = if in_use {
+                live.iter().map(String::as_str).collect()
+            } else {
+                hidden
+                    .iter()
+                    .filter(|(_, s)| s == seq)
+                    .map(|(id, _)| id.as_str())
+                    .collect()
+            };
+            ReplyVersion {
+                position: i as u32 + 1,
+                current: in_use,
+                messages: all
+                    .iter()
+                    .filter(|m| ids.contains(m.id.as_str()))
+                    .cloned()
+                    .collect(),
+            }
+        })
+        .collect())
+}
+
+/// A new chat that continues from version `position` of the reply to
+/// `user_message_id`: the thread up to that question, then that version. Any
+/// reply can fork this way, an earlier one included (it cannot switch in place).
+pub async fn fork_version(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    user_message_id: &str,
+    position: u32,
+    fork_label: Option<&str>,
+) -> Result<provider_core::schema::Conversation, DbError> {
+    let chosen = versions(pool, conversation_id, user_message_id)
+        .await?
+        .into_iter()
+        .find(|v| v.position == position)
+        .ok_or_else(|| DbError::Query("no such reply version".into()))?;
+    let thread = messages::load_conversation_messages(pool, conversation_id).await?;
+    let at = thread
+        .iter()
+        .position(|m| m.id == user_message_id)
+        .ok_or_else(|| DbError::Query("fork point message not found".into()))?;
+    let to_copy: Vec<&Message> = thread[..=at].iter().chain(chosen.messages.iter()).collect();
+    let fork_point = chosen
+        .messages
+        .first()
+        .map_or(user_message_id, |m| m.id.as_str());
+    conversations::insert_fork(pool, conversation_id, fork_point, fork_label, &to_copy).await
 }

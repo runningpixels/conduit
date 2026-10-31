@@ -3694,5 +3694,13 @@
   "chat.replyVersions.restored": "[Ťĥé ŕéťŕý ĝöť ñö ŕéṕļý, šö ťĥé éàŕļîéŕ ŕéṕļý îš ḅàçķ. —————— —————— —————— ————]",
   "chat.retryModel.title": "[Ŕéťŕý ŵîťĥ àñöťĥéŕ ḿöḍéļ —————— ————]",
   "workspace.commandPalette.command.retryWithModel": "[Ŕéťŕý ŵîťĥ àñöťĥéŕ ḿöḍéļ… —————— ————]",
-  "app.status.nothingToRetry": "[Ñö ŕéṕļý ťö ŕéťŕý —————— —]"
+  "app.status.nothingToRetry": "[Ñö ŕéṕļý ťö ŕéťŕý —————— —]",
+  "chat.replyVersions.compare": "[Çöḿṕàŕé ———]",
+  "chat.replyVersions.compareTitle": "[Šĥöŵ ťĥé ṽéŕšîöñš šîḍé ḅý šîḍé —————— ——————]",
+  "inspector.tabs.compare": "[Çöḿṕàŕé ———]",
+  "inspector.compare.ariaLabel": "[Ṽéŕšîöñš öḟ ťĥé ŕéṕļý, šîḍé ḅý šîḍé —————— —————— ——]",
+  "inspector.compare.empty": "[Ťĥîš ŕéṕļý ĥàš öñļý öñé ṽéŕšîöñ. —————— —————— —]",
+  "inspector.compare.inUse": "[Îñ üšé ———]",
+  "inspector.compare.use": "[Üšé ťĥîš öñé —————]",
+  "inspector.compare.fork": "[Ḟöŕķ ḟŕöḿ ťĥîš ṽéŕšîöñ —————— ———]"
 }

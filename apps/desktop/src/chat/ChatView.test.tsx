@@ -1041,6 +1041,28 @@ describe('ChatView: Retry re-sends the last question', () => {
     await waitFor(() => expect(selectReplyVersion).toHaveBeenCalledWith('conv-1', 'u1', 2));
   });
 
+  it("opens Compare for the reply's versions", async () => {
+    const { listReplyVersions } = await import('../ipc/client');
+    vi.mocked(listReplyVersions).mockResolvedValue([{ userMessageId: 'u1', count: 2, current: 2 }]);
+    vi.mocked(getConversationMessages).mockResolvedValue(messages());
+    const onOpenCompare = vi.fn();
+    render(
+      <ChatView
+        settings={baseSettings}
+        onSelectModel={vi.fn()}
+        onStatus={vi.fn()}
+        conversationId="conv-1"
+        artifacts={[]}
+        fileStateMap={{}}
+        onPromoteArtifact={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onOpenCompare={onOpenCompare}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Compare' }));
+    expect(onOpenCompare).toHaveBeenCalledWith('u1');
+  });
+
   it("shows an earlier reply's versions without switching them", async () => {
     const { listReplyVersions } = await import('../ipc/client');
     const two: Message[] = [

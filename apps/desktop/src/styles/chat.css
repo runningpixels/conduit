@@ -325,6 +325,8 @@
 }
 .turn:hover .turn-actions > :not(.reply-versions),
 .turn:focus-within .turn-actions > :not(.reply-versions) { opacity: 1; pointer-events: auto; }
+/* Compare opens the versions side by side in the inspector. */
+.reply-versions-compare { margin-left: 4px; }
 .reply-versions {
   display: flex;
   align-items: center;

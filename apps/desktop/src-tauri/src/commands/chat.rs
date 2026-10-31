@@ -857,6 +857,46 @@ pub async fn select_reply_version(
         .map_err(|e| e.to_string())
 }
 
+/// Every version of the reply to `user_message_id`, with its messages: Compare.
+#[tauri::command]
+pub async fn get_reply_versions(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    user_message_id: String,
+) -> Result<Vec<reply_versions::ReplyVersion>, String> {
+    reply_versions::versions(&state.db, &conversation_id, &user_message_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// A new chat continuing from version `position` of a reply (Fork from this
+/// version). Named like any fork.
+#[tauri::command]
+pub async fn fork_reply_version(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    user_message_id: String,
+    position: u32,
+) -> Result<Conversation, String> {
+    let source = conversations::get(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let label = match source.and_then(|c| c.title) {
+        Some(title) => format!("Fork of {title}"),
+        None => "Fork".to_string(),
+    };
+    reply_versions::fork_version(
+        &state.db,
+        &conversation_id,
+        &user_message_id,
+        position,
+        Some(&label),
+    )
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|c| conversation_for_ipc(&state.encryption, c))
+}
+
 /// Remove the last assistant turn's messages/parts/event-log rows for a
 /// conversation. Returns the number of remaining messages in the conversation.
 #[tauri::command]

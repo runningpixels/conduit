@@ -3694,5 +3694,13 @@
   "chat.replyVersions.restored": "The retry got no reply, so the earlier reply is back.",
   "chat.retryModel.title": "Retry with another model",
   "workspace.commandPalette.command.retryWithModel": "Retry with another model…",
-  "app.status.nothingToRetry": "No reply to retry"
+  "app.status.nothingToRetry": "No reply to retry",
+  "chat.replyVersions.compare": "Compare",
+  "chat.replyVersions.compareTitle": "Show the versions side by side",
+  "inspector.tabs.compare": "Compare",
+  "inspector.compare.ariaLabel": "Versions of the reply, side by side",
+  "inspector.compare.empty": "This reply has only one version.",
+  "inspector.compare.inUse": "In use",
+  "inspector.compare.use": "Use this one",
+  "inspector.compare.fork": "Fork from this version"
 }

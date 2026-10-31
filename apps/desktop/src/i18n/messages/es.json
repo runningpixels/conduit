@@ -3694,5 +3694,13 @@
   "chat.replyVersions.restored": "El reintento no obtuvo respuesta, así que vuelve la respuesta anterior.",
   "chat.retryModel.title": "Reintentar con otro modelo",
   "workspace.commandPalette.command.retryWithModel": "Reintentar con otro modelo…",
-  "app.status.nothingToRetry": "No hay ninguna respuesta que reintentar"
+  "app.status.nothingToRetry": "No hay ninguna respuesta que reintentar",
+  "chat.replyVersions.compare": "Comparar",
+  "chat.replyVersions.compareTitle": "Ver las versiones una al lado de otra",
+  "inspector.tabs.compare": "Comparar",
+  "inspector.compare.ariaLabel": "Versiones de la respuesta, una al lado de otra",
+  "inspector.compare.empty": "Esta respuesta solo tiene una versión.",
+  "inspector.compare.inUse": "En uso",
+  "inspector.compare.use": "Usar esta",
+  "inspector.compare.fork": "Bifurcar desde esta versión"
 }

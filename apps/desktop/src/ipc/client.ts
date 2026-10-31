@@ -1336,6 +1336,32 @@ export async function removeLastTurn(conversationId: string): Promise<number> {
   return invokeCommand<number>('remove_last_turn', { conversationId });
 }
 
+/** Before Retry: keep the last reply as an earlier version. Returns the user
+ *  message the retry answers again, or null when the chat has none. */
+export async function prepareRetry(conversationId: string): Promise<string | null> {
+  return invokeCommand<string | null>('prepare_retry', { conversationId });
+}
+
+/** A reply with more than one version: how many, and which one the chat uses (1-based). */
+export interface ReplyVersionInfo {
+  userMessageId: string;
+  count: number;
+  current: number;
+}
+
+export async function listReplyVersions(conversationId: string): Promise<ReplyVersionInfo[]> {
+  return invokeCommand<ReplyVersionInfo[]>('list_reply_versions', { conversationId });
+}
+
+/** Make version `position` (1-based) of the last reply the one the chat uses. */
+export async function selectReplyVersion(
+  conversationId: string,
+  userMessageId: string,
+  position: number,
+): Promise<void> {
+  return invokeCommand<void>('select_reply_version', { conversationId, userMessageId, position });
+}
+
 /** Fork a conversation at a message; returns the new conversation. */
 export async function forkConversation(
   conversationId: string,

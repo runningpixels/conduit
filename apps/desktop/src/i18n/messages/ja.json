@@ -346,7 +346,7 @@
   "chat.assistant.actions.copyLabel": "メッセージをコピー",
   "chat.assistant.actions.deleteTitle": "この応答を削除",
   "chat.assistant.actions.forkLabel": "このメッセージでチャットを分岐",
-  "chat.assistant.actions.retryTitle": "この応答を再試行",
+  "chat.assistant.actions.retryTitle": "この応答を再試行します。今の応答は以前のバージョンとして残ります。",
   "chat.assistant.cutOff": "出力の上限に達したため、この回答は途中で終わっています。設定 → チャットの既定値 → モデルパラメーター で「最大トークン数」を増やしてください。",
   "chat.assistant.liveMeta": "{elapsed}秒 · {tokenCount} tok",
   "chat.assistant.liveMetaLimit": "{elapsed}秒 · {tokenCount} / {limit} トークン",
@@ -3685,5 +3685,11 @@
   "shell.projects.settings.folderHint": "このプロジェクトの新しいチャットはこのフォルダーで始まり、モデルはそのファイルを読み書きできます。AGENTS.md があれば、すべてのメッセージと一緒に送られます。すでにプロジェクト内にあるチャットのフォルダーは変わりません。",
   "shell.projects.settings.folderNone": "作業フォルダーはありません。",
   "shell.projects.settings.folderChoose": "フォルダーを選択…",
-  "shell.projects.settings.folderRemove": "フォルダーを外す"
+  "shell.projects.settings.folderRemove": "フォルダーを外す",
+  "chat.replyVersions.group": "バージョン {current}/{count}",
+  "chat.replyVersions.previous": "前のバージョン",
+  "chat.replyVersions.next": "次のバージョン",
+  "chat.replyVersions.lastOnly": "バージョンを切り替えられるのは最後の応答だけです。",
+  "chat.replyVersions.switchFailed": "そのバージョンに切り替えられませんでした。",
+  "chat.replyVersions.restored": "再試行で応答が得られなかったため、以前の応答に戻しました。"
 }

@@ -345,7 +345,7 @@
     "chat.assistant.actions.copyLabel": "26902efda37d4a30d3f6fd110ba9cc653bae0c8b",
     "chat.assistant.actions.deleteTitle": "30ce3850fe9880674e534261e139a884dd9ac208",
     "chat.assistant.actions.forkLabel": "4b1a07ce5fbb672e16599b9b07c359013365bab5",
-    "chat.assistant.actions.retryTitle": "84835a1ac6d3dda2ef64129ecaf0a29883e6ddbf",
+    "chat.assistant.actions.retryTitle": "35f2061b91c87119c195f7a74fb599754bb67a9f",
     "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0",
     "chat.assistant.liveMeta": "cf1d3575b465ecdad90f6360c77641f112f4b476",
     "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
@@ -3424,7 +3424,13 @@
     "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
     "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
     "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
-    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d",
+    "chat.replyVersions.group": "6f009f24c92cbad057bd21770d309601abd0d86e",
+    "chat.replyVersions.previous": "989537a31d906b58b56c4b1a1233d830696efcee",
+    "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
+    "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
+    "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -3772,7 +3778,7 @@
     "chat.assistant.actions.copyLabel": "26902efda37d4a30d3f6fd110ba9cc653bae0c8b",
     "chat.assistant.actions.deleteTitle": "30ce3850fe9880674e534261e139a884dd9ac208",
     "chat.assistant.actions.forkLabel": "4b1a07ce5fbb672e16599b9b07c359013365bab5",
-    "chat.assistant.actions.retryTitle": "84835a1ac6d3dda2ef64129ecaf0a29883e6ddbf",
+    "chat.assistant.actions.retryTitle": "35f2061b91c87119c195f7a74fb599754bb67a9f",
     "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0",
     "chat.assistant.liveMeta": "cf1d3575b465ecdad90f6360c77641f112f4b476",
     "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
@@ -6851,7 +6857,13 @@
     "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
     "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
     "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
-    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d",
+    "chat.replyVersions.group": "6f009f24c92cbad057bd21770d309601abd0d86e",
+    "chat.replyVersions.previous": "989537a31d906b58b56c4b1a1233d830696efcee",
+    "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
+    "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
+    "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7199,7 +7211,7 @@
     "chat.assistant.actions.copyLabel": "26902efda37d4a30d3f6fd110ba9cc653bae0c8b",
     "chat.assistant.actions.deleteTitle": "30ce3850fe9880674e534261e139a884dd9ac208",
     "chat.assistant.actions.forkLabel": "4b1a07ce5fbb672e16599b9b07c359013365bab5",
-    "chat.assistant.actions.retryTitle": "84835a1ac6d3dda2ef64129ecaf0a29883e6ddbf",
+    "chat.assistant.actions.retryTitle": "35f2061b91c87119c195f7a74fb599754bb67a9f",
     "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0",
     "chat.assistant.liveMeta": "cf1d3575b465ecdad90f6360c77641f112f4b476",
     "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
@@ -10278,7 +10290,13 @@
     "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
     "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
     "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
-    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d",
+    "chat.replyVersions.group": "6f009f24c92cbad057bd21770d309601abd0d86e",
+    "chat.replyVersions.previous": "989537a31d906b58b56c4b1a1233d830696efcee",
+    "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
+    "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
+    "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -10626,7 +10644,7 @@
     "chat.assistant.actions.copyLabel": "26902efda37d4a30d3f6fd110ba9cc653bae0c8b",
     "chat.assistant.actions.deleteTitle": "30ce3850fe9880674e534261e139a884dd9ac208",
     "chat.assistant.actions.forkLabel": "4b1a07ce5fbb672e16599b9b07c359013365bab5",
-    "chat.assistant.actions.retryTitle": "84835a1ac6d3dda2ef64129ecaf0a29883e6ddbf",
+    "chat.assistant.actions.retryTitle": "35f2061b91c87119c195f7a74fb599754bb67a9f",
     "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0",
     "chat.assistant.liveMeta": "cf1d3575b465ecdad90f6360c77641f112f4b476",
     "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
@@ -13705,7 +13723,13 @@
     "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
     "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
     "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
-    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d",
+    "chat.replyVersions.group": "6f009f24c92cbad057bd21770d309601abd0d86e",
+    "chat.replyVersions.previous": "989537a31d906b58b56c4b1a1233d830696efcee",
+    "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
+    "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
+    "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -14053,7 +14077,7 @@
     "chat.assistant.actions.copyLabel": "26902efda37d4a30d3f6fd110ba9cc653bae0c8b",
     "chat.assistant.actions.deleteTitle": "30ce3850fe9880674e534261e139a884dd9ac208",
     "chat.assistant.actions.forkLabel": "4b1a07ce5fbb672e16599b9b07c359013365bab5",
-    "chat.assistant.actions.retryTitle": "84835a1ac6d3dda2ef64129ecaf0a29883e6ddbf",
+    "chat.assistant.actions.retryTitle": "35f2061b91c87119c195f7a74fb599754bb67a9f",
     "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0",
     "chat.assistant.liveMeta": "cf1d3575b465ecdad90f6360c77641f112f4b476",
     "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
@@ -17132,7 +17156,13 @@
     "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
     "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
     "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
-    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d",
+    "chat.replyVersions.group": "6f009f24c92cbad057bd21770d309601abd0d86e",
+    "chat.replyVersions.previous": "989537a31d906b58b56c4b1a1233d830696efcee",
+    "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
+    "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
+    "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -17480,7 +17510,7 @@
     "chat.assistant.actions.copyLabel": "26902efda37d4a30d3f6fd110ba9cc653bae0c8b",
     "chat.assistant.actions.deleteTitle": "30ce3850fe9880674e534261e139a884dd9ac208",
     "chat.assistant.actions.forkLabel": "4b1a07ce5fbb672e16599b9b07c359013365bab5",
-    "chat.assistant.actions.retryTitle": "84835a1ac6d3dda2ef64129ecaf0a29883e6ddbf",
+    "chat.assistant.actions.retryTitle": "35f2061b91c87119c195f7a74fb599754bb67a9f",
     "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0",
     "chat.assistant.liveMeta": "cf1d3575b465ecdad90f6360c77641f112f4b476",
     "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
@@ -20559,7 +20589,13 @@
     "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
     "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
     "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
-    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d",
+    "chat.replyVersions.group": "6f009f24c92cbad057bd21770d309601abd0d86e",
+    "chat.replyVersions.previous": "989537a31d906b58b56c4b1a1233d830696efcee",
+    "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
+    "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
+    "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -20907,7 +20943,7 @@
     "chat.assistant.actions.copyLabel": "26902efda37d4a30d3f6fd110ba9cc653bae0c8b",
     "chat.assistant.actions.deleteTitle": "30ce3850fe9880674e534261e139a884dd9ac208",
     "chat.assistant.actions.forkLabel": "4b1a07ce5fbb672e16599b9b07c359013365bab5",
-    "chat.assistant.actions.retryTitle": "84835a1ac6d3dda2ef64129ecaf0a29883e6ddbf",
+    "chat.assistant.actions.retryTitle": "35f2061b91c87119c195f7a74fb599754bb67a9f",
     "chat.assistant.cutOff": "579dd58280585a037eca2b4d832a6894e51f9ea0",
     "chat.assistant.liveMeta": "cf1d3575b465ecdad90f6360c77641f112f4b476",
     "chat.assistant.liveMetaLimit": "5f9d7aa249406ac772714b8bcd277ca30a67f70e",
@@ -23986,6 +24022,12 @@
     "shell.projects.settings.folderHint": "3bba8254647198fc3a3c2a633af580baee43b9ac",
     "shell.projects.settings.folderNone": "aa23f3d4ff30e0a9094846773a5e94be6f8bf15f",
     "shell.projects.settings.folderChoose": "f0b6f756b9eeadc2fe7e05663700cb43fe6a364b",
-    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d"
+    "shell.projects.settings.folderRemove": "5a603af1dcc3a9115dbba3361593739439b5e94d",
+    "chat.replyVersions.group": "6f009f24c92cbad057bd21770d309601abd0d86e",
+    "chat.replyVersions.previous": "989537a31d906b58b56c4b1a1233d830696efcee",
+    "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
+    "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
+    "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
   }
 }

@@ -337,6 +337,9 @@ fn main() {
             // (tool definitions built into agent_tools.rs, no new commands needed)
             // Competitive Feature: retry & fork
             remove_last_turn,
+            prepare_retry,
+            list_reply_versions,
+            select_reply_version,
             fork_conversation,
             prepare_message_edit,
             set_conversation_chat_settings,

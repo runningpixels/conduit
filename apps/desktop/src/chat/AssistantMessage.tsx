@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { TurnModelLine } from './TurnModelLine';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { streamStalled } from './documentWriteScan';
@@ -68,6 +68,8 @@ interface AssistantMessageProps {
   onFork?: () => void;
   /// A reply one of the user's agents gave: "Schedule this…" opens the routine form.
   onSchedule?: { name: string; run: () => void };
+  /// The reply's version switcher (`‹ 2 / 3 ›`), when Retry has kept earlier versions.
+  versions?: ReactNode;
   /// Whether this is the last persisted turn (gates retry/delete affordances).
   isLast?: boolean;
   /// Live turn only: this model delivers documents all at once and this turn
@@ -135,6 +137,7 @@ export function AssistantMessage({
   onCopy,
   onFork,
   onSchedule,
+  versions,
   isLast = true,
   conversationId = null,
   documentWriteHeld = false,
@@ -340,8 +343,9 @@ export function AssistantMessage({
         />
       )}
 
-      {(onCopy || showActions || onFork || onSchedule || state.usage) && (
+      {(onCopy || showActions || onFork || onSchedule || state.usage || versions) && (
       <div className="turn-actions">
+        {versions}
         {onCopy ? (
           <button
             type="button"

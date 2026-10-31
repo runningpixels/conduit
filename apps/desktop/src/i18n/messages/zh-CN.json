@@ -346,7 +346,7 @@
   "chat.assistant.actions.copyLabel": "复制消息",
   "chat.assistant.actions.deleteTitle": "删除这条回复",
   "chat.assistant.actions.forkLabel": "从这条消息分支聊天",
-  "chat.assistant.actions.retryTitle": "重试这条回复",
+  "chat.assistant.actions.retryTitle": "重试这条回复。当前回复会保留为较早的版本。",
   "chat.assistant.cutOff": "此回复已达到输出上限，内容被截断。请在 设置 → 聊天默认设置 → 模型参数 中调高\"最大 Token 数\"。",
   "chat.assistant.liveMeta": "{elapsed}秒 · {tokenCount} tok",
   "chat.assistant.liveMetaLimit": "{elapsed}秒 · {tokenCount} / {limit} Token",
@@ -3685,5 +3685,11 @@
   "shell.projects.settings.folderHint": "此项目中的新聊天从这个文件夹开始，模型可以读写其中的文件。如果文件夹里有 AGENTS.md，它会随每条消息一起发送。已在项目中的聊天保留原来的文件夹。",
   "shell.projects.settings.folderNone": "没有工作文件夹。",
   "shell.projects.settings.folderChoose": "选择文件夹…",
-  "shell.projects.settings.folderRemove": "移除文件夹"
+  "shell.projects.settings.folderRemove": "移除文件夹",
+  "chat.replyVersions.group": "第 {current} 个版本，共 {count} 个",
+  "chat.replyVersions.previous": "上一个版本",
+  "chat.replyVersions.next": "下一个版本",
+  "chat.replyVersions.lastOnly": "只有最后一条回复可以切换版本。",
+  "chat.replyVersions.switchFailed": "无法切换到该版本。",
+  "chat.replyVersions.restored": "重试没有得到回复，已恢复之前的回复。"
 }

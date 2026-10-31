@@ -346,7 +346,7 @@
   "chat.assistant.actions.copyLabel": "메시지 복사",
   "chat.assistant.actions.deleteTitle": "이 응답 삭제",
   "chat.assistant.actions.forkLabel": "이 메시지에서 채팅 분기",
-  "chat.assistant.actions.retryTitle": "이 응답 다시 시도",
+  "chat.assistant.actions.retryTitle": "이 응답을 다시 시도합니다. 지금 응답은 이전 버전으로 남습니다.",
   "chat.assistant.cutOff": "출력 한도에 도달해 이 답변이 중간에 끊겼습니다. 설정 → 채팅 기본값 → 모델 매개변수에서 \"최대 토큰 수\"를 늘리세요.",
   "chat.assistant.liveMeta": "{elapsed}초 · {tokenCount} tok",
   "chat.assistant.liveMetaLimit": "{elapsed}초 · {tokenCount} / {limit} 토큰",
@@ -3685,5 +3685,11 @@
   "shell.projects.settings.folderHint": "이 프로젝트의 새 채팅은 이 폴더에서 시작하므로 모델이 폴더의 파일을 읽고 쓸 수 있습니다. AGENTS.md가 있으면 모든 메시지와 함께 전송됩니다. 이미 프로젝트에 있는 채팅은 원래 폴더를 유지합니다.",
   "shell.projects.settings.folderNone": "작업 폴더가 없습니다.",
   "shell.projects.settings.folderChoose": "폴더 선택…",
-  "shell.projects.settings.folderRemove": "폴더 제거"
+  "shell.projects.settings.folderRemove": "폴더 제거",
+  "chat.replyVersions.group": "버전 {current}/{count}",
+  "chat.replyVersions.previous": "이전 버전",
+  "chat.replyVersions.next": "다음 버전",
+  "chat.replyVersions.lastOnly": "마지막 응답만 버전을 바꿀 수 있습니다.",
+  "chat.replyVersions.switchFailed": "해당 버전으로 바꾸지 못했습니다.",
+  "chat.replyVersions.restored": "다시 시도해도 응답이 없어서 이전 응답으로 되돌렸습니다."
 }

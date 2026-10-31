@@ -64,6 +64,8 @@ interface CommandPaletteProps {
   onToggleWebSearch: () => void;
   onForkConversationHere: () => void;
   onEditLastUserMessage: () => void;
+  /** Open Retry ▾ on the last reply: retry it with another model. */
+  onRetryWithModel?: () => void;
   onOpenChatSettings: () => void;
   onRenameChat: () => void;
   onPinChat?: () => void;
@@ -164,6 +166,7 @@ export function CommandPalette({
   onToggleWebSearch,
   onForkConversationHere,
   onEditLastUserMessage,
+  onRetryWithModel,
   onOpenChatSettings,
   onRenameChat,
   onPinChat,
@@ -272,6 +275,9 @@ export function CommandPalette({
         : []),
       ...navItems(group),
       { id: 'cmd-fork', group, kind: 'cmd', label: t('workspace.commandPalette.command.forkHere'), tail: modShiftShortcutHint('F'), run: () => { onForkConversationHere(); close(); } },
+      ...(onRetryWithModel
+        ? [{ id: 'cmd-retry-model', group, kind: 'cmd' as const, label: t('workspace.commandPalette.command.retryWithModel'), run: () => { close(); onRetryWithModel(); } }]
+        : []),
       { id: 'cmd-edit-last-user', group, kind: 'cmd', label: t('workspace.commandPalette.command.editLastMessage'), run: () => { onEditLastUserMessage(); close(); } },
       { id: 'cmd-chat-settings', group, kind: 'cmd', label: t('workspace.commandPalette.command.chatSettings'), run: () => { onOpenChatSettings(); close(); } },
       { id: 'cmd-toggle-panel', group, kind: 'cmd', label: t('workspace.commandPalette.command.togglePanel'), tail: modShortcutHint('J'), run: () => { onToggleDocPanel(); close(); } },
@@ -327,7 +333,7 @@ export function CommandPalette({
         : []),
     ];
   }, [
-    t, onClose, onNewChat, onNewDeck, onNewDraft, navItems, onForkConversationHere, onEditLastUserMessage, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
+    t, onClose, onNewChat, onNewDeck, onNewDraft, navItems, onForkConversationHere, onEditLastUserMessage, onRetryWithModel, onOpenChatSettings, onToggleDocPanel, onToggleSidebar,
     onToggleWebSearch, onOpenSettings, onRenameChat, onPinChat, onArchiveChat,
     activePinned, activeArchived, onExportDiagnostics,
     onCopyConversationAsMarkdown, onExportConversationMarkdown, onExportConversationJson, onSaveChatAsWorkflow, onMakeSkillFromChat,

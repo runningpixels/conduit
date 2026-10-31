@@ -213,6 +213,21 @@ describe('CommandPalette prefix modes', () => {
     expect(screen.queryByRole('option', { name: 'Triage notes' })).not.toBeInTheDocument();
   });
 
+  it('>retry offers Retry with another model when it is wired', () => {
+    const onRetryWithModel = vi.fn();
+    const props = renderPalette({ onRetryWithModel });
+    type('>retry');
+    fireEvent.click(screen.getByRole('option', { name: /Retry with another model/ }));
+    expect(onRetryWithModel).toHaveBeenCalledTimes(1);
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('does not offer Retry with another model when it is not wired', () => {
+    renderPalette();
+    type('>retry');
+    expect(screen.queryByRole('option', { name: /Retry with another model/ })).toBeNull();
+  });
+
   it('>chat settings runs onOpenChatSettings', () => {
     const props = renderPalette();
     type('>chat settings');

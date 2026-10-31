@@ -3430,7 +3430,10 @@
     "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
     "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
     "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
-    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb",
+    "chat.retryModel.title": "54c8b373ceff28a7244b2996babad8c88bc2e2fc",
+    "workspace.commandPalette.command.retryWithModel": "cef931b711d70349b1eee3c08536e6f0c02b9fec",
+    "app.status.nothingToRetry": "05668d894fb899bf6b8080239041520d08d812b0"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -6863,7 +6866,10 @@
     "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
     "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
     "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
-    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb",
+    "chat.retryModel.title": "54c8b373ceff28a7244b2996babad8c88bc2e2fc",
+    "workspace.commandPalette.command.retryWithModel": "cef931b711d70349b1eee3c08536e6f0c02b9fec",
+    "app.status.nothingToRetry": "05668d894fb899bf6b8080239041520d08d812b0"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -10296,7 +10302,10 @@
     "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
     "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
     "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
-    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb",
+    "chat.retryModel.title": "54c8b373ceff28a7244b2996babad8c88bc2e2fc",
+    "workspace.commandPalette.command.retryWithModel": "cef931b711d70349b1eee3c08536e6f0c02b9fec",
+    "app.status.nothingToRetry": "05668d894fb899bf6b8080239041520d08d812b0"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -13729,7 +13738,10 @@
     "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
     "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
     "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
-    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb",
+    "chat.retryModel.title": "54c8b373ceff28a7244b2996babad8c88bc2e2fc",
+    "workspace.commandPalette.command.retryWithModel": "cef931b711d70349b1eee3c08536e6f0c02b9fec",
+    "app.status.nothingToRetry": "05668d894fb899bf6b8080239041520d08d812b0"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -17162,7 +17174,10 @@
     "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
     "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
     "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
-    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb",
+    "chat.retryModel.title": "54c8b373ceff28a7244b2996babad8c88bc2e2fc",
+    "workspace.commandPalette.command.retryWithModel": "cef931b711d70349b1eee3c08536e6f0c02b9fec",
+    "app.status.nothingToRetry": "05668d894fb899bf6b8080239041520d08d812b0"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -20595,7 +20610,10 @@
     "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
     "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
     "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
-    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb",
+    "chat.retryModel.title": "54c8b373ceff28a7244b2996babad8c88bc2e2fc",
+    "workspace.commandPalette.command.retryWithModel": "cef931b711d70349b1eee3c08536e6f0c02b9fec",
+    "app.status.nothingToRetry": "05668d894fb899bf6b8080239041520d08d812b0"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -24028,6 +24046,9 @@
     "chat.replyVersions.next": "514439d047481be3833612cb6e290547c511415e",
     "chat.replyVersions.lastOnly": "e59e5ec44ca91da5eeaa0a6ec1503319aefd8a32",
     "chat.replyVersions.switchFailed": "c4f8b6d948574c8be8466d7ec9745b8f3f505114",
-    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb"
+    "chat.replyVersions.restored": "b5c26aa6be0ff416a78461bb44dc702036ae0bdb",
+    "chat.retryModel.title": "54c8b373ceff28a7244b2996babad8c88bc2e2fc",
+    "workspace.commandPalette.command.retryWithModel": "cef931b711d70349b1eee3c08536e6f0c02b9fec",
+    "app.status.nothingToRetry": "05668d894fb899bf6b8080239041520d08d812b0"
   }
 }

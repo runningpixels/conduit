@@ -364,6 +364,27 @@ pub async fn set_assistant_model_since(
     Ok(())
 }
 
+/// Record the model that wrote the assistant turn `request_id`, as
+/// `metadata.model = { provider, model }` (other metadata is kept), so a reply
+/// names its own model after a reload, whatever the chat uses now.
+pub async fn set_turn_model(
+    pool: &SqlitePool,
+    request_id: &str,
+    provider: &str,
+    model: &str,
+) -> Result<(), DbError> {
+    let value = serde_json::json!({ "provider": provider, "model": model }).to_string();
+    sqlx::query(
+        "UPDATE messages SET metadata = json_set(COALESCE(metadata, '{}'), '$.model', json(?)) \
+         WHERE request_id = ? AND role = 'assistant'",
+    )
+    .bind(value)
+    .bind(request_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Look up the message id backing an assistant turn, if any.
 pub async fn get_message_id_by_request(
     pool: &SqlitePool,

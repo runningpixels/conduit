@@ -3691,5 +3691,8 @@
   "chat.replyVersions.next": "Next version",
   "chat.replyVersions.lastOnly": "Only the last reply can switch versions.",
   "chat.replyVersions.switchFailed": "Couldn’t switch to that version.",
-  "chat.replyVersions.restored": "The retry got no reply, so the earlier reply is back."
+  "chat.replyVersions.restored": "The retry got no reply, so the earlier reply is back.",
+  "chat.retryModel.title": "Retry with another model",
+  "workspace.commandPalette.command.retryWithModel": "Retry with another model…",
+  "app.status.nothingToRetry": "No reply to retry"
 }

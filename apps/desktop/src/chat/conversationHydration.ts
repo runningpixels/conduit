@@ -25,6 +25,9 @@ export interface ChatTurn {
   /** The provider and model a workflow resolved for this message (`metadata.workflow.model`):
    *  the chat's model line shows what actually ran instead of the current setting. */
   workflowModel?: { provider: string; model: string };
+  /** The provider and model that wrote this reply (`metadata.model`), so
+   *  its model line names it after a reload, whatever the chat uses now. */
+  ranWith?: { provider: string; model: string };
   /** The library agent a user turn was addressed to with `@` (`metadata.agent`). */
   agent?: { id: string; name: string };
 }
@@ -101,6 +104,16 @@ export function workflowModelOf(
   return typeof provider === 'string' && provider && typeof model === 'string' && model ? { provider, model } : undefined;
 }
 
+/** The provider and model that wrote an assistant message (`metadata.model = {provider, model}`), if recorded. */
+export function ranWithOf(
+  metadata: Record<string, unknown> | undefined | null,
+): { provider: string; model: string } | undefined {
+  const used = metadata?.model;
+  if (!used || typeof used !== 'object') return undefined;
+  const { provider, model } = used as Record<string, unknown>;
+  return typeof provider === 'string' && provider && typeof model === 'string' && model ? { provider, model } : undefined;
+}
+
 /** The library agent an `@` turn ran as (`metadata.agent = {id, name}`), if any. */
 export function agentOf(
   metadata: Record<string, unknown> | undefined | null,
@@ -134,6 +147,7 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
   const workflowName = message.role === 'user' ? workflowNameOf(message.metadata) : undefined;
   const workflowModel = workflowModelOf(message.metadata);
   const agent = message.role === 'user' ? agentOf(message.metadata) : undefined;
+  const ranWith = message.role === 'assistant' ? ranWithOf(message.metadata) : undefined;
 
   return {
     id: message.id,
@@ -146,6 +160,7 @@ export function messageToDisplayTurn(message: Message): ChatTurn | null {
     ...(researchRunId ? { researchRunId } : {}),
     ...(workflowName ? { workflowName } : {}),
     ...(workflowModel ? { workflowModel } : {}),
+    ...(ranWith ? { ranWith } : {}),
     ...(agent ? { agent } : {}),
   };
 }

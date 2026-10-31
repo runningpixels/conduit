@@ -70,6 +70,8 @@ interface AssistantMessageProps {
   onSchedule?: { name: string; run: () => void };
   /// The reply's version switcher (`‹ 2 / 3 ›`), when Retry has kept earlier versions.
   versions?: ReactNode;
+  /// Retry ▾ next to Retry: retry this reply with another model.
+  retryWithModel?: ReactNode;
   /// Whether this is the last persisted turn (gates retry/delete affordances).
   isLast?: boolean;
   /// Live turn only: this model delivers documents all at once and this turn
@@ -138,6 +140,7 @@ export function AssistantMessage({
   onFork,
   onSchedule,
   versions,
+  retryWithModel,
   isLast = true,
   conversationId = null,
   documentWriteHeld = false,
@@ -382,6 +385,7 @@ export function AssistantMessage({
             {t('common.actions.retry')}
           </button>
         )}
+        {showActions && onRetry && retryWithModel}
         {onFork && (
           <button
             type="button"

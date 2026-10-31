@@ -1122,10 +1122,15 @@ impl<'a> ChatHandoff<'a> {
 /// Settings (or the agent's own helpers) become `ask_` tools the model may
 /// call. With neither, the turn is the ordinary chat turn.
 ///
+/// With `provider`, the turn runs on that provider (the request's `model_id`
+/// is one of its models) instead of the active one: Retry with another model.
+/// The user's pick then wins over the agent's own model.
+///
 /// The turn and every helper under it run inside this one call, so a panic
 /// anywhere in them would otherwise end it silently: no closing event, and
 /// every agent row left "working" until the user pressed Stop. A panic is
 /// caught here and ends the turn with an error instead.
+#[allow(clippy::too_many_arguments)]
 pub async fn start_chat_turn(
     streams: &StreamManager,
     state: &AppState,
@@ -1134,6 +1139,7 @@ pub async fn start_chat_turn(
     channel: impl Into<EventSink<ProviderEvent>>,
     runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
     agent: Option<String>,
+    provider: Option<String>,
 ) -> Result<StreamHandle, String> {
     use futures::FutureExt;
 
@@ -1151,6 +1157,7 @@ pub async fn start_chat_turn(
         channel.clone(),
         runtime_channel,
         agent,
+        provider,
     );
     match std::panic::AssertUnwindSafe(turn).catch_unwind().await {
         Ok(outcome) => outcome,
@@ -1225,6 +1232,7 @@ async fn end_panicked_turn(
     let _ = channel.send(error);
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_chat_turn(
     streams: &StreamManager,
     state: &AppState,
@@ -1233,10 +1241,14 @@ async fn run_chat_turn(
     channel: impl Into<EventSink<ProviderEvent>>,
     runtime_channel: impl Into<EventSink<ConnectorRuntimeEvent>>,
     agent: Option<String>,
+    provider: Option<String>,
 ) -> Result<StreamHandle, String> {
     let channel: EventSink<ProviderEvent> = channel.into();
     let runtime_channel: EventSink<ConnectorRuntimeEvent> = runtime_channel.into();
     let settings = state.settings()?;
+    let picked = provider
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty());
     let wanted = agent
         .as_deref()
         .map(str::trim)
@@ -1271,10 +1283,19 @@ async fn run_chat_turn(
             if let Some(holder) = streams.turn_holder(&request.conversation_id) {
                 return Err(holder.busy_message(&TurnOwner::Chat));
             }
-            return streams.start_chat_stream(state, request, channel).await;
+            return streams
+                .start_chat_stream_with(state, request, channel, picked.as_deref())
+                .await;
         }
         return streams
-            .run_agent_turn(state, runtime, request, channel, runtime_channel)
+            .run_agent_turn_with(
+                state,
+                runtime,
+                request,
+                channel,
+                runtime_channel,
+                picked.as_deref(),
+            )
             .await;
     }
 
@@ -1286,8 +1307,12 @@ async fn run_chat_turn(
     helpers.retain(|h| library.contains_key(&h.id));
 
     // The turn as an agent: its words, model and tools.
-    let mut provider: Option<String> = None;
-    let mut model_label = format!("{}/{}", settings.active_provider, request.model_id);
+    let mut model_label = format!(
+        "{}/{}",
+        picked.as_deref().unwrap_or(&settings.active_provider),
+        request.model_id
+    );
+    let mut provider = picked.clone();
     if let Some(lead) = &lead {
         let name = lead.name.trim();
         let mut system = request.system_prompt.take().unwrap_or_default();
@@ -1299,7 +1324,7 @@ async fn run_chat_turn(
             lead.instructions.trim()
         ));
         request.system_prompt = Some(system);
-        if lead.model.is_some() {
+        if lead.model.is_some() && picked.is_none() {
             let model = resolve_model(state, streams, lead.model.as_ref())?;
             request.model_id = model.model.clone();
             model_label = format!("{}/{}", model.provider, model.model);

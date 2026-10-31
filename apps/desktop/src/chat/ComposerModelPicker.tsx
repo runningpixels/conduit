@@ -78,11 +78,29 @@ export function menuCeiling(trigger: HTMLElement): number {
   return ceiling;
 }
 
+/** The lowest point a downward menu can show at: the window's bottom, or the
+ *  bottom of the nearest ancestor that clips its overflow, whichever is higher. */
+function menuFloor(trigger: HTMLElement): number {
+  let floor = window.innerHeight;
+  for (let el = trigger.parentElement; el; el = el.parentElement) {
+    if (CLIPS.has(getComputedStyle(el).overflowY)) {
+      floor = Math.min(floor, el.getBoundingClientRect().bottom);
+    }
+  }
+  return floor;
+}
+
 interface ComposerModelPickerProps {
   settings: AppSettings;
   /** Write provider + model in one settings update (App.handleSelectModel). */
   onSelectModel: (providerId: string, modelId: string, defaultBaseUrl?: string | null) => void;
   disabled?: boolean;
+  /** `reply`: Retry ▾ in a reply's actions. A small arrow opens the same
+   *  menu, from the trigger's left edge, downward when there is more room
+   *  below. Picking a model then retries with it rather than switching. */
+  variant?: 'composer' | 'reply';
+  /** The model marked as current in the list; the chat's by default. */
+  current?: { provider: string; model: string };
 }
 
 export interface ComposerModelPickerHandle {
@@ -178,7 +196,13 @@ export function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<
 }
 
 export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, ComposerModelPickerProps>(
-  function ComposerModelPicker({ settings, onSelectModel, disabled = false }, ref) {
+  function ComposerModelPicker(
+    { settings, onSelectModel, disabled = false, variant = 'composer', current },
+    ref,
+  ) {
+    const reply = variant === 'reply';
+    const currentProvider = current?.provider ?? settings.activeProvider;
+    const currentModel = current?.model ?? settings.activeModel;
     const t = useT();
     const fmt = useFormatters();
     const [open, setOpen] = useState(false);
@@ -247,18 +271,24 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
     // trigger. Too tall a menu loses its top — and the search with it — under
     // the title bar on Home, and to the chat pane's clipping edge in a new chat.
     const [roomAbove, setRoomAbove] = useState<number | null>(null);
+    // A reply can sit high in the pane, where the room is below it.
+    const [opensDown, setOpensDown] = useState(false);
     useLayoutEffect(() => {
       if (!open) return;
       const measure = () => {
         const trigger = triggerRef.current;
         if (!trigger) return;
-        const top = trigger.getBoundingClientRect().top;
-        setRoomAbove(Math.max(160, Math.floor(top - menuCeiling(trigger) - MENU_EDGE_ROOM)));
+        const box = trigger.getBoundingClientRect();
+        const above = Math.floor(box.top - menuCeiling(trigger) - MENU_EDGE_ROOM);
+        const below = Math.floor(menuFloor(trigger) - box.bottom - MENU_EDGE_ROOM);
+        const down = reply && below > above;
+        setOpensDown(down);
+        setRoomAbove(Math.max(160, down ? below : above));
       };
       measure();
       window.addEventListener('resize', measure);
       return () => window.removeEventListener('resize', measure);
-    }, [open]);
+    }, [open, reply]);
 
     function pick(descriptor: ProviderDescriptor, modelId: string) {
       setOpen(false);
@@ -317,27 +347,43 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
         className="composer-model-picker"
         style={roomAbove === null ? undefined : ({ '--model-menu-room': `${roomAbove}px` } as CSSProperties)}
       >
-        <button
-          ref={triggerRef}
-          className="cbtn model"
-          type="button"
-          title={t('chat.modelPicker.switchModel')}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <i className="pdot" aria-hidden="true" />
-          <span className="model-label">{settings.activeModel}</span>
-          <ChevronDown />
-        </button>
+        {reply ? (
+          <button
+            ref={triggerRef}
+            className="act retry-model"
+            type="button"
+            title={t('chat.retryModel.title')}
+            aria-label={t('chat.retryModel.title')}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            disabled={disabled}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <ChevronDown />
+          </button>
+        ) : (
+          <button
+            ref={triggerRef}
+            className="cbtn model"
+            type="button"
+            title={t('chat.modelPicker.switchModel')}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            disabled={disabled}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <i className="pdot" aria-hidden="true" />
+            <span className="model-label">{settings.activeModel}</span>
+            <ChevronDown />
+          </button>
+        )}
 
         <Menu
           open={open}
           onClose={closeMenu}
           triggerRef={triggerRef}
-          className="menu model-menu"
-          label={t('chat.modelPicker.switchModel')}
+          className={`menu model-menu${reply ? ' reply-model-menu' : ''}${opensDown ? ' opens-down' : ''}`}
+          label={reply ? t('chat.retryModel.title') : t('chat.modelPicker.switchModel')}
           dismissOnOutsidePress
           initialFocusRef={searchRef}
         >
@@ -369,8 +415,8 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
                     {listed ? (
                       models.map((model) => {
                         const active =
-                          provider.id === settings.activeProvider &&
-                          model.id === settings.activeModel;
+                          provider.id === currentProvider &&
+                          model.id === currentModel;
                         const tail = modelTail(provider, lookupPrice(provider.id, model.id)?.price, t);
                         return (
                           <button
@@ -391,7 +437,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
                       <ModelIdRow
                         provider={provider}
                         initial={
-                          provider.id === settings.activeProvider ? settings.activeModel : ''
+                          provider.id === currentProvider ? currentModel : ''
                         }
                         onCommit={pick}
                       />

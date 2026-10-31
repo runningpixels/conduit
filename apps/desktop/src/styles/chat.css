@@ -1325,6 +1325,12 @@
   max-height: min(420px, var(--model-menu-room, 52vh));
   overflow-y: auto;
 }
+/* Retry ▾ in a reply's actions: the menu starts at the arrow's left edge (the
+ * reply column's room is to the right) and opens down when the reply sits
+ * high in the pane. */
+.reply-model-menu { left: 0; right: auto; }
+.reply-model-menu.opens-down { top: calc(100% + 8px); bottom: auto; }
+.act.retry-model { padding: 0 4px; margin-left: -1px; }
 .model-menu .menu-item .pdot { width: 7px; height: 7px; background: var(--provider-hue); }
 .model-menu .menu-item[aria-current="true"] { background: var(--card-hi); color: var(--ink); }
 /* The search leads the menu and stays put while the groups scroll under it.

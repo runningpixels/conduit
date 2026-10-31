@@ -961,6 +961,59 @@ describe('ChatView: Retry re-sends the last question', () => {
     });
   });
 
+  it('retries with another model for this reply only', async () => {
+    const { listProviderDescriptors, listProviderModels, prepareRetry, updateSettings } = await import('../ipc/client');
+    vi.mocked(prepareRetry).mockResolvedValue('u1');
+    const anthropic = { id: 'anthropic', displayName: 'Anthropic', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 0, description: null };
+    // The composer reads the providers too, so these stay for the whole test.
+    vi.mocked(listProviderDescriptors).mockResolvedValue([
+      anthropic,
+      { id: 'openrouter', displayName: 'OpenRouter', defaultBaseUrl: null, credentialMode: 'required', isLocal: false, showBaseUrlField: false, tier: 0, description: null },
+    ] as Awaited<ReturnType<typeof listProviderDescriptors>>);
+    vi.mocked(listProviderModels).mockImplementation(async (providerId: string) =>
+      providerId === 'openrouter'
+        ? [{ id: 'deepseek/deepseek-v4-flash', displayName: 'DeepSeek V4 Flash' }]
+        : [{ id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4' }],
+    );
+    vi.mocked(getConversationMessages)
+      .mockResolvedValueOnce(messages())
+      .mockResolvedValueOnce(messages().slice(0, 1));
+    let captured: Parameters<typeof startChatStream>[0] | undefined;
+    vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
+      captured = request;
+      onEvent({ kind: 'messageComplete', requestId: request.requestId, index: 0, finishReason: 'stop' });
+      return { requestId: request.requestId };
+    });
+
+    const { onSelectModel } = renderChatView();
+    await screen.findByText('The first answer.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry with another model' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /DeepSeek V4 Flash/ }));
+
+    await waitFor(() => expect(startChatStream).toHaveBeenCalled());
+    expect(captured!.modelId).toBe('deepseek/deepseek-v4-flash');
+    expect(vi.mocked(startChatStream).mock.calls[0][3]).toEqual({ provider: 'openrouter' });
+    expect(captured!.messages.filter((m) => m.role === 'user').at(-1)!.id).toBe('u1');
+    // The chat keeps its own model.
+    expect(onSelectModel).not.toHaveBeenCalled();
+    expect(updateSettings).not.toHaveBeenCalled();
+    vi.mocked(listProviderDescriptors).mockResolvedValue([anthropic] as Awaited<ReturnType<typeof listProviderDescriptors>>);
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4' }]);
+  });
+
+  it('opens Retry with another model from the command palette', async () => {
+    vi.mocked(getConversationMessages).mockResolvedValue(messages());
+    const ref = createRef<ChatViewHandle>();
+    renderChatView({ ref });
+    await screen.findByText('The first answer.');
+    let opened = false;
+    act(() => {
+      opened = ref.current!.openRetryWithModel();
+    });
+    expect(opened).toBe(true);
+    expect(screen.getByRole('button', { name: 'Retry with another model' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('puts the earlier reply back when the retry gets no reply', async () => {
     const { listReplyVersions, prepareRetry, selectReplyVersion } = await import('../ipc/client');
     vi.mocked(prepareRetry).mockResolvedValue('u1');

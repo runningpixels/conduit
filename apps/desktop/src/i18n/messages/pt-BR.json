@@ -3691,5 +3691,8 @@
   "chat.replyVersions.next": "Próxima versão",
   "chat.replyVersions.lastOnly": "Só a última resposta pode trocar de versão.",
   "chat.replyVersions.switchFailed": "Não foi possível trocar para essa versão.",
-  "chat.replyVersions.restored": "A nova tentativa não trouxe resposta, então a resposta anterior voltou."
+  "chat.replyVersions.restored": "A nova tentativa não trouxe resposta, então a resposta anterior voltou.",
+  "chat.retryModel.title": "Tentar novamente com outro modelo",
+  "workspace.commandPalette.command.retryWithModel": "Tentar novamente com outro modelo…",
+  "app.status.nothingToRetry": "Nenhuma resposta para tentar novamente"
 }

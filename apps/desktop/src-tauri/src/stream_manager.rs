@@ -1943,6 +1943,7 @@ impl StreamManager {
             )
             .await;
 
+        record_turn_model(&pool, &request_id, &provider_id, &model_id).await;
         // Tool-less calls (Research, workflows, the chat command without
         // tools) never reach the agent loop, so record their usage here.
         if let Some(usage) = &outcome.usage {
@@ -4804,6 +4805,11 @@ impl StreamManager {
             });
         }
 
+        if let Ok(settings) = state.settings() {
+            let provider = provider_override.unwrap_or(&settings.active_provider);
+            record_turn_model(&pool, &request_id, provider, &active_model_id).await;
+        }
+
         // Emit cumulative usage across all rounds.
         if let Some(usage) = cumulative_usage {
             let _ = channel.send(ProviderEvent::Usage {
@@ -4866,6 +4872,14 @@ pub(crate) async fn build_connector_tool_catalog(
     state: &AppState,
 ) -> Result<crate::connector_runtime::catalog::ConnectorToolCatalog, String> {
     crate::connector_runtime::catalog::load_connector_tool_catalog(&state.db).await
+}
+
+/// Name the model that wrote the reply on its message, so the reply keeps
+/// it after a reload (a retry can run on another model). Best-effort.
+async fn record_turn_model(pool: &sqlx::SqlitePool, request_id: &str, provider: &str, model: &str) {
+    if let Err(e) = messages::set_turn_model(pool, request_id, provider, model).await {
+        warn!(request_id = %request_id, error = %e, "could not record the reply's model");
+    }
 }
 
 /// Persist one `usage_summary` row for a request, keyed by the assistant

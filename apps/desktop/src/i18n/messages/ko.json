@@ -3691,5 +3691,8 @@
   "chat.replyVersions.next": "다음 버전",
   "chat.replyVersions.lastOnly": "마지막 응답만 버전을 바꿀 수 있습니다.",
   "chat.replyVersions.switchFailed": "해당 버전으로 바꾸지 못했습니다.",
-  "chat.replyVersions.restored": "다시 시도해도 응답이 없어서 이전 응답으로 되돌렸습니다."
+  "chat.replyVersions.restored": "다시 시도해도 응답이 없어서 이전 응답으로 되돌렸습니다.",
+  "chat.retryModel.title": "다른 모델로 다시 시도",
+  "workspace.commandPalette.command.retryWithModel": "다른 모델로 다시 시도…",
+  "app.status.nothingToRetry": "다시 시도할 응답이 없습니다"
 }

@@ -3691,5 +3691,8 @@
   "chat.replyVersions.next": "[Ñéẍť ṽéŕšîöñ —————]",
   "chat.replyVersions.lastOnly": "[Öñļý ťĥé ļàšť ŕéṕļý çàñ šŵîťçĥ ṽéŕšîöñš. —————— —————— ————]",
   "chat.replyVersions.switchFailed": "[Çöüļḍñ’ť šŵîťçĥ ťö ťĥàť ṽéŕšîöñ. —————— —————— —]",
-  "chat.replyVersions.restored": "[Ťĥé ŕéťŕý ĝöť ñö ŕéṕļý, šö ťĥé éàŕļîéŕ ŕéṕļý îš ḅàçķ. —————— —————— —————— ————]"
+  "chat.replyVersions.restored": "[Ťĥé ŕéťŕý ĝöť ñö ŕéṕļý, šö ťĥé éàŕļîéŕ ŕéṕļý îš ḅàçķ. —————— —————— —————— ————]",
+  "chat.retryModel.title": "[Ŕéťŕý ŵîťĥ àñöťĥéŕ ḿöḍéļ —————— ————]",
+  "workspace.commandPalette.command.retryWithModel": "[Ŕéťŕý ŵîťĥ àñöťĥéŕ ḿöḍéļ… —————— ————]",
+  "app.status.nothingToRetry": "[Ñö ŕéṕļý ťö ŕéťŕý —————— —]"
 }

@@ -3691,5 +3691,8 @@
   "chat.replyVersions.next": "下一个版本",
   "chat.replyVersions.lastOnly": "只有最后一条回复可以切换版本。",
   "chat.replyVersions.switchFailed": "无法切换到该版本。",
-  "chat.replyVersions.restored": "重试没有得到回复，已恢复之前的回复。"
+  "chat.replyVersions.restored": "重试没有得到回复，已恢复之前的回复。",
+  "chat.retryModel.title": "换一个模型重试",
+  "workspace.commandPalette.command.retryWithModel": "换一个模型重试…",
+  "app.status.nothingToRetry": "没有可重试的回复"
 }

@@ -378,8 +378,10 @@ export async function startChatStream(
   request: ProviderRequest,
   onEvent: (event: ProviderEvent) => void,
   onRuntimeEvent?: (event: ConnectorRuntimeEvent) => void,
-  /** `agent`: run this turn as that library agent (an `@` message). */
-  options?: { agent?: string },
+  /** `agent`: run this turn as that library agent (an `@` message).
+   *  `provider`: run it on that provider instead of the active one (the
+   *  request's `modelId` is one of its models): Retry with another model. */
+  options?: { agent?: string; provider?: string },
 ): Promise<StreamHandle> {
   const channel = new Channel<ProviderEvent>();
   channel.onmessage = onEvent;
@@ -390,6 +392,7 @@ export async function startChatStream(
     channel,
     runtimeChannel,
     agent: options?.agent ?? null,
+    provider: options?.provider ?? null,
   });
 }
 

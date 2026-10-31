@@ -92,6 +92,7 @@ pub async fn list_provider_models(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn start_chat_stream(
     state: State<'_, AppState>,
     stream_manager: State<'_, StreamManager>,
@@ -100,6 +101,7 @@ pub async fn start_chat_stream(
     channel: Channel<ProviderEvent>,
     runtime_channel: Channel<provider_core::schema::ConnectorRuntimeEvent>,
     agent: Option<String>,
+    provider: Option<String>,
 ) -> Result<StreamHandle, String> {
     crate::agents::handoff::start_chat_turn(
         stream_manager.inner(),
@@ -109,6 +111,7 @@ pub async fn start_chat_stream(
         channel,
         runtime_channel,
         agent,
+        provider,
     )
     .await
 }

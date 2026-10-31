@@ -3691,5 +3691,8 @@
   "chat.replyVersions.next": "Version suivante",
   "chat.replyVersions.lastOnly": "Seule la dernière réponse peut changer de version.",
   "chat.replyVersions.switchFailed": "Impossible de passer à cette version.",
-  "chat.replyVersions.restored": "La nouvelle tentative n’a donné aucune réponse : la réponse précédente est rétablie."
+  "chat.replyVersions.restored": "La nouvelle tentative n’a donné aucune réponse : la réponse précédente est rétablie.",
+  "chat.retryModel.title": "Réessayer avec un autre modèle",
+  "workspace.commandPalette.command.retryWithModel": "Réessayer avec un autre modèle…",
+  "app.status.nothingToRetry": "Aucune réponse à réessayer"
 }

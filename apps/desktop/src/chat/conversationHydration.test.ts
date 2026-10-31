@@ -426,6 +426,30 @@ describe('messageToDisplayTurn researchRunId', () => {
   });
 });
 
+describe('ranWith', () => {
+  it('reads the model that wrote a reply', () => {
+    const turn = messageToDisplayTurn(
+      makeMessage({
+        role: 'assistant',
+        metadata: { model: { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' } },
+        parts: [textPart('An answer')],
+      }),
+    );
+    expect(turn?.ranWith).toEqual({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' });
+  });
+
+  it('ignores it on a user message, and when it is incomplete', () => {
+    const user = messageToDisplayTurn(
+      makeMessage({ role: 'user', metadata: { model: { provider: 'a', model: 'b' } }, parts: [textPart('hi')] }),
+    );
+    expect(user).not.toHaveProperty('ranWith');
+    const partial = messageToDisplayTurn(
+      makeMessage({ role: 'assistant', metadata: { model: { provider: 'a' } }, parts: [textPart('hi')] }),
+    );
+    expect(partial).not.toHaveProperty('ranWith');
+  });
+});
+
 describe('workflowModelOf', () => {
   it('reads the provider and model a workflow ran a message with', () => {
     const turn = messageToDisplayTurn(

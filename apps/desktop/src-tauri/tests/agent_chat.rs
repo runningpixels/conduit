@@ -335,6 +335,16 @@ impl Chat {
         request: ProviderRequest,
         agent: Option<&str>,
     ) -> (Result<(), String>, Vec<ProviderEvent>) {
+        self.run_on(request, agent, None).await
+    }
+
+    /// Run the turn on `provider` (Retry with another model).
+    async fn run_on(
+        &self,
+        request: ProviderRequest,
+        agent: Option<&str>,
+        provider: Option<&str>,
+    ) -> (Result<(), String>, Vec<ProviderEvent>) {
         let (sink, collected) = event_sink::collector::<ProviderEvent>();
         let result = handoff::start_chat_turn(
             &self.manager,
@@ -344,6 +354,7 @@ impl Chat {
             sink,
             EventSink::discard(),
             agent.map(str::to_string),
+            provider.map(str::to_string),
         )
         .await
         .map(|_| ());
@@ -534,6 +545,59 @@ async fn a_turn_as_an_agent_uses_its_instructions_model_and_tools_and_is_recorde
     .await
     .unwrap();
     assert!(workflow_side.is_empty(), "chat work isn't a workflow's");
+}
+
+#[tokio::test]
+async fn a_retry_with_another_model_runs_on_it_and_the_reply_records_it() {
+    let chat = Chat::new(vec![text_round("Hi."), text_round_using("Done.", 30)], &[]).await;
+    chat.save_agent(json!({
+        "id": "researcher", "name": "Researcher", "instructions": "Find facts.",
+        "model": { "provider": "ollama", "model": "special" }
+    }))
+    .await;
+
+    // An ordinary turn.
+    let mut request = chat.request(&[]);
+    request.model_id = "picked".into();
+    let (result, _) = chat.run_on(request, None, Some("lmstudio")).await;
+    result.unwrap();
+    assert_eq!(chat.requests()[0].model_id, "picked");
+    assert_eq!(
+        reply_model(&chat, "turn-1").await,
+        Some(json!({ "provider": "lmstudio", "model": "picked" }))
+    );
+
+    // A turn to an agent: the user's pick wins over the agent's own model.
+    let mut request = chat.request(&[]);
+    request.request_id = "turn-2".into();
+    request.model_id = "picked".into();
+    let (result, _) = chat
+        .run_on(request, Some("researcher"), Some("lmstudio"))
+        .await;
+    result.unwrap();
+    assert_eq!(chat.requests()[1].model_id, "picked");
+    let calls = chat.calls().await;
+    assert_eq!(calls[0].4.as_deref(), Some("lmstudio/picked"));
+    assert_eq!(
+        reply_model(&chat, "turn-2").await,
+        Some(json!({ "provider": "lmstudio", "model": "picked" }))
+    );
+}
+
+/// The `metadata.model` recorded on the reply to `request_id`.
+async fn reply_model(chat: &Chat, request_id: &str) -> Option<Value> {
+    let (metadata,): (Option<String>,) =
+        sqlx::query_as("SELECT metadata FROM messages WHERE request_id = ? AND role = 'assistant'")
+            .bind(request_id)
+            .fetch_one(&chat.state.db)
+            .await
+            .unwrap();
+    metadata.and_then(|m| {
+        serde_json::from_str::<Value>(&m)
+            .ok()?
+            .get("model")
+            .cloned()
+    })
 }
 
 #[tokio::test]
@@ -1304,6 +1368,7 @@ impl Chat {
                 request,
                 sink,
                 EventSink::discard(),
+                None,
                 None,
             )
             .await

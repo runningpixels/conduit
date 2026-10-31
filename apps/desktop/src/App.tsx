@@ -4478,6 +4478,13 @@ export default function App() {
           const ok = chatViewRef.current?.editLastUserMessage() ?? false;
           if (!ok) setStatus(makeStatus(t('app.status.noUserMessageToEdit'), 'warning'));
         }}
+        onRetryWithModel={() => {
+          // After the palette has closed and handed focus back.
+          requestAnimationFrame(() => {
+            const ok = chatViewRef.current?.openRetryWithModel() ?? false;
+            if (!ok) setStatus(makeStatus(t('app.status.nothingToRetry'), 'warning'));
+          });
+        }}
         onOpenChatSettings={() => {
           const ok = chatViewRef.current?.openChatSettings() ?? false;
           if (!ok) setStatus(makeStatus(t('app.status.chatSettingsUnavailable'), 'warning'));

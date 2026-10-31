@@ -163,6 +163,7 @@ import type { StatusState } from './statusTypes';
 import { makeStatus } from './statusTypes';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { Composer, type ComposerHandle } from './Composer';
+import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
 import { ResearchRunCard } from './research/ResearchRunCard';
 import { researchUnavailableReasonId } from './researchAvailability';
 import { useComposerAutosize } from './useComposerAutosize';
@@ -260,6 +261,8 @@ export interface ChatViewHandle {
   /// V7 — fork the conversation at the current (last) turn (⌘⇧F / palette).
   /// Resolves true when a turn existed and the fork was requested.
   forkConversationHere: () => Promise<boolean>;
+  /// Open Retry ▾ on the last reply (palette). False when there is none to retry.
+  openRetryWithModel: () => boolean;
   /// t0-3 — begin editing the last user message (palette).
   editLastUserMessage: () => boolean;
   /// t0-6 — open the per-conversation chat settings popover (palette).
@@ -948,6 +951,9 @@ interface HandleSendOverride {
   /** Retry: send the stored question again under its own id, so the new
    *  reply answers the same message and no second copy is stored. */
   userTurnId?: string;
+  /** Retry with another model: run this one turn on that provider and model.
+   *  The chat's own model and Settings stay as they are. */
+  turnModel?: { provider: string; model: string };
 }
 
 /** The exact arguments a deferred `handleSend(...)` call needs to resume
@@ -1056,6 +1062,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  /** The model the running turn uses (Retry can pick another than the chat's). */
+  const [liveTurnModel, setLiveTurnModel] = useState<{ provider: string; model: string } | null>(null);
+  /** Retry ▾ on the last reply, for the command palette to open. */
+  const retryPickerRef = useRef<ComposerModelPickerHandle>(null);
   /** A reply found already running after a reload, which this window polls. */
   const [reattachedRequestId, setReattachedRequestId] = useState<string | null>(null);
   const [activeStream, setActiveStream] = useState<AssistantStreamState | null>(null);
@@ -2067,12 +2077,14 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     /** An agent turn: the backend keeps only what the agent lists, so offer
      *  every document / image tool rather than guess from the wording. */
     everyIntent = false,
+    /** The turn's settings: the chat's, or with the model Retry picked. */
+    turnSettings: AppSettings = settings,
   ): Promise<ToolDefinition[]> {
     const connectorTools = await loadConnectorToolDefinitions();
     // t0-8 M4: override the raw persisted flag with the effective (session
     // OR persisted) consent -- `activeProvider` already comes through from
     // `settings` unchanged.
-    const toolSettings = { ...settings, imageGenerationConsentAcknowledged: imageGenerationConsented() };
+    const toolSettings = { ...turnSettings, imageGenerationConsentAcknowledged: imageGenerationConsented() };
     const builtinTools = everyIntent
       ? dedupeToolsByName(
           (['create', 'edit', 'general'] as const).flatMap((each) =>
@@ -2093,7 +2105,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           ? searchBackend
             ? selectBuiltinWebTools(searchBackend)
             : []
-          : selectTurnWebTools(searchBackend, settings);
+          : selectTurnWebTools(searchBackend, turnSettings);
     // Many connector tools: offer `search_tools` instead of all of them. The
     // bindings above keep the full catalog, so a found tool still runs.
     return applyToolSearch(dedupeToolsByName([...builtinTools, ...webTools]), connectorTools).offered;
@@ -2261,6 +2273,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const pickedIdea =
       !override && turns.length === 0 && getIdeaState().pending ? ideaById(getIdeaState().pending!) : undefined;
     const turnIntent = override?.intent ?? (pickedIdea?.page ? 'create' : undefined);
+    // The model this turn runs on: the chat's, or the one Retry picked.
+    const turnSettings: AppSettings = override?.turnModel
+      ? { ...settings, activeProvider: override.turnModel.provider, activeModel: override.turnModel.model }
+      : settings;
 
     // t1-2 M1: while a turn is in flight, enqueue instead of starting another stream.
     // Use the ref (synchronous) so a just-finished turn's stale React state does
@@ -2290,7 +2306,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (
       !continuing &&
       looksLikeImageGenerationRequest(trimmed) &&
-      defaultImageModel(settings.activeProvider) != null &&
+      defaultImageModel(turnSettings.activeProvider) != null &&
       !imageGenerationConsented() &&
       !imageGenerationConsentDismissedRef.current
     ) {
@@ -2314,7 +2330,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         // a large part of the prompt.
         const estimateTools = applyToolSearch(
           selectTurnTools(trimmed, {
-            ...settings,
+            ...turnSettings,
             imageGenerationConsentAcknowledged: imageGenerationConsented(),
           }),
           await loadConnectorToolDefinitions(),
@@ -2386,8 +2402,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // answers when the backend cannot.
     const imagesDropped =
       attachments.length > 0 &&
-      !(await modelAcceptsImageInput(settings.activeProvider, settings.activeModel).catch(() =>
-        modelAcceptsImages(settings.activeProvider, settings.activeModel),
+      !(await modelAcceptsImageInput(turnSettings.activeProvider, turnSettings.activeModel).catch(() =>
+        modelAcceptsImages(turnSettings.activeProvider, turnSettings.activeModel),
       ));
     onStatus(
       makeStatus(
@@ -2412,7 +2428,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         ? 'local'
         : resolveSearchBackend(
             settings.webSearch.mode,
-            settings.activeProvider,
+            turnSettings.activeProvider,
             settings.providerEndpoints,
           );
     // The turns before this turn's question: the new one's, or, continuing,
@@ -2436,6 +2452,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       documentScope.toolIntent,
       pickedIdea?.needs.includes('imageGen'),
       Boolean(agent),
+      turnSettings,
     );
     const followUpArtifact = await resolveFollowUpArtifactContext(
       priorHistory,
@@ -2498,7 +2515,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       knowledgeContext.text,
     );
     const built = buildProviderRequest(
-      settings,
+      turnSettings,
       trimmed,
       providerHistory,
       conversationId,
@@ -2534,7 +2551,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     setActiveTurnOutputLimit(request.generationControls?.maxTokens ?? undefined);
     setActiveTurnDocumentWriteHeld(
       toolDefinitions.some((tool) => isDocumentContentTool(tool.name)) &&
-        readDocumentWriteStreaming(settings.activeProvider, settings.activeModel) === 'holds',
+        readDocumentWriteStreaming(turnSettings.activeProvider, turnSettings.activeModel) === 'holds',
     );
     providerToolByCallIdRef.current = {};
     pendingRuntimeCallsRef.current = new Set();
@@ -2546,10 +2563,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     streamStateRef.current = initialStream;
     reportRunStatus();
     setActiveRequestId(request.requestId);
+    setLiveTurnModel({ provider: turnSettings.activeProvider, model: turnSettings.activeModel });
     renderStreamNow();
     // Track the provider/model that produced this turn so the conditional
     // model line (§6.4) can show switches within the session.
-    recordSessionTurnProvider(`assistant-${request.requestId}`, settings.activeProvider, settings.activeModel);
+    recordSessionTurnProvider(`assistant-${request.requestId}`, turnSettings.activeProvider, turnSettings.activeModel);
 
     // `start_chat_stream` spawns the provider stream and returns a handle
     // immediately — the invoke promise resolves *before* any provider events
@@ -2621,7 +2639,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           (event.kind === 'agentPhase' && event.label === 'Retrying in parts') ||
           (event.kind === 'error' && event.error.providerCode === 'idle_timeout')
         ) {
-          markDocumentWritesHeld(settings.activeProvider, settings.activeModel);
+          markDocumentWritesHeld(turnSettings.activeProvider, turnSettings.activeModel);
         }
         if (event.kind === 'toolCallStart') {
           providerToolByCallIdRef.current[event.toolCallId] = event.toolId || event.name;
@@ -2711,7 +2729,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           if (toolName && isDocumentContentTool(toolName)) {
             const finishedCall = next.toolCalls.find((tc) => tc.toolCallId === event.toolCallId);
             if (finishedCall) {
-              recordDocumentWrite(settings.activeProvider, settings.activeModel, finishedCall);
+              recordDocumentWrite(turnSettings.activeProvider, turnSettings.activeModel, finishedCall);
             }
             const title =
               typeof event.arguments?.title === 'string' ? event.arguments.title : undefined;
@@ -2732,7 +2750,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }
       },
       (event) => applyRuntimeEventToActiveStream(request.requestId, conversationId, event),
-      agent ? { agent: agent.id } : undefined,
+      agent || override?.turnModel
+        ? {
+            ...(agent ? { agent: agent.id } : {}),
+            ...(override?.turnModel ? { provider: override.turnModel.provider } : {}),
+          }
+        : undefined,
       ).catch((error) => {
         // Pre-stream rejection (bad model/key/connection) — the invoke rejects
         // before any event. Surface it and resolve so the finally block
@@ -2816,12 +2839,12 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                   content,
                   streamState: { ...finalState, streaming: false, error: errorText },
                   interrupted: finalState.interrupted,
-                  modelId: settings.activeModel,
+                  modelId: turnSettings.activeModel,
                 },
                 request.requestId,
               ),
             );
-            recordSessionTurnProvider(turnId, settings.activeProvider, settings.activeModel);
+            recordSessionTurnProvider(turnId, turnSettings.activeProvider, turnSettings.activeModel);
 
           })();
           // Notify on every ended turn, errors included. This is the only path
@@ -3016,6 +3039,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         }
       }
       return false;
+    },
+    openRetryWithModel: () => {
+      if (activeRequestId || editBusy || !retryPickerRef.current) return false;
+      retryPickerRef.current.open();
+      return true;
     },
     openChatSettings: () => {
       if (activeRequestId || !conversationId) return false;
@@ -3405,6 +3433,21 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       />
     );
   }
+  /** Retry ▾ on the last reply: retry it with another model, for this reply
+   *  only. The menu marks the model that wrote the reply. */
+  function retryModelPicker(turnId: string) {
+    const ran = turnModelInfo[turnId];
+    return (
+      <ComposerModelPicker
+        ref={retryPickerRef}
+        variant="reply"
+        settings={settings}
+        current={ran ? { provider: ran.provider, model: ran.model } : undefined}
+        disabled={Boolean(activeRequestId) || editBusy}
+        onSelectModel={(provider, model) => void retryLastPrompt(undefined, { provider, model })}
+      />
+    );
+  }
   /// A reply to a message sent to one of the user's agents (`@Researcher …`): that agent and the
   /// message, for "Schedule this…" in the reply's actions.
   const scheduleOf = new Map<string, { agent: { id: string; name: string }; task: string }>();
@@ -3434,7 +3477,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         workflowAsked = turn.workflowModel;
         continue;
       }
-      const ran = turn.workflowModel ?? workflowAsked;
+      const ran = turn.ranWith ?? turn.workflowModel ?? workflowAsked;
       workflowAsked = undefined;
       const session = sessionTurnProviders.get(turn.id);
       const provider =
@@ -3470,8 +3513,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }, [turns, turnModelInfo]);
 
   const liveTurnInfo = useMemo(() => {
-    const provider = settings.activeProvider;
-    const model = settings.activeModel;
+    const provider = (activeRequestId && liveTurnModel?.provider) || settings.activeProvider;
+    const model = (activeRequestId && liveTurnModel?.model) || settings.activeModel;
     return {
       provider,
       model,
@@ -3481,7 +3524,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           : undefined,
       showModelLine: shouldShowModelLine(lastAssistantTurn, { provider, model }),
     };
-  }, [lastAssistantTurn, settings.activeProvider, settings.activeModel]);
+  }, [lastAssistantTurn, settings.activeProvider, settings.activeModel, activeRequestId, liveTurnModel]);
 
   useEffect(() => {
     if (!autoSend) return;
@@ -3534,7 +3577,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   /** Retry the last response: send the last question again as it was sent —
    *  same text, attachments, `#` references and agent. The earlier reply is
    *  kept as a version the reply's switcher can go back to. */
-  async function retryLastPrompt(generationControls?: GenerationControls) {
+  async function retryLastPrompt(
+    generationControls?: GenerationControls,
+    turnModel?: { provider: string; model: string },
+  ) {
     if (!conversationId || activeRequestId) return;
     setEditBusy(true);
     try {
@@ -3558,6 +3604,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         agent: question.agent,
         generationControls,
         userTurnId: question.id,
+        turnModel,
       });
       await restoreReplyIfRetryWroteNothing(question.id);
     } catch (error) {
@@ -4023,6 +4070,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     onCopy={() => void handleCopyText(turn.content)}
                     onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
                     versions={replyVersionSwitcher(turn.id)}
+                    retryWithModel={retryModelPicker(turn.id)}
                     onSchedule={(() => {
                       const asked = scheduleOf.get(turn.id);
                       return asked ? { name: asked.agent.name, run: () => setScheduling(asked) } : undefined;
@@ -4096,6 +4144,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                         {t('common.actions.retry')}
                       </button>
                     )}
+                    {turn.id === visibleTurns[visibleTurns.length - 1]?.id && !activeRequestId && retryModelPicker(turn.id)}
                     <button
                       type="button"
                       className="act"

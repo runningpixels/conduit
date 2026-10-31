@@ -4,7 +4,7 @@
 use crate::{
     connector_runtime::ConnectorRuntimeManager,
     conversation_export::{self, ConversationExportResult, ExportFormat},
-    db::repository::{conversations, messages},
+    db::repository::{conversations, messages, reply_versions},
     encryption::Encryption,
     state::AppState,
     stream_manager::{StreamHandle, StreamManager},
@@ -814,6 +814,46 @@ pub async fn resolve_context_windows(
 // Retry & Fork (Competitive Feature)
 // ---------------------------------------------------------------------------
 
+/// Before Retry: keep the last reply as an earlier version instead of deleting
+/// it. Returns the user message the retry answers again (the frontend resends
+/// it with the same id, so no second copy is stored).
+#[tauri::command]
+pub async fn prepare_retry(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Option<String>, String> {
+    reply_versions::prepare_retry(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The replies in a conversation that have more than one version.
+#[tauri::command]
+pub async fn list_reply_versions(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Vec<reply_versions::ReplyVersionInfo>, String> {
+    reply_versions::list(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Make version `position` (1-based) of the last reply the one the chat uses.
+#[tauri::command]
+pub async fn select_reply_version(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    user_message_id: String,
+    position: u32,
+) -> Result<(), String> {
+    reply_versions::select(&state.db, &conversation_id, &user_message_id, position)
+        .await
+        .map_err(|e| e.to_string())?;
+    conversations::touch(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Remove the last assistant turn's messages/parts/event-log rows for a
 /// conversation. Returns the number of remaining messages in the conversation.
 #[tauri::command]
@@ -824,12 +864,13 @@ pub async fn remove_last_turn(
     conversations::remove_last_assistant_turn(&state.db, &conversation_id)
         .await
         .map_err(|e| e.to_string())?;
-    let (count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM messages WHERE conversation_id = ?")
-            .bind(&conversation_id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e| e.to_string())?;
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM messages WHERE conversation_id = ? AND superseded_at IS NULL",
+    )
+    .bind(&conversation_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(count)
 }
 

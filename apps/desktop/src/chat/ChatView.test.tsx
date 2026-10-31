@@ -1,5 +1,5 @@
 import { createRef, type ComponentProps, type RefObject } from 'react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AppSettings, Message, MessagePart } from '@conduit/config-schema';
 import type { Artifact } from '../ipc/contracts';
@@ -120,6 +120,9 @@ vi.mock('../ipc/client', () => ({
   attachmentDelivery: vi.fn().mockResolvedValue({ kind: 'text' }),
   prepareMessageEdit: vi.fn(),
   removeLastTurn: vi.fn().mockResolvedValue(1),
+  prepareRetry: vi.fn().mockResolvedValue('u1'),
+  listReplyVersions: vi.fn().mockResolvedValue([]),
+  selectReplyVersion: vi.fn().mockResolvedValue(undefined),
   startResearch: vi.fn(),
   getResearchRun: vi.fn(),
   approveResearchBrief: vi.fn(),
@@ -867,6 +870,11 @@ describe('ChatView M3: edit-and-resend keeps knowledge references (D9)', () => {
 });
 
 describe('ChatView: Retry re-sends the last question', () => {
+  afterEach(async () => {
+    const { listReplyVersions } = await import('../ipc/client');
+    vi.mocked(listReplyVersions).mockResolvedValue([]);
+  });
+
   function messages(): Message[] {
     return [
       {
@@ -920,13 +928,13 @@ describe('ChatView: Retry re-sends the last question', () => {
     expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
   });
 
-  it('replaces the reply by re-sending the question with its references, not by only deleting it', async () => {
-    const { prepareMessageEdit, removeLastTurn } = await import('../ipc/client');
-    vi.mocked(prepareMessageEdit).mockResolvedValue({
-      mode: 'in_place',
-      conversation: { id: 'conv-1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-    });
-    vi.mocked(getConversationMessages).mockResolvedValueOnce(messages()).mockResolvedValueOnce([]);
+  it('keeps the reply as a version and re-sends the same question with its references', async () => {
+    const { prepareMessageEdit, prepareRetry, removeLastTurn } = await import('../ipc/client');
+    vi.mocked(prepareRetry).mockResolvedValue('u1');
+    // After prepare_retry the thread is the question alone: its reply is hidden.
+    vi.mocked(getConversationMessages)
+      .mockResolvedValueOnce(messages())
+      .mockResolvedValueOnce(messages().slice(0, 1));
     let captured: Parameters<typeof startChatStream>[0] | undefined;
     vi.mocked(startChatStream).mockImplementation(async (request, onEvent) => {
       captured = request;
@@ -939,13 +947,66 @@ describe('ChatView: Retry re-sends the last question', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     await waitFor(() => expect(startChatStream).toHaveBeenCalled());
-    expect(prepareMessageEdit).toHaveBeenCalledWith('conv-1', 'u1');
+    expect(prepareRetry).toHaveBeenCalledWith('conv-1');
+    expect(prepareMessageEdit).not.toHaveBeenCalled();
     expect(removeLastTurn).not.toHaveBeenCalled();
-    const resent = captured!.messages.filter((m) => m.role === 'user').at(-1)!;
+    const users = captured!.messages.filter((m) => m.role === 'user');
+    expect(users).toHaveLength(1);
+    const resent = users.at(-1)!;
+    // The same stored message, so no second copy of the question is saved.
+    expect(resent.id).toBe('u1');
     expect(resent.parts.find((p) => p.kind === 'text')?.content).toBe('what does it say?');
     expect(resent.parts.find((p) => p.kind === 'knowledgeReference')).toMatchObject({
       metadata: { documentId: 'doc-1' },
     });
+  });
+
+  it('puts the earlier reply back when the retry gets no reply', async () => {
+    const { listReplyVersions, prepareRetry, selectReplyVersion } = await import('../ipc/client');
+    vi.mocked(prepareRetry).mockResolvedValue('u1');
+    vi.mocked(getConversationMessages)
+      .mockResolvedValueOnce(messages())
+      .mockResolvedValueOnce(messages().slice(0, 1))
+      .mockResolvedValue(messages());
+    vi.mocked(startChatStream).mockRejectedValueOnce(new Error('invalid API key'));
+    renderChatView();
+    await screen.findByText('The first answer.');
+    vi.mocked(listReplyVersions).mockResolvedValue([{ userMessageId: 'u1', count: 1, current: 0 }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(selectReplyVersion).toHaveBeenCalledWith('conv-1', 'u1', 1));
+  });
+
+  it('switches the last reply between its versions', async () => {
+    const { listReplyVersions, selectReplyVersion } = await import('../ipc/client');
+    vi.mocked(listReplyVersions).mockResolvedValue([{ userMessageId: 'u1', count: 3, current: 3 }]);
+    vi.mocked(getConversationMessages).mockResolvedValue(messages());
+    renderChatView();
+    const group = await screen.findByRole('group', { name: 'Version 3 of 3' });
+    expect(group).toHaveTextContent('3 / 3');
+    expect(screen.getByRole('button', { name: 'Next version' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous version' }));
+    await waitFor(() => expect(selectReplyVersion).toHaveBeenCalledWith('conv-1', 'u1', 2));
+  });
+
+  it("shows an earlier reply's versions without switching them", async () => {
+    const { listReplyVersions } = await import('../ipc/client');
+    const two: Message[] = [
+      ...messages(),
+      {
+        id: 'u2', conversationId: 'conv-1', role: 'user', createdAt: '2026-01-01T00:00:02Z',
+        parts: [{ id: 'u2-part-0', messageId: 'u2', index: 0, kind: 'text', content: 'and then?', createdAt: '2026-01-01T00:00:02Z' }],
+      },
+      {
+        id: 'a2', conversationId: 'conv-1', role: 'assistant', createdAt: '2026-01-01T00:00:03Z',
+        parts: [{ id: 'a2-part-0', messageId: 'a2', index: 0, kind: 'text', content: 'The second answer.', createdAt: '2026-01-01T00:00:03Z' }],
+      },
+    ];
+    vi.mocked(listReplyVersions).mockResolvedValue([{ userMessageId: 'u1', count: 2, current: 1 }]);
+    vi.mocked(getConversationMessages).mockResolvedValue(two);
+    renderChatView();
+    const group = await screen.findByRole('group', { name: 'Version 1 of 2' });
+    expect(group).toHaveAttribute('title', 'Only the last reply can switch versions.');
+    expect(screen.getByRole('button', { name: 'Next version' })).toBeDisabled();
   });
 });
 

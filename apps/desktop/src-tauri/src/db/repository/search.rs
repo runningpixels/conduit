@@ -68,6 +68,7 @@ pub async fn search_messages(
         LEFT JOIN conversations c ON c.id = f.conversation_id
         LEFT JOIN conversation_folders fol ON fol.id = c.folder_id
         WHERE message_fts MATCH ?
+          AND m.superseded_at IS NULL
           AND COALESCE(c.kind, 'chat') != 'automation'
         ORDER BY rank
         LIMIT ?

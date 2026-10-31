@@ -423,7 +423,7 @@ pub async fn reply_to_continue(
     }
     let (later,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM messages WHERE conversation_id = ? AND id <> ? \
-         AND role IN ('user', 'assistant') AND created_at > ?",
+         AND role IN ('user', 'assistant') AND created_at > ? AND superseded_at IS NULL",
     )
     .bind(conversation_id)
     .bind(message_id)
@@ -779,17 +779,30 @@ pub(crate) async fn replace_view_in_txn(
 
 /// Load all messages for a conversation with their parts, ordered by `created_at`
 /// ascending (lexicographic ISO-8601 order — the H2/L3 invariant). Replaces
-/// `stream_persistence::load_conversation_messages`.
+/// `stream_persistence::load_conversation_messages`. Superseded reply versions
+/// are left out: this is the thread as the chat continues from it.
 pub async fn load_conversation_messages(
     pool: &SqlitePool,
     conversation_id: &str,
 ) -> Result<Vec<Message>, DbError> {
+    load_messages(pool, conversation_id, false).await
+}
+
+/// [`load_conversation_messages`], with superseded reply versions too when
+/// `include_superseded` is set (only the reply versions read needs them).
+pub(crate) async fn load_messages(
+    pool: &SqlitePool,
+    conversation_id: &str,
+    include_superseded: bool,
+) -> Result<Vec<Message>, DbError> {
     let message_rows: Vec<MessageRow> = sqlx::query_as(
         "SELECT id, conversation_id, role, author_label, provider_message_id, request_id, \
                 interrupted_at, finalized, finish_reason, metadata, created_at \
-         FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
+         FROM messages WHERE conversation_id = ? AND (? OR superseded_at IS NULL) \
+         ORDER BY created_at ASC",
     )
     .bind(conversation_id)
+    .bind(include_superseded)
     .fetch_all(pool)
     .await?;
 

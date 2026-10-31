@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     db::{
-        repository::{artifacts, attachments},
+        repository::{artifacts, attachments, reply_versions},
         DbError,
     },
     encryption::Encryption,
@@ -133,14 +133,14 @@ async fn summaries(
 ) -> Result<Vec<ConversationSummary>, DbError> {
     let sql = format!(
         "SELECT c.id, c.title, c.updated_at, \
-                (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count, \
+                (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.superseded_at IS NULL) AS message_count, \
                 (SELECT mp.content FROM messages m2 \
                    JOIN message_parts mp ON mp.message_id = m2.id \
-                   WHERE m2.conversation_id = c.id AND mp.kind = 'text' AND mp.content IS NOT NULL \
+                   WHERE m2.conversation_id = c.id AND m2.superseded_at IS NULL AND mp.kind = 'text' AND mp.content IS NOT NULL \
                    ORDER BY m2.created_at DESC, mp.idx ASC LIMIT 1) AS last_message_preview, \
                 (SELECT mp.content FROM messages um \
                    JOIN message_parts mp ON mp.message_id = um.id \
-                   WHERE um.conversation_id = c.id AND um.role = 'user' \
+                   WHERE um.conversation_id = c.id AND um.role = 'user' AND um.superseded_at IS NULL \
                      AND mp.kind = 'text' AND mp.content IS NOT NULL AND TRIM(mp.content) != '' \
                    ORDER BY um.created_at ASC, mp.idx ASC LIMIT 1) AS first_user_prompt, \
                 c.forked_from_conversation_id, \
@@ -712,7 +712,7 @@ pub async fn last_assistant_request_id(
 ) -> Result<Option<String>, DbError> {
     let row: Option<(String,)> = sqlx::query_as(
         "SELECT COALESCE(request_id, id) FROM messages \
-         WHERE conversation_id = ? AND role = 'assistant' \
+         WHERE conversation_id = ? AND role = 'assistant' AND superseded_at IS NULL \
          ORDER BY created_at DESC LIMIT 1",
     )
     .bind(conversation_id)
@@ -731,6 +731,26 @@ pub async fn remove_last_assistant_turn(
     let turn_id = last_assistant_request_id(pool, conversation_id).await?;
     if let Some(ref tid) = turn_id {
         let mut tx = pool.begin().await?;
+        // The reply's earlier versions go with it: those of the user message
+        // it answers.
+        let last_user: Option<(String,)> = sqlx::query_as(
+            "SELECT id FROM messages \
+             WHERE conversation_id = ? AND role = 'user' AND superseded_at IS NULL \
+               AND created_at < (SELECT MIN(created_at) FROM messages \
+                                 WHERE conversation_id = ? AND (request_id = ? OR id = ?)) \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(conversation_id)
+        .bind(conversation_id)
+        .bind(tid)
+        .bind(tid)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some((user_id,)) = last_user {
+            let hidden =
+                reply_versions::superseded_for(&mut tx, conversation_id, &[user_id]).await?;
+            delete_rows_in_txn(&mut tx, conversation_id, &hidden).await?;
+        }
         // Delete tool calls for this request_id (match by request_id or id)
         sqlx::query("DELETE FROM tool_calls WHERE request_id = ?")
             .bind(tid)
@@ -881,6 +901,10 @@ pub async fn truncate_from(
     }
 
     let mut tx = pool.begin().await?;
+    // Earlier versions of the removed replies go with them.
+    let removed_ids: Vec<String> = to_remove.iter().map(|m| m.id.clone()).collect();
+    let hidden = reply_versions::superseded_for(&mut tx, conversation_id, &removed_ids).await?;
+    delete_rows_in_txn(&mut tx, conversation_id, &hidden).await?;
     for key in &turn_keys {
         sqlx::query("DELETE FROM tool_calls WHERE request_id = ?")
             .bind(key)
@@ -901,6 +925,32 @@ pub async fn truncate_from(
     }
     tx.commit().await?;
     touch(pool, conversation_id).await?;
+    Ok(())
+}
+
+/// Delete message rows given as `(message id, turn key)` with the tool calls
+/// and event log of their turns.
+async fn delete_rows_in_txn(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    conversation_id: &str,
+    rows: &[(String, String)],
+) -> Result<(), DbError> {
+    for (id, key) in rows {
+        sqlx::query("DELETE FROM tool_calls WHERE request_id = ?")
+            .bind(key)
+            .execute(&mut **tx)
+            .await?;
+        sqlx::query("DELETE FROM provider_event_log WHERE conversation_id = ? AND request_id = ?")
+            .bind(conversation_id)
+            .bind(key)
+            .execute(&mut **tx)
+            .await?;
+        sqlx::query("DELETE FROM messages WHERE conversation_id = ? AND id = ?")
+            .bind(conversation_id)
+            .bind(id)
+            .execute(&mut **tx)
+            .await?;
+    }
     Ok(())
 }
 

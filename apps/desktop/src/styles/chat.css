@@ -315,6 +315,27 @@
   pointer-events: auto;
 }
 .turn.user .turn-actions { justify-content: flex-end; }
+/* A reply with versions keeps its switcher in view; the other actions still
+ * appear on hover only. */
+.turn-actions:has(.reply-versions) { opacity: 1; pointer-events: auto; }
+.turn-actions:has(.reply-versions) > :not(.reply-versions) {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--tap);
+}
+.turn:hover .turn-actions > :not(.reply-versions),
+.turn:focus-within .turn-actions > :not(.reply-versions) { opacity: 1; pointer-events: auto; }
+.reply-versions {
+  display: flex;
+  align-items: center;
+  margin-right: 4px;
+  font-size: var(--fs-xl);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.reply-versions-step { padding: 0 5px; }
+.reply-versions-step:disabled { opacity: 0.4; cursor: default; background: none; }
+.reply-versions-count { padding: 0 2px; }
 .act {
   display: flex;
   align-items: center;

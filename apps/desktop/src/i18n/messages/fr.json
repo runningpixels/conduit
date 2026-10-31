@@ -346,7 +346,7 @@
   "chat.assistant.actions.copyLabel": "Copier le message",
   "chat.assistant.actions.deleteTitle": "Supprimer cette réponse",
   "chat.assistant.actions.forkLabel": "Bifurquer la conversation à ce message",
-  "chat.assistant.actions.retryTitle": "Réessayer cette réponse",
+  "chat.assistant.actions.retryTitle": "Réessayer cette réponse. Celle-ci est conservée comme version précédente.",
   "chat.assistant.cutOff": "Tronquée : cette réponse a atteint la limite de sortie. Augmentez « Tokens max. » dans Réglages → Préférences de conversation → Paramètres du modèle.",
   "chat.assistant.liveMeta": "{elapsed}s · {tokenCount} tok",
   "chat.assistant.liveMetaLimit": "{elapsed}s · {tokenCount} / {limit} tok",
@@ -3685,5 +3685,11 @@
   "shell.projects.settings.folderHint": "Les nouvelles conversations de ce projet démarrent dans ce dossier : le modèle peut lire et écrire ses fichiers. S’il contient un AGENTS.md, celui-ci accompagne chaque message. Les conversations déjà dans le projet gardent leur dossier.",
   "shell.projects.settings.folderNone": "Aucun dossier de travail.",
   "shell.projects.settings.folderChoose": "Choisir un dossier…",
-  "shell.projects.settings.folderRemove": "Retirer le dossier"
+  "shell.projects.settings.folderRemove": "Retirer le dossier",
+  "chat.replyVersions.group": "Version {current} sur {count}",
+  "chat.replyVersions.previous": "Version précédente",
+  "chat.replyVersions.next": "Version suivante",
+  "chat.replyVersions.lastOnly": "Seule la dernière réponse peut changer de version.",
+  "chat.replyVersions.switchFailed": "Impossible de passer à cette version.",
+  "chat.replyVersions.restored": "La nouvelle tentative n’a donné aucune réponse : la réponse précédente est rétablie."
 }

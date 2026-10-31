@@ -346,7 +346,7 @@
   "chat.assistant.actions.copyLabel": "Copy message",
   "chat.assistant.actions.deleteTitle": "Delete this response",
   "chat.assistant.actions.forkLabel": "Fork chat at this message",
-  "chat.assistant.actions.retryTitle": "Retry this response",
+  "chat.assistant.actions.retryTitle": "Retry this response. This one is kept as an earlier version.",
   "chat.assistant.cutOff": "Cut off — this reply reached the output limit. Raise Max tokens in Settings → Chat defaults → Model parameters.",
   "chat.assistant.liveMeta": "{elapsed}s · {tokenCount} tok",
   "chat.assistant.liveMetaLimit": "{elapsed}s · {tokenCount} / {limit} tok",
@@ -3685,5 +3685,11 @@
   "shell.projects.settings.folderHint": "New chats in this project start in this folder, so the model can read and write its files. If it has an AGENTS.md, that goes with every message. Chats already in the project keep their folder.",
   "shell.projects.settings.folderNone": "No working folder.",
   "shell.projects.settings.folderChoose": "Choose folder…",
-  "shell.projects.settings.folderRemove": "Remove folder"
+  "shell.projects.settings.folderRemove": "Remove folder",
+  "chat.replyVersions.group": "Version {current} of {count}",
+  "chat.replyVersions.previous": "Previous version",
+  "chat.replyVersions.next": "Next version",
+  "chat.replyVersions.lastOnly": "Only the last reply can switch versions.",
+  "chat.replyVersions.switchFailed": "Couldn’t switch to that version.",
+  "chat.replyVersions.restored": "The retry got no reply, so the earlier reply is back."
 }

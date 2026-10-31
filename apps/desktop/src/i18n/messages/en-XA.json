@@ -346,7 +346,7 @@
   "chat.assistant.actions.copyLabel": "[Çöṕý ḿéššàĝé —————]",
   "chat.assistant.actions.deleteTitle": "[Ḍéļéťé ťĥîš ŕéšṕöñšé —————— ——]",
   "chat.assistant.actions.forkLabel": "[Ḟöŕķ çĥàť àť ťĥîš ḿéššàĝé —————— ————]",
-  "chat.assistant.actions.retryTitle": "[Ŕéťŕý ťĥîš ŕéšṕöñšé —————— ——]",
+  "chat.assistant.actions.retryTitle": "[Ŕéťŕý ťĥîš ŕéšṕöñšé. Ťĥîš öñé îš ķéṕť àš àñ éàŕļîéŕ ṽéŕšîöñ. —————— —————— —————— ——————]",
   "chat.assistant.cutOff": "[Çüť öḟḟ — ťĥîš ŕéṕļý ŕéàçĥéḍ ťĥé öüťṕüť ļîḿîť. Ŕàîšé Ḿàẍ ťöķéñš îñ Šéťťîñĝš → Çĥàť ḍéḟàüļťš → Ḿöḍéļ ṕàŕàḿéťéŕš. —————— —————— —————— —————— —————— —————— —————— ———]",
   "chat.assistant.liveMeta": "[{elapsed}š · {tokenCount} ťöķ ————]",
   "chat.assistant.liveMetaLimit": "[{elapsed}š · {tokenCount} / {limit} ťöķ —————]",
@@ -3685,5 +3685,11 @@
   "shell.projects.settings.folderHint": "[Ñéŵ çĥàťš îñ ťĥîš ṕŕöĵéçť šťàŕť îñ ťĥîš ḟöļḍéŕ, šö ťĥé ḿöḍéļ çàñ ŕéàḍ àñḍ ŵŕîťé îťš ḟîļéš. Îḟ îť ĥàš àñ ÀĜÉÑŤŠ.ḿḍ, ťĥàť ĝöéš ŵîťĥ éṽéŕý ḿéššàĝé. Çĥàťš àļŕéàḍý îñ ťĥé ṕŕöĵéçť ķééṕ ťĥéîŕ ḟöļḍéŕ. —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————]",
   "shell.projects.settings.folderNone": "[Ñö ŵöŕķîñĝ ḟöļḍéŕ. —————— ——]",
   "shell.projects.settings.folderChoose": "[Çĥööšé ḟöļḍéŕ… ——————]",
-  "shell.projects.settings.folderRemove": "[Ŕéḿöṽé ḟöļḍéŕ ——————]"
+  "shell.projects.settings.folderRemove": "[Ŕéḿöṽé ḟöļḍéŕ ——————]",
+  "chat.replyVersions.group": "[Ṽéŕšîöñ {current} öḟ {count} —————]",
+  "chat.replyVersions.previous": "[Ṕŕéṽîöüš ṽéŕšîöñ —————— —]",
+  "chat.replyVersions.next": "[Ñéẍť ṽéŕšîöñ —————]",
+  "chat.replyVersions.lastOnly": "[Öñļý ťĥé ļàšť ŕéṕļý çàñ šŵîťçĥ ṽéŕšîöñš. —————— —————— ————]",
+  "chat.replyVersions.switchFailed": "[Çöüļḍñ’ť šŵîťçĥ ťö ťĥàť ṽéŕšîöñ. —————— —————— —]",
+  "chat.replyVersions.restored": "[Ťĥé ŕéťŕý ĝöť ñö ŕéṕļý, šö ťĥé éàŕļîéŕ ŕéṕļý îš ḅàçķ. —————— —————— —————— ————]"
 }

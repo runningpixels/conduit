@@ -31,6 +31,10 @@ import {
   getConversation,
   getConversationCompaction,
   getConversationMessages,
+  listReplyVersions,
+  prepareRetry,
+  type ReplyVersionInfo,
+  selectReplyVersion,
   getMessageIdByRequest,
   invokeConnectorTool,
   listConnectorCapabilities,
@@ -76,6 +80,7 @@ import type {
 } from '../ipc/contracts';
 import { ConfirmDialog } from '@conduit/ui';
 import { AssistantMessage } from './AssistantMessage';
+import { ReplyVersionSwitcher } from './ReplyVersionSwitcher';
 import { AssistantArtifactStrip } from './ArtifactResultCard';
 import { BotGlyph, CopyIcon, ForkIcon, PencilIcon, RetryIcon } from '../icons';
 import { TurnModelLine, shouldShowModelLine } from './TurnModelLine';
@@ -940,6 +945,9 @@ interface HandleSendOverride {
    *  reply, cut off at the output limit. `text` is then the question it
    *  answers (it picks the turn's tools), and no user turn is added. */
   continueReply?: { turn: ChatTurn; messageId: string; requestId: string };
+  /** Retry: send the stored question again under its own id, so the new
+   *  reply answers the same message and no second copy is stored. */
+  userTurnId?: string;
 }
 
 /** The exact arguments a deferred `handleSend(...)` call needs to resume
@@ -1058,6 +1066,25 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [editingTurnId, setEditingTurnId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [editBusy, setEditBusy] = useState(false);
+  /** Replies with more than one version (Retry keeps the earlier ones). */
+  const [replyVersions, setReplyVersions] = useState<ReplyVersionInfo[]>([]);
+  const [replyVersionsTick, setReplyVersionsTick] = useState(0);
+  useEffect(() => {
+    if (!conversationId || activeRequestId) return;
+    let cancelled = false;
+    void (async () => {
+      let found: ReplyVersionInfo[] = [];
+      try {
+        found = await listReplyVersions(conversationId);
+      } catch {
+        /* no versions to show */
+      }
+      if (!cancelled) setReplyVersions(found ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, activeRequestId, turns.length, replyVersionsTick]);
   /// "Schedule this…" on a message one of the user's agents answered: that agent and the message.
   const [scheduling, setScheduling] = useState<{ agent: { id: string; name: string }; task: string } | null>(null);
   const [editConfirm, setEditConfirm] = useState<{
@@ -2339,7 +2366,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // Only an ordinary chat sends to an agent (a deck or draft chat has its own tools).
     const agent = deck || draft || compact ? undefined : override ? override.agent : composerAgentRef.current ?? undefined;
     const userTurn: ChatTurn = {
-      id: crypto.randomUUID(),
+      id: override?.userTurnId ?? crypto.randomUUID(),
       role: 'user',
       content: trimmed,
       ...(attachments.length > 0 ? { attachments } : {}),
@@ -2711,9 +2738,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         // before any event. Surface it and resolve so the finally block
         // finalizes the turn with the error rather than hanging on `streamDone`.
         terminalError = describeInvokeError(error);
-        if (!continuing && isWorkflowBusyRefusal(terminalError)) {
+        if (!continuing && !override?.userTurnId && isWorkflowBusyRefusal(terminalError)) {
           // A workflow holds this conversation: nothing was stored, so the
           // message goes back to the composer instead of staying in the thread.
+          // (A retried question was stored already, so it stays.)
           setTurns((current) => current.filter((turn) => turn.id !== userTurn.id));
           if (currentConversationIdRef.current === conversationId) {
             setPrompt((current) => (current.trim() === '' ? trimmed : current));
@@ -3348,6 +3376,35 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     compaction,
   );
   const displayTurns = showCompactedOriginals ? visibleTurns : keptTurns;
+  /** Reply turn id → its versions: the last assistant turn after the user
+   *  message the versions answer. Only the last reply can switch. */
+  const versionsByReply = new Map<string, { info: ReplyVersionInfo; last: boolean }>();
+  for (const info of replyVersions) {
+    const at = visibleTurns.findIndex((turn) => turn.id === info.userMessageId);
+    if (at < 0) continue;
+    let reply: ChatTurn | undefined;
+    let i = at + 1;
+    for (; i < visibleTurns.length && visibleTurns[i].role !== 'user'; i++) {
+      if (visibleTurns[i].role === 'assistant') reply = visibleTurns[i];
+    }
+    if (reply) versionsByReply.set(reply.id, { info, last: i === visibleTurns.length });
+  }
+  function replyVersionSwitcher(turnId: string) {
+    const found = versionsByReply.get(turnId);
+    if (!found) return undefined;
+    const { info, last } = found;
+    return (
+      <ReplyVersionSwitcher
+        count={info.count}
+        current={info.current}
+        onSelect={
+          last && !activeRequestId
+            ? (position) => void selectReplyVersionOf(info.userMessageId, position)
+            : undefined
+        }
+      />
+    );
+  }
   /// A reply to a message sent to one of the user's agents (`@Researcher …`): that agent and the
   /// message, for "Schedule this…" in the reply's actions.
   const scheduleOf = new Map<string, { agent: { id: string; name: string }; task: string }>();
@@ -3474,15 +3531,87 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     conversationGenerationControls,
   )?.maxTokens;
 
-  /** Send the last prompt again with Max tokens cleared for this one request. */
-  /** Retry the last response: re-send the last question as it was sent —
-   *  same text, attachments and `#` references — replacing the reply. This
-   *  is edit-and-resend with nothing edited, so the tip is truncated in
-   *  place rather than forked. (Retry used to only delete the reply.) */
-  async function retryLastPrompt() {
-    const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
-    if (!lastUser) return;
-    await commitMessageEdit(lastUser.id, lastUser.content);
+  /** Retry the last response: send the last question again as it was sent —
+   *  same text, attachments, `#` references and agent. The earlier reply is
+   *  kept as a version the reply's switcher can go back to. */
+  async function retryLastPrompt(generationControls?: GenerationControls) {
+    if (!conversationId || activeRequestId) return;
+    setEditBusy(true);
+    try {
+      const userMessageId = await prepareRetry(conversationId);
+      const messages = await getConversationMessages(conversationId);
+      const nextTurns = (await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))).filter(
+        (t): t is ChatTurn => t !== null,
+      );
+      const at = nextTurns.findIndex((t) => t.id === userMessageId);
+      if (at < 0) {
+        setTurns(nextTurns);
+        return;
+      }
+      const question = nextTurns[at];
+      setTurns(nextTurns.slice(0, at + 1));
+      await handleSend({
+        text: question.content,
+        history: nextTurns.slice(0, at),
+        attachments: question.attachments,
+        knowledgeRefs: question.knowledgeRefs,
+        agent: question.agent,
+        generationControls,
+        userTurnId: question.id,
+      });
+      await restoreReplyIfRetryWroteNothing(question.id);
+    } catch (error) {
+      onStatus(
+        makeStatus(
+          error instanceof Error ? error.message : t('chat.view.status.failedToPrepareMessageEdit'),
+          'error',
+          'chat',
+        ),
+      );
+    } finally {
+      setEditBusy(false);
+      setReplyVersionsTick((n) => n + 1);
+    }
+  }
+
+  /** A retry that failed before the model wrote anything leaves the question
+   *  with no reply: put the latest earlier version back. */
+  async function restoreReplyIfRetryWroteNothing(userMessageId: string) {
+    if (!conversationId) return;
+    const found = (await listReplyVersions(conversationId)).find(
+      (v) => v.userMessageId === userMessageId && v.current === 0,
+    );
+    if (!found) return;
+    await selectReplyVersion(conversationId, userMessageId, found.count);
+    const messages = await getConversationMessages(conversationId);
+    const nextTurns = (await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))).filter(
+      (t): t is ChatTurn => t !== null,
+    );
+    setTurns(nextTurns);
+    onStatus(makeStatus(t('chat.replyVersions.restored'), 'warning', 'chat'));
+  }
+
+  /** Show version `position` of the last reply: the chat continues from it. */
+  async function selectReplyVersionOf(userMessageId: string, position: number) {
+    if (!conversationId || activeRequestRef.current) return;
+    try {
+      await selectReplyVersion(conversationId, userMessageId, position);
+      const messages = await getConversationMessages(conversationId);
+      const nextTurns = (await Promise.all(messages.map((m) => hydrateAssistantTurn(m)))).filter(
+        (t): t is ChatTurn => t !== null,
+      );
+      setTurns(nextTurns);
+    } catch (error) {
+      onStatus(
+        makeStatus(
+          error instanceof Error ? error.message : t('chat.replyVersions.switchFailed'),
+          'error',
+          'chat',
+        ),
+      );
+    } finally {
+      setReplyVersionsTick((n) => n + 1);
+    }
   }
 
   /** Continue the last reply, which the output limit cut off: the same reply
@@ -3511,9 +3640,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   }
 
   async function retryLastPromptWithoutLimit() {
-    const lastUser = [...turns].reverse().find((turn) => turn.role === 'user');
-    if (!lastUser) return;
-    await commitMessageEdit(lastUser.id, lastUser.content, { maxTokens: undefined });
+    await retryLastPrompt({ maxTokens: undefined });
   }
 
   async function commitMessageEdit(
@@ -3895,6 +4022,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     onDelete={() => void handleRemoveLastAssistantTurn()}
                     onCopy={() => void handleCopyText(turn.content)}
                     onFork={() => onForkConversation?.(conversationId ?? '', turn.id)}
+                    versions={replyVersionSwitcher(turn.id)}
                     onSchedule={(() => {
                       const asked = scheduleOf.get(turn.id);
                       return asked ? { name: asked.agent.name, run: () => setScheduling(asked) } : undefined;
@@ -3945,6 +4073,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     onStatus={onStatus}
                   />
                   <div className="turn-actions">
+                    {replyVersionSwitcher(turn.id)}
                     <button
                       type="button"
                       className="act"

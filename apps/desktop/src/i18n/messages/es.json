@@ -346,7 +346,7 @@
   "chat.assistant.actions.copyLabel": "Copiar mensaje",
   "chat.assistant.actions.deleteTitle": "Eliminar esta respuesta",
   "chat.assistant.actions.forkLabel": "Bifurcar el chat en este mensaje",
-  "chat.assistant.actions.retryTitle": "Reintentar esta respuesta",
+  "chat.assistant.actions.retryTitle": "Reintentar esta respuesta. Esta se conserva como versión anterior.",
   "chat.assistant.cutOff": "Cortada: esta respuesta alcanzó el límite de salida. Aumenta «Tokens máximos» en Ajustes → Preferencias de chat → Parámetros del modelo.",
   "chat.assistant.liveMeta": "{elapsed}s · {tokenCount} tok",
   "chat.assistant.liveMetaLimit": "{elapsed}s · {tokenCount} / {limit} tok",
@@ -3685,5 +3685,11 @@
   "shell.projects.settings.folderHint": "Los chats nuevos de este proyecto empiezan en esta carpeta, así el modelo puede leer y escribir sus archivos. Si tiene un AGENTS.md, se envía con cada mensaje. Los chats que ya están en el proyecto conservan su carpeta.",
   "shell.projects.settings.folderNone": "Sin carpeta de trabajo.",
   "shell.projects.settings.folderChoose": "Elegir carpeta…",
-  "shell.projects.settings.folderRemove": "Quitar carpeta"
+  "shell.projects.settings.folderRemove": "Quitar carpeta",
+  "chat.replyVersions.group": "Versión {current} de {count}",
+  "chat.replyVersions.previous": "Versión anterior",
+  "chat.replyVersions.next": "Versión siguiente",
+  "chat.replyVersions.lastOnly": "Solo la última respuesta puede cambiar de versión.",
+  "chat.replyVersions.switchFailed": "No se pudo cambiar a esa versión.",
+  "chat.replyVersions.restored": "El reintento no obtuvo respuesta, así que vuelve la respuesta anterior."
 }

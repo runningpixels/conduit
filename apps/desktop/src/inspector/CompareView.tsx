@@ -1,8 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ProviderUsage } from '@conduit/config-schema';
 import { AssistantMessage } from '../chat/AssistantMessage';
 import { ChatMessageContent } from '../chat/ChatMessageContent';
 import { hydrateAssistantTurn, type ChatTurn } from '../chat/conversationHydration';
 import { TurnModelLine } from '../chat/TurnModelLine';
+import { formatUsageParts } from '../chat/UsageSummary';
+import { estimateCostCents, formatCostCents, toTokenNumber } from '../lib/costTable';
+import { useModelPrices } from '../lib/useModelPrices';
+import { useFormatters } from '../i18n/formatters';
 import { getReplyVersions } from '../ipc/client';
 import { useT } from '../i18n';
 
@@ -32,6 +37,24 @@ function modelOf(turns: ChatTurn[]): { provider: string; model: string } | undef
   return undefined;
 }
 
+/** A version's usage: its replies' token counts added up. */
+function usageOf(turns: ChatTurn[]): ProviderUsage | undefined {
+  const used = turns.map((turn) => turn.streamState?.usage).filter((u): u is ProviderUsage => u != null);
+  if (used.length === 0) return undefined;
+  const sum = (pick: (u: ProviderUsage) => bigint | number | null | undefined) =>
+    used.reduce((total, u) => total + toTokenNumber(pick(u)), 0);
+  const cacheRead = sum((u) => u.cacheReadTokens);
+  const cacheWrite = sum((u) => u.cacheWriteTokens);
+  return {
+    inputTokens: BigInt(sum((u) => u.inputTokens)),
+    outputTokens: BigInt(sum((u) => u.outputTokens)),
+    // Left out when nothing was cached, so the line shows only what happened.
+    ...(cacheRead > 0 ? { cacheReadTokens: BigInt(cacheRead) } : {}),
+    ...(cacheWrite > 0 ? { cacheWriteTokens: BigInt(cacheWrite) } : {}),
+    ...(used.length === 1 && used[0].costHint ? { costHint: used[0].costHint } : {}),
+  };
+}
+
 /**
  * Compare: every version of one reply side by side in the inspector, each
  * with the model that wrote it, its usage and cost. "Use this one" puts a
@@ -39,7 +62,18 @@ function modelOf(turns: ChatTurn[]): { provider: string; model: string } | undef
  */
 export function CompareView({ conversationId, userMessageId, reloadKey, canUse, onUse, onFork }: CompareViewProps) {
   const t = useT();
+  const fmt = useFormatters();
   const [versions, setVersions] = useState<LoadedVersion[] | null>(null);
+  const lookupPrice = useModelPrices(
+    useMemo(
+      () =>
+        (versions ?? []).flatMap((version) => {
+          const ran = modelOf(version.turns);
+          return ran ? [{ providerId: ran.provider, modelIds: [ran.model] }] : [];
+        }),
+      [versions],
+    ),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +132,14 @@ export function CompareView({ conversationId, userMessageId, reloadKey, canUse, 
                 {version.current && <span className="compare-in-use">{t('inspector.compare.inUse')}</span>}
               </header>
               {ran && <TurnModelLine provider={ran.provider} model={ran.model} />}
+              {(() => {
+                const usage = usageOf(version.turns);
+                if (!usage) return null;
+                const cents = ran ? estimateCostCents(usage, ran.provider, lookupPrice(ran.provider, ran.model)?.price) : null;
+                const tokens = formatUsageParts({ ...usage, costHint: undefined }, fmt);
+                const cost = cents != null && cents > 0 ? formatCostCents(cents) : usage.costHint;
+                return <p className="compare-stats">{[cost, ...tokens].filter(Boolean).join(' · ')}</p>;
+              })()}
               <div className="compare-body">
                 {version.turns.map((turn) =>
                   turn.streamState ? (

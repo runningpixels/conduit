@@ -317,7 +317,7 @@
 .turn.user .turn-actions { justify-content: flex-end; }
 /* A reply with versions keeps its switcher in view; the other actions still
  * appear on hover only. */
-.turn-actions:has(.reply-versions) { opacity: 1; pointer-events: auto; }
+.turn-actions:has(.reply-versions) { opacity: 1; pointer-events: auto; flex-wrap: wrap; }
 .turn-actions:has(.reply-versions) > :not(.reply-versions) {
   opacity: 0;
   pointer-events: none;
@@ -337,7 +337,7 @@
 }
 .reply-versions-step { padding: 0 5px; }
 .reply-versions-step:disabled { opacity: 0.4; cursor: default; background: none; }
-.reply-versions-count { padding: 0 2px; }
+.reply-versions-count { padding: 0 2px; white-space: nowrap; }
 .act {
   display: flex;
   align-items: center;

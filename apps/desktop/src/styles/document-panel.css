@@ -1150,6 +1150,7 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .compare-column[data-current] { border-color: var(--line-hi); }
 .compare-column-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
 .compare-in-use { font-size: var(--fs-md); color: var(--ink-2); }
+.compare-stats { margin: 0; font-family: var(--font-mono); font-size: var(--fs-md); color: var(--ink-3); }
 .compare-body { min-width: 0; color: var(--ink); }
 .compare-body .turn.assistant { margin: 0; }
 /* No hover reveal in a column: Copy and the usage line are what it compares. */

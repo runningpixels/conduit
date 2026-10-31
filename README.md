@@ -344,6 +344,9 @@ dates, numbers and file sizes follow the language you pick.
   filled in, chosen on your device from what you've tried.
 - **Conversations** can be pinned, archived and exported; the chat list shows
   which chat is running or needs you.
+- **Compare models**: Retry keeps every earlier reply as a version you can
+  switch back to, the arrow next to Retry asks another model, and **Compare**
+  shows the answers side by side with what each cost.
 - **Projects** group chats and give every chat in one the same instructions,
   document collections, skills and working folder (whose `AGENTS.md` is read).
   A chat can add its own on top.
@@ -387,7 +390,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.18 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.19 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -406,6 +409,7 @@ left is checking it on real installs before calling it final.
 | Context gauge with automatic compaction | Working |
 | Skills (`SKILL.md`) and user-approved encrypted memory | Working |
 | Conversation pin, archive and projects (shared instructions, documents, skills, working folder) | Working |
+| Reply versions, retry with another model, compare answers side by side | Working |
 | Image and document attachments (PDF, Word, text, Markdown, CSV, HTML), Mermaid/KaTeX, conversation export | Working |
 | Usage & Cost — every model call, catalog and listed prices with overrides, daily spend alert | Working |
 | Web search (hosted OpenAI/Gemini/Anthropic/OpenRouter + Exa, Tavily, Brave, SearXNG) | Working |
@@ -426,7 +430,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.18 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.19 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

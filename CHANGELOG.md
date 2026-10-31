@@ -7,6 +7,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.19] - 2026-10-31
+
+Compare models: Retry keeps every answer, any model can answer again, and the
+answers sit side by side.
+
+### Added
+
+- **Retry keeps the earlier reply.** Retrying the last reply no longer throws
+  the old one away. Each retry is kept as a version, and a `‹ 2 / 3 ›`
+  switcher under the reply moves between them; the chat continues from the one
+  showing. An earlier reply shows its versions but cannot switch, because the
+  messages after it were written from the one it has.
+- **Retry with another model.** The arrow next to Retry opens the model menu.
+  The model you pick answers the last question again, for that reply only: the
+  chat keeps its own model. The command palette has **Retry with another
+  model…** too.
+- **Compare.** **Compare** next to the switcher opens the versions side by side
+  in the panel on the right, each with the model that wrote it, its answer and
+  its cost. **Use this one** picks a version for the last reply, and **Fork
+  from this version** starts a new chat that continues from any version.
+- A reply now records the model that wrote it, so its model line still names
+  the right model after the chat is reopened.
+
+### Changed
+
+- Model prices refreshed from models.dev.
+
+### Note
+
+- This release adds a database migration. If you go back to rc.18 afterwards,
+  it says your data was opened by a newer version and leaves it alone; install
+  rc.19 or later again to open it. rc.17 or earlier sets the database aside as
+  `conduit.sqlite.corrupt-<time>.bak` in your data folder and starts empty;
+  your data is still in that file.
+
 ## [1.0.0-rc.18] - 2026-10-30
 
 Projects: give every chat in a folder the same instructions, documents,
@@ -1648,7 +1683,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.18...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.19...HEAD
+[1.0.0-rc.19]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.18...v1.0.0-rc.19
 [1.0.0-rc.18]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.17...v1.0.0-rc.18
 [1.0.0-rc.17]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.16...v1.0.0-rc.17
 [1.0.0-rc.16]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.15...v1.0.0-rc.16

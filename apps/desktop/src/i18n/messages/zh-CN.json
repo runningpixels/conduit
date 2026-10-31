@@ -3694,5 +3694,13 @@
   "chat.replyVersions.restored": "重试没有得到回复，已恢复之前的回复。",
   "chat.retryModel.title": "换一个模型重试",
   "workspace.commandPalette.command.retryWithModel": "换一个模型重试…",
-  "app.status.nothingToRetry": "没有可重试的回复"
+  "app.status.nothingToRetry": "没有可重试的回复",
+  "chat.replyVersions.compare": "比较",
+  "chat.replyVersions.compareTitle": "并排显示各个版本",
+  "inspector.tabs.compare": "比较",
+  "inspector.compare.ariaLabel": "回复的各个版本（并排）",
+  "inspector.compare.empty": "这条回复只有一个版本。",
+  "inspector.compare.inUse": "使用中",
+  "inspector.compare.use": "使用这个版本",
+  "inspector.compare.fork": "从此版本创建分支"
 }

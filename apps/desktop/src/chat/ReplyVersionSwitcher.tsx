@@ -8,10 +8,12 @@ interface ReplyVersionSwitcherProps {
   current: number;
   /** Switch to a version. Absent on an earlier reply, which cannot switch. */
   onSelect?: (position: number) => void;
+  /** Open the versions side by side (Compare). */
+  onCompare?: () => void;
 }
 
 /** `‹ 2 / 3 ›` in a reply's actions: Retry keeps earlier replies as versions. */
-export function ReplyVersionSwitcher({ count, current, onSelect }: ReplyVersionSwitcherProps) {
+export function ReplyVersionSwitcher({ count, current, onSelect, onCompare }: ReplyVersionSwitcherProps) {
   const t = useT();
   const label = t('chat.replyVersions.group', { current, count });
   return (
@@ -52,6 +54,16 @@ export function ReplyVersionSwitcher({ count, current, onSelect }: ReplyVersionS
       >
         <ChevronRight />
       </button>
+      {onCompare && (
+        <button
+          type="button"
+          className="act reply-versions-compare"
+          title={t('chat.replyVersions.compareTitle')}
+          onClick={onCompare}
+        >
+          {t('chat.replyVersions.compare')}
+        </button>
+      )}
     </span>
   );
 }

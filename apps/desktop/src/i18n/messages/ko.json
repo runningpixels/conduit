@@ -3694,5 +3694,13 @@
   "chat.replyVersions.restored": "다시 시도해도 응답이 없어서 이전 응답으로 되돌렸습니다.",
   "chat.retryModel.title": "다른 모델로 다시 시도",
   "workspace.commandPalette.command.retryWithModel": "다른 모델로 다시 시도…",
-  "app.status.nothingToRetry": "다시 시도할 응답이 없습니다"
+  "app.status.nothingToRetry": "다시 시도할 응답이 없습니다",
+  "chat.replyVersions.compare": "비교",
+  "chat.replyVersions.compareTitle": "버전을 나란히 보기",
+  "inspector.tabs.compare": "비교",
+  "inspector.compare.ariaLabel": "응답 버전 나란히 보기",
+  "inspector.compare.empty": "이 응답은 버전이 하나뿐입니다.",
+  "inspector.compare.inUse": "사용 중",
+  "inspector.compare.use": "이 버전 사용",
+  "inspector.compare.fork": "이 버전에서 분기"
 }

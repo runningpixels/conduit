@@ -2,7 +2,7 @@ import { useRef, type KeyboardEvent } from 'react';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 
-export type InspectorTab = 'page' | 'activity' | 'sources';
+export type InspectorTab = 'page' | 'activity' | 'sources' | 'compare';
 
 export interface InspectorTabsProps {
   tab: InspectorTab;
@@ -10,6 +10,8 @@ export interface InspectorTabsProps {
   counts?: { activity?: number; sources?: number };
   /** Without a page the Page tab is not offered. */
   hasPage: boolean;
+  /** A reply's versions are open for comparing: the Compare tab is offered. */
+  hasCompare?: boolean;
   onClose: () => void;
 }
 
@@ -27,6 +29,7 @@ const LABEL_KEYS: Record<InspectorTab, string> = {
   page: 'inspector.tabs.page',
   activity: 'inspector.tabs.activity',
   sources: 'inspector.tabs.sources',
+  compare: 'inspector.tabs.compare',
 };
 
 /**
@@ -34,11 +37,16 @@ const LABEL_KEYS: Record<InspectorTab, string> = {
  * WAI-ARIA tabs with automatic activation: arrow keys, Home and End move the
  * selection and focus together; only the selected tab is in the tab order.
  */
-export function InspectorTabs({ tab, onTab, counts, hasPage, onClose }: InspectorTabsProps) {
+export function InspectorTabs({ tab, onTab, counts, hasPage, hasCompare = false, onClose }: InspectorTabsProps) {
   const t = useT();
   const fmt = useFormatters();
   const refs = useRef<Partial<Record<InspectorTab, HTMLButtonElement | null>>>({});
-  const tabs: InspectorTab[] = hasPage ? ['page', 'activity', 'sources'] : ['activity', 'sources'];
+  const tabs: InspectorTab[] = [
+    ...(hasPage ? (['page'] as const) : []),
+    'activity',
+    'sources',
+    ...(hasCompare ? (['compare'] as const) : []),
+  ];
   // A stale `page` selection after the page closed still leaves one tab focusable.
   const selected = tabs.includes(tab) ? tab : tabs[0];
 
@@ -76,7 +84,7 @@ export function InspectorTabs({ tab, onTab, counts, hasPage, onClose }: Inspecto
         onKeyDown={move}
       >
         {tabs.map((id) => {
-          const count = id === 'page' ? undefined : counts?.[id];
+          const count = id === 'page' || id === 'compare' ? undefined : counts?.[id];
           const isSelected = id === selected;
           return (
             <button

@@ -261,6 +261,8 @@ export interface ChatViewHandle {
   /// V7 — fork the conversation at the current (last) turn (⌘⇧F / palette).
   /// Resolves true when a turn existed and the fork was requested.
   forkConversationHere: () => Promise<boolean>;
+  /// Put version `position` of the last reply in use (Compare's "Use this one").
+  selectReplyVersion: (userMessageId: string, position: number) => Promise<void>;
   /// Open Retry ▾ on the last reply (palette). False when there is none to retry.
   openRetryWithModel: () => boolean;
   /// t0-3 — begin editing the last user message (palette).
@@ -390,6 +392,8 @@ interface ChatViewProps {
   onAllApps?: () => void;
   /// UI revamp: a turn's step line was clicked — open Activity on it.
   onOpenActivity?: (turnId: string) => void;
+  /// Compare the versions of the reply to this user message (the inspector).
+  onOpenCompare?: (userMessageId: string) => void;
   /// The transcript for the inspector's Activity and Sources tabs: persisted
   /// turns plus the live one, and document citations per turn. Sent when the
   /// turns or their steps change, not on every streamed token.
@@ -1009,6 +1013,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     onOpenApp,
     onAllApps,
     onOpenActivity,
+    onOpenCompare,
     onTranscriptChange,
     onRunStatusChange,
     onPickIdea,
@@ -3040,6 +3045,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       }
       return false;
     },
+    selectReplyVersion: (userMessageId: string, position: number) => selectReplyVersionOf(userMessageId, position),
     openRetryWithModel: () => {
       if (activeRequestId || editBusy || !retryPickerRef.current) return false;
       retryPickerRef.current.open();
@@ -3430,6 +3436,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             ? (position) => void selectReplyVersionOf(info.userMessageId, position)
             : undefined
         }
+        onCompare={onOpenCompare ? () => onOpenCompare(info.userMessageId) : undefined}
       />
     );
   }

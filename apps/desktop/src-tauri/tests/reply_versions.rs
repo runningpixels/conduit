@@ -244,3 +244,69 @@ async fn a_fork_copies_only_the_reply_in_use() {
     assert_eq!(texts, ["what is a quokka", "second answer wallaby"]);
     assert_eq!(stored_rows(&pool, &fork.id).await, 2);
 }
+
+fn texts(messages: &[provider_core::schema::Message]) -> Vec<String> {
+    messages
+        .iter()
+        .filter_map(|m| m.parts[0].content.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn compare_lists_every_version_with_its_messages() {
+    let pool = common::setup_pool().await;
+    let conv = retried_once(&pool).await;
+
+    let versions = reply_versions::versions(&pool, &conv, "u1").await.unwrap();
+    let summary: Vec<(u32, bool, Vec<String>)> = versions
+        .iter()
+        .map(|v| (v.position, v.current, texts(&v.messages)))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            (1, false, vec!["first answer marsupial".to_string()]),
+            (2, true, vec!["second answer wallaby".to_string()]),
+        ]
+    );
+
+    // A reply nobody retried has nothing to compare.
+    add(&pool, &conv, "u2", MessageRole::User, "and a wombat", 3).await;
+    add(&pool, &conv, "a3", MessageRole::Assistant, "a wombat is", 4).await;
+    assert!(reply_versions::versions(&pool, &conv, "u2")
+        .await
+        .unwrap()
+        .is_empty());
+    // The earlier reply still lists both.
+    assert_eq!(
+        reply_versions::versions(&pool, &conv, "u1")
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn an_earlier_version_forks_into_a_new_chat_that_continues_from_it() {
+    let pool = common::setup_pool().await;
+    let conv = retried_once(&pool).await;
+    add(&pool, &conv, "u2", MessageRole::User, "and a wombat", 3).await;
+    add(&pool, &conv, "a3", MessageRole::Assistant, "a wombat is", 4).await;
+
+    let fork = reply_versions::fork_version(&pool, &conv, "u1", 1, Some("Fork"))
+        .await
+        .unwrap();
+    let forked = messages::load_conversation_messages(&pool, &fork.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        texts(&forked),
+        ["what is a quokka", "first answer marsupial"]
+    );
+    // The source chat is untouched.
+    assert_eq!(thread(&pool, &conv).await, ["u1", "a2", "u2", "a3"]);
+    assert!(reply_versions::fork_version(&pool, &conv, "u1", 3, None)
+        .await
+        .is_err());
+}

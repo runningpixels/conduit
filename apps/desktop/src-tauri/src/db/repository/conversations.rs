@@ -802,77 +802,14 @@ pub async fn fork_at(
         .filter(|m| m.created_at <= cutoff)
         .collect();
 
-    let source = get(pool, source_conversation_id)
-        .await?
-        .ok_or_else(|| DbError::Query("source conversation not found".into()))?;
-    let source_folder_id: Option<String> =
-        sqlx::query_scalar("SELECT folder_id FROM conversations WHERE id = ?")
-            .bind(source_conversation_id)
-            .fetch_one(pool)
-            .await?;
-
-    let mut tx = pool.begin().await?;
-
-    let fork_id = Uuid::new_v4().to_string();
-    let now = now_iso8601();
-    let label = fork_label.unwrap_or("Fork");
-
-    sqlx::query(
-        "INSERT INTO conversations \
-         (id, title, forked_from_conversation_id, fork_point_message_id, \
-          workspace_root, generation_controls, user_instructions, folder_id, \
-          metadata, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    insert_fork(
+        pool,
+        source_conversation_id,
+        fork_point_message_id,
+        fork_label,
+        &to_copy,
     )
-    .bind(&fork_id)
-    .bind(label)
-    .bind(source_conversation_id)
-    .bind(fork_point_message_id)
-    .bind(&source.workspace_root)
-    .bind(serialize_generation_controls(
-        source.generation_controls.as_ref(),
-    ))
-    .bind(&source.user_instructions)
-    .bind(&source_folder_id)
-    .bind(fork_metadata(&source))
-    .bind(&now)
-    .bind(&now)
-    .execute(&mut *tx)
-    .await?;
-
-    messages::insert_copied_messages_in_txn(&mut tx, &fork_id, &to_copy).await?;
-
-    sqlx::query(
-        "INSERT INTO conversation_skills (conversation_id, skill_id) \
-         SELECT ?, skill_id FROM conversation_skills WHERE conversation_id = ?",
-    )
-    .bind(&fork_id)
-    .bind(source_conversation_id)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query(
-        "INSERT INTO conversation_collections (conversation_id, collection_id) \
-         SELECT ?, collection_id FROM conversation_collections WHERE conversation_id = ?",
-    )
-    .bind(&fork_id)
-    .bind(source_conversation_id)
-    .execute(&mut *tx)
-    .await?;
-
-    tx.commit().await?;
-
-    Ok(Conversation {
-        id: fork_id,
-        title: Some(label.to_string()),
-        created_at: now.clone(),
-        updated_at: now,
-        cloud_id: None,
-        metadata: fork_metadata(&source).and_then(|s| serde_json::from_str(&s).ok()),
-        workspace_root: source.workspace_root,
-        generation_controls: source.generation_controls,
-        user_instructions: source.user_instructions,
-    })
+    .await
 }
 
 /// Delete `message_id` and every later message in the conversation (parts cascade),
@@ -972,6 +909,28 @@ pub async fn fork_before(
         .ok_or_else(|| DbError::Query("fork point message not found".into()))?;
     let to_copy: Vec<&provider_core::schema::Message> = source_msgs[..idx].iter().collect();
 
+    insert_fork(
+        pool,
+        source_conversation_id,
+        before_message_id,
+        fork_label,
+        &to_copy,
+    )
+    .await
+}
+
+/// Create a fork of `source_conversation_id` holding copies of `to_copy`
+/// (new ids), with the source's workspace, controls, instructions, folder,
+/// skills and collections. `fork_point_message_id` is recorded as where it
+/// branched off.
+pub(crate) async fn insert_fork(
+    pool: &SqlitePool,
+    source_conversation_id: &str,
+    fork_point_message_id: &str,
+    fork_label: Option<&str>,
+    to_copy: &[&provider_core::schema::Message],
+) -> Result<Conversation, DbError> {
+    use crate::db::repository::messages;
     let source = get(pool, source_conversation_id)
         .await?
         .ok_or_else(|| DbError::Query("source conversation not found".into()))?;
@@ -997,7 +956,7 @@ pub async fn fork_before(
     .bind(&fork_id)
     .bind(label)
     .bind(source_conversation_id)
-    .bind(before_message_id)
+    .bind(fork_point_message_id)
     .bind(&source.workspace_root)
     .bind(serialize_generation_controls(
         source.generation_controls.as_ref(),
@@ -1010,7 +969,7 @@ pub async fn fork_before(
     .execute(&mut *tx)
     .await?;
 
-    messages::insert_copied_messages_in_txn(&mut tx, &fork_id, &to_copy).await?;
+    messages::insert_copied_messages_in_txn(&mut tx, &fork_id, to_copy).await?;
 
     sqlx::query(
         "INSERT INTO conversation_skills (conversation_id, skill_id) \

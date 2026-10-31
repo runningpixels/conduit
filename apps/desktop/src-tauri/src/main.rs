@@ -340,6 +340,8 @@ fn main() {
             prepare_retry,
             list_reply_versions,
             select_reply_version,
+            get_reply_versions,
+            fork_reply_version,
             fork_conversation,
             prepare_message_edit,
             set_conversation_chat_settings,

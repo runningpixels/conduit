@@ -3694,5 +3694,13 @@
   "chat.replyVersions.restored": "再試行で応答が得られなかったため、以前の応答に戻しました。",
   "chat.retryModel.title": "別のモデルで再試行",
   "workspace.commandPalette.command.retryWithModel": "別のモデルで再試行…",
-  "app.status.nothingToRetry": "再試行できる応答がありません"
+  "app.status.nothingToRetry": "再試行できる応答がありません",
+  "chat.replyVersions.compare": "比較",
+  "chat.replyVersions.compareTitle": "バージョンを並べて表示",
+  "inspector.tabs.compare": "比較",
+  "inspector.compare.ariaLabel": "応答のバージョン（並べて表示）",
+  "inspector.compare.empty": "この応答のバージョンは 1 つだけです。",
+  "inspector.compare.inUse": "使用中",
+  "inspector.compare.use": "これを使う",
+  "inspector.compare.fork": "このバージョンから分岐"
 }

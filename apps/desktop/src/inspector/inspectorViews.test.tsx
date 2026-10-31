@@ -253,6 +253,15 @@ describe('InspectorTabs', () => {
     expect(screen.getByRole('tab', { name: /Activity/ })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it("offers Compare only while a reply's versions are open", () => {
+    const { rerender } = render(
+      <InspectorTabs tab="activity" onTab={() => {}} hasPage={false} onClose={() => {}} />,
+    );
+    expect(screen.queryByRole('tab', { name: 'Compare' })).toBeNull();
+    rerender(<InspectorTabs tab="compare" onTab={() => {}} hasPage={false} hasCompare onClose={() => {}} />);
+    expect(screen.getByRole('tab', { name: 'Compare' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('closes', () => {
     const onClose = vi.fn();
     render(<TabsHarness onClose={onClose} />);

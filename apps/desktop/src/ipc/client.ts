@@ -1365,6 +1365,29 @@ export async function selectReplyVersion(
   return invokeCommand<void>('select_reply_version', { conversationId, userMessageId, position });
 }
 
+/** One version of a reply, with its messages (Compare). */
+export interface ReplyVersion {
+  /** 1-based, in the order the versions were written. */
+  position: number;
+  /** The version the chat uses. */
+  current: boolean;
+  messages: Message[];
+}
+
+/** Every version of the reply to `userMessageId`; empty when it has only one. */
+export async function getReplyVersions(conversationId: string, userMessageId: string): Promise<ReplyVersion[]> {
+  return invokeCommand<ReplyVersion[]>('get_reply_versions', { conversationId, userMessageId });
+}
+
+/** A new chat continuing from version `position` of a reply; returns it. */
+export async function forkReplyVersion(
+  conversationId: string,
+  userMessageId: string,
+  position: number,
+): Promise<Conversation> {
+  return invokeCommand<Conversation>('fork_reply_version', { conversationId, userMessageId, position });
+}
+
 /** Fork a conversation at a message; returns the new conversation. */
 export async function forkConversation(
   conversationId: string,

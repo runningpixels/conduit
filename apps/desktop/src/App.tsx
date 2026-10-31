@@ -81,6 +81,7 @@ import { ContextTabs } from './shell/ContextTabs';
 import { HomePage, type HomeAction, type WorkflowTarget } from './home/HomePage';
 import { researchUnavailableReasonId } from './chat/researchAvailability';
 import { InspectorTabs, type InspectorTab } from './inspector/InspectorTabs';
+import { CompareView } from './inspector/CompareView';
 import { ActivityView } from './inspector/ActivityView';
 import { SourcesView } from './inspector/SourcesView';
 import { turnActivity, turnSites } from './inspector/turnActivity';
@@ -162,6 +163,7 @@ import {
   listStarterApps,
   exportDiagnostics,
   forkConversation,
+  forkReplyVersion,
   previewConversationExport,
   setConversationTitle,
 } from './ipc/client';
@@ -741,9 +743,12 @@ export default function App() {
   const [focusTurnId, setFocusTurnId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<ChatTranscript>({ turns: [], citations: {} });
   const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
+  /** The question whose reply's versions the Compare tab shows. */
+  const [compareUserMessageId, setCompareUserMessageId] = useState<string | null>(null);
   useEffect(() => {
     setInspectorTab('page');
     setFocusTurnId(null);
+    setCompareUserMessageId(null);
   }, [activeConversationId]);
   // Opening a page (or the model writing one) brings the Page tab forward.
   useEffect(() => {
@@ -765,9 +770,16 @@ export default function App() {
   );
   const closeInspector = useCallback(() => {
     setInspectorTab('page');
+    setCompareUserMessageId(null);
     if (panelOverlay.narrow) hidePanelOverlay();
     else collapseDocPanel();
   }, [panelOverlay.narrow, hidePanelOverlay, collapseDocPanel]);
+  /** Changes when the thread's turns do (not on every streamed word): Compare reloads. */
+  const transcriptTurnKey = useMemo(() => transcript.turns.map((turn) => turn.id).join(' '), [transcript.turns]);
+  const lastUserTurnId = useMemo(
+    () => [...transcript.turns].reverse().find((turn) => turn.role === 'user')?.id ?? null,
+    [transcript.turns],
+  );
   const inspectorCounts = useMemo(() => {
     const latest = [...transcript.turns].reverse().find((x) => x.role === 'assistant');
     const activity = latest ? turnActivity(latest).length : 0;
@@ -2272,6 +2284,24 @@ export default function App() {
     async (conversationId: string, forkMessageId: string) => {
       try {
         const fork = await forkConversation(conversationId, forkMessageId);
+        setActiveConversationId(fork.id);
+        clearWorkspaceArtifactSelection();
+        await refreshConversations();
+        setStatus(makeStatus(t('app.status.conversationForked'), 'success'));
+      } catch (error) {
+        setStatus(
+          makeStatus(error instanceof Error ? error.message : t('app.status.forkConversationFailed'), 'error'),
+        );
+      }
+    },
+    [clearWorkspaceArtifactSelection, refreshConversations],
+  );
+
+  /** Fork from a version of a reply (Compare): a new chat continuing from it. */
+  const handleForkReplyVersion = useCallback(
+    async (conversationId: string, userMessageId: string, position: number) => {
+      try {
+        const fork = await forkReplyVersion(conversationId, userMessageId, position);
         setActiveConversationId(fork.id);
         clearWorkspaceArtifactSelection();
         await refreshConversations();
@@ -4040,6 +4070,10 @@ export default function App() {
             }}
             onOpenSettings={(section) => openSettings(section as SettingsSection | undefined)}
             onOpenActivity={(turnId) => openInspector('activity', turnId)}
+            onOpenCompare={(userMessageId) => {
+              setCompareUserMessageId(userMessageId);
+              openInspector('compare');
+            }}
             onTranscriptChange={setTranscript}
             onRunStatusChange={setRunStatus}
             pendingAgentView={pendingAgentView}
@@ -4336,6 +4370,7 @@ export default function App() {
               onTab={(tab) => openInspector(tab)}
               counts={inspectorCounts}
               hasPage={panelHasContent}
+              hasCompare={compareUserMessageId != null}
               onClose={closeInspector}
             />
           }
@@ -4346,6 +4381,15 @@ export default function App() {
                 focusTurnId={focusTurnId}
                 onSelectTurn={setFocusTurnId}
                 networkLog={chatArtifacts.flatMap((a) => readArtifactNetworkLog(artifactPrincipal(a.id)))}
+              />
+            ) : inspectorTab === 'compare' && compareUserMessageId && activeConversationId ? (
+              <CompareView
+                conversationId={activeConversationId}
+                userMessageId={compareUserMessageId}
+                reloadKey={transcriptTurnKey}
+                canUse={lastUserTurnId === compareUserMessageId}
+                onUse={(position) => void chatViewRef.current?.selectReplyVersion(compareUserMessageId, position)}
+                onFork={(position) => void handleForkReplyVersion(activeConversationId, compareUserMessageId, position)}
               />
             ) : inspectorTab === 'sources' ? (
               <SourcesView

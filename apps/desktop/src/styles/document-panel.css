@@ -1126,6 +1126,40 @@ html[data-theme="dark"] .doc-view-btn.active { background: var(--card-hi); filte
 .inspector-row-main { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .inspector-row-meta { flex: 0 0 auto; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-xl); }
 
+/* Compare: a reply's versions side by side, one column each. Past what the
+   panel holds the row scrolls sideways; a phone-width panel stacks them. */
+.compare-view { align-content: start; }
+.compare-columns {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: var(--sp-3);
+  align-items: start;
+  overflow-x: auto;
+}
+.compare-column {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+}
+.compare-column[data-current] { border-color: var(--line-hi); }
+.compare-column-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
+.compare-in-use { font-size: var(--fs-md); color: var(--ink-2); }
+.compare-stats { margin: 0; font-family: var(--font-mono); font-size: var(--fs-md); color: var(--ink-3); }
+.compare-body { min-width: 0; color: var(--ink); }
+.compare-body .turn.assistant { margin: 0; }
+/* No hover reveal in a column: Copy and the usage line are what it compares. */
+.compare-body .turn-actions { opacity: 1; pointer-events: auto; }
+.compare-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+@media (max-width: 720px) {
+  .compare-columns { grid-auto-flow: row; grid-auto-columns: auto; overflow-x: visible; }
+}
+
 /* Activity timeline: status glyph · mono tool name over its detail · duration. */
 .activity-steps { list-style: none; margin: 0; padding: 0; display: grid; }
 .activity-step {

@@ -3694,5 +3694,13 @@
   "chat.replyVersions.restored": "Der neue Versuch hat keine Antwort geliefert, daher ist die vorherige Antwort wieder da.",
   "chat.retryModel.title": "Mit einem anderen Modell erneut versuchen",
   "workspace.commandPalette.command.retryWithModel": "Mit einem anderen Modell erneut versuchen…",
-  "app.status.nothingToRetry": "Keine Antwort zum erneuten Versuchen"
+  "app.status.nothingToRetry": "Keine Antwort zum erneuten Versuchen",
+  "chat.replyVersions.compare": "Vergleichen",
+  "chat.replyVersions.compareTitle": "Die Versionen nebeneinander anzeigen",
+  "inspector.tabs.compare": "Vergleich",
+  "inspector.compare.ariaLabel": "Versionen der Antwort nebeneinander",
+  "inspector.compare.empty": "Diese Antwort hat nur eine Version.",
+  "inspector.compare.inUse": "Wird verwendet",
+  "inspector.compare.use": "Diese verwenden",
+  "inspector.compare.fork": "Ab dieser Version verzweigen"
 }

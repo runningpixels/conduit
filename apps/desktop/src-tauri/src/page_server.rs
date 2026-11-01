@@ -47,8 +47,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::{rngs::SysRng, TryRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
@@ -215,7 +214,9 @@ impl PageServer {
                 Some((secret, r)) => (secret, r.principals, r.port, r.previous_ports, false),
                 None => {
                     let mut secret = [0u8; 32];
-                    OsRng.fill_bytes(&mut secret);
+                    SysRng
+                        .try_fill_bytes(&mut secret)
+                        .expect("the OS random source failed");
                     (secret, BTreeSet::new(), None, Vec::new(), true)
                 }
             };
@@ -342,7 +343,8 @@ fn bind_port(stored: Option<u16>) -> std::io::Result<(std::net::TcpListener, u16
     }
     for _ in 0..PORT_ATTEMPTS {
         let span = u32::from(PORT_RANGE.end() - PORT_RANGE.start()) + 1;
-        let port = PORT_RANGE.start() + (OsRng.next_u32() % span) as u16;
+        let port = PORT_RANGE.start()
+            + (SysRng.try_next_u32().expect("the OS random source failed") % span) as u16;
         if Some(port) == stored {
             continue;
         }

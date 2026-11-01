@@ -1,6 +1,6 @@
 //! Encryption-at-rest (Phase 3, M6) — application-level AES-256-GCM, tier-gated.
 //!
-//! The master key is a 256-bit `OsRng` random value wrapped in the OS keychain
+//! The master key is a 256-bit value from the OS random source (`SysRng`) wrapped in the OS keychain
 //! (reusing the `credentials.rs` keyring pattern, ADR-004 opaque-ref). Per-row
 //! values are encrypted with AES-256-GCM and stored as
 //! `enc:v1:<b64 nonce>:<b64 ciphertext+tag>`. Blob files carry a 6-byte magic
@@ -23,8 +23,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::{rngs::SysRng, TryRng};
 use sqlx::SqlitePool;
 use std::{fs, path::Path};
 use zeroize::Zeroize;
@@ -166,7 +165,9 @@ impl Encryption {
         })?;
         let cipher = Aes256Gcm::new(&key.0.into());
         let mut nonce_bytes = [0u8; NONCE_LEN];
-        OsRng.fill_bytes(&mut nonce_bytes);
+        SysRng
+            .try_fill_bytes(&mut nonce_bytes)
+            .expect("the OS random source failed");
         let nonce = Nonce::from_slice(&nonce_bytes);
         let ciphertext = cipher
             .encrypt(nonce, plaintext.as_bytes())
@@ -227,7 +228,9 @@ impl Encryption {
         })?;
         let cipher = Aes256Gcm::new(&key.0.into());
         let mut nonce_bytes = [0u8; NONCE_LEN];
-        OsRng.fill_bytes(&mut nonce_bytes);
+        SysRng
+            .try_fill_bytes(&mut nonce_bytes)
+            .expect("the OS random source failed");
         let ct = cipher
             .encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
             .map_err(|e| DbError::Query(format!("aes-gcm encrypt blob: {e}")))?;
@@ -269,7 +272,9 @@ fn load_or_create_key(service: &str) -> Result<EncryptionKey, EncryptionInitErro
     }
     // First run: generate a fresh key and store it.
     let mut key_bytes = [0u8; KEY_LEN];
-    OsRng.fill_bytes(&mut key_bytes);
+    SysRng
+        .try_fill_bytes(&mut key_bytes)
+        .expect("the OS random source failed");
     entry
         .set_password(&B64.encode(key_bytes))
         .map_err(|e| EncryptionInitError::KeyUnavailable(e.to_string()))?;
@@ -294,7 +299,9 @@ fn decode_stored_key(stored: &str) -> Result<EncryptionKey, EncryptionInitError>
 /// Generate a fresh random key without touching the keychain. Used by `rotate`.
 pub fn generate_key() -> EncryptionKey {
     let mut key_bytes = [0u8; KEY_LEN];
-    OsRng.fill_bytes(&mut key_bytes);
+    SysRng
+        .try_fill_bytes(&mut key_bytes)
+        .expect("the OS random source failed");
     EncryptionKey(key_bytes)
 }
 

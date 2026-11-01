@@ -134,17 +134,17 @@ tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
 # A native message box when the app cannot start (no window exists yet). Same
 # version and features as tauri-plugin-dialog uses, so nothing new is built.
-rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }
+rfd = { version = "0.17", default-features = false, features = ["common-controls-v6"] }
 tauri-plugin-shell = "2"
 # Desktop notifications for scheduled workflow runs (shown from Rust; the
 # renderer passes the translated text through `notify_workflow_run`).
-tauri-plugin-notification = "~2.5"
+tauri-plugin-notification = "~2.8"
 # Keep running with the window closed: one instance only (a second launch
 # focuses the first, so there is never a second scheduler), and an opt-in
 # start at sign-in. Pinned to the releases that still build on tauri 2.11
 # (the next minors need 2.12, which the npm packages aren't on yet).
 tauri-plugin-single-instance = "~2.5"
-tauri-plugin-autostart = "~2.6"
+tauri-plugin-autostart = "~2.7"
 # The optional quick-ask shortcut (off by default). Registered from Rust only;
 # the webview gets no `global-shortcut:*` permission. 2.4 needs tauri 2.12.
 tauri-plugin-global-shortcut = "~2.4"

@@ -1,0 +1,7 @@
+[env]
+# Test threads get 8 MB instead of Rust's 2 MB default. Windows debug builds
+# overflow the default in workflows::a_runs_agents_announce_when_they_start_and_end
+# (the agent hand-off futures are large unoptimized), and a crashed test binary
+# prints no `test result`, so its other tests silently drop out of a summary.
+# Only affects binaries cargo runs (tests, `cargo run`); release bundles are unchanged.
+RUST_MIN_STACK = "8388608"

@@ -118,19 +118,58 @@ export interface ToolSearchSplit {
  * built-in and web tools) plus every connector tool. Above them, `builtin`
  * plus `search_tools` instead of the connector tools: the backend searches
  * the full catalog and loads what the model finds for the rest of the turn.
+ * A connector the user's `message` names keeps its tools offered directly
+ * (when they fit the thresholds on their own): with only `search_tools`,
+ * models took the always-offered `web_fetch` for "… Use Microsoft Learn".
  * Approvals are unchanged either way: they apply when a tool runs.
  */
 export function applyToolSearch(
   builtin: ToolDefinition[],
   connectorDefs: ToolDefinition[],
+  message = '',
 ): ToolSearchSplit {
   if (!shouldDeferConnectorTools(connectorDefs)) {
     return { offered: dedupeToolsByName([...builtin, ...connectorDefs]), deferred: [] };
   }
+  const named = namedConnectors(connectorDefs, message);
+  const direct = connectorDefs.filter((tool) => named.has(connectorOf(tool)));
+  if (direct.length === 0 || shouldDeferConnectorTools(direct)) {
+    return {
+      offered: dedupeToolsByName([...builtin, searchToolsWithConnectors(connectorDefs)]),
+      deferred: connectorDefs,
+    };
+  }
+  const deferred = connectorDefs.filter((tool) => !named.has(connectorOf(tool)));
   return {
-    offered: dedupeToolsByName([...builtin, searchToolsWithConnectors(connectorDefs)]),
-    deferred: connectorDefs,
+    offered: dedupeToolsByName([
+      ...builtin,
+      ...direct,
+      ...(deferred.length > 0 ? [searchToolsWithConnectors(deferred)] : []),
+    ]),
+    deferred,
   };
+}
+
+/** The connector a tool belongs to, as the user sees it. */
+function connectorOf(tool: ToolDefinition): string {
+  return tool.displayGroup ?? tool.name.split('__')[0] ?? '';
+}
+
+/** Lowercased letters and digits, every other run as one space:
+ *  "Microsoft_Learn" and "microsoft learn." fold alike. */
+function foldName(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+/** The connectors whose name appears as whole words in `message`. */
+function namedConnectors(connectorDefs: ToolDefinition[], message: string): Set<string> {
+  const folded = ` ${foldName(message)} `;
+  const named = new Set<string>();
+  for (const name of new Set(connectorDefs.map(connectorOf))) {
+    const key = foldName(name);
+    if (key && folded.includes(` ${key} `)) named.add(name);
+  }
+  return named;
 }
 
 /** `search_tools`, its description naming the connectors it searches: told

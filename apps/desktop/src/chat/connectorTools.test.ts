@@ -180,6 +180,40 @@ describe('applyToolSearch', () => {
     expect(search?.description).toMatch(/Connected: Tracker, Files\.$/);
   });
 
+  it('offers a connector the message names directly, and searches the rest', () => {
+    const learn: ToolDefinition = {
+      ...connectorTool(0),
+      toolId: 'Microsoft_Learn__microsoft_docs_search',
+      name: 'Microsoft_Learn__microsoft_docs_search',
+      displayGroup: 'Microsoft_Learn',
+    };
+    const connectors = [...tools(TOOL_SEARCH_MAX_TOOLS), learn];
+    const split = applyToolSearch(builtin, connectors, 'How do I update PowerShell on Windows 11? Use Microsoft Learn.');
+    expect(names(split.offered)).toEqual(['current_time', learn.name, SEARCH_TOOLS_TOOL_NAME]);
+    expect(split.deferred).toEqual(tools(TOOL_SEARCH_MAX_TOOLS));
+    const search = split.offered.find((tool) => tool.name === SEARCH_TOOLS_TOOL_NAME);
+    expect(search?.description).toMatch(/Connected: Tracker\.$/);
+  });
+
+  it('matches a connector name as whole words only', () => {
+    const files = tools(TOOL_SEARCH_MAX_TOOLS).map((tool, n) => ({
+      ...tool,
+      toolId: `Files__tool_${n}`,
+      name: `Files__tool_${n}`,
+      displayGroup: 'Files',
+    }));
+    const connectors = [...files, connectorTool(0)];
+    expect(applyToolSearch(builtin, connectors, 'Track my parcels').deferred).toEqual(connectors);
+    expect(applyToolSearch(builtin, connectors, 'what does the TRACKER say?').deferred).toEqual(files);
+  });
+
+  it('still searches when the named connector alone is too big to offer', () => {
+    const connectors = tools(TOOL_SEARCH_MAX_TOOLS + 1);
+    const split = applyToolSearch(builtin, connectors, 'Ask Tracker');
+    expect(names(split.offered)).toEqual(['current_time', SEARCH_TOOLS_TOOL_NAME]);
+    expect(split.deferred).toEqual(connectors);
+  });
+
   it('defers a few connector tools whose definitions are too long', () => {
     const connectors = tools(3, Math.ceil(TOOL_SEARCH_MAX_CHARS / 3) + 1);
     expect(JSON.stringify(connectors).length).toBeGreaterThan(TOOL_SEARCH_MAX_CHARS);

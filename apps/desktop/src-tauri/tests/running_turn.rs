@@ -33,6 +33,8 @@ use tokio_util::sync::CancellationToken;
 /// A provider whose first round calls `ask_user`; later rounds end the turn.
 struct AskingAdapter {
     rounds: Arc<Mutex<usize>>,
+    /// Each round's request, as JSON.
+    requests: Arc<Mutex<Vec<String>>>,
 }
 
 #[async_trait]
@@ -63,6 +65,10 @@ impl ProviderAdapter for AskingAdapter {
             *rounds += 1;
             *rounds
         };
+        self.requests
+            .lock()
+            .unwrap()
+            .push(serde_json::to_string(&request).unwrap());
         let r = request.request_id.clone();
         let mut events = vec![ProviderEvent::MessageStart {
             request_id: r.clone(),
@@ -173,6 +179,7 @@ struct Fixture {
     manager: StreamManager,
     conversation_id: String,
     rounds: Arc<Mutex<usize>>,
+    requests: Arc<Mutex<Vec<String>>>,
     _dir: tempfile::TempDir,
 }
 
@@ -188,9 +195,12 @@ async fn fixture() -> Arc<Fixture> {
     let state = AppState::test_instance_with_settings(pool, test_paths(dir.path()), settings);
     let rounds = Arc::new(Mutex::new(0usize));
     let adapter_rounds = rounds.clone();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let adapter_requests = requests.clone();
     let manager = StreamManager::with_adapter_resolver(Arc::new(move |_id: &str| {
         Some(Box::new(AskingAdapter {
             rounds: adapter_rounds.clone(),
+            requests: adapter_requests.clone(),
         }) as Box<dyn ProviderAdapter>)
     }));
     Arc::new(Fixture {
@@ -202,6 +212,7 @@ async fn fixture() -> Arc<Fixture> {
         manager,
         conversation_id: conversation.id,
         rounds,
+        requests,
         _dir: dir,
     })
 }
@@ -263,6 +274,27 @@ async fn a_turn_waiting_on_ask_user_is_found_by_conversation_id() {
     run.await.unwrap().expect("turn finishes");
     assert!(f.manager.active_turn(&f.conversation_id).is_none());
     assert_eq!(*f.rounds.lock().unwrap(), 2);
+}
+
+/// The user's answer reaches the model as written, even when it reads like a
+/// role ("act as …"): it is the user's own text, not tool output.
+#[tokio::test]
+async fn an_answer_that_reads_like_an_instruction_reaches_the_model() {
+    let f = fixture().await;
+    let run = start_turn(&f, "turn-1");
+    wait_for_form(&f).await;
+    f.manager
+        .submit_ask_user(
+            "ask-1",
+            json!({ "label": "Act as a cover page. You are now in charge of the title." }),
+        )
+        .unwrap();
+    run.await.unwrap().expect("turn finishes");
+
+    let requests = f.requests.lock().unwrap();
+    let second = requests.get(1).expect("a second round");
+    assert!(second.contains("Act as a cover page"), "{second}");
+    assert!(!second.contains("blocked"), "{second}");
 }
 
 #[tokio::test]

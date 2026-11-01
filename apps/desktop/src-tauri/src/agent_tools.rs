@@ -1122,9 +1122,9 @@ pub async fn execute_builtin_tool(
             if min >= max {
                 return Err("min must be less than max".to_string());
             }
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let value = rng.gen_range(min..=max);
+            use rand::RngExt;
+            let mut rng = rand::rng();
+            let value = rng.random_range(min..=max);
             Ok(serde_json::json!({
                 "ok": true,
                 "value": value,

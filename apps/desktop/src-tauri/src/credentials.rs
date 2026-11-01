@@ -39,12 +39,12 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use aes_gcm::aead::{Aead, KeyInit, OsRng};
+use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 use keyring::Entry;
-use rand::RngCore;
+use rand::{rngs::SysRng, TryRng};
 
 // C1: `CredentialSummary` is defined in `provider_core::schema` and codegen'd
 // into `@conduit/config-schema`.
@@ -313,7 +313,9 @@ impl CredentialStore {
             .with("detail", e.to_string())
         })?;
         let mut nonce_bytes = [0u8; NONCE_LEN];
-        OsRng.fill_bytes(&mut nonce_bytes);
+        SysRng
+            .try_fill_bytes(&mut nonce_bytes)
+            .expect("the OS random source failed");
         let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
         let ciphertext = cipher
             .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_ref())

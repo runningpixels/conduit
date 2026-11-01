@@ -2111,9 +2111,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             ? selectBuiltinWebTools(searchBackend)
             : []
           : selectTurnWebTools(searchBackend, turnSettings);
-    // Many connector tools: offer `search_tools` instead of all of them. The
-    // bindings above keep the full catalog, so a found tool still runs.
-    return applyToolSearch(dedupeToolsByName([...builtinTools, ...webTools]), connectorTools).offered;
+    // Many connector tools: offer `search_tools` instead of all of them, but
+    // the tools of a connector the prompt names directly. The bindings above
+    // keep the full catalog, so a found tool still runs.
+    return applyToolSearch(dedupeToolsByName([...builtinTools, ...webTools]), connectorTools, prompt).offered;
   }
 
   function applyRuntimeEventToActiveStream(
@@ -2339,6 +2340,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             imageGenerationConsentAcknowledged: imageGenerationConsented(),
           }),
           await loadConnectorToolDefinitions(),
+          trimmed,
         ).offered;
         const systemPrompt = composeSystemPrompt(
           [baseSystemPrompt(), turnSystemAppendix(estimateTools)],

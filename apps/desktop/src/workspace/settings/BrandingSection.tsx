@@ -565,7 +565,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
                 type="text"
                 value={identity.appName}
                 placeholder={appName()}
-                onChange={(e) => setIdentity((prev) => ({ ...prev, appName: e.target.value }))}
+                onChange={({ target: { value } }) => setIdentity((prev) => ({ ...prev, appName: value }))}
               />
             </label>
             <label className="field">
@@ -575,7 +575,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
                 type="text"
                 value={identity.displayName}
                 placeholder={identity.appName || appName()}
-                onChange={(e) => setIdentity((prev) => ({ ...prev, displayName: e.target.value }))}
+                onChange={({ target: { value } }) => setIdentity((prev) => ({ ...prev, displayName: value }))}
               />
             </label>
             <label className="field">
@@ -587,7 +587,7 @@ export function BrandingSection({ settings, onUpdate, onStatus, onBrandChange }:
                 placeholder={t('settings.branding.identity.taglinePlaceholder', {
                   name: identity.appName || appName(),
                 })}
-                onChange={(e) => setIdentity((prev) => ({ ...prev, tagline: e.target.value }))}
+                onChange={({ target: { value } }) => setIdentity((prev) => ({ ...prev, tagline: value }))}
               />
             </label>
           </div>

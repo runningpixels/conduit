@@ -208,10 +208,10 @@ export function AppDetailsDialog({
                 <input
                   type="checkbox"
                   checked={keep.has(origin)}
-                  onChange={(e) =>
+                  onChange={({ target: { checked } }) =>
                     setKeep((current) => {
                       const next = new Set(current);
-                      if (e.target.checked) next.add(origin);
+                      if (checked) next.add(origin);
                       else next.delete(origin);
                       return next;
                     })

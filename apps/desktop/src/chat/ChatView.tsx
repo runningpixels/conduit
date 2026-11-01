@@ -2862,7 +2862,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           // Skip when the turn ended with an error: the turn already says why,
           // and a guess here ("No artifact content detected") contradicts it.
           // Not in a deck or draft chat: there the turn writes the deck or draft, not a document.
-          if (!deck && !draft && !continuing && looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded && !errorText) {
+          // Nor when this turn made the chat a deck ("a 7-slide deck" reads as an artifact request).
+          const startedDeck = finalState.toolCalls.some(
+            (tc) => tc.name === START_DECK_TOOL_NAME && tc.status === 'completed',
+          );
+          if (!deck && !draft && !continuing && !startedDeck && looksLikeArtifactCreationRequest(trimmed) && !docToolsSucceeded && !errorText) {
             const failedDocTools = failedDocumentToolCalls(finalState);
             const hasFences = detectArtifactCandidates(content).length > 0;
             if (failedDocTools.length > 0) {

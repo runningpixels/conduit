@@ -3261,14 +3261,8 @@ impl StreamManager {
             "text": content,
         });
 
-        if let Err(risk) = validate_reinjection(&result_value) {
-            warn!(
-                tool_call_id = %tool_call_id,
-                risk = %risk.reason(),
-                "ask_user answers failed reinjection validation"
-            );
-            return Err("ask_user answers blocked by reinjection gate".to_string());
-        }
+        // No reinjection check: these are the user's own words, not tool
+        // output ("It should act as a cover page" is an answer, not an attack).
 
         let completed = ToolCallRecord {
             id: tool_call_id.to_string(),
@@ -3395,11 +3389,14 @@ impl StreamManager {
                     match tool_calls::latest_tool_result(pool, &state.encryption, &record.id).await
                     {
                         Ok(Some((value, _is_error))) => {
-                            let raw = if value
-                                .get("user_authored")
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false)
-                            {
+                            // Only ask_user writes `user_authored`; another tool's output
+                            // claiming it is still checked.
+                            let user_authored = record.tool_id == agent_tools::ASK_USER_TOOL
+                                && value
+                                    .get("user_authored")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                            let raw = if user_authored {
                                 value
                                     .get("text")
                                     .and_then(|t| t.as_str())
@@ -3408,7 +3405,12 @@ impl StreamManager {
                             } else {
                                 value.to_string()
                             };
-                            match validate_reinjection(&value) {
+                            // The user's own answers are not checked: they are not tool output.
+                            match if user_authored {
+                                Ok(())
+                            } else {
+                                validate_reinjection(&value)
+                            } {
                                 Ok(()) => raw,
                                 Err(risk) => {
                                     warn!(

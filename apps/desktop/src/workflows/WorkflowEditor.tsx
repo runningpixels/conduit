@@ -264,7 +264,7 @@ function StepCard({
         <input
           type="checkbox"
           checked={step.onlyIfChanged === true}
-          onChange={(e) => update((s) => withOnlyIfChanged(s, e.target.checked))}
+          onChange={({ target: { checked } }) => update((s) => withOnlyIfChanged(s, checked))}
         />
         {t('workspace.workflows.editor.onlyIfChanged')}
       </label>
@@ -324,9 +324,9 @@ function StepCard({
               min={1}
               max={20}
               value={step.maxResults ?? 5}
-              onChange={(e) =>
+              onChange={({ target: { value } }) =>
                 update((s) =>
-                  s.type === 'web_search' ? { ...s, maxResults: Math.max(1, Math.min(20, Number(e.target.value) || 1)) } : s,
+                  s.type === 'web_search' ? { ...s, maxResults: Math.max(1, Math.min(20, Number(value) || 1)) } : s,
                 )
               }
             />
@@ -362,8 +362,8 @@ function StepCard({
             <select
               className="sel"
               value={step.format}
-              onChange={(e) =>
-                update((s) => (s.type === 'parse_data' ? { ...s, format: e.target.value as DataFormat } : s))
+              onChange={({ target: { value } }) =>
+                update((s) => (s.type === 'parse_data' ? { ...s, format: value as DataFormat } : s))
               }
             >
               {DATA_FORMATS.map((format) => (
@@ -390,8 +390,8 @@ function StepCard({
             <select
               className="sel"
               value={step.depth}
-              onChange={(e) =>
-                update((s) => (s.type === 'research' ? { ...s, depth: e.target.value as typeof step.depth } : s))
+              onChange={({ target: { value } }) =>
+                update((s) => (s.type === 'research' ? { ...s, depth: value as typeof step.depth } : s))
               }
             >
               {RESEARCH_DEPTHS.map((depth) => (
@@ -433,7 +433,7 @@ function StepCard({
               min={1}
               max={MAX_TOP_K}
               value={step.topK ?? DEFAULT_TOP_K}
-              onChange={(e) => update((s) => withTopK(s, Number(e.target.value)))}
+              onChange={({ target: { value } }) => update((s) => withTopK(s, Number(value)))}
             />
           </label>
         </>
@@ -496,7 +496,7 @@ function StepCard({
             <select
               className="sel"
               value={step.items}
-              onChange={(e) => update((s) => (s.type === 'for_each' ? { ...s, items: e.target.value } : s))}
+              onChange={({ target: { value } }) => update((s) => (s.type === 'for_each' ? { ...s, items: value } : s))}
             >
               <option value="">{t('workspace.workflows.editor.forEach.choose')}</option>
               {sources.map((source) => (
@@ -538,8 +538,8 @@ function StepCard({
               <select
                 className="sel"
                 value={step.format ?? 'markdown'}
-                onChange={(e) =>
-                  update((s) => (s.type === 'save_artifact' ? { ...s, format: e.target.value as 'markdown' | 'html' } : s))
+                onChange={({ target: { value } }) =>
+                  update((s) => (s.type === 'save_artifact' ? { ...s, format: value as 'markdown' | 'html' } : s))
                 }
               >
                 <option value="markdown">{t('workspace.workflows.editor.save.markdown')}</option>
@@ -551,8 +551,8 @@ function StepCard({
               <select
                 className="sel"
                 value={step.mode ?? 'update'}
-                onChange={(e) =>
-                  update((s) => (s.type === 'save_artifact' ? { ...s, mode: e.target.value as 'update' | 'create' } : s))
+                onChange={({ target: { value } }) =>
+                  update((s) => (s.type === 'save_artifact' ? { ...s, mode: value as 'update' | 'create' } : s))
                 }
               >
                 <option value="update">{t('workspace.workflows.editor.save.update')}</option>
@@ -626,10 +626,10 @@ function StepCard({
                 <input
                   type="checkbox"
                   checked={(step.tools ?? []).includes(tool)}
-                  onChange={(e) =>
+                  onChange={({ target: { checked } }) =>
                     // Kept in the catalog's order, so the stored list is stable.
                     update((s) =>
-                      s.type === 'agent' ? { ...s, tools: withBuiltinTool(s.tools ?? [], tool, e.target.checked) } : s,
+                      s.type === 'agent' ? { ...s, tools: withBuiltinTool(s.tools ?? [], tool, checked) } : s,
                     )
                   }
                 />
@@ -664,7 +664,7 @@ function StepCard({
                       type="checkbox"
                       checked={on}
                       disabled={!on && (step.agents ?? []).length >= MAX_HELPER_LINKS}
-                      onChange={(e) => update((s) => withStepHelper(s, helper.id, e.target.checked))}
+                      onChange={({ target: { checked } }) => update((s) => withStepHelper(s, helper.id, checked))}
                     />
                     {helper.name || (helper.library ? libNames[helper.library] : '') || helper.id}
                   </label>
@@ -731,8 +731,8 @@ function StepCard({
               className="mem-input"
               rows={3}
               value={(step.choices ?? []).join('\n')}
-              onChange={(e) =>
-                update((s) => (s.type === 'ask' ? { ...s, choices: e.target.value.split('\n') } : s))
+              onChange={({ target: { value } }) =>
+                update((s) => (s.type === 'ask' ? { ...s, choices: value.split('\n') } : s))
               }
               // Blank lines only while typing; they go when the box is left.
               onBlur={() =>
@@ -747,8 +747,8 @@ function StepCard({
             <input
               className="mem-input"
               value={step.default ?? ''}
-              onChange={(e) =>
-                update((s) => (s.type === 'ask' ? { ...s, default: e.target.value.trim() ? e.target.value : null } : s))
+              onChange={({ target: { value } }) =>
+                update((s) => (s.type === 'ask' ? { ...s, default: value.trim() ? value : null } : s))
               }
             />
           </label>
@@ -789,8 +789,8 @@ function StepCard({
             <select
               className="sel"
               value={step.is}
-              onChange={(e) =>
-                update((s) => withConditionTest(s, e.target.value as (typeof CONDITION_TESTS)[number]))
+              onChange={({ target: { value } }) =>
+                update((s) => withConditionTest(s, value as (typeof CONDITION_TESTS)[number]))
               }
             >
               {CONDITION_TESTS.map((test) => (
@@ -825,8 +825,8 @@ function StepCard({
             <select
               className="sel"
               value={step.is}
-              onChange={(e) =>
-                update((s) => withConditionTest(s, e.target.value as (typeof CONDITION_TESTS)[number]))
+              onChange={({ target: { value } }) =>
+                update((s) => withConditionTest(s, value as (typeof CONDITION_TESTS)[number]))
               }
             >
               {CONDITION_TESTS.map((test) => (
@@ -890,7 +890,7 @@ function StepCard({
           <input
             type="checkbox"
             checked={step.onError === 'skip'}
-            onChange={(e) => update((s) => ({ ...s, onError: e.target.checked ? 'skip' : 'fail' }))}
+            onChange={({ target: { checked } }) => update((s) => ({ ...s, onError: checked ? 'skip' : 'fail' }))}
           />
           {t('workspace.workflows.editor.keepGoing')}
         </label>

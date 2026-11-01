@@ -211,7 +211,7 @@ export function ProjectSettingsDialog({
                   disabled={!draft}
                   placeholder={t('shell.projects.settings.instructionsPlaceholder')}
                   value={draft?.userInstructions ?? ''}
-                  onChange={(e) => set((d) => ({ ...d, userInstructions: e.target.value }))}
+                  onChange={({ target: { value } }) => set((d) => ({ ...d, userInstructions: value }))}
                 />
               </label>
 
@@ -254,7 +254,7 @@ export function ProjectSettingsDialog({
                     <input
                       type="checkbox"
                       checked={collectionIds.includes(c.id)}
-                      onChange={(e) => set((d) => ({ ...d, collectionIds: toggled(d.collectionIds, c.id, e.target.checked) }))}
+                      onChange={({ target: { checked } }) => set((d) => ({ ...d, collectionIds: toggled(d.collectionIds, c.id, checked) }))}
                     />
                     {t('workspace.workflows.editor.searchDocs.option', { name: c.name, count: c.documentCount })}
                   </label>
@@ -293,7 +293,7 @@ export function ProjectSettingsDialog({
                     <input
                       type="checkbox"
                       checked={skillIds.includes(s.id)}
-                      onChange={(e) => set((d) => ({ ...d, skillIds: toggled(d.skillIds, s.id, e.target.checked) }))}
+                      onChange={({ target: { checked } }) => set((d) => ({ ...d, skillIds: toggled(d.skillIds, s.id, checked) }))}
                     />
                     {s.name}
                   </label>

@@ -64,7 +64,7 @@ export function AskUserBlock({ toolCallId, title, fields, onDone }: AskUserBlock
             <select
               value={values[field.id] ?? ''}
               disabled={busy}
-              onChange={(e) => setValues((v) => ({ ...v, [field.id]: e.target.value }))}
+              onChange={({ target: { value } }) => setValues((v) => ({ ...v, [field.id]: value }))}
             >
               <option value="">{t('chat.askUser.choosePlaceholder')}</option>
               {field.options.map((opt) => (
@@ -78,7 +78,7 @@ export function AskUserBlock({ toolCallId, title, fields, onDone }: AskUserBlock
               type="text"
               value={values[field.id] ?? ''}
               disabled={busy}
-              onChange={(e) => setValues((v) => ({ ...v, [field.id]: e.target.value }))}
+              onChange={({ target: { value } }) => setValues((v) => ({ ...v, [field.id]: value }))}
             />
           )}
         </label>

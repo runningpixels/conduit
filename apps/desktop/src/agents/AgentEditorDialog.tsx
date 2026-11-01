@@ -164,7 +164,7 @@ export function AgentEditorDialog({
                   autoFocus
                   placeholder={t('workspace.workflows.helpers.namePlaceholder')}
                   value={draft.name}
-                  onChange={(e) => set((d) => ({ ...d, name: e.target.value }))}
+                  onChange={({ target: { value } }) => set((d) => ({ ...d, name: value }))}
                 />
               </label>
               <label className="app-field agent-editor-instructions">
@@ -174,7 +174,7 @@ export function AgentEditorDialog({
                   rows={9}
                   placeholder={t('shell.agents.editor.instructionsPlaceholder')}
                   value={draft.instructions}
-                  onChange={(e) => set((d) => ({ ...d, instructions: e.target.value }))}
+                  onChange={({ target: { value } }) => set((d) => ({ ...d, instructions: value }))}
                 />
               </label>
               <WorkflowModelRow
@@ -195,7 +195,7 @@ export function AgentEditorDialog({
                 step={1000}
                 placeholder={String(DEFAULT_HELPER_TOKENS)}
                 value={draft.maxTokens ?? ''}
-                onChange={(e) => set((d) => withHelperTokens(d, e.target.value === '' ? null : Number(e.target.value)))}
+                onChange={({ target: { value } }) => set((d) => withHelperTokens(d, value === '' ? null : Number(value)))}
               />
             </label>
           </section>
@@ -212,7 +212,7 @@ export function AgentEditorDialog({
                     <input
                       type="checkbox"
                       checked={tools.includes(tool)}
-                      onChange={(e) => set((d) => ({ ...d, tools: withBuiltinTool(d.tools ?? [], tool, e.target.checked) }))}
+                      onChange={({ target: { checked } }) => set((d) => ({ ...d, tools: withBuiltinTool(d.tools ?? [], tool, checked) }))}
                     />
                     {agentToolText(tool, t)}
                   </label>
@@ -222,7 +222,7 @@ export function AgentEditorDialog({
                 <input
                   type="checkbox"
                   checked={tools.includes(COMPUTER_TOOL)}
-                  onChange={(e) => set((d) => ({ ...d, tools: withComputerTool(d.tools ?? [], e.target.checked) }))}
+                  onChange={({ target: { checked } }) => set((d) => ({ ...d, tools: withComputerTool(d.tools ?? [], checked) }))}
                 />
                 {t('workspace.workflows.editor.agent.computer')}
               </label>
@@ -246,7 +246,7 @@ export function AgentEditorDialog({
                           type="checkbox"
                           checked={on}
                           disabled={!on && linked.length >= MAX_HELPER_LINKS}
-                          onChange={(e) => set((d) => withHelperLink(d, other.agent.id, e.target.checked))}
+                          onChange={({ target: { checked } }) => set((d) => withHelperLink(d, other.agent.id, checked))}
                         />
                         {other.agent.name || other.agent.id}
                       </label>

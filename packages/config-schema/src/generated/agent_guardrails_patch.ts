@@ -4,4 +4,4 @@
  * A partial update to [`AgentGuardrails`]: only the fields present change, so
  * saving one setting never resets the others to their defaults.
  */
-export type AgentGuardrailsPatch = { maxSteps?: number, wallClockBudgetSecs?: number, finishAfterDocumentWrite?: boolean, handoffAgents?: Array<string>, parallelHelpers?: number, };
+export type AgentGuardrailsPatch = { maxSteps?: number, wallClockBudgetSecs?: number, finishAfterDocumentWrite?: boolean, notifyWhenDone?: boolean, handoffAgents?: Array<string>, parallelHelpers?: number, };

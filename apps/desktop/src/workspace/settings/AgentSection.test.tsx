@@ -13,15 +13,26 @@ function settingsWith(agent: AppSettings['agent']): AppSettings {
 describe('AgentSection finish-after-document-write toggle', () => {
   it('is on when the setting has never been saved', () => {
     render(<AgentSection settings={settingsWith({ maxSteps: 25, wallClockBudgetSecs: 300 })} onUpdate={vi.fn()} onStatus={vi.fn()} />);
-    expect(screen.getByLabelText(/Finish after writing a document/)).toBeChecked();
+    expect(screen.getByLabelText(/Finish after creating a document/)).toBeChecked();
   });
 
   it('saves the choice with the other guardrails', () => {
     const onUpdate = vi.fn();
     render(<AgentSection settings={settingsWith({ maxSteps: 25, wallClockBudgetSecs: 300 })} onUpdate={onUpdate} onStatus={vi.fn()} />);
-    fireEvent.click(screen.getByLabelText(/Finish after writing a document/));
+    fireEvent.click(screen.getByLabelText(/Finish after creating a document/));
     expect(onUpdate).toHaveBeenCalledWith({
       agent: { maxSteps: 25, wallClockBudgetSecs: 300, finishAfterDocumentWrite: false },
+    });
+  });
+
+  it('notifies when a long reply finishes unless turned off', () => {
+    const onUpdate = vi.fn();
+    render(<AgentSection settings={settingsWith({ maxSteps: 25, wallClockBudgetSecs: 300 })} onUpdate={onUpdate} onStatus={vi.fn()} />);
+    const toggle = screen.getByLabelText(/Notify me when a long reply finishes/);
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    expect(onUpdate).toHaveBeenCalledWith({
+      agent: { maxSteps: 25, wallClockBudgetSecs: 300, notifyWhenDone: false },
     });
   });
 });

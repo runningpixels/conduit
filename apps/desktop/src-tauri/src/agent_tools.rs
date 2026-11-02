@@ -1621,9 +1621,53 @@ fn brand_palette_schema() -> Value {
     })
 }
 
+/// Titles are plain text, but models often write them HTML-escaped
+/// ("Maple &amp; Rye"), which then shows verbatim. One left-to-right pass, so
+/// "&amp;lt;" ends as the text "&lt;", as a browser would show it.
+fn decode_title_entities(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    let mut rest = title;
+    while let Some(at) = rest.find('&') {
+        out.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let entity = rest[1..]
+            .find(';')
+            .filter(|&end| end <= 10)
+            .map(|end| &rest[1..=end]);
+        let decoded = entity.and_then(|name| match name {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "nbsp" => Some(' '),
+            _ => {
+                let code = name.strip_prefix('#')?;
+                let n = match code.strip_prefix(['x', 'X']) {
+                    Some(hex) => u32::from_str_radix(hex, 16).ok()?,
+                    None => code.parse().ok()?,
+                };
+                char::from_u32(n)
+            }
+        });
+        match (entity, decoded) {
+            (Some(name), Some(ch)) => {
+                out.push(ch);
+                rest = &rest[name.len() + 2..];
+            }
+            _ => {
+                out.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 fn resolve_title(title: Option<String>, filename: Option<String>) -> Option<String> {
     let trimmed = title.and_then(|t| {
-        let t = t.trim().to_string();
+        let t = decode_title_entities(&t).trim().to_string();
         if t.is_empty() {
             None
         } else {
@@ -3167,10 +3211,10 @@ async fn set_storyline(
     let title = match input
         .title
         .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
+        .map(decode_title_entities)
+        .filter(|t| !t.trim().is_empty())
     {
-        Some(title) => Some(slides::validate_title(title).map_err(slides::user_message)?),
+        Some(title) => Some(slides::validate_title(title.trim()).map_err(slides::user_message)?),
         None => None,
     };
     if let Some(text) = &input.assumptions {
@@ -4468,6 +4512,22 @@ async fn clipboard_write(text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_title_written_html_escaped_reads_as_plain_text() {
+        let t = |s: &str| resolve_title(Some(s.to_string()), None).unwrap();
+        assert_eq!(t("Maple &amp; Rye Bakery"), "Maple & Rye Bakery");
+        assert_eq!(
+            t("&quot;Q3&quot; &lt;draft&gt; &#39;24 &#x2014; caf&#233;"),
+            "\"Q3\" <draft> '24 — café"
+        );
+        assert_eq!(t("Tom &amp;amp; Jerry"), "Tom &amp; Jerry");
+        assert_eq!(
+            t("R&D & more &bogus; &#xZZ; &"),
+            "R&D & more &bogus; &#xZZ; &"
+        );
+        assert_eq!(t(" &nbsp;Notes "), "Notes");
+    }
 
     #[test]
     fn test_calculator_basic() {

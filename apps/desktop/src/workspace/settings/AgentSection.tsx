@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { AppSettings, LibraryAgent } from '../../ipc/contracts';
 import type { AgentGuardrails } from '@conduit/config-schema';
 import { useT } from '../../i18n';
+import { appName } from '../../brand';
 import { listLibraryAgents } from '../../ipc/client';
 
 interface AgentSectionProps {
@@ -169,6 +170,22 @@ export function AgentSection({ settings, onUpdate, onStatus, onOpenAgents }: Age
           <span>{t('settings.agent.finishAfterDocumentWrite.label')}</span>
           <span style={{ gridColumn: 2, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
             {t('settings.agent.finishAfterDocumentWrite.hint')}
+          </span>
+        </label>
+
+        <label
+          htmlFor="agent-notify-when-done"
+          style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 8, rowGap: 4, alignItems: 'start', fontSize: 'var(--fs-3xl)' }}
+        >
+          <input
+            id="agent-notify-when-done"
+            type="checkbox"
+            checked={agent.notifyWhenDone ?? true}
+            onChange={(e) => patchAgent({ notifyWhenDone: e.target.checked })}
+          />
+          <span>{t('settings.agent.notifyWhenDone.label')}</span>
+          <span style={{ gridColumn: 2, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
+            {t('settings.agent.notifyWhenDone.hint', { appName: appName() })}
           </span>
         </label>
       </div>

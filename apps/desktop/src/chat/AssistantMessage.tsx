@@ -15,6 +15,7 @@ import { providerHueId } from '../lib/providerIdentity';
 import { useT } from '../i18n';
 import { TurnBody, proseCarriesCaret } from './TurnBody';
 import { ScheduleThisButton } from './ScheduleThisButton';
+import { turnDocumentInProgress, turnDocumentOutcomes } from './turnDocumentOutcome';
 
 export { groupToolCalls, synthesizeSegments, toolCallStaysInline } from './TurnBody';
 
@@ -35,6 +36,9 @@ interface AssistantMessageProps {
   messageId?: string;
   /// Conversation artifacts, for the in-chat result cards.
   artifacts?: Artifact[];
+  /** Live turn only: the chat's artifacts, used just to name the document
+   *  the turn is working on (the live turn has no cards). */
+  documentTitles?: Artifact[];
   /// Per-artifact file-state, for the card state dots.
   fileStateMap?: Record<string, FileState>;
   /// Promote a detected fenced-block candidate to an artifact (App handles the
@@ -93,6 +97,73 @@ interface AssistantMessageProps {
   onOpenHandoff?: (toolCallId: string) => void;
 }
 
+/** Under a turn that created or changed documents: "Still working on “Menu”…"
+ *  while it runs, "✓ Done · Updated “Menu” · 3 changes" once it ended, and
+ *  "Stopped before finishing" when it failed or was stopped. Said from what
+ *  the tools did, since the model's last words ("Now the script:") often read
+ *  as more to come. */
+function TurnDocumentLine({
+  state,
+  artifacts,
+  messageId,
+  onOpenArtifact,
+}: {
+  state: AssistantStreamState;
+  artifacts?: Artifact[];
+  messageId?: string;
+  onOpenArtifact?: (artifactId: string) => void;
+}) {
+  const t = useT();
+  const listed = artifacts ?? [];
+  if (state.streaming) {
+    if (state.askUser) return null;
+    const working = turnDocumentInProgress(state, listed);
+    if (working === undefined) return null;
+    return (
+      <p className="turn-doc-line live" role="status">
+        <span className="live-dot" aria-hidden="true" />
+        {working
+          ? t('chat.turnOutcome.working', { title: working })
+          : t('chat.turnOutcome.workingUntitled')}
+      </p>
+    );
+  }
+  const outcomes = turnDocumentOutcomes(state, listed, messageId);
+  if (outcomes.length === 0) return null;
+  const stopped = !!state.error || !!state.interrupted;
+  return (
+    <div className={`turn-doc-line ${stopped ? 'stopped' : 'done'}`} role="status">
+      <span className="turn-doc-state">
+        {stopped ? null : <CheckIcon />}
+        {stopped ? t('chat.turnOutcome.stopped') : t('chat.turnOutcome.done')}
+      </span>
+      {outcomes.map((outcome, i) => {
+        const title = outcome.title || t('chat.turnOutcome.untitled');
+        const label = outcome.created
+          ? t('chat.turnOutcome.created', { title })
+          : t('chat.turnOutcome.updated', { title, count: outcome.changes });
+        return (
+          <span key={outcome.artifactId ?? i} className="turn-doc-item">
+            <span aria-hidden="true">·</span>
+            {outcome.artifactId && onOpenArtifact ? (
+              <button
+                type="button"
+                className="turn-doc-open"
+                title={t('chat.turnOutcome.openTitle', { title })}
+                onClick={() => onOpenArtifact(outcome.artifactId!)}
+              >
+                {label}
+              </button>
+            ) : (
+              <span>{label}</span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /** P3.9 — live elapsed-time counter for the streaming header. */
 function useLiveElapsed(active: boolean): number {
   const [elapsed, setElapsed] = useState(0);
@@ -126,6 +197,7 @@ export function AssistantMessage({
   showModelLine = true,
   messageId,
   artifacts,
+  documentTitles,
   fileStateMap,
   onPromoteArtifact,
   onOpenArtifact,
@@ -334,6 +406,12 @@ export function AssistantMessage({
             {t('chat.assistant.continueReply')}
           </button>
         )}
+      <TurnDocumentLine
+        state={state}
+        artifacts={artifacts ?? documentTitles}
+        messageId={messageId}
+        onOpenArtifact={onOpenArtifact}
+      />
       {state.toolCalls.some((tc) => tc.handoff) && <HandoffTotals state={state} />}
       {messageId && onOpenArtifact && (
         <AssistantArtifactStrip

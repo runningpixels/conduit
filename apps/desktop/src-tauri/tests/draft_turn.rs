@@ -298,6 +298,7 @@ impl Studio {
                 max_steps: 25,
                 wall_clock_budget_secs,
                 finish_after_document_write: None,
+                notify_when_done: None,
                 handoff_agents: Vec::new(),
                 parallel_helpers: 3,
             },

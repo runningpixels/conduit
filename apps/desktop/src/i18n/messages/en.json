@@ -2535,7 +2535,6 @@
   "workspace.documentPanel.expandTitleWithShortcut": "Expand artifact ({shortcut})",
   "workspace.documentPanel.hidePanelAriaLabel": "Hide artifact panel",
   "workspace.documentPanel.hidePanelTitleWithShortcut": "Hide artifact panel ({shortcut})",
-  "workspace.documentPanel.inlinePayloadFallback": "(inline payload)",
   "workspace.documentPanel.menu.clearSiteData": "Clear site data",
   "workspace.documentPanel.menu.copied": "Copied",
   "workspace.documentPanel.menu.copyContents": "Copy contents",

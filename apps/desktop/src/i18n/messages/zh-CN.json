@@ -2535,7 +2535,6 @@
   "workspace.documentPanel.expandTitleWithShortcut": "展开工件（{shortcut}）",
   "workspace.documentPanel.hidePanelAriaLabel": "隐藏工件面板",
   "workspace.documentPanel.hidePanelTitleWithShortcut": "隐藏工件面板（{shortcut}）",
-  "workspace.documentPanel.inlinePayloadFallback": "（内嵌内容）",
   "workspace.documentPanel.menu.clearSiteData": "清除网站数据",
   "workspace.documentPanel.menu.copied": "已复制",
   "workspace.documentPanel.menu.copyContents": "复制内容",

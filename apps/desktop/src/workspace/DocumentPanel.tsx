@@ -897,7 +897,8 @@ export function DocumentPanel({
     }
   }
 
-  const artifactPath = artifact.contentPath ?? t('workspace.documentPanel.inlinePayloadFallback');
+  // Only a file-backed artifact has a path to show; one kept in the database has none.
+  const artifactPath = artifact.contentPath ?? null;
   const metaModified = fmt.timeAgo(artifact.updatedAt ?? artifact.createdAt);
   const metaSize = fmt.size(artifact.sizeBytes);
   const metaVersion = versionLabel(artifact);
@@ -1238,7 +1239,9 @@ export function DocumentPanel({
                 </button>
               )}
               <div className="menu-sep" role="separator" />
-              <div className="menu-label" title={artifactPath}>{artifactPath}</div>
+              {artifactPath ? (
+                <div className="menu-label" title={artifactPath}>{artifactPath}</div>
+              ) : null}
               <div className="doc-meta-row">
                 {t('workspace.documentPanel.menu.metaLine', { size: metaSize, modified: metaModified })}
                 {metaVersion ? <span className="tail">{metaVersion}</span> : null}
@@ -1458,7 +1461,9 @@ export function DocumentPanel({
       </div>
 
       <div className="panel-foot" aria-label={t('workspace.documentPanel.metadataAriaLabel')}>
-        <span className="foot-path" title={artifactPath}>{artifactPath}</span>
+        {artifactPath ? (
+          <span className="foot-path" title={artifactPath}>{artifactPath}</span>
+        ) : null}
         <span className="spacer" aria-hidden="true" />
         <span className="foot-meta mono">{footMeta}</span>
       </div>

@@ -118,7 +118,8 @@ pub fn model_accepts_images(provider_id: &str, model_id: &str) -> bool {
         "deepseek" => {
             crate::pricing::snapshot_accepts_images(&provider, model_id.trim()).unwrap_or(false)
         }
-        // Gateway presets (zai, moonshot, qwen, together, fireworks) deliberately
+        // Gateway presets (zai, moonshot, qwen, together, fireworks, cerebras,
+        // sambanova, deepinfra, novita, minimax, nvidia) deliberately
         // have no arm: their vision support is per-model, so they take the
         // heuristic below (provider-expansion plan, D8).
         "ollama" => ollama_model_accepts_images(&model),
@@ -213,7 +214,19 @@ mod tests {
 
     #[test]
     fn gateway_presets_use_the_model_heuristic() {
-        for provider in ["zai", "moonshot", "qwen", "together", "fireworks"] {
+        for provider in [
+            "zai",
+            "moonshot",
+            "qwen",
+            "together",
+            "fireworks",
+            "cerebras",
+            "sambanova",
+            "deepinfra",
+            "novita",
+            "minimax",
+            "nvidia",
+        ] {
             assert!(
                 model_accepts_images(provider, "qwen2.5-vl-72b-instruct"),
                 "{provider}"

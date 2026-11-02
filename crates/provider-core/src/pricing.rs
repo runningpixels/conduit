@@ -346,6 +346,56 @@ pub fn parse_openrouter_pricing(value: &serde_json::Value) -> Option<ModelPrice>
     })
 }
 
+/// The price a `/models` entry reports, in whichever shape its provider uses:
+/// - OpenRouter, SambaNova: `pricing.{prompt,completion}`, USD per token as strings;
+/// - DeepInfra: `metadata.pricing.{input_tokens,output_tokens}`, USD per million as numbers;
+/// - Novita: `pricing.{prompt,completion}.price_per_m_decimal`, USD per million as strings.
+///
+/// Shapes that are ambiguous are left out rather than guessed: Chutes puts
+/// numbers per million under the same `pricing.prompt` key, so a number there
+/// is not read as a price.
+pub fn parse_listed_price(item: &serde_json::Value) -> Option<ModelPrice> {
+    if let Some(price) = item.get("pricing").and_then(parse_openrouter_pricing) {
+        return Some(price);
+    }
+    let per_mtok = |v: Option<&serde_json::Value>| -> Option<f64> {
+        let v = v?;
+        let amount = match v {
+            serde_json::Value::Number(n) => n.as_f64()?,
+            serde_json::Value::String(s) => s.trim().parse().ok()?,
+            _ => return None,
+        };
+        (amount.is_finite() && amount >= 0.0).then_some(amount)
+    };
+    if let Some(p) = item.get("metadata").and_then(|m| m.get("pricing")) {
+        if let (Some(input), Some(output)) = (
+            per_mtok(p.get("input_tokens")),
+            per_mtok(p.get("output_tokens")),
+        ) {
+            return Some(ModelPrice {
+                input_per_mtok: input,
+                output_per_mtok: output,
+                cache_read_per_mtok: per_mtok(p.get("cache_read_tokens")),
+                cache_write_per_mtok: None,
+            });
+        }
+    }
+    let novita = |key: &str| {
+        per_mtok(
+            item.get("pricing")?
+                .get(key)?
+                .get("price_per_m_decimal")
+                .filter(|v| v.is_string()),
+        )
+    };
+    Some(ModelPrice {
+        input_per_mtok: novita("prompt")?,
+        output_per_mtok: novita("completion")?,
+        cache_read_per_mtok: novita("input_cache_read"),
+        cache_write_per_mtok: None,
+    })
+}
+
 /// Bounds a user-entered price must sit inside: finite, not negative, and below
 /// a ceiling no real model approaches (a typo guard, not a business rule).
 pub const MAX_PRICE_PER_MTOK: f64 = 10_000.0;
@@ -628,5 +678,52 @@ mod tests {
         assert!(!price_is_valid(&price(-1.0, 1.0)));
         assert!(!price_is_valid(&price(f64::NAN, 1.0)));
         assert!(!price_is_valid(&price(1.0, MAX_PRICE_PER_MTOK + 1.0)));
+    }
+
+    // Entries as each provider's `/models` returned them on 2026-11-01, trimmed.
+    #[test]
+    fn listed_price_reads_each_providers_shape() {
+        let sambanova = serde_json::json!({
+            "id": "DeepSeek-V3.1",
+            "pricing": { "completion": "0.00000450", "prompt": "0.00000300" }
+        });
+        let p = parse_listed_price(&sambanova).unwrap();
+        assert!((p.input_per_mtok - 3.0).abs() < 1e-9 && (p.output_per_mtok - 4.5).abs() < 1e-9);
+
+        let deepinfra = serde_json::json!({
+            "id": "MiniMaxAI/MiniMax-M3",
+            "metadata": { "pricing": { "input_tokens": 0.28, "output_tokens": 1.1, "cache_read_tokens": 0.056 } }
+        });
+        let p = parse_listed_price(&deepinfra).unwrap();
+        assert_eq!((p.input_per_mtok, p.output_per_mtok), (0.28, 1.1));
+        assert_eq!(p.cache_read_per_mtok, Some(0.056));
+
+        let novita = serde_json::json!({
+            "id": "deepseek/deepseek-v4.1-flash-1017",
+            "input_token_price_per_m": 3000,
+            "pricing": {
+                "prompt": { "price_per_m": 3000, "price_per_m_decimal": "0.3" },
+                "completion": { "price_per_m": 12000, "price_per_m_decimal": "1.2" },
+                "input_cache_read": { "price_per_m": 60, "price_per_m_decimal": "0.006" }
+            }
+        });
+        let p = parse_listed_price(&novita).unwrap();
+        assert_eq!((p.input_per_mtok, p.output_per_mtok), (0.3, 1.2));
+        assert_eq!(p.cache_read_per_mtok, Some(0.006));
+    }
+
+    #[test]
+    fn listed_price_leaves_ambiguous_and_missing_prices_out() {
+        // Chutes: numbers per million under OpenRouter's per-token key.
+        let chutes = serde_json::json!({ "id": "Qwen/Qwen3.8-27B-TEE", "pricing": { "prompt": 0.039, "completion": 1.25 } });
+        assert_eq!(parse_listed_price(&chutes), None);
+        // NVIDIA NIM lists no prices.
+        assert_eq!(
+            parse_listed_price(&serde_json::json!({ "id": "01-ai/yi-large" })),
+            None
+        );
+        // One side missing is no price.
+        let half = serde_json::json!({ "metadata": { "pricing": { "input_tokens": 0.2 } } });
+        assert_eq!(parse_listed_price(&half), None);
     }
 }

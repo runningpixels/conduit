@@ -1755,9 +1755,7 @@ impl ProviderAdapter for OpenAiAdapter {
                                 .get("name")
                                 .and_then(|v| v.as_str())
                                 .map(str::to_string),
-                            price: item
-                                .get("pricing")
-                                .and_then(crate::pricing::parse_openrouter_pricing),
+                            price: crate::pricing::parse_listed_price(item),
                             accepts_file_input: crate::vision::listed_file_input(item),
                         })
                     })

@@ -58,6 +58,25 @@ const STYLE_CLASS: Record<CellStyle, string> = {
   bad: 'sheet-style-bad',
 };
 
+/// Extra px a text cell may draw into: the run of empty cells to its right, as
+/// in Excel. Zero when the text fits or the next cell has content.
+export function spillWidth(
+  cells: readonly (SpreadsheetCellView | null)[],
+  widths: readonly number[],
+  col: number,
+): number {
+  const text = cells[col]?.display ?? '';
+  const need = text.length * CHAR_WIDTH + CELL_PADDING;
+  let room = widths[col] ?? 0;
+  let extra = 0;
+  for (let c = col + 1; c < widths.length && room < need; c += 1) {
+    if ((cells[c]?.display ?? '') !== '') break;
+    room += widths[c];
+    extra += widths[c];
+  }
+  return extra;
+}
+
 function cellClass(cell: SpreadsheetCellView | null, selected: boolean): string {
   const parts = ['sheet-cell'];
   if (cell) {
@@ -252,20 +271,27 @@ function SpreadsheetBook({ view, sheet, sheetIndex, selection, onSelect, onSelec
         {widths.map((width, c) => {
           const cell = cells[c] ?? null;
           const isSelected = selected?.row === r && selected.col === c;
+          const spill = cell?.kind === 'text' ? spillWidth(cells, widths, c) : 0;
           return (
             <div
               key={c}
               role="gridcell"
               aria-selected={isSelected}
               aria-colindex={c + 2}
-              className={cellClass(cell, isSelected)}
+              className={cellClass(cell, isSelected) + (spill > 0 ? ' sheet-cell-spill' : '')}
               style={{ width, minWidth: width }}
               onMouseDown={() => {
                 onSelect({ row: r, col: c });
                 scrollerRef.current?.focus({ preventScroll: true });
               }}
             >
-              {cell?.display ?? ''}
+              {spill > 0 ? (
+                <span className="sheet-spill" title={cell?.display} style={{ width: width + spill - CELL_PADDING }}>
+                  {cell?.display}
+                </span>
+              ) : (
+                (cell?.display ?? '')
+              )}
             </div>
           );
         })}

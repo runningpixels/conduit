@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Artifact } from '../../ipc/contracts';
-import { SpreadsheetRenderer, columnPixelWidth } from './SpreadsheetRenderer';
+import { SpreadsheetRenderer, columnPixelWidth, spillWidth } from './SpreadsheetRenderer';
 import type { SpreadsheetCellView, SpreadsheetSheetView, SpreadsheetView } from './types';
 
 vi.mock('../../ipc/client', () => ({
@@ -285,6 +285,22 @@ describe('SpreadsheetRenderer', () => {
     expect(screen.getByRole('grid')).toBeTruthy();
     await waitFor(() => expect(cellByText('Added row')).toBeTruthy());
     expect(mockView).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets long text run into empty cells to its right, as Excel does', async () => {
+    const widths = [columnPixelWidth(8), columnPixelWidth(8), columnPixelWidth(8)];
+    const long = text('Prices are typical street prices; edit any cell');
+    expect(spillWidth([long, null, null], widths, 0)).toBe(widths[1] + widths[2]);
+    // Stops at the first cell with content, and only takes what it needs.
+    expect(spillWidth([long, text('x'), null], widths, 0)).toBe(0);
+    expect(spillWidth([text('Medium label text'), null, null], widths, 0)).toBe(widths[1]);
+    expect(spillWidth([text('Fits')], widths, 0)).toBe(0);
+
+    mockView.mockResolvedValueOnce(viewOf([budgetSheet({ rows: [[long], [text('Short')]] })]));
+    render(<SpreadsheetRenderer artifact={art()} />);
+    const cell = await waitFor(() => cellByText(long.display));
+    expect(cell.classList.contains('sheet-cell-spill')).toBe(true);
+    expect(cellByText('Short').classList.contains('sheet-cell-spill')).toBe(false);
   });
 
   it('says so when the workbook has no sheets or a sheet is empty', async () => {

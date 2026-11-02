@@ -118,7 +118,6 @@
   white-space: pre;
   text-overflow: ellipsis;
   font-size: var(--fs-md);
-  font-variant-numeric: tabular-nums;
   background: var(--card);
   color: var(--ink);
   border-right: 1px solid var(--line-soft);
@@ -129,6 +128,20 @@
 .sheet-cell.sheet-cell-number,
 .sheet-cell.sheet-cell-bool {
   text-align: right;
+  /* Only numbers: in the UI font, tnum also widens text punctuation. */
+  font-variant-numeric: tabular-nums;
+}
+/* Text running into empty cells to its right; the span covers their gridlines. */
+.sheet-cell.sheet-cell-spill {
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+.sheet-spill {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: inherit;
 }
 .sheet-cell.sheet-cell-error {
   color: var(--err);

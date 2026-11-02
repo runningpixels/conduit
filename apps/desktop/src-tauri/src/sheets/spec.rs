@@ -30,6 +30,10 @@ const FORBIDDEN_FUNCTIONS: [&str; 9] = [
     "CELL",
 ];
 
+/// How far down a header label may sit and still lend its format to the
+/// column (`Sheet::effective_format`): a title, a blank row, then headers.
+const HEADER_ROWS: usize = 10;
+
 /// The named number formats and the Excel format each stands for.
 const NAMED_FORMATS: [(&str, &str); 8] = [
     ("currency", "$#,##0.00"),
@@ -170,11 +174,26 @@ impl Sheet {
         &mut row[col0]
     }
 
-    /// The format a cell shows with: its own, else its column's.
+    /// The format a cell shows with: its own, else its column's, else its
+    /// header's. Models often put a column's format on the header label, which
+    /// can't show it, meaning the cells below.
     pub fn effective_format(&self, row0: usize, col0: usize) -> Option<&str> {
         self.cell(row0, col0)
             .and_then(|c| c.format.as_deref())
             .or_else(|| self.columns.get(col0).and_then(|c| c.format.as_deref()))
+            .or_else(|| self.header_format(row0, col0))
+    }
+
+    /// The format on the nearest text label above (row0, col0) within the
+    /// first `HEADER_ROWS` rows, unless that format is text.
+    fn header_format(&self, row0: usize, col0: usize) -> Option<&str> {
+        (0..row0.min(HEADER_ROWS)).rev().find_map(|r| {
+            let cell = self.cell(r, col0)?;
+            match (&cell.value, cell.format.as_deref()) {
+                (Some(Scalar::Text(_)), Some(f)) if !matches!(f, "text" | "@") => Some(f),
+                _ => None,
+            }
+        })
     }
 }
 
@@ -362,6 +381,15 @@ pub fn parse_rows(
     let rows = value
         .as_array()
         .ok_or_else(|| format!("Sheet '{sheet}': rows must be an array of rows"))?;
+    // A flat array of cells is one row: a row is always an array, so this
+    // can't be read any other way.
+    let single;
+    let rows = if !rows.is_empty() && rows.iter().all(|r| !r.is_array()) {
+        single = [value.clone()];
+        &single[..]
+    } else {
+        &rows[..]
+    };
     rows.iter()
         .enumerate()
         .map(|(r, row)| {
@@ -800,6 +828,51 @@ mod tests {
     }
 
     #[test]
+    fn a_flat_array_of_cells_is_one_row() {
+        let rows = parse_rows(
+            &json!(["Phone", {"value": 90, "format": "currency"}]),
+            "S",
+            8,
+            0,
+        )
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][1].value, Some(Scalar::Number(90.0)));
+        // A mix is still an error, naming the row.
+        let e = parse_rows(&json!([["a"], "b"]), "S", 8, 0).unwrap_err();
+        assert!(e.contains("row 10"), "{e}");
+    }
+
+    #[test]
+    fn a_formatted_header_formats_its_column() {
+        let w = wb(
+            json!([{ "name": "S", "columns": [null, {"format": "integer"}], "rows": [
+                ["Budget"],
+                [{"value": "Planned", "format": "currency"}, {"value": "Qty", "format": "currency"},
+                 {"value": "Code", "format": "text"}],
+                [1500, 3, 7],
+                [{"value": 0.5, "format": "percent"}]
+            ]}]),
+        )
+        .unwrap();
+        let s = &w.sheets[0];
+        assert_eq!(s.effective_format(2, 0), Some("currency"));
+        // Its own and its column's format come first; a text format isn't lent.
+        assert_eq!(s.effective_format(3, 0), Some("percent"));
+        assert_eq!(s.effective_format(2, 1), Some("integer"));
+        assert_eq!(s.effective_format(2, 2), None);
+        // Only labels near the top count.
+        assert_eq!(s.effective_format(0, 0), None);
+        let mut far = s.clone();
+        far.cell_mut(40, 0).value = Some(Scalar::Number(1.0));
+        assert_eq!(far.effective_format(40, 0), Some("currency"));
+        far.rows[1][0].value = None;
+        far.cell_mut(12, 0).value = Some(Scalar::Text("Late".into()));
+        far.cell_mut(12, 0).format = Some("currency".into());
+        assert_eq!(far.effective_format(40, 0), None);
+    }
+
+    #[test]
     fn strings_that_look_like_formulas_stay_text() {
         let w =
             wb(json!([{ "name": "S", "rows": [["=1+1", "=HYPERLINK(\"x\")", "@SUM(1)", "+5"]] }]))
@@ -836,8 +909,8 @@ mod tests {
         assert!(e.contains("A1") && e.contains("loud"), "{e}");
         let e = wb(json!([{ "name": "BOM", "rows": [[{"bold": true}]] }])).unwrap_err();
         assert!(e.contains("bold"), "{e}");
-        let e = wb(json!([{ "name": "BOM", "rows": ["not a row"] }])).unwrap_err();
-        assert!(e.contains("row 1"), "{e}");
+        let e = wb(json!([{ "name": "BOM", "rows": [["a row"], "not a row"] }])).unwrap_err();
+        assert!(e.contains("row 2"), "{e}");
     }
 
     #[test]

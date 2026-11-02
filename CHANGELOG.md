@@ -9,8 +9,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [1.0.0-rc.20] - 2026-11-01
 
-Fewer wrongly blocked tool results, no more lost typing in dialogs, and a
-connector you name is used straight away.
+Fewer wrongly blocked tool results, and a connector you name is used straight
+away.
 
 ### Fixed
 
@@ -19,10 +19,9 @@ connector you name is used straight away.
   now ..." in the middle of a sentence was stopped as a prompt-injection
   attempt. Now only text that opens a sentence with an instruction counts, and
   your own answers to an agent's question are never blocked.
-- **Typing in dialogs is no longer lost.** The agent editor, project settings,
-  workflow editor, branding, the agent's question box and app details now read
-  what is in a field when you act, which fixes the rare case where typed text
-  came out blank or was dropped.
+- Fields in the agent editor, project settings, workflow editor, branding, the
+  agent's question box and app details read their value as you type, so a fast
+  edit can't come out blank.
 - No more "no artifact content" notice after a turn that started a slide deck.
 - **A connector you name is offered directly.** When your message names a
   connector (an MCP server), its tools are available straight away instead of

@@ -179,7 +179,13 @@ fn set_cell(
     cell: &Cell,
 ) -> Result<(), String> {
     let (r, c) = (row0 as i32 + 1, col0 as i32 + 1);
-    let format = sheet.effective_format(row0, col0);
+    let mut format = sheet.effective_format(row0, col0);
+    // A YYYY-MM-DD string with no format is a date, as when typed into Excel.
+    if let (None, None, Some(Scalar::Text(t))) = (format, &cell.formula, &cell.value) {
+        if date_serial(t).is_some() {
+            format = Some("date");
+        }
+    }
     if let Some(formula) = &cell.formula {
         // A formula that won't even parse is left empty here; evaluation
         // reports the rest.
@@ -189,7 +195,7 @@ fn set_cell(
             Some(Scalar::Number(n)) => model.update_cell_with_number(si, r, c, *n)?,
             Some(Scalar::Bool(b)) => model.update_cell_with_bool(si, r, c, *b)?,
             Some(Scalar::Text(t)) => {
-                // A YYYY-MM-DD string in a date-formatted cell is a date.
+                // A YYYY-MM-DD string in a date-formatted (or unformatted) cell is a date.
                 match (format, date_serial(t)) {
                     (Some("date"), Some(serial)) => {
                         model.update_cell_with_number(si, r, c, serial)?
@@ -481,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn dates_become_serials_only_with_the_date_format() {
+    fn date_strings_become_dates_unless_formatted_otherwise() {
         assert_eq!(date_serial("2026-11-02"), Some(46328.0));
         assert_eq!(date_serial("2000-01-01"), Some(36526.0));
         assert_eq!(date_serial("1900-03-01"), Some(61.0));
@@ -491,13 +497,17 @@ mod tests {
         let c = compute(&wb(json!([{ "name": "D", "columns": [null, null, null, {"format": "date"}],
             "rows": [
               [{"value": "2026-11-02", "format": "date"}, "2026-11-02", {"formula": "=A1+30", "format": "date"}],
-              ["x", null, null, "2026-12-25"]
+              ["x", {"value": "2026-11-02", "format": "text"}, "2026-13-01", "2026-12-25"]
             ]}])))
         .unwrap();
         assert_eq!(display(&c, "D", "A1"), "2026-11-02");
         assert_eq!(cell(&c, "D", "A1").kind, CellKind::Number);
-        // No date format on B1: it is text.
-        assert_eq!(cell(&c, "D", "B1").kind, CellKind::Text);
+        // No format on B1: a date all the same, shown as written.
+        assert_eq!(cell(&c, "D", "B1").kind, CellKind::Number);
+        assert_eq!(display(&c, "D", "B1"), "2026-11-02");
+        // A text format keeps it text; a non-date stays text.
+        assert_eq!(cell(&c, "D", "B2").kind, CellKind::Text);
+        assert_eq!(cell(&c, "D", "C2").kind, CellKind::Text);
         // D2 takes the column's date format.
         assert_eq!(cell(&c, "D", "D2").kind, CellKind::Number);
         assert_eq!(display(&c, "D", "D2"), "2026-12-25");

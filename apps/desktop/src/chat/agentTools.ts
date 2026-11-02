@@ -10,8 +10,10 @@ import { allowUserBranding } from '../brand/buildFlags';
 import type { Translate } from '../i18n';
 import { documentKindLabel } from '../lib/documentKind';
 import { CONTENT_FIELD_BY_TOOL } from './documentWriteScan';
+import sheetToolSchemas from './__fixtures__/sheetToolSchemas.json';
 
 const DOCUMENT_TOOL_GROUP = 'Documents';
+const SHEET_TOOL_GROUP = 'Spreadsheets';
 const BRAND_TOOL_GROUP = 'Branding';
 const IMAGE_TOOL_GROUP = 'Images';
 const DECK_TOOL_GROUP = 'Slides';
@@ -224,6 +226,34 @@ export function searchToolsDefinition(): ToolDefinition {
   const def = builtinToolDefinitions().find((tool) => tool.name === SEARCH_TOOLS_TOOL_NAME);
   if (!def) throw new Error('search_tools is missing from builtinToolDefinitions');
   return def;
+}
+
+/** The spreadsheet tools, in the order they are offered. */
+const SHEET_TOOL_ORDER = [
+  'create_spreadsheet',
+  'append_rows',
+  'update_cells',
+  'add_sheet',
+  'edit_sheet',
+  'read_spreadsheet',
+] as const;
+
+/**
+ * The spreadsheet tools are built from `__fixtures__/sheetToolSchemas.json`,
+ * the same text Rust's tests compare its definitions against (descriptions
+ * and schemas are inline there because Gemini's `parameters` has no `$ref`).
+ * Only `read_spreadsheet` is read-only.
+ */
+function spreadsheetToolDefinitions(): ToolDefinition[] {
+  const fixture = sheetToolSchemas as Record<string, { description: string; input_schema: Record<string, unknown> }>;
+  return SHEET_TOOL_ORDER.map((name) => ({
+    toolId: name,
+    name,
+    description: fixture[name].description,
+    inputSchema: fixture[name].input_schema,
+    permissionLevel: name === 'read_spreadsheet' ? ('readOnly' as const) : ('sideEffectful' as const),
+    displayGroup: SHEET_TOOL_GROUP,
+  }));
 }
 
 export function builtinToolDefinitions(): ToolDefinition[] {
@@ -827,6 +857,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     permissionLevel: 'sideEffectful',
     displayGroup: DECK_TOOL_GROUP,
   },
+  ...spreadsheetToolDefinitions(),
   // Draft tools (Writing): offered only in a draft's chat
   {
     toolId: 'read_draft',
@@ -953,14 +984,30 @@ export function builtinToolDefinitions(): ToolDefinition[] {
  * updated." for a tool that touched no document at all.
  */
 export const DOCUMENT_TOOL_NAMES = new Set(
-  builtinToolDefinitions().filter((tool) => tool.displayGroup === DOCUMENT_TOOL_GROUP).map(
-    (tool) => tool.name,
-  ),
+  builtinToolDefinitions()
+    .filter((tool) => tool.displayGroup === DOCUMENT_TOOL_GROUP || tool.displayGroup === SHEET_TOOL_GROUP)
+    .map((tool) => tool.name),
 );
 
-/** Document tools that create or edit content (excludes export). */
+/** The Spreadsheets group. They produce a `spreadsheet` artifact, so the
+ *  document panel and the tool cards treat them as document tools. */
+export const SPREADSHEET_TOOL_NAMES = new Set(
+  builtinToolDefinitions()
+    .filter((tool) => tool.displayGroup === SHEET_TOOL_GROUP)
+    .map((tool) => tool.name),
+);
+export const CREATE_SPREADSHEET_TOOL_NAME = 'create_spreadsheet';
+export const READ_SPREADSHEET_TOOL_NAME = 'read_spreadsheet';
+
+export function isSpreadsheetTool(name: string): boolean {
+  return SPREADSHEET_TOOL_NAMES.has(name);
+}
+
+/** Document tools that create or edit content (excludes export and reads). */
 export const DOCUMENT_CONTENT_TOOL_NAMES = new Set(
-  [...DOCUMENT_TOOL_NAMES].filter((name) => name !== 'export_document' && name !== 'read_document'),
+  [...DOCUMENT_TOOL_NAMES].filter(
+    (name) => name !== 'export_document' && name !== 'read_document' && name !== READ_SPREADSHEET_TOOL_NAME,
+  ),
 );
 
 /** `complete`: the model finished the arguments. `written`: the tool saved the document. */
@@ -994,7 +1041,7 @@ export function isDocumentContentTool(name: string): boolean {
 }
 
 export function isDocumentCreateTool(name: string): boolean {
-  return name.startsWith('write_') && DOCUMENT_CONTENT_TOOL_NAMES.has(name);
+  return (name.startsWith('write_') || name === CREATE_SPREADSHEET_TOOL_NAME) && DOCUMENT_CONTENT_TOOL_NAMES.has(name);
 }
 
 /** `patch_document`: a targeted change to a document that already exists. */
@@ -1003,6 +1050,7 @@ export function isDocumentPatchTool(name: string): boolean {
 }
 
 export function documentToolArtifactKind(toolName: string): Artifact['kind'] {
+  if (SPREADSHEET_TOOL_NAMES.has(toolName)) return 'spreadsheet';
   if (toolName.includes('html')) return 'html';
   if (toolName.includes('markdown')) return 'markdown';
   if (toolName.includes('json')) return 'json';
@@ -1244,6 +1292,105 @@ export function looksLikeDeckRequest(prompt: string): boolean {
   return /\b(slides?|slide\s+deck|deck|decks|presentations?|pitch\s+deck|keynote|powerpoint)\b/i.test(prompt);
 }
 
+/** Words that make "<word> sheet" a spreadsheet and not sheet music, a cheat
+ *  sheet, a fact sheet or a style sheet: a whitelist, so those never match. */
+const SHEET_QUALIFIERS =
+  'budget|budgeting|cost|costing|expenses?|forecast|forecasting|pricing|price|inventory|payroll|salary|bom|loan|mortgage|amortization|repayment|schedule|scheduling|sales|revenue|profit|financial|commission|attendance|grading|stock|invoice|savings|investment|portfolio';
+
+const SPREADSHEET_NOUN_REGEX = /\b(spreadsheets?|work\s?books?|xlsx|xlsm)\b/i;
+/** "Excel", but not the verb: "excel at math", "to excel in school". */
+const EXCEL_REGEX = /\bexcel\b(?!\s+(at|in)\b)/i;
+const SHEET_PHRASE_REGEX = new RegExp(
+  `\\b(${SHEET_QUALIFIERS})\\s+sheets?\\b|\\btime\\s?sheets?\\b|\\b(cost|financial|budget|forecast|revenue|loan)\\s+(model|template)\\b`,
+  'i',
+);
+const TABLE_TO_CALCULATE_REGEX =
+  /\b(tables?|grid)\b[^.?!\n]{0,40}\b(calculate|calculations?|formulas?|totals?|sums?|auto-?sum)\b|\b(pivot\s+tables?|loan\s+(schedule|amortization)|amortization\s+(schedule|table)|bill\s+of\s+materials)\b/i;
+const BOM_REGEX = /\bBOMs?\b/;
+/** The same asks in the app's other languages: the word for a spreadsheet or
+ *  workbook, or a table with totals or formulas (a wider gap than English
+ *  allows: German puts long compounds between the two). No `\b` around CJK
+ *  words. */
+const SPREADSHEET_I18N_REGEX = new RegExp(
+  [
+    // de
+    '\\b(tabellenkalkulation|kalkulationstabelle|arbeitsmappe)',
+    '\\btabelle\\b[^.?!\\n]{0,120}\\b(summen?|formeln?|berechn)',
+    // fr
+    '\\b(tableur|feuille de calcul|classeur)',
+    '\\btableau\\b[^.?!\\n]{0,120}\\b(totaux|total|formules?|calcul)',
+    // es
+    '\\bhojas? de c[aá]lculo',
+    '\\btabla\\b[^.?!\\n]{0,120}\\b(totales|total|f[oó]rmulas?|c[aá]lcul|calcul)',
+    // pt-BR
+    '\\bplanilhas?\\b',
+    '\\btabela\\b[^.?!\\n]{0,120}\\b(totais|total|f[oó]rmulas?|c[aá]lcul|calcul)',
+    // ja, ko, zh-CN
+    'スプレッドシート|表計算|エクセル|스프레드시트|엑셀|电子表格|工作簿',
+  ].join('|'),
+  'i',
+);
+
+/** The turn asks for a spreadsheet, workbook or Excel file, or a table to
+ *  calculate with, in English or the app's other languages (`intentOverride` covers app-authored prompts). */
+export function looksLikeSpreadsheetRequest(prompt: string): boolean {
+  const text = prompt.trim();
+  if (!text) return false;
+  return (
+    SPREADSHEET_NOUN_REGEX.test(text) ||
+    EXCEL_REGEX.test(text) ||
+    /\.xlsx?\b/i.test(text) ||
+    SHEET_PHRASE_REGEX.test(text) ||
+    TABLE_TO_CALCULATE_REGEX.test(text) ||
+    BOM_REGEX.test(text) ||
+    SPREADSHEET_I18N_REGEX.test(text)
+  );
+}
+
+/** A spreadsheet is open in the panel or listed for this chat. */
+export function hasSpreadsheetInScope(
+  listed: readonly Pick<Artifact, 'kind'>[],
+  preferred?: Pick<Artifact, 'kind'> | null,
+): boolean {
+  return preferred?.kind === 'spreadsheet' || listed.some((artifact) => artifact.kind === 'spreadsheet');
+}
+
+/**
+ * Names the spreadsheets of this chat with their `artifact_id`s, for a turn
+ * that is offered the spreadsheet edit tools: the id is what `read_spreadsheet`
+ * and the edit tools take, and an earlier turn's tool results are not kept.
+ * The one open in the panel comes first. Undefined when there is none.
+ */
+export function spreadsheetScopePrompt(
+  listed: readonly Pick<Artifact, 'id' | 'kind' | 'title'>[],
+  preferred?: Pick<Artifact, 'id' | 'kind' | 'title'> | null,
+): string | undefined {
+  const sheets = listed.filter((artifact) => artifact.kind === 'spreadsheet');
+  if (preferred?.kind === 'spreadsheet' && !sheets.some((artifact) => artifact.id === preferred.id)) {
+    sheets.unshift(preferred);
+  }
+  if (sheets.length === 0) return undefined;
+  const ordered = [...sheets].sort((a, b) => Number(b.id === preferred?.id) - Number(a.id === preferred?.id));
+  const lines = ordered
+    .slice(0, 5)
+    .map((artifact) => `- ${artifact.title ? `"${clipNoteValue(artifact.title)}" ` : ''}(artifact_id ${artifact.id})`);
+  return [
+    'Spreadsheets in this chat (use the artifact_id with read_spreadsheet, append_rows, update_cells, add_sheet and edit_sheet to change one; read it first when you need its cells):',
+    ...lines,
+  ].join('\n');
+}
+
+/**
+ * The spreadsheet tools for a turn. A request for a new spreadsheet gets all
+ * six; a turn in a chat that already has one gets `read_spreadsheet` and the
+ * edit tools, not `create_spreadsheet`.
+ */
+export function selectBuiltinSpreadsheetTools(mode: 'create' | 'edit'): ToolDefinition[] {
+  return builtinToolDefinitions().filter(
+    (tool) => tool.displayGroup === SHEET_TOOL_GROUP && (mode === 'create' || tool.name !== CREATE_SPREADSHEET_TOOL_NAME),
+  );
+}
+
 /** Document write and edit tools: left out of a deck-request turn so the model
  *  cannot take the document path instead of `start_deck`. */
 function isDocumentWriteOrEditTool(name: string): boolean {
@@ -1372,6 +1519,10 @@ export function selectBuiltinTurnTools(
    *  is on, its notice accepted and the app is not local-only; ignored
    *  outside a draft chat. */
   draftWebSearch?: boolean,
+  /** A spreadsheet is open in the panel or listed for this chat: a turn that
+   *  is not a request for a new document gets `read_spreadsheet` and the
+   *  spreadsheet edit tools, in any language. */
+  spreadsheetInScope?: boolean,
 ): { intent: DocumentTurnIntent; tools: ToolDefinition[] } {
   if (draftStage) {
     const webTools =
@@ -1415,11 +1566,26 @@ export function selectBuiltinTurnTools(
     ? builtinToolDefinitions().filter((tool) => tool.name === START_DECK_TOOL_NAME)
     : [];
   const documentTools = selectBuiltinDocumentTools(intent);
+  // A spreadsheet request swaps the document write and edit tools for the
+  // spreadsheet tools, as a deck request does for `start_deck`. In a chat that
+  // already has a spreadsheet, any turn that is not a new document gets the
+  // read and edit tools.
+  const spreadsheetRequest = looksLikeSpreadsheetRequest(prompt);
+  const spreadsheetTools = spreadsheetRequest
+    ? selectBuiltinSpreadsheetTools('create')
+    : spreadsheetInScope === true && intent !== 'create'
+      ? selectBuiltinSpreadsheetTools('edit')
+      : [];
   return {
     intent,
     tools: [
-      ...(deckRequest ? documentTools.filter((tool) => !isDocumentWriteOrEditTool(tool.name)) : documentTools),
+      ...(deckRequest || spreadsheetRequest
+        ? documentTools.filter(
+            (tool) => !isDocumentWriteOrEditTool(tool.name) && !(spreadsheetRequest && isDocumentPatchTool(tool.name)),
+          )
+        : documentTools),
       ...startDeckTools,
+      ...spreadsheetTools,
       ...selectBuiltinBrandTools(looksLikeBrandThemeRequest(prompt)),
       ...selectBuiltinImageTools(
         imageOverride === true || looksLikeImageGenerationRequest(prompt),
@@ -1506,7 +1672,7 @@ function artifactsWrittenByTurn(
 function documentLabel(kind: string | undefined, title: string | undefined, artifactId: string | undefined): string {
   const named = title ? ` "${clipNoteValue(title)}"` : '';
   const id = artifactId ? ` (artifact_id ${artifactId})` : '';
-  return `${kindWord(kind)} document${named}${id}`;
+  return kind === 'spreadsheet' ? `spreadsheet${named}${id}` : `${kindWord(kind)} document${named}${id}`;
 }
 
 function describeToolCallForHistory(
@@ -1523,6 +1689,10 @@ function describeToolCallForHistory(
       stringArg(tc, 'title') ?? created?.title,
       created?.id ?? artifactId,
     )}`;
+  }
+  if (isSpreadsheetTool(tc.name)) {
+    const verb = tc.name === READ_SPREADSHEET_TOOL_NAME ? 'read' : 'changed';
+    return `${tc.name}: ${verb} ${documentLabel('spreadsheet', stringArg(tc, 'title') ?? listed?.title, artifactId)}`;
   }
   if (tc.name.startsWith('edit_') && KIND_BY_TOOL[tc.name]) {
     return `${tc.name}: rewrote ${documentLabel(KIND_BY_TOOL[tc.name], stringArg(tc, 'title') ?? listed?.title, artifactId)}`;
@@ -1689,7 +1859,7 @@ export function resolveDocumentArtifactId(
 
   let artifactId: string | undefined;
   for (const toolCall of completed) {
-    if (toolCall.name.startsWith('write_')) {
+    if (isDocumentCreateTool(toolCall.name)) {
       const id = toolCall.arguments?.artifact_id;
       artifactId = resolveWrittenArtifactId(
         toolCall.name,
@@ -1705,7 +1875,7 @@ export function resolveDocumentArtifactId(
     }
   }
 
-  if (!artifactId && completed.some((toolCall) => toolCall.name.startsWith('write_'))) {
+  if (!artifactId && completed.some((toolCall) => isDocumentCreateTool(toolCall.name))) {
     return listed[0]?.id;
   }
 
@@ -1721,9 +1891,21 @@ const KIND_BY_TOOL: Record<string, string> = {
   edit_markdown_document: 'markdown',
   write_text_document: 'text',
   edit_text_document: 'text',
+  create_spreadsheet: 'spreadsheet',
+  append_rows: 'spreadsheet',
+  update_cells: 'spreadsheet',
+  add_sheet: 'spreadsheet',
+  edit_sheet: 'spreadsheet',
+  read_spreadsheet: 'spreadsheet',
 };
 
 const ACTION_BY_TOOL: Record<string, string> = {
+  create_spreadsheet: 'create',
+  append_rows: 'edit',
+  update_cells: 'edit',
+  add_sheet: 'edit',
+  edit_sheet: 'edit',
+  read_spreadsheet: 'read',
   write_html_document: 'create',
   edit_html_document: 'edit',
   write_markdown_document: 'create',

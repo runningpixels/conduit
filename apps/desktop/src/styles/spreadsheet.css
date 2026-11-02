@@ -1,0 +1,231 @@
+/* Spreadsheet artifact: a read-only grid with sticky column letters and row
+   numbers, a formula bar above and sheet tabs below (artifacts/spreadsheet/).
+   Colours are theme tokens only, so dark (coral) and light (indigo) both read.
+   Row height is set inline as --sheet-row-h from SpreadsheetRenderer.tsx. */
+
+.sheet-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 320px;
+  min-width: 0;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.sheet-state {
+  padding: 16px 18px;
+  font-size: var(--fs-3xl);
+  color: var(--ink-2);
+}
+.sheet-state-error {
+  color: var(--err);
+}
+
+/* ── Formula bar ───────────────────────────────────────────────────────── */
+.sheet-formula-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 0 12px;
+  background: var(--bg-side);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-md);
+}
+.sheet-ref {
+  flex: none;
+  min-width: 44px;
+  padding-right: 10px;
+  border-right: 1px solid var(--line);
+  font-family: var(--font-mono);
+  color: var(--ink-2);
+}
+.sheet-formula {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+/* ── Grid ──────────────────────────────────────────────────────────────── */
+.sheet-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--card);
+}
+.sheet-scroll:focus-visible {
+  outline: var(--ring-width) solid var(--ring-color);
+  outline-offset: calc(var(--ring-width) * -1);
+}
+.sheet-canvas {
+  position: relative;
+}
+.sheet-top {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.sheet-body {
+  position: relative;
+}
+.sheet-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+.sheet-row {
+  display: flex;
+  height: var(--sheet-row-h);
+}
+
+.sheet-gutter,
+.sheet-colhead {
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-side);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  user-select: none;
+}
+.sheet-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: var(--sheet-gutter-w);
+}
+.sheet-corner {
+  z-index: 4;
+}
+
+.sheet-cell {
+  flex: none;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0 6px;
+  line-height: calc(var(--sheet-row-h) - 1px);
+  white-space: pre;
+  text-overflow: ellipsis;
+  font-size: var(--fs-md);
+  background: var(--card);
+  color: var(--ink);
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  cursor: cell;
+}
+.sheet-cell.sheet-cell-number,
+.sheet-cell.sheet-cell-bool {
+  text-align: right;
+  /* Only numbers: in the UI font, tnum also widens text punctuation. */
+  font-variant-numeric: tabular-nums;
+}
+/* Text running into empty cells to its right; the span covers their gridlines. */
+.sheet-cell.sheet-cell-spill {
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+.sheet-spill {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: inherit;
+}
+.sheet-cell.sheet-cell-error {
+  color: var(--err);
+  text-align: center;
+}
+.sheet-cell.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Styles from the workbook spec. */
+.sheet-cell.sheet-style-header {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.sheet-cell.sheet-style-input {
+  color: var(--signal-text);
+}
+.sheet-cell.sheet-style-total {
+  font-weight: 600;
+  border-top: 1px solid var(--ink-3);
+}
+.sheet-cell.sheet-style-note {
+  font-style: italic;
+  color: var(--ink-3);
+}
+.sheet-cell.sheet-style-good {
+  color: var(--ok);
+}
+.sheet-cell.sheet-style-bad {
+  color: var(--err);
+}
+
+/* ── Footer: sheet tabs, notes ─────────────────────────────────────────── */
+.sheet-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 0 8px;
+  background: var(--bg-side);
+  border-top: 1px solid var(--line);
+  min-height: 32px;
+}
+.sheet-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.sheet-tab {
+  flex: none;
+  padding: 6px 12px;
+  border-bottom: 2px solid transparent;
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sheet-tab:hover {
+  color: var(--ink);
+  background: var(--hue-a08);
+}
+.sheet-tab.active {
+  color: var(--accent-text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.sheet-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+.sheet-note {
+  min-width: 0;
+}
+.sheet-note-error {
+  color: var(--err);
+}

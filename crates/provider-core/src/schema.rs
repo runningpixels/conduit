@@ -1269,6 +1269,9 @@ pub enum ArtifactKind {
     Json,
     Html,
     Image,
+    /// A workbook spec (`ArtifactContent::Json`) that the app computes and
+    /// writes as .xlsx; see `src-tauri/src/sheets`.
+    Spreadsheet,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

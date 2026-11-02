@@ -44,6 +44,7 @@ pub mod paths;
 pub mod quick_ask;
 pub mod research;
 pub mod search;
+pub mod sheets;
 pub mod skill_draft;
 pub mod skills;
 pub mod slide_charts;

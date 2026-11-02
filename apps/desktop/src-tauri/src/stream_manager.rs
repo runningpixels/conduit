@@ -302,6 +302,7 @@ pub fn saves_writing(name: &str) -> bool {
     is_document_content_tool(name)
         || agent_tools::is_draft_write_tool(name)
         || agent_tools::is_deck_write_tool(name)
+        || agent_tools::is_sheet_write_tool(name)
 }
 
 /// True when the model marked a document call as one step of a longer build

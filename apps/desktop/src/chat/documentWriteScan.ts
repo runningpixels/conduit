@@ -23,6 +23,8 @@ export const CONTENT_FIELD_BY_TOOL: Record<string, string> = {
   edit_markdown_document: 'updated_markdown',
   write_text_document: 'text',
   edit_text_document: 'updated_text',
+  // Not a string: the scan keeps only the top-level title and the time of the last fragment.
+  create_spreadsheet: 'sheets',
 };
 
 /** How long a turn may go without a sign of life before the UI says it is still working. */
@@ -191,6 +193,7 @@ export interface ActiveDocumentWrite {
 }
 
 function kindForTool(toolName: string): string {
+  if (toolName === 'create_spreadsheet') return 'spreadsheet';
   if (toolName.includes('html')) return 'html';
   if (toolName.includes('markdown')) return 'markdown';
   return 'text';
@@ -212,7 +215,7 @@ export function activeDocumentWrite(state: AssistantStreamState | null): ActiveD
       toolCallId: tc.toolCallId,
       toolName: tc.name,
       kind: kindForTool(tc.name),
-      mode: tc.name.startsWith('write_') ? 'create' : 'edit',
+      mode: tc.name.startsWith('write_') || tc.name === 'create_spreadsheet' ? 'create' : 'edit',
       title: tc.documentWrite.title?.trim() || undefined,
       filename: tc.documentWrite.filename?.trim() || undefined,
       contentChars: tc.documentWrite.contentChars,
@@ -227,6 +230,9 @@ export function activeDocumentWrite(state: AssistantStreamState | null): ActiveD
 /** "Writing “Q3 report”…" / "Writing HTML document…" / "Updating HTML document…". */
 export function documentWriteLabel(write: ActiveDocumentWrite, t: Translate): string {
   const name = write.title ?? write.filename;
+  if (write.kind === 'spreadsheet') {
+    return write.mode === 'edit' ? t('artifacts.spreadsheet.updating') : t('artifacts.spreadsheet.writing');
+  }
   if (write.mode === 'create' && name) {
     return t('chat.documentWrite.writingTitled', { title: name });
   }

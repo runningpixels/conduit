@@ -266,6 +266,8 @@ fn main() {
             open_presenter_window,
             export_deck_html,
             export_deck_pdf,
+            get_spreadsheet_view,
+            export_spreadsheet_xlsx,
             get_deck,
             get_deck_for_conversation,
             open_deck,

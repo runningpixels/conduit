@@ -86,7 +86,7 @@ describe('looksLikeSpreadsheetRequest', () => {
     'build a timesheet for the team',
     'Convert this CSV into an Excel file',
     // The app's other languages.
-    'Erstelle mir eine Tabelle für mein Haushaltsbudget mit Einnahmen, Ausgaben und Summen.',
+    'Erstelle mir eine Tabelle für mein monatliches Haushaltsbudget mit Einnahmen, Ausgaben nach Kategorien und Summen.',
     'Mach eine Tabellenkalkulation für die Hochzeit',
     'Crée un tableur pour mon budget',
     'Fais une feuille de calcul des dépenses',

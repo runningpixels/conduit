@@ -542,6 +542,18 @@ mod tests {
     }
 
     #[test]
+    fn currency_symbols_outside_ascii_display() {
+        let c = compute(&wb(json!([{ "name": "S", "columns": [{"format": "¥#,##0"}, {"format": "#,##0円"}],
+            "rows": [[80000, 3500], [{"value": 1234.5, "format": "#,##0.00 \"€\""}, {"value": -2, "format": "[Red]+£0;-£0"}]]
+        }])))
+        .unwrap();
+        assert_eq!(display(&c, "S", "A1"), "¥80,000");
+        assert_eq!(display(&c, "S", "B1"), "3,500円");
+        assert_eq!(display(&c, "S", "A2"), "1,234.50 €");
+        assert_eq!(display(&c, "S", "B2"), "-£2");
+    }
+
+    #[test]
     fn spilled_results_show_in_the_cells_they_fill() {
         let c = compute(&wb(json!([{ "name": "S", "rows": [
             ["Lighting", 5, {"formula": "=UNIQUE(A1:A4)"}, {"formula": "=SORT(B1:B4,1,-1)"}],

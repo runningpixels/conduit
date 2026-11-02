@@ -53,7 +53,38 @@ pub fn excel_format(format: &str) -> String {
         .iter()
         .find(|(name, _)| *name == format)
         .map(|(_, excel)| (*excel).to_string())
-        .unwrap_or_else(|| format.to_string())
+        .unwrap_or_else(|| quote_symbols(format))
+}
+
+/// Quotes non-ASCII literals such as ¥ or 円 outside quotes and `[...]`:
+/// Excel accepts `¥#,##0` bare, but IronCalc's formatter can't read it and
+/// shows #VALUE!. `"¥"#,##0` means the same to both.
+fn quote_symbols(format: &str) -> String {
+    let mut out = String::with_capacity(format.len() + 4);
+    let (mut quoted, mut bracket, mut escaped, mut open) = (false, false, false, false);
+    for ch in format.chars() {
+        let literal = !ch.is_ascii() && !quoted && !bracket && !escaped;
+        if literal != open {
+            out.push('"');
+            open = literal;
+        }
+        out.push(ch);
+        if escaped {
+            escaped = false;
+        } else if !open {
+            match ch {
+                '"' => quoted = !quoted,
+                '[' if !quoted => bracket = true,
+                ']' if !quoted => bracket = false,
+                '\\' if !quoted && !bracket => escaped = true,
+                _ => {}
+            }
+        }
+    }
+    if open {
+        out.push('"');
+    }
+    out
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1018,6 +1049,17 @@ mod tests {
         assert_eq!(excel_format("percent1"), "0.0%");
         assert_eq!(excel_format("date"), "yyyy-mm-dd");
         assert_eq!(excel_format("0.00\" kg\""), "0.00\" kg\"");
+        // Bare non-ASCII symbols are quoted; quoted ones, [..] codes and
+        // escapes are left alone.
+        assert_eq!(excel_format("¥#,##0"), "\"¥\"#,##0");
+        assert_eq!(excel_format("#,##0円"), "#,##0\"円\"");
+        assert_eq!(
+            excel_format("[Red]+¥#,##0;-¥#,##0"),
+            "[Red]+\"¥\"#,##0;-\"¥\"#,##0"
+        );
+        assert_eq!(excel_format("#,##0.00 \"€\""), "#,##0.00 \"€\"");
+        assert_eq!(excel_format("[$€-407] #,##0"), "[$€-407] #,##0");
+        assert_eq!(excel_format("\\€#,##0"), "\\€#,##0");
         let long = "0".repeat(65);
         assert!(wb(json!([{ "name": "S", "rows": [[{"value": 1, "format": long}]] }])).is_err());
     }

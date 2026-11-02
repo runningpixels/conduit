@@ -2232,7 +2232,7 @@ async fn write_brand_theme(
 // TS mirror (agentTools.ts) is checked against the same fixture.
 const CREATE_SPREADSHEET_DESCRIPTION: &str = "Create a spreadsheet (an Excel workbook the user can preview and save as .xlsx). Use it when the user asks for a spreadsheet, workbook, Excel file or a table they will calculate with, such as a budget, cost model, forecast or schedule. Use real formulas for anything calculated, not numbers you worked out. Put inputs and assumptions in their own cells (style input), often on an Assumptions sheet, and refer to them from formulas. Give the header row style header and total rows style total. Every call returns errors for any formula that did not compute (such as #NAME? or #REF!): fix them with update_cells. For a large table, set more_to_write and continue with append_rows. Omit artifact_id; the app assigns it and returns it.";
 const APPEND_ROWS_DESCRIPTION: &str = "Add rows to the end of a sheet in an existing spreadsheet. Use it to write a large table in several calls: create_spreadsheet with the first rows and more_to_write true, then append_rows until the last call, which leaves more_to_write out. Cells work as in create_spreadsheet; formulas can refer to rows written earlier.";
-const UPDATE_CELLS_DESCRIPTION: &str = "Overwrite a block of cells in an existing spreadsheet, starting at start (such as B2) and going right and down: rows is a 2-D block of cells, as in create_spreadsheet. null clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.";
+const UPDATE_CELLS_DESCRIPTION: &str = "Change cells in an existing spreadsheet. For a block, give start (such as B2) and rows, a 2-D block of cells as in create_spreadsheet, going right and down from start. For cells scattered around the sheet, give cells instead, all in one call: [{\"cell\": \"D4\", \"value\": 25}, {\"cell\": \"F9\", \"formula\": \"=SUM(F2:F8)\"}]. null, or a cells item with only its address, clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.";
 const ADD_SHEET_DESCRIPTION: &str = "Add a sheet to an existing spreadsheet. name is unique, at most 31 characters, without [ ] : * ? / \\. columns and rows work as in create_spreadsheet. position is the 0-based index to insert at (default: last).";
 const EDIT_SHEET_DESCRIPTION: &str = "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based). Formulas that refer to moved rows are updated.";
 const READ_SPREADSHEET_DESCRIPTION: &str = "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range.";
@@ -2241,7 +2241,7 @@ const SHEET_CELL_DESCRIPTION: &str = "A cell: a number, text, true/false, null f
 const SHEET_ROWS_DESCRIPTION: &str =
     "Rows from the top; each row is an array of cells from column A.";
 const SHEET_COLUMNS_DESCRIPTION: &str = "Optional settings per column, from column A: width in characters and a default format for the column's cells.";
-const SHEET_FORMAT_DESCRIPTION: &str = "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\".";
+const SHEET_FORMAT_DESCRIPTION: &str = "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00.";
 
 fn sheet_cell_schema() -> Value {
     serde_json::json!({
@@ -2335,15 +2335,25 @@ fn append_rows_schema() -> Value {
 }
 
 fn update_cells_schema() -> Value {
+    // A cells item is a cell object plus its address.
+    let mut item = sheet_cell_schema()["anyOf"][3].clone();
+    item["properties"]["cell"] =
+        serde_json::json!({ "type": "string", "description": "The cell's address, such as D4." });
+    item["required"] = serde_json::json!(["cell"]);
     serde_json::json!({
         "type": "object",
         "properties": {
             "artifact_id": { "type": "string" },
             "sheet": { "type": "string" },
             "start": { "type": "string" },
-            "rows": sheet_rows_schema()
+            "rows": sheet_rows_schema(),
+            "cells": {
+                "type": "array",
+                "description": "Cells anywhere in the sheet, each with its address.",
+                "items": item
+            }
         },
-        "required": ["artifact_id", "sheet", "start", "rows"]
+        "required": ["artifact_id", "sheet"]
     })
 }
 
@@ -2428,8 +2438,12 @@ struct AppendRowsInput {
 struct UpdateCellsInput {
     artifact_id: String,
     sheet: String,
-    start: String,
-    rows: Value,
+    #[serde(default)]
+    start: Option<String>,
+    #[serde(default)]
+    rows: Option<Value>,
+    #[serde(default)]
+    cells: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2601,7 +2615,20 @@ async fn update_sheet_cells(
     input: UpdateCellsInput,
 ) -> Result<Value, String> {
     let (artifact, mut workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
-    crate::sheets::ops::update_cells(&mut workbook, &input.sheet, &input.start, &input.rows)?;
+    let block = match (&input.start, &input.rows) {
+        (Some(start), Some(rows)) => Some((start, rows)),
+        (None, None) => None,
+        _ => return Err("give start and rows together, for a block of cells".to_string()),
+    };
+    if block.is_none() && input.cells.is_none() {
+        return Err("give start and rows for a block, or cells for scattered cells".to_string());
+    }
+    if let Some((start, rows)) = block {
+        crate::sheets::ops::update_cells(&mut workbook, &input.sheet, start, rows)?;
+    }
+    if let Some(cells) = &input.cells {
+        crate::sheets::ops::update_cell_list(&mut workbook, &input.sheet, cells)?;
+    }
     commit_spreadsheet(ctx, &artifact.id, &workbook).await
 }
 

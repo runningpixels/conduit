@@ -61,6 +61,61 @@ pub fn update_cells(
     spec::validate(wb)
 }
 
+/// Set cells scattered around a sheet: `cells` is a list of objects, each a
+/// cell as in `rows` plus its address, like `{"cell": "D4", "value": 25}`.
+pub fn update_cell_list(wb: &mut Workbook, sheet: &str, cells: &Value) -> Result<(), String> {
+    let idx = wb.find_sheet(sheet)?;
+    let name = wb.sheets[idx].name.clone();
+    let list = cells.as_array().ok_or_else(|| {
+        "cells must be a list like [{\"cell\": \"D4\", \"value\": 25}]".to_string()
+    })?;
+    if list.is_empty() {
+        return Err("cells is empty; pass at least one cell".to_string());
+    }
+    let mut parsed = Vec::with_capacity(list.len());
+    for (i, item) in list.iter().enumerate() {
+        let mut obj = item.as_object().cloned().ok_or_else(|| {
+            format!(
+                "cells item {}: expected an object like {{\"cell\": \"D4\", \"value\": 25}}",
+                i + 1
+            )
+        })?;
+        let at = obj
+            .remove("cell")
+            .and_then(|v| v.as_str().map(str::to_string))
+            .ok_or_else(|| {
+                format!(
+                    "cells item {}: give the cell's address, such as \"cell\": \"D4\"",
+                    i + 1
+                )
+            })?;
+        let (row0, col0) = spec::parse_a1(&at).ok_or_else(|| {
+            format!(
+                "cells item {}: '{at}' isn't a cell reference; use something like D4",
+                i + 1
+            )
+        })?;
+        if row0 >= spec::MAX_ROWS || col0 >= spec::MAX_COLS {
+            return Err(format!(
+                "Sheet '{name}': {at} is past the limits of {} rows and {} columns",
+                spec::MAX_ROWS,
+                spec::MAX_COLS
+            ));
+        }
+        let cell = if obj.is_empty() {
+            Cell::default()
+        } else {
+            spec::parse_cell(&Value::Object(obj), &name, row0, col0)?
+        };
+        parsed.push((row0, col0, cell));
+    }
+    let target = &mut wb.sheets[idx];
+    for (row0, col0, cell) in parsed {
+        *target.cell_mut(row0, col0) = cell;
+    }
+    spec::validate(wb)
+}
+
 /// Add a sheet at `position` (0-based; the end by default).
 pub fn add_sheet(
     wb: &mut Workbook,
@@ -391,6 +446,42 @@ mod tests {
         assert!(e.contains("D2"), "{e}");
         let e = update_cells(&mut w, "Calc", "A1", &json!([])).unwrap_err();
         assert!(e.contains("empty"), "{e}");
+    }
+
+    #[test]
+    fn a_cell_list_sets_scattered_cells_in_one_call() {
+        let mut w = budget();
+        update_cell_list(
+            &mut w,
+            "Calc",
+            &json!([
+                {"cell": "b3", "value": 99},
+                {"cell": "E12", "formula": "=B3*2", "format": "currency"},
+                {"cell": "C4"}
+            ]),
+        )
+        .unwrap();
+        let calc = &w.sheets[1];
+        assert_eq!(calc.rows[2][1].value, Some(spec::Scalar::Number(99.0)));
+        assert_eq!(calc.rows[11][4].formula.as_deref(), Some("=B3*2"));
+        assert!(calc.rows[3][2].is_blank());
+        assert_eq!(shown(&compute(&w).unwrap(), "Calc", "E12"), "$198.00");
+
+        let e = update_cell_list(&mut w, "Calc", &json!([{"value": 1}])).unwrap_err();
+        assert!(e.contains("item 1") && e.contains("address"), "{e}");
+        let e = update_cell_list(
+            &mut w,
+            "Calc",
+            &json!([{"cell": "A1"}, {"cell": "Q", "value": 1}]),
+        )
+        .unwrap_err();
+        assert!(e.contains("item 2"), "{e}");
+        let e =
+            update_cell_list(&mut w, "Calc", &json!([{"cell": "A1", "bold": true}])).unwrap_err();
+        assert!(e.contains("bold"), "{e}");
+        assert!(update_cell_list(&mut w, "Calc", &json!([]))
+            .unwrap_err()
+            .contains("empty"));
     }
 
     #[test]

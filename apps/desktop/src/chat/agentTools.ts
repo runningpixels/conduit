@@ -1307,9 +1307,30 @@ const SHEET_PHRASE_REGEX = new RegExp(
 const TABLE_TO_CALCULATE_REGEX =
   /\b(tables?|grid)\b[^.?!\n]{0,40}\b(calculate|calculations?|formulas?|totals?|sums?|auto-?sum)\b|\b(pivot\s+tables?|loan\s+(schedule|amortization)|amortization\s+(schedule|table)|bill\s+of\s+materials)\b/i;
 const BOM_REGEX = /\bBOMs?\b/;
+/** The same asks in the app's other languages: the word for a spreadsheet or
+ *  workbook, or a table with totals or formulas. No `\b` around CJK words. */
+const SPREADSHEET_I18N_REGEX = new RegExp(
+  [
+    // de
+    '\\b(tabellenkalkulation|kalkulationstabelle|arbeitsmappe)',
+    '\\btabelle\\b[^.?!\\n]{0,60}\\b(summen?|formeln?|berechn)',
+    // fr
+    '\\b(tableur|feuille de calcul|classeur)',
+    '\\btableau\\b[^.?!\\n]{0,60}\\b(totaux|total|formules?|calcul)',
+    // es
+    '\\bhojas? de c[aá]lculo',
+    '\\btabla\\b[^.?!\\n]{0,60}\\b(totales|total|f[oó]rmulas?|c[aá]lcul|calcul)',
+    // pt-BR
+    '\\bplanilhas?\\b',
+    '\\btabela\\b[^.?!\\n]{0,60}\\b(totais|total|f[oó]rmulas?|c[aá]lcul|calcul)',
+    // ja, ko, zh-CN
+    'スプレッドシート|表計算|エクセル|스프레드시트|엑셀|电子表格|工作簿',
+  ].join('|'),
+  'i',
+);
 
 /** The turn asks for a spreadsheet, workbook or Excel file, or a table to
- *  calculate with (English; `intentOverride` covers app-authored prompts). */
+ *  calculate with, in English or the app's other languages (`intentOverride` covers app-authored prompts). */
 export function looksLikeSpreadsheetRequest(prompt: string): boolean {
   const text = prompt.trim();
   if (!text) return false;
@@ -1319,7 +1340,8 @@ export function looksLikeSpreadsheetRequest(prompt: string): boolean {
     /\.xlsx?\b/i.test(text) ||
     SHEET_PHRASE_REGEX.test(text) ||
     TABLE_TO_CALCULATE_REGEX.test(text) ||
-    BOM_REGEX.test(text)
+    BOM_REGEX.test(text) ||
+    SPREADSHEET_I18N_REGEX.test(text)
   );
 }
 

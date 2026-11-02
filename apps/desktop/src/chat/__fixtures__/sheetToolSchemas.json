@@ -54,7 +54,7 @@
                     },
                     "format": {
                       "type": "string",
-                      "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                      "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
                     },
                     "style": {
                       "type": "string",
@@ -123,7 +123,7 @@
                     },
                     "format": {
                       "type": "string",
-                      "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                      "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
                     },
                     "style": {
                       "type": "string",
@@ -218,7 +218,7 @@
                           },
                           "format": {
                             "type": "string",
-                            "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                            "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
                           },
                           "style": {
                             "type": "string",
@@ -339,7 +339,7 @@
                         },
                         "format": {
                           "type": "string",
-                          "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                          "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
                         },
                         "style": {
                           "type": "string",
@@ -392,7 +392,7 @@
     }
   },
   "update_cells": {
-    "description": "Overwrite a block of cells in an existing spreadsheet, starting at start (such as B2) and going right and down: rows is a 2-D block of cells, as in create_spreadsheet. null clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.",
+    "description": "Change cells in an existing spreadsheet. For a block, give start (such as B2) and rows, a 2-D block of cells as in create_spreadsheet, going right and down from start. For cells scattered around the sheet, give cells instead, all in one call: [{\"cell\": \"D4\", \"value\": 25}, {\"cell\": \"F9\", \"formula\": \"=SUM(F2:F8)\"}]. null, or a cells item with only its address, clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -434,7 +434,7 @@
                     },
                     "format": {
                       "type": "string",
-                      "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                      "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
                     },
                     "style": {
                       "type": "string",
@@ -452,13 +452,49 @@
               ]
             }
           }
+        },
+        "cells": {
+          "type": "array",
+          "description": "Cells anywhere in the sheet, each with its address.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "description": "A number, text or true/false."
+              },
+              "formula": {
+                "type": "string",
+                "description": "An Excel formula starting with =."
+              },
+              "format": {
+                "type": "string",
+                "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
+              },
+              "style": {
+                "type": "string",
+                "enum": [
+                  "header",
+                  "input",
+                  "total",
+                  "note",
+                  "good",
+                  "bad"
+                ]
+              },
+              "cell": {
+                "type": "string",
+                "description": "The cell's address, such as D4."
+              }
+            },
+            "required": [
+              "cell"
+            ]
+          }
         }
       },
       "required": [
         "artifact_id",
-        "sheet",
-        "start",
-        "rows"
+        "sheet"
       ]
     }
   }

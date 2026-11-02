@@ -279,8 +279,19 @@ pub fn compute(workbook: &Workbook) -> Result<ComputedWorkbook, String> {
     let mut out = ComputedWorkbook::default();
     for (i, sheet) in workbook.sheets.iter().enumerate() {
         let si = i as u32;
-        let row_count = sheet.used_rows();
-        let col_count = sheet.used_cols();
+        // A dynamic-array formula (FILTER, SORT, UNIQUE…) spills into cells the
+        // spec leaves empty, possibly past its used range: size the grid by
+        // what the engine holds too, and read those cells from the engine.
+        let dim = model.workbook.worksheet(si)?.dimension();
+        let row_count = sheet
+            .used_rows()
+            .max(dim.max_row.max(0) as usize)
+            .min(spec::MAX_ROWS);
+        let col_count = sheet
+            .used_cols()
+            .max(dim.max_column.max(0) as usize)
+            .min(spec::MAX_COLS);
+        let blank = Cell::default();
         let mut rows = Vec::with_capacity(row_count);
         for r in 0..row_count {
             let mut row = Vec::with_capacity(col_count);
@@ -288,7 +299,7 @@ pub fn compute(workbook: &Workbook) -> Result<ComputedWorkbook, String> {
                 let cell = sheet.cell(r, c).filter(|cell| !cell.is_blank());
                 row.push(match cell {
                     Some(cell) => Some(read_cell(&model, si, r, c, cell)?),
-                    None => None,
+                    None => spilled_cell(&model, si, r, c, &blank)?,
                 });
             }
             rows.push(row);
@@ -329,6 +340,22 @@ fn excel_rounding_value(n: f64) -> f64 {
     }
     let rounded = number_format::to_precision(n, 15);
     f64::from_bits(rounded.to_bits() + 1)
+}
+
+/// A cell the spec leaves empty: a value only when a formula elsewhere spilled
+/// into it.
+fn spilled_cell(
+    model: &Model<'static>,
+    si: u32,
+    row0: usize,
+    col0: usize,
+    blank: &Cell,
+) -> Result<Option<ComputedCell>, String> {
+    let (r, c) = (row0 as i32 + 1, col0 as i32 + 1);
+    if matches!(model.get_cell_value_by_index(si, r, c)?, CellValue::None) {
+        return Ok(None);
+    }
+    read_cell(model, si, row0, col0, blank).map(Some)
 }
 
 fn read_cell(
@@ -512,6 +539,32 @@ mod tests {
         assert_eq!(cell(&c, "D", "D2").kind, CellKind::Number);
         assert_eq!(display(&c, "D", "D2"), "2026-12-25");
         assert_eq!(display(&c, "D", "C1"), "2026-12-02");
+    }
+
+    #[test]
+    fn spilled_results_show_in_the_cells_they_fill() {
+        let c = compute(&wb(json!([{ "name": "S", "rows": [
+            ["Lighting", 5, {"formula": "=UNIQUE(A1:A4)"}, {"formula": "=SORT(B1:B4,1,-1)"}],
+            ["Kitchen", 9],
+            ["Lighting", 2],
+            ["Audio", 7]
+        ]}])))
+        .unwrap();
+        let s = c.sheet("S").unwrap();
+        assert_eq!(display(&c, "S", "C1"), "Lighting");
+        assert_eq!(display(&c, "S", "C2"), "Kitchen");
+        assert_eq!(display(&c, "S", "C3"), "Audio");
+        assert!(s.rows[3][2].is_none(), "UNIQUE gives three values");
+        assert_eq!(display(&c, "S", "D4"), "2");
+        // Spilled cells carry no formula of their own.
+        assert!(cell(&c, "S", "D2").formula.is_none());
+        // Past the spec's used range, too.
+        let c = compute(&wb(json!([{ "name": "S", "rows": [
+            [{"formula": "=SEQUENCE(5)"}]
+        ]}])))
+        .unwrap();
+        assert_eq!(c.sheet("S").unwrap().row_count, 5);
+        assert_eq!(display(&c, "S", "A5"), "5");
     }
 
     #[test]

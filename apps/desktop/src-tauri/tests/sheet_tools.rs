@@ -153,6 +153,39 @@ async fn writes_report_formula_errors_and_update_cells_fixes_them() {
     assert_eq!(cells[1]["cell"], "B1");
     assert_eq!(cells[1]["value"], 42.0);
     assert_eq!(cells[1]["formula"], "=A1*21");
+
+    // Scattered cells in one call.
+    let (out, is_error) = call(
+        &env,
+        UPDATE_CELLS_TOOL,
+        json!({"artifact_id": id, "sheet": "S",
+               "cells": [{"cell": "A1", "value": 3}, {"cell": "D5", "formula": "=B1+1"}]}),
+    )
+    .await;
+    assert!(!is_error, "{out}");
+    let (read, _) = call(
+        &env,
+        READ_SPREADSHEET_TOOL,
+        json!({"artifact_id": id, "sheet": "S", "range": "D5"}),
+    )
+    .await;
+    assert_eq!(read["cells"][0]["value"], 64.0);
+
+    // Neither form, or half a block, is refused.
+    let (_, is_error) = call(
+        &env,
+        UPDATE_CELLS_TOOL,
+        json!({"artifact_id": id, "sheet": "S"}),
+    )
+    .await;
+    assert!(is_error);
+    let (_, is_error) = call(
+        &env,
+        UPDATE_CELLS_TOOL,
+        json!({"artifact_id": id, "sheet": "S", "start": "A1"}),
+    )
+    .await;
+    assert!(is_error);
 }
 
 #[tokio::test]

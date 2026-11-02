@@ -85,6 +85,17 @@ describe('looksLikeSpreadsheetRequest', () => {
     'a pivot table of sales by region',
     'build a timesheet for the team',
     'Convert this CSV into an Excel file',
+    // The app's other languages.
+    'Erstelle mir eine Tabelle für mein Haushaltsbudget mit Einnahmen, Ausgaben und Summen.',
+    'Mach eine Tabellenkalkulation für die Hochzeit',
+    'Crée un tableur pour mon budget',
+    'Fais une feuille de calcul des dépenses',
+    'Haz una hoja de cálculo con los gastos del mes',
+    'Crea una tabla con los gastos y los totales',
+    'Faça uma planilha de orçamento mensal',
+    '月の予算のスプレッドシートを作って',
+    '가계부 스프레드시트를 만들어 줘',
+    '帮我做一个月度预算的电子表格',
   ])('is a spreadsheet request: %s', (prompt) => {
     expect(looksLikeSpreadsheetRequest(prompt)).toBe(true);
   });
@@ -101,6 +112,9 @@ describe('looksLikeSpreadsheetRequest', () => {
     'Make a loan calculator web app',
     'Build a landing page with a pricing table',
     'Change the bed sheet colour in the picture',
+    'Erstelle eine Tabelle mit den Hauptstädten Europas',
+    'Haz una tabla comparando tres teléfonos',
+    'Fais un tableau des rois de France',
     '',
   ])('is not a spreadsheet request: %s', (prompt) => {
     expect(looksLikeSpreadsheetRequest(prompt)).toBe(false);

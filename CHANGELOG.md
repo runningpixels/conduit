@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.20] - 2026-11-01
+
+Fewer wrongly blocked tool results, no more lost typing in dialogs, and a
+connector you name is used straight away.
+
+### Fixed
+
+- **Tool results are no longer blocked over ordinary prose.** A web page or
+  document that merely contained a phrase like "act as a ..." or "you are
+  now ..." in the middle of a sentence was stopped as a prompt-injection
+  attempt. Now only text that opens a sentence with an instruction counts, and
+  your own answers to an agent's question are never blocked.
+- **Typing in dialogs is no longer lost.** The agent editor, project settings,
+  workflow editor, branding, the agent's question box and app details now read
+  what is in a field when you act, which fixes the rare case where typed text
+  came out blank or was dropped.
+- No more "no artifact content" notice after a turn that started a slide deck.
+- **A connector you name is offered directly.** When your message names a
+  connector (an MCP server), its tools are available straight away instead of
+  being hidden behind tool search.
+
+### Changed
+
+- Model prices refreshed from models.dev.
+- Dependency updates: the tauri group (including the dialog plugin), `rand`,
+  React, Vite and Vitest, and the JavaScript and Rust minor and patch groups.
+
 ## [1.0.0-rc.19] - 2026-10-31
 
 Compare models: Retry keeps every answer, any model can answer again, and the
@@ -1683,7 +1710,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.19...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.20...HEAD
+[1.0.0-rc.20]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.19...v1.0.0-rc.20
 [1.0.0-rc.19]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.18...v1.0.0-rc.19
 [1.0.0-rc.18]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.17...v1.0.0-rc.18
 [1.0.0-rc.17]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.16...v1.0.0-rc.17

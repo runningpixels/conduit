@@ -103,6 +103,8 @@ const KIND_MIME: Record<ArtifactKind, string> = {
   // image artifacts come only from the `generate_image` tool) — present so
   // this exhaustive Record still compiles against the shared `ArtifactKind`.
   image: 'image/png',
+  // Unreachable likewise: spreadsheets come only from the spreadsheet tools.
+  spreadsheet: 'application/json',
 };
 
 const MIN_UNLABELED_BODY = 200;
@@ -117,6 +119,7 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   html: 'HTML',
   // Unreachable here — see the `image` note on `KIND_MIME` above.
   image: 'Image',
+  spreadsheet: 'Spreadsheet',
 };
 
 function firstInfoToken(info: string): string {

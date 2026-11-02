@@ -34,6 +34,7 @@ export function CONDUIT_ARTIFACT_SYSTEM_APPENDIX(
   options: { network?: boolean } = {},
 ): string {
   const offersDocumentTools = toolNames.some((name) => /^(write|edit)_\w+_document$|^patch_document$/.test(name));
+  const offersSpreadsheetTools = toolNames.some((name) => name === 'create_spreadsheet' || name === 'update_cells');
   return [
     'Fenced code blocks in assistant replies render inline in chat first.',
     'Use labeled fences: html/htm, markdown/md, json, text, or a language tag for code.',
@@ -45,7 +46,9 @@ export function CONDUIT_ARTIFACT_SYSTEM_APPENDIX(
           `For new documents, omit artifact_id — ${appName()} assigns IDs; do not invent slug-like ids.`,
           'Create at most one document per request; after write_*_document returns an artifact_id, revise with patch_document or edit_*_document — do not call write_* again for the same document.',
         ]
-      : ['No document tools are available for this message: write any page, app or document as a single labeled fence in the reply.']),
+      : offersSpreadsheetTools
+        ? ['Make a spreadsheet, workbook or Excel file with the spreadsheet tools (create_spreadsheet, or update_cells and the other spreadsheet tools for one already in the chat), never as a fence or a CSV in the reply.']
+        : ['No document tools are available for this message: write any page, app or document as a single labeled fence in the reply.']),
     'Answer capability and explanatory questions in prose; do not create or edit artifacts to demonstrate.',
     ...(offersDocumentTools
       ? ['When a document artifact is already in scope and the user asks to revise it, prefer patch_document (or edit_*_document for a rewrite) over creating a new document.']

@@ -95,6 +95,11 @@ zip = { version = "9.0", default-features = false, features = ["deflate"] }
 # - pdf-extract: plain-text extraction from PDFs. Column/table order is
 #   frequently wrong -- a known, accepted limitation (see the t1-6 plan).
 csv = "1"
+
+# Spreadsheets in chat: IronCalc computes formulas for the preview and writes
+# the .xlsx (with cached values). Pinned: the 0.x API moves. No features: the
+# optional `mock_time` is test-only.
+ironcalc = "=0.9.1"
 quick-xml = "0.39"
 pdf-extract = "0.12.1"
 

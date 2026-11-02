@@ -157,7 +157,7 @@ pub async fn export_deck_pdf(
 }
 
 /// The native save dialog; `Ok(None)` when the user cancels.
-async fn pick_deck_save_path(
+pub(super) async fn pick_deck_save_path(
     app: &tauri::AppHandle,
     extension: &str,
     dialog_title: &str,

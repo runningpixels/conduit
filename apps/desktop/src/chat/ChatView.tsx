@@ -194,6 +194,8 @@ import {
   isDeckTool,
   START_DECK_TOOL_NAME,
   isDocumentContentTool,
+  hasSpreadsheetInScope,
+  spreadsheetScopePrompt,
   selectBuiltinTurnTools,
   selectBuiltinWebTools,
   selectTurnWebTools,
@@ -1062,7 +1064,17 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     const turnSettings = { ...toolSettings, chatWorkspaceDisabled: workspaceOffForChat };
     return draft && !deck
       ? selectDraftTurnTools(turnSettings, conversationWorkspaceRoot, draft.stage, draftWebOn)
-      : selectBuiltinTurnTools(text, turnSettings, conversationWorkspaceRoot, intent, imageOverride, deck?.stage).tools;
+      : selectBuiltinTurnTools(
+          text,
+          turnSettings,
+          conversationWorkspaceRoot,
+          intent,
+          imageOverride,
+          deck?.stage,
+          undefined,
+          undefined,
+          hasSpreadsheetInScope(artifacts, activeArtifact),
+        ).tools;
   };
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [prompt, setPrompt] = useState('');
@@ -2520,6 +2532,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       memoryBlock,
       resourceBlock.text,
       knowledgeContext.text,
+      toolDefinitions.some((tool) => tool.name === 'read_spreadsheet')
+        ? spreadsheetScopePrompt(artifacts, activeArtifact)
+        : undefined,
     );
     const built = buildProviderRequest(
       turnSettings,

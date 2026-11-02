@@ -12,6 +12,8 @@
 /// - kind text → PlainText preview / PlainText source.
 /// - kind html → HtmlArtifactRenderer preview / PlainText (escaped) source.
 /// - kind image → ImageRenderer preview / PlainText (empty — binary) source.
+/// - kind spreadsheet → SpreadsheetRenderer preview (the computed view comes from
+///   Rust, not from the artifact's content) / PlainText (the workbook spec JSON) source.
 /// - unknown kind → PlainText fallback.
 ///
 /// File-content artifacts with no inline text: `buildPreviewProps` returns
@@ -30,6 +32,8 @@ import { HtmlArtifactRenderer } from './HtmlArtifactRenderer';
 import type { HtmlArtifactRendererProps } from './HtmlArtifactRenderer';
 import { ImageRenderer } from './ImageRenderer';
 import type { ImageRendererProps } from './ImageRenderer';
+import { SpreadsheetRenderer } from './spreadsheet/SpreadsheetRenderer';
+import type { SpreadsheetRendererProps } from './spreadsheet/SpreadsheetRenderer';
 
 export interface RendererPair {
   /// `any` because each renderer takes its own prop shape (a member of the
@@ -46,11 +50,15 @@ export type PreviewProps =
   | JsonRendererProps
   | MarkdownRendererProps
   | HtmlArtifactRendererProps
-  | ImageRendererProps;
+  | ImageRendererProps
+  | SpreadsheetRendererProps;
 export type SourceProps = PlainTextRendererProps;
 
 /// Resolve the effective kind, applying mimeType overrides.
 export function resolveKind(kind: ArtifactKind, mimeType?: string): ArtifactKind {
+  // A spreadsheet's content is its workbook spec as JSON, so its mimeType is
+  // application/json too: the kind wins, or the grid would show as JSON.
+  if (kind === 'spreadsheet') return kind;
   const mime = (mimeType ?? '').toLowerCase();
   if (mime === 'application/json') return 'json';
   if (mime === 'text/markdown') return 'markdown';
@@ -74,6 +82,8 @@ export function selectRenderer(artifact: Artifact): RendererPair {
       return { Preview: HtmlArtifactRenderer, Source: PlainTextRenderer };
     case 'image':
       return { Preview: ImageRenderer, Source: PlainTextRenderer };
+    case 'spreadsheet':
+      return { Preview: SpreadsheetRenderer, Source: PlainTextRenderer };
     default:
       return { Preview: PlainTextRenderer, Source: PlainTextRenderer };
   }
@@ -104,7 +114,7 @@ export function buildPreviewProps(artifact: Artifact, allowlist: string[], style
   // artifact itself (id + mimeType) is the whole prop shape `ImageRenderer`
   // needs, so it is handled before the generic "no inline payload" null-return
   // below ever gets a chance to apply to it.
-  if (kind === 'image') return { artifact };
+  if (kind === 'image' || kind === 'spreadsheet') return { artifact };
   const text = inlineText(artifact);
   if (kind !== 'html' && text === '' && artifact.contentJson == null) {
     return null; // File-content (no inline payload) — caller shows a load affordance.

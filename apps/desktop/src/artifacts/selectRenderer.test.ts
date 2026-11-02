@@ -11,6 +11,7 @@ import {
 import { CodeRenderer, JsonRenderer, MarkdownRenderer, PlainTextRenderer } from './renderers';
 import { HtmlArtifactRenderer } from './HtmlArtifactRenderer';
 import { ImageRenderer } from './ImageRenderer';
+import { SpreadsheetRenderer } from './spreadsheet/SpreadsheetRenderer';
 
 function art(over: Partial<Artifact>): Artifact {
   return {
@@ -59,6 +60,15 @@ describe('selectRenderer dispatch', () => {
     expect(Preview).toBe(HtmlArtifactRenderer);
     expect(Source).toBe(PlainTextRenderer);
   });
+  it('spreadsheet → SpreadsheetRenderer even though its JSON content has an application/json mimeType', () => {
+    const sheet = art({ kind: 'spreadsheet', mimeType: 'application/json', contentJson: { sheets: [] } });
+    expect(resolveKind(sheet.kind, sheet.mimeType)).toBe('spreadsheet');
+    const { Preview, Source } = selectRenderer(sheet);
+    expect(Preview).toBe(SpreadsheetRenderer);
+    expect(Source).toBe(PlainTextRenderer);
+    expect(buildPreviewProps(sheet, [])).toEqual({ artifact: sheet });
+  });
+
   it('image → ImageRenderer preview / PlainText source', () => {
     const { Preview, Source } = selectRenderer(art({ kind: 'image', mimeType: 'image/png' }));
     expect(Preview).toBe(ImageRenderer);

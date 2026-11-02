@@ -28,6 +28,8 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   // which never produces 'image' — image artifacts come only from the
   // `generate_image` tool. Present so this exhaustive Record still compiles.
   image: 'Image',
+  // Unreachable for the same reason: spreadsheets come only from the spreadsheet tools.
+  spreadsheet: 'Spreadsheet',
 };
 
 function candidateLanguage(candidate: ArtifactCandidate): string {

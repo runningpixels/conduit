@@ -34,6 +34,8 @@ export function documentKindLabel(kind: string, t: Translate): string {
       return t('common.format.text');
     case 'image':
       return t('common.format.image');
+    case 'spreadsheet':
+      return t('common.format.spreadsheet');
     case 'document':
       // The fallback a document tool falls back to when its name is unknown.
       return t('common.format.document');

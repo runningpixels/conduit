@@ -656,7 +656,7 @@ fn export_filename(artifact: &Artifact) -> String {
     let base = sanitize_filename(artifact.title.as_deref().unwrap_or("artifact"));
     let ext = match kind.as_str() {
         "markdown" => "md",
-        "json" => "json",
+        "json" | "spreadsheet" => "json",
         "html" => "html",
         "text" => "txt",
         "code" => code_extension(artifact.mime_type.as_deref()),

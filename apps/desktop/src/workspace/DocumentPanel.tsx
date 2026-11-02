@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { BrandConfig } from '@conduit/config-schema';
 import type { Artifact, ArtifactContent, FileState } from '../ipc/contracts';
 import {
+  exportSpreadsheetXlsx,
   getArtifactContentBytes,
   openExternalUrl,
   parseBrandSource,
@@ -323,7 +324,9 @@ function ArtifactPendingState({
           <div className="artifact-pending">
             <div className="artifact-skeleton" aria-hidden="true" />
             <p className="artifact-pending-copy">
-              {t('workspace.documentPanel.pending.body', { action: actionLabel, kind: pending.kind })}
+              {pending.kind === 'spreadsheet'
+                ? t(isEdit ? 'artifacts.spreadsheet.updating' : 'artifacts.spreadsheet.writing')
+                : t('workspace.documentPanel.pending.body', { action: actionLabel, kind: pending.kind })}
             </p>
             <PendingWriteProgress pending={pending} className="artifact-pending-progress" />
           </div>
@@ -532,6 +535,7 @@ export function DocumentPanel({
   const [saving, setSaving] = useState(false);
   const [savedSource, setSavedSource] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
   const [dismissedModified, setDismissedModified] = useState(false);
   // Session-only: first "Open link" for an artifact+content unlocks later
   // http(s) clicks in that same artifact until the content changes or the app restarts.
@@ -897,6 +901,27 @@ export function DocumentPanel({
     }
   }
 
+  /// Save a spreadsheet as an .xlsx. Rust opens the save dialog, computes the
+  /// formulas and writes the file; a cancelled dialog is not an error.
+  async function handleExportXlsx() {
+    if (!artifact || exportingXlsx) return;
+    setExportingXlsx(true);
+    try {
+      const result = await exportSpreadsheetXlsx(artifact.id);
+      setMenuOpen(false);
+      if (result.saved) {
+        const name = result.path ? (result.path.split(/[\\/]/).pop() ?? result.path) : (artifact.title ?? '');
+        onStatus?.(t('workspace.documentPanel.toast.xlsxSaved', { name }));
+      }
+    } catch (err) {
+      onStatus?.(
+        t('workspace.documentPanel.toast.xlsxFailed', { error: err instanceof Error ? err.message : String(err) }),
+      );
+    } finally {
+      setExportingXlsx(false);
+    }
+  }
+
   const artifactPath = artifact.contentPath ?? t('workspace.documentPanel.inlinePayloadFallback');
   const metaModified = fmt.timeAgo(artifact.updatedAt ?? artifact.createdAt);
   const metaSize = fmt.size(artifact.sizeBytes);
@@ -1180,6 +1205,18 @@ export function DocumentPanel({
                 <DownloadIcon />
                 {exporting ? t('workspace.documentPanel.menu.exporting') : t('workspace.documentPanel.menu.saveCopy')}
               </button>
+              {artifact.kind === 'spreadsheet' && (
+                <button
+                  className="menu-item"
+                  type="button"
+                  role="menuitem"
+                  disabled={exportingXlsx || saving}
+                  onClick={() => void handleExportXlsx()}
+                >
+                  <DownloadIcon />
+                  {exportingXlsx ? t('workspace.documentPanel.menu.exporting') : t('workspace.documentPanel.menu.saveXlsx')}
+                </button>
+              )}
               {onReview && REVIEWABLE_KINDS.includes(artifact.kind) && (
                 <button
                   className="menu-item"

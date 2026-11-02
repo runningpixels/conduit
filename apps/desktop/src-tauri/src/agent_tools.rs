@@ -144,6 +144,29 @@ pub fn is_draft_write_tool(name: &str) -> bool {
     )
 }
 
+// Spreadsheet tools (offered on a spreadsheet request, or in a chat that has a
+// spreadsheet artifact; `read_spreadsheet` is read-only).
+pub const CREATE_SPREADSHEET_TOOL: &str = "create_spreadsheet";
+pub const APPEND_ROWS_TOOL: &str = "append_rows";
+pub const UPDATE_CELLS_TOOL: &str = "update_cells";
+pub const ADD_SHEET_TOOL: &str = "add_sheet";
+pub const EDIT_SHEET_TOOL: &str = "edit_sheet";
+pub const READ_SPREADSHEET_TOOL: &str = "read_spreadsheet";
+
+/// True for the spreadsheet tools that change a spreadsheet (everything but
+/// `read_spreadsheet`). A big sheet is written in chunks (`more_to_write`), so
+/// each successful write is progress for the turn's time limit.
+pub fn is_sheet_write_tool(name: &str) -> bool {
+    matches!(
+        name,
+        CREATE_SPREADSHEET_TOOL
+            | APPEND_ROWS_TOOL
+            | UPDATE_CELLS_TOOL
+            | ADD_SHEET_TOOL
+            | EDIT_SHEET_TOOL
+    )
+}
+
 pub struct AgentToolContext<'a> {
     pub db: &'a sqlx::SqlitePool,
     pub artifacts_dir: &'a Path,
@@ -919,7 +942,62 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        sheet_tool(
+            CREATE_SPREADSHEET_TOOL,
+            CREATE_SPREADSHEET_DESCRIPTION,
+            create_spreadsheet_schema(),
+            PermissionLevel::SideEffectful,
+        ),
+        sheet_tool(
+            APPEND_ROWS_TOOL,
+            APPEND_ROWS_DESCRIPTION,
+            append_rows_schema(),
+            PermissionLevel::SideEffectful,
+        ),
+        sheet_tool(
+            UPDATE_CELLS_TOOL,
+            UPDATE_CELLS_DESCRIPTION,
+            update_cells_schema(),
+            PermissionLevel::SideEffectful,
+        ),
+        sheet_tool(
+            ADD_SHEET_TOOL,
+            ADD_SHEET_DESCRIPTION,
+            add_sheet_schema(),
+            PermissionLevel::SideEffectful,
+        ),
+        sheet_tool(
+            EDIT_SHEET_TOOL,
+            EDIT_SHEET_DESCRIPTION,
+            edit_sheet_schema(),
+            PermissionLevel::SideEffectful,
+        ),
+        sheet_tool(
+            READ_SPREADSHEET_TOOL,
+            READ_SPREADSHEET_DESCRIPTION,
+            read_spreadsheet_schema(),
+            PermissionLevel::ReadOnly,
+        ),
     ]
+}
+
+fn sheet_tool(
+    name: &str,
+    description: &str,
+    input_schema: Value,
+    permission_level: PermissionLevel,
+) -> ToolDefinition {
+    ToolDefinition {
+        tool_id: name.to_string(),
+        name: name.to_string(),
+        description: description.to_string(),
+        input_schema,
+        permission_level: Some(permission_level),
+        display_group: Some("Spreadsheets".to_string()),
+        tenant_scope: None,
+        kind: None,
+        host_config: None,
+    }
 }
 
 pub fn is_builtin_tool_name(name: &str) -> bool {
@@ -968,6 +1046,12 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | WRITE_SECTION_TOOL
             | EDIT_BLOCKS_TOOL
             | REPLACE_IN_DRAFT_TOOL
+            | CREATE_SPREADSHEET_TOOL
+            | APPEND_ROWS_TOOL
+            | UPDATE_CELLS_TOOL
+            | ADD_SHEET_TOOL
+            | EDIT_SHEET_TOOL
+            | READ_SPREADSHEET_TOOL
     )
 }
 
@@ -1326,6 +1410,33 @@ pub async fn execute_builtin_tool(
         REPLACE_IN_DRAFT_TOOL => {
             let input: ReplaceInDraftInput = parse_args(tool_name, arguments)?;
             replace_in_draft(ctx, input).await
+        }
+        // ---------------------------------------------------------------------
+        // Spreadsheet tools
+        // ---------------------------------------------------------------------
+        CREATE_SPREADSHEET_TOOL => {
+            let input: CreateSpreadsheetInput = parse_args(tool_name, arguments)?;
+            create_spreadsheet(ctx, input).await
+        }
+        APPEND_ROWS_TOOL => {
+            let input: AppendRowsInput = parse_args(tool_name, arguments)?;
+            append_sheet_rows(ctx, input).await
+        }
+        UPDATE_CELLS_TOOL => {
+            let input: UpdateCellsInput = parse_args(tool_name, arguments)?;
+            update_sheet_cells(ctx, input).await
+        }
+        ADD_SHEET_TOOL => {
+            let input: AddSheetInput = parse_args(tool_name, arguments)?;
+            add_sheet_tool(ctx, input).await
+        }
+        EDIT_SHEET_TOOL => {
+            let input: EditSheetInput = parse_args(tool_name, arguments)?;
+            edit_sheet_tool(ctx, input).await
+        }
+        READ_SPREADSHEET_TOOL => {
+            let input: ReadSpreadsheetInput = parse_args(tool_name, arguments)?;
+            read_spreadsheet(ctx, input).await
         }
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
     };
@@ -2111,6 +2222,571 @@ async fn write_brand_theme(
     }
 
     Ok(output)
+}
+
+// -----------------------------------------------------------------------------
+// Spreadsheet tools
+// -----------------------------------------------------------------------------
+
+// Word for word what `src/chat/__fixtures__/sheetToolSchemas.json` holds; the
+// TS mirror (agentTools.ts) is checked against the same fixture.
+const CREATE_SPREADSHEET_DESCRIPTION: &str = "Create a spreadsheet (an Excel workbook the user can preview and save as .xlsx). Use it when the user asks for a spreadsheet, workbook, Excel file or a table they will calculate with, such as a budget, cost model, forecast or schedule. Use real formulas for anything calculated, not numbers you worked out. Put inputs and assumptions in their own cells (style input), often on an Assumptions sheet, and refer to them from formulas. Give the header row style header and total rows style total. Every call returns errors for any formula that did not compute (such as #NAME? or #REF!): fix them with update_cells. For a large table, set more_to_write and continue with append_rows. Omit artifact_id; the app assigns it and returns it.";
+const APPEND_ROWS_DESCRIPTION: &str = "Add rows to the end of a sheet in an existing spreadsheet. Use it to write a large table in several calls: create_spreadsheet with the first rows and more_to_write true, then append_rows until the last call, which leaves more_to_write out. Cells work as in create_spreadsheet; formulas can refer to rows written earlier.";
+const UPDATE_CELLS_DESCRIPTION: &str = "Overwrite a block of cells in an existing spreadsheet, starting at start (such as B2) and going right and down: rows is a 2-D block of cells, as in create_spreadsheet. null clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.";
+const ADD_SHEET_DESCRIPTION: &str = "Add a sheet to an existing spreadsheet. name is unique, at most 31 characters, without [ ] : * ? / \\. columns and rows work as in create_spreadsheet. position is the 0-based index to insert at (default: last).";
+const EDIT_SHEET_DESCRIPTION: &str = "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based). Formulas that refer to moved rows are updated.";
+const READ_SPREADSHEET_DESCRIPTION: &str = "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range.";
+
+const SHEET_CELL_DESCRIPTION: &str = "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.";
+const SHEET_ROWS_DESCRIPTION: &str =
+    "Rows from the top; each row is an array of cells from column A.";
+const SHEET_COLUMNS_DESCRIPTION: &str = "Optional settings per column, from column A: width in characters and a default format for the column's cells.";
+const SHEET_FORMAT_DESCRIPTION: &str = "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\".";
+
+fn sheet_cell_schema() -> Value {
+    serde_json::json!({
+        "description": SHEET_CELL_DESCRIPTION,
+        "anyOf": [
+            { "type": "number" },
+            { "type": "string" },
+            { "type": "boolean" },
+            {
+                "type": "object",
+                "properties": {
+                    "value": { "description": "A number, text or true/false." },
+                    "formula": {
+                        "type": "string",
+                        "description": "An Excel formula starting with =."
+                    },
+                    "format": { "type": "string", "description": SHEET_FORMAT_DESCRIPTION },
+                    "style": {
+                        "type": "string",
+                        "enum": ["header", "input", "total", "note", "good", "bad"]
+                    }
+                }
+            }
+        ]
+    })
+}
+
+fn sheet_rows_schema() -> Value {
+    serde_json::json!({
+        "type": "array",
+        "description": SHEET_ROWS_DESCRIPTION,
+        "items": { "type": "array", "items": sheet_cell_schema() }
+    })
+}
+
+fn sheet_columns_schema() -> Value {
+    serde_json::json!({
+        "type": "array",
+        "description": SHEET_COLUMNS_DESCRIPTION,
+        "items": {
+            "type": "object",
+            "properties": {
+                "width": { "type": "number" },
+                "format": { "type": "string" }
+            }
+        }
+    })
+}
+
+fn create_spreadsheet_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "title": { "type": "string" },
+            "sheets": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Unique, at most 31 characters, without [ ] : * ? / \\."
+                        },
+                        "columns": sheet_columns_schema(),
+                        "freeze_header": {
+                            "type": "boolean",
+                            "description": "Keep row 1 visible when scrolling."
+                        },
+                        "rows": sheet_rows_schema()
+                    },
+                    "required": ["name", "rows"]
+                }
+            },
+            "more_to_write": { "type": "boolean" }
+        },
+        "required": ["title", "sheets"]
+    })
+}
+
+fn append_rows_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "artifact_id": { "type": "string" },
+            "sheet": { "type": "string" },
+            "rows": sheet_rows_schema(),
+            "more_to_write": { "type": "boolean" }
+        },
+        "required": ["artifact_id", "sheet", "rows"]
+    })
+}
+
+fn update_cells_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "artifact_id": { "type": "string" },
+            "sheet": { "type": "string" },
+            "start": { "type": "string" },
+            "rows": sheet_rows_schema()
+        },
+        "required": ["artifact_id", "sheet", "start", "rows"]
+    })
+}
+
+fn add_sheet_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "artifact_id": { "type": "string" },
+            "name": { "type": "string" },
+            "columns": sheet_columns_schema(),
+            "rows": sheet_rows_schema(),
+            "position": { "type": "integer" }
+        },
+        "required": ["artifact_id", "name"]
+    })
+}
+
+fn edit_sheet_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "artifact_id": { "type": "string" },
+            "sheet": { "type": "string" },
+            "rename_to": { "type": "string" },
+            "delete": { "type": "boolean" },
+            "columns": sheet_columns_schema(),
+            "freeze_header": { "type": "boolean" },
+            "delete_rows": {
+                "type": "object",
+                "properties": {
+                    "from": { "type": "integer" },
+                    "count": { "type": "integer" }
+                },
+                "required": ["from", "count"]
+            },
+            "insert_rows": {
+                "type": "object",
+                "properties": {
+                    "at": { "type": "integer" },
+                    "rows": sheet_rows_schema()
+                },
+                "required": ["at", "rows"]
+            }
+        },
+        "required": ["artifact_id", "sheet"]
+    })
+}
+
+fn read_spreadsheet_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "artifact_id": { "type": "string" },
+            "sheet": { "type": "string" },
+            "range": { "type": "string" }
+        },
+        "required": ["artifact_id"]
+    })
+}
+
+/// `read_spreadsheet` without a range returns this many rows of a sheet.
+const SHEET_READ_DEFAULT_ROWS: usize = 40;
+/// ... and never more than this many filled cells in one reply.
+const SHEET_READ_MAX_CELLS: usize = 400;
+
+#[derive(Debug, Deserialize)]
+struct CreateSpreadsheetInput {
+    title: Option<String>,
+    sheets: Value,
+    // `more_to_write` is read by the turn loop (see stream_manager); a model
+    // that omits or sends it is never refused here.
+}
+
+#[derive(Debug, Deserialize)]
+struct AppendRowsInput {
+    artifact_id: String,
+    sheet: String,
+    rows: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateCellsInput {
+    artifact_id: String,
+    sheet: String,
+    start: String,
+    rows: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddSheetInput {
+    artifact_id: String,
+    name: String,
+    columns: Option<Value>,
+    rows: Option<Value>,
+    position: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SheetRowsDelete {
+    from: i64,
+    count: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct SheetRowsInsert {
+    at: i64,
+    rows: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct EditSheetInput {
+    artifact_id: String,
+    sheet: String,
+    rename_to: Option<String>,
+    delete: Option<bool>,
+    columns: Option<Value>,
+    freeze_header: Option<bool>,
+    delete_rows: Option<SheetRowsDelete>,
+    insert_rows: Option<SheetRowsInsert>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReadSpreadsheetInput {
+    artifact_id: String,
+    sheet: Option<String>,
+    range: Option<String>,
+}
+
+fn positive(value: i64, what: &str) -> Result<usize, String> {
+    usize::try_from(value)
+        .ok()
+        .filter(|v| *v >= 1)
+        .ok_or_else(|| format!("{what} must be 1 or more (rows are numbered from 1)"))
+}
+
+/// The spreadsheet in an artifact, loaded for an edit or a read.
+async fn load_spreadsheet(
+    ctx: &AgentToolContext<'_>,
+    artifact_id: &str,
+) -> Result<(Artifact, crate::sheets::spec::Workbook), String> {
+    let artifact = artifacts::get(ctx.db, ctx.encryption, artifact_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("artifact '{artifact_id}' not found"))?;
+    ensure_kind(&artifact, crate::sheets::ARTIFACT_KIND)?;
+    let workbook = crate::sheets::workbook_of(&artifact)?;
+    Ok((artifact, workbook))
+}
+
+async fn save_spreadsheet(
+    ctx: &AgentToolContext<'_>,
+    artifact_id: &str,
+    workbook: &crate::sheets::spec::Workbook,
+) -> Result<Artifact, String> {
+    artifacts::set_content(
+        ctx.db,
+        ctx.artifacts_dir,
+        ctx.encryption,
+        artifact_id,
+        Some(crate::sheets::ARTIFACT_MIME),
+        &ArtifactContent::Json {
+            json: workbook.to_value(),
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// What every write returns: the sheets' sizes and the first formulas that
+/// did not calculate, so the model fixes them in the next call.
+fn sheet_write_result(
+    artifact: &Artifact,
+    created: bool,
+    workbook: &crate::sheets::spec::Workbook,
+    computed: &crate::sheets::compute::ComputedWorkbook,
+) -> Value {
+    let all_errors = computed.all_errors();
+    let total_errors = all_errors.len();
+    let errors: Vec<_> = all_errors
+        .into_iter()
+        .take(crate::sheets::MAX_REPORTED_ERRORS)
+        .collect();
+    let sheets: Vec<Value> = workbook
+        .sheets
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "name": s.name,
+                "rows": s.used_rows(),
+                "cols": s.used_cols(),
+            })
+        })
+        .collect();
+    let mut out = serde_json::json!({
+        "ok": true,
+        "artifact_id": artifact.id,
+        "kind": crate::sheets::ARTIFACT_KIND,
+        "title": artifact.title,
+        "sheets": sheets,
+        "errors": errors,
+    });
+    if created {
+        out["created"] = Value::Bool(true);
+    }
+    if total_errors > errors.len() {
+        out["more_errors"] = Value::from(total_errors - errors.len());
+    }
+    out
+}
+
+/// Calculate, save, and describe a changed spreadsheet. Nothing is saved when
+/// the workbook can't be calculated at all.
+async fn commit_spreadsheet(
+    ctx: &AgentToolContext<'_>,
+    artifact_id: &str,
+    workbook: &crate::sheets::spec::Workbook,
+) -> Result<Value, String> {
+    let computed = crate::sheets::compute::compute(workbook)?;
+    let saved = save_spreadsheet(ctx, artifact_id, workbook).await?;
+    Ok(sheet_write_result(&saved, false, workbook, &computed))
+}
+
+async fn create_spreadsheet(
+    ctx: &AgentToolContext<'_>,
+    input: CreateSpreadsheetInput,
+) -> Result<Value, String> {
+    let workbook =
+        crate::sheets::spec::Workbook::from_value(&serde_json::json!({ "sheets": input.sheets }))?;
+    let computed = crate::sheets::compute::compute(&workbook)?;
+    let title = resolve_title(input.title, None);
+    let artifact = artifacts::create(
+        ctx.db,
+        ctx.conversation_id,
+        crate::sheets::ARTIFACT_KIND,
+        title.as_deref(),
+        ctx.source_message_id.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    let saved = save_spreadsheet(ctx, &artifact.id, &workbook).await?;
+    Ok(sheet_write_result(&saved, true, &workbook, &computed))
+}
+
+async fn append_sheet_rows(
+    ctx: &AgentToolContext<'_>,
+    input: AppendRowsInput,
+) -> Result<Value, String> {
+    let (artifact, mut workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
+    crate::sheets::ops::append_rows(&mut workbook, &input.sheet, &input.rows)?;
+    commit_spreadsheet(ctx, &artifact.id, &workbook).await
+}
+
+async fn update_sheet_cells(
+    ctx: &AgentToolContext<'_>,
+    input: UpdateCellsInput,
+) -> Result<Value, String> {
+    let (artifact, mut workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
+    crate::sheets::ops::update_cells(&mut workbook, &input.sheet, &input.start, &input.rows)?;
+    commit_spreadsheet(ctx, &artifact.id, &workbook).await
+}
+
+async fn add_sheet_tool(ctx: &AgentToolContext<'_>, input: AddSheetInput) -> Result<Value, String> {
+    let (artifact, mut workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
+    let position = match input.position {
+        Some(p) if p < 0 => {
+            return Err("position is a 0-based index; it can't be negative".to_string())
+        }
+        Some(p) => Some(p as usize),
+        None => None,
+    };
+    crate::sheets::ops::add_sheet(
+        &mut workbook,
+        &input.name,
+        input.columns.as_ref(),
+        input.rows.as_ref(),
+        position,
+    )?;
+    commit_spreadsheet(ctx, &artifact.id, &workbook).await
+}
+
+async fn edit_sheet_tool(
+    ctx: &AgentToolContext<'_>,
+    input: EditSheetInput,
+) -> Result<Value, String> {
+    let (artifact, mut workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
+    let edit = crate::sheets::ops::EditSheet {
+        rename_to: input.rename_to,
+        delete: input.delete.unwrap_or(false),
+        columns: input.columns,
+        freeze_header: input.freeze_header,
+        delete_rows: input
+            .delete_rows
+            .map(|d| {
+                Ok::<_, String>((
+                    positive(d.from, "delete_rows.from")?,
+                    positive(d.count, "delete_rows.count")?,
+                ))
+            })
+            .transpose()?,
+        insert_rows: input
+            .insert_rows
+            .map(|i| Ok::<_, String>((positive(i.at, "insert_rows.at")?, i.rows)))
+            .transpose()?,
+    };
+    crate::sheets::ops::edit_sheet(&mut workbook, &input.sheet, edit)?;
+    commit_spreadsheet(ctx, &artifact.id, &workbook).await
+}
+
+/// `A1:F40` or a single cell `B2`, as 0-based (row0, col0, row1, col1).
+fn parse_sheet_range(range: &str) -> Result<(usize, usize, usize, usize), String> {
+    let bad = || format!("range '{range}' isn't a range like A1:F40 (or a single cell like B2)");
+    let (a, b) = match range.split_once(':') {
+        Some((a, b)) => (a, b),
+        None => (range, range),
+    };
+    let (r0, c0) = crate::sheets::spec::parse_a1(a).ok_or_else(bad)?;
+    let (r1, c1) = crate::sheets::spec::parse_a1(b).ok_or_else(bad)?;
+    Ok((r0.min(r1), c0.min(c1), r0.max(r1), c0.max(c1)))
+}
+
+async fn read_spreadsheet(
+    ctx: &AgentToolContext<'_>,
+    input: ReadSpreadsheetInput,
+) -> Result<Value, String> {
+    use crate::sheets::spec::a1;
+
+    let (artifact, workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
+    let computed = crate::sheets::compute::compute(&workbook)?;
+    let index = match input
+        .sheet
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(name) => workbook.find_sheet(name)?,
+        None => 0,
+    };
+    let sheet = &workbook.sheets[index];
+    let calc = &computed.sheets[index];
+    let list: Vec<Value> = computed
+        .sheets
+        .iter()
+        .map(|s| {
+            let mut entry = serde_json::json!({
+                "name": s.name,
+                "rows": s.row_count,
+                "cols": s.col_count,
+            });
+            if s.hidden {
+                entry["hidden"] = Value::Bool(true);
+            }
+            entry
+        })
+        .collect();
+
+    let explicit = input
+        .range
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty());
+    let (r0, c0, r1, c1) = match explicit {
+        Some(range) => parse_sheet_range(range)?,
+        None => (
+            0,
+            0,
+            SHEET_READ_DEFAULT_ROWS - 1,
+            calc.col_count.saturating_sub(1),
+        ),
+    };
+    let last_row = r1.min(calc.row_count.saturating_sub(1));
+    let last_col = c1.min(calc.col_count.saturating_sub(1));
+
+    let mut cells = Vec::new();
+    let mut next_row = None;
+    if calc.row_count > 0 && r0 <= last_row {
+        for r in r0..=last_row {
+            let row_cells: Vec<Value> = (c0..=last_col)
+                .filter_map(|c| {
+                    let cell = calc.rows[r].get(c)?.as_ref()?;
+                    let spec_cell = sheet.cell(r, c);
+                    let mut entry = serde_json::json!({
+                        "cell": a1(r, c),
+                        "value": cell.value,
+                    });
+                    let plain = match &cell.value {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    if cell.formula.is_some() || cell.display != plain {
+                        entry["display"] = Value::String(cell.display.clone());
+                    }
+                    if let Some(f) = &cell.formula {
+                        entry["formula"] = Value::String(f.clone());
+                    }
+                    if let Some(e) = &cell.error {
+                        entry["error"] = Value::String(e.clone());
+                    }
+                    if let Some(format) = spec_cell.and_then(|s| s.format.as_ref()) {
+                        entry["format"] = Value::String(format.clone());
+                    }
+                    if let Some(style) = cell.style {
+                        entry["style"] = Value::String(style.as_str().to_string());
+                    }
+                    Some(entry)
+                })
+                .collect();
+            if !cells.is_empty() && cells.len() + row_cells.len() > SHEET_READ_MAX_CELLS {
+                next_row = Some(r);
+                break;
+            }
+            cells.extend(row_cells);
+        }
+    }
+
+    let mut out = serde_json::json!({
+        "ok": true,
+        "artifact_id": artifact.id,
+        "title": artifact.title,
+        "sheets": list,
+        "sheet": sheet.name,
+        "range": format!("{}:{}", a1(r0, c0), a1(last_row.max(r0), last_col.max(c0))),
+        "cells": cells,
+    });
+    let cut = next_row.or_else(|| {
+        (explicit.is_none() && calc.row_count > SHEET_READ_DEFAULT_ROWS)
+            .then_some(SHEET_READ_DEFAULT_ROWS)
+    });
+    if let Some(row) = cut {
+        out["note"] = Value::String(format!(
+            "Showing rows {}-{} of {} on '{}'. Read the rest with range, for example {}:{}.",
+            r0 + 1,
+            row,
+            calc.row_count,
+            sheet.name,
+            a1(row, c0),
+            a1(
+                calc.row_count.saturating_sub(1),
+                calc.col_count.saturating_sub(1).max(c0)
+            ),
+        ));
+        out["truncated"] = Value::Bool(true);
+    }
+    Ok(out)
 }
 
 fn ensure_kind(artifact: &Artifact, expected: &str) -> Result<(), String> {
@@ -4026,7 +4702,95 @@ mod tests {
         // + start_deck (Slides Studio) = 37
         // + 5 draft tools (Writing) = 42
         // + search_tools (connector tool search) = 43
-        assert_eq!(defs.len(), 43);
+        // + 6 spreadsheet tools = 49
+        assert_eq!(defs.len(), 49);
+    }
+
+    #[test]
+    fn spreadsheet_tools_are_a_registered_spreadsheets_group() {
+        let names = [
+            CREATE_SPREADSHEET_TOOL,
+            APPEND_ROWS_TOOL,
+            UPDATE_CELLS_TOOL,
+            ADD_SHEET_TOOL,
+            EDIT_SHEET_TOOL,
+            READ_SPREADSHEET_TOOL,
+        ];
+        let defs = builtin_tool_definitions();
+        for name in names {
+            assert!(is_builtin_tool_name(name), "{name} is not builtin");
+            let def = defs.iter().find(|d| d.name == name).expect(name);
+            assert_eq!(def.display_group.as_deref(), Some("Spreadsheets"), "{name}");
+            let expected = if name == READ_SPREADSHEET_TOOL {
+                PermissionLevel::ReadOnly
+            } else {
+                PermissionLevel::SideEffectful
+            };
+            assert_eq!(def.permission_level, Some(expected), "{name}");
+            assert_eq!(
+                is_sheet_write_tool(name),
+                name != READ_SPREADSHEET_TOOL,
+                "{name}"
+            );
+            // Writes count as saved writing for the turn loop; reads don't.
+            assert_eq!(
+                crate::stream_manager::saves_writing(name),
+                name != READ_SPREADSHEET_TOOL,
+                "{name}"
+            );
+            // Never mistaken for a document tool by the create clamps.
+            assert!(
+                !crate::stream_manager::is_document_content_tool(name),
+                "{name}"
+            );
+            assert!(
+                !crate::stream_manager::is_document_write_tool(name),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            defs.iter()
+                .filter(|d| d.display_group.as_deref() == Some("Spreadsheets"))
+                .count(),
+            names.len()
+        );
+    }
+
+    /// The spreadsheet tools' descriptions and schemas, exactly as the shared
+    /// fixture (written by the director; agentTools.ts is checked against the
+    /// same file) has them. Never regenerated from here.
+    #[test]
+    fn sheet_tool_schemas_match_the_shared_fixture() {
+        let mut map = serde_json::Map::new();
+        for def in builtin_tool_definitions()
+            .into_iter()
+            .filter(|d| d.display_group.as_deref() == Some("Spreadsheets"))
+        {
+            map.insert(
+                def.name.clone(),
+                serde_json::json!({ "description": def.description, "input_schema": def.input_schema }),
+            );
+        }
+        let actual = Value::Object(map);
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/chat/__fixtures__/sheetToolSchemas.json");
+        let expected: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            actual,
+            expected,
+            "spreadsheet tool descriptions or schemas drifted from {}",
+            path.display()
+        );
+    }
+
+    #[test]
+    fn sheet_ranges_parse() {
+        assert_eq!(parse_sheet_range("A1:F40").unwrap(), (0, 0, 39, 5));
+        assert_eq!(parse_sheet_range("b2").unwrap(), (1, 1, 1, 1));
+        assert_eq!(parse_sheet_range("C5:A1").unwrap(), (0, 0, 4, 2));
+        assert!(parse_sheet_range("A:B").is_err());
+        assert!(parse_sheet_range("nonsense").is_err());
     }
 
     #[test]

@@ -411,7 +411,7 @@ export interface ConnectorServerInfo {
 /// The `kind` column is TEXT and `create_artifact` takes `kind: string`, so
 /// unknown kinds are tolerated by the backend; the renderer falls back to
 /// plain text.
-export type ArtifactKind = 'markdown' | 'text' | 'code' | 'json' | 'html' | 'image';
+export type ArtifactKind = 'markdown' | 'text' | 'code' | 'json' | 'html' | 'image' | 'spreadsheet';
 
 /// Content payload for `set_artifact_content`. Tagged (`kind`) to match the
 /// Rust `ArtifactContent` enum (`#[serde(tag = "kind")]`). `File` payloads are

@@ -1,6 +1,7 @@
 import { Channel } from '@tauri-apps/api/core';
 import { invokeCommand, IpcError } from './errors';
 import type { BridgeErrorCode } from '../artifacts/pageBridge';
+import type { SpreadsheetExportResult, SpreadsheetView } from '../artifacts/spreadsheet/types';
 import type { RequestEventLog } from '../chat/streamState';
 import type {
   AddLocalConnectorRequest,
@@ -1758,6 +1759,17 @@ export async function exportArtifact(
   includeMetadata: boolean,
 ): Promise<ArtifactExportResult> {
   return invokeCommand<ArtifactExportResult>('export_artifact', { artifactId, includeMetadata });
+}
+
+/// The computed grid of a `spreadsheet` artifact: sheets, display text, styles.
+export async function getSpreadsheetView(artifactId: string): Promise<SpreadsheetView> {
+  return invokeCommand<SpreadsheetView>('get_spreadsheet_view', { artifactId });
+}
+
+/// Save a `spreadsheet` artifact as an .xlsx through a native save dialog (the
+/// renderer never passes a path). `saved` is false when the dialog was cancelled.
+export async function exportSpreadsheetXlsx(artifactId: string): Promise<SpreadsheetExportResult> {
+  return invokeCommand<SpreadsheetExportResult>('export_spreadsheet_xlsx', { artifactId });
 }
 
 // --- Attachments -----------------------------------------------------------

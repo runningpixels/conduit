@@ -26,7 +26,7 @@ import { useFormatters } from '../../i18n/formatters';
  * `openai_compat` is not in this list because "Compatible" is prose, not a
  * name, and does translate — it is rendered from the catalog below.
  */
-const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
+export const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
   { id: 'anthropic', brand: 'Anthropic' },
   { id: 'openai', brand: 'OpenAI' },
   { id: 'gemini', brand: 'Google Gemini' },
@@ -43,6 +43,12 @@ const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
   { id: 'qwen', brand: 'Qwen' },
   { id: 'together', brand: 'Together AI' },
   { id: 'fireworks', brand: 'Fireworks AI' },
+  { id: 'cerebras', brand: 'Cerebras' },
+  { id: 'sambanova', brand: 'SambaNova' },
+  { id: 'deepinfra', brand: 'DeepInfra' },
+  { id: 'novita', brand: 'Novita AI' },
+  { id: 'minimax', brand: 'MiniMax' },
+  { id: 'nvidia', brand: 'NVIDIA NIM' },
 ];
 
 /**

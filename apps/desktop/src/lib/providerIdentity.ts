@@ -19,7 +19,7 @@ const HUE_IDS: Record<string, ProviderHueId> = {
 };
 
 /** Human-readable names for known adapter ids (descriptor ids from provider-core catalog). */
-const DISPLAY_NAMES: Record<string, string> = {
+export const DISPLAY_NAMES: Record<string, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   ollama: 'Ollama',
@@ -38,6 +38,12 @@ const DISPLAY_NAMES: Record<string, string> = {
   qwen: 'Qwen',
   together: 'Together AI',
   fireworks: 'Fireworks AI',
+  cerebras: 'Cerebras',
+  sambanova: 'SambaNova',
+  deepinfra: 'DeepInfra',
+  novita: 'Novita AI',
+  minimax: 'MiniMax',
+  nvidia: 'NVIDIA NIM',
 };
 
 /** Map a provider-core adapter id to one of the four CSS hue identities. */

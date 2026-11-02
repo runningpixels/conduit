@@ -93,6 +93,12 @@ pub fn registry() -> Vec<Box<dyn ProviderAdapter>> {
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::qwen()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::together()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::fireworks()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::cerebras()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::sambanova()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::deepinfra()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::novita()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::minimax()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::nvidia()),
         Box::new(crate::adapters::openai_compat::OpenAiCompatAdapter::default()),
         Box::new(crate::adapters::ollama::OllamaAdapter),
     ]

@@ -9,8 +9,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [1.0.0-rc.20] - 2026-11-01
 
-Fewer wrongly blocked tool results, and a connector you name is used straight
-away.
+Six new providers, fewer wrongly blocked tool results, and a connector you
+name is used straight away.
+
+### Added
+
+- **Six new providers: Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax and
+  NVIDIA NIM.** Add a key in Settings → Providers and their models appear in
+  the model picker, each with a base URL field. SambaNova, DeepInfra and Novita
+  AI list their prices, so their models show what they cost. Conduit now
+  supports twenty-three providers.
 
 ### Fixed
 

@@ -4,7 +4,7 @@
 //! [`extract_document_bytes`] does the same for a document already in memory
 //! (a chat attachment, or a workspace file `workspace_read` sniffed).
 //! Dispatch is by lowercased extension: `txt|md|markdown|mdown|text` (read as
-//! UTF-8, lossy), `csv`, `docx`, `pdf`. Anything else is
+//! UTF-8, lossy), `csv`, `docx`, `xlsx`, `pdf`. Anything else is
 //! [`ExtractFailure::UnsupportedFormat`].
 //!
 //! Safe Rust prevents memory corruption, **not** resource exhaustion — a
@@ -106,6 +106,7 @@ enum Format {
     PlainText { mime: &'static str },
     Csv,
     Docx,
+    Xlsx,
     Pdf,
     Html,
 }
@@ -177,6 +178,7 @@ fn format_for_extension(extension: &str) -> Result<Format, ExtractFailure> {
         },
         "csv" => Format::Csv,
         "docx" => Format::Docx,
+        "xlsx" => Format::Xlsx,
         "pdf" => Format::Pdf,
         "html" | "htm" => Format::Html,
         other => return Err(ExtractFailure::UnsupportedFormat(other.to_string())),
@@ -246,6 +248,7 @@ fn parse_sync(bytes: &[u8], format: Format) -> Result<Extracted, ExtractFailure>
         Format::PlainText { mime } => extract_plain_text(bytes, mime),
         Format::Csv => extract_csv(bytes),
         Format::Docx => extract_docx(bytes),
+        Format::Xlsx => extract_xlsx(bytes),
         Format::Pdf => extract_pdf(bytes),
         Format::Html => extract_html(bytes),
     }
@@ -396,6 +399,303 @@ fn extract_text_from_docx_xml(xml: &str) -> Result<String, ExtractFailure> {
     }
 
     Ok(out)
+}
+
+/// Most uncompressed bytes an xlsx archive may declare across all its entries.
+/// Checked from the central directory before anything is inflated; the shared
+/// strings part is held in memory whole, so this bounds that too.
+pub const XLSX_MAX_UNCOMPRESSED_BYTES: u64 = 128 * 1024 * 1024;
+/// Most entries an xlsx archive may hold (a real workbook has one per sheet
+/// plus a dozen parts).
+pub const XLSX_MAX_ENTRIES: usize = 2_000;
+/// Most uncompressed:compressed ratio, applied once the archive declares more
+/// than 1 MiB. Spreadsheet XML compresses 10-50x; bombs go to 1000x and up.
+pub const XLSX_MAX_RATIO: u64 = 200;
+/// Most rows of one sheet written out (counted from the first used row).
+pub const XLSX_MAX_ROWS_PER_SHEET: u32 = 5_000;
+/// Most columns of one sheet written out (counted from the first used column).
+pub const XLSX_MAX_COLS: u32 = 100;
+/// Most characters of text one workbook produces, all sheets together. Equal to
+/// the per-document text a chat request carries
+/// ([`crate::attachment_documents::DOCUMENT_TEXT_MAX_CHARS`]), so the model is
+/// told what was left out instead of it being cut mid-row silently.
+pub const XLSX_MAX_TOTAL_CHARS: usize = crate::attachment_documents::DOCUMENT_TEXT_MAX_CHARS;
+/// Most non-empty cells held in memory for one sheet while it streams.
+const XLSX_MAX_STORED_CELLS: usize = 500_000;
+
+/// The limits of an xlsx zip, from its central directory alone (nothing is
+/// inflated). A bomb can lie in the directory, but the zip reader never
+/// yields more than an entry declares, so the declared total bounds the read.
+fn check_xlsx_zip_limits(bytes: &[u8]) -> Result<(), ExtractFailure> {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| ExtractFailure::Unreadable(format!("not a valid xlsx/zip archive: {e}")))?;
+    if archive.len() > XLSX_MAX_ENTRIES {
+        return Err(ExtractFailure::Unreadable(format!(
+            "xlsx archive has {} entries, over the {XLSX_MAX_ENTRIES} entry limit",
+            archive.len()
+        )));
+    }
+    let (mut total, mut compressed) = (0u64, 0u64);
+    for i in 0..archive.len() {
+        let entry = archive
+            .by_index_raw(i)
+            .map_err(|e| ExtractFailure::Unreadable(format!("xlsx archive entry {i}: {e}")))?;
+        total = total.saturating_add(entry.size());
+        compressed = compressed.saturating_add(entry.compressed_size());
+    }
+    if total > XLSX_MAX_UNCOMPRESSED_BYTES {
+        return Err(ExtractFailure::TooLarge {
+            bytes: total,
+            cap: XLSX_MAX_UNCOMPRESSED_BYTES,
+        });
+    }
+    if total > 1024 * 1024 && total / compressed.max(1) > XLSX_MAX_RATIO {
+        return Err(ExtractFailure::Unreadable(format!(
+            "xlsx archive inflates {}x, over the {XLSX_MAX_RATIO}x limit (decompression bomb?)",
+            total / compressed.max(1)
+        )));
+    }
+    Ok(())
+}
+
+/// A workbook as text: per sheet a `## Sheet: <name>` heading (`(hidden)` for
+/// hidden sheets), then the sheet's used range as CSV. Values are the ones
+/// the file cached; nothing is calculated, so a formula whose result was
+/// never saved reads as an empty cell. Dates are ISO (`2024-03-05`, or with a
+/// time `2024-03-05T14:30:00`), numbers carry at most 15 significant digits.
+///
+/// The sheet is streamed cell by cell (calamine's dense `Range` would
+/// allocate rows x columns for a lone cell at `XFD1048576`), only
+/// [`XLSX_MAX_ROWS_PER_SHEET`] x [`XLSX_MAX_COLS`] from the first used cell
+/// are kept, and output stops at [`XLSX_MAX_TOTAL_CHARS`]. Each cut says so.
+fn extract_xlsx(bytes: &[u8]) -> Result<Extracted, ExtractFailure> {
+    use calamine::{Reader, SheetType, SheetVisible, Xlsx};
+
+    check_xlsx_zip_limits(bytes)?;
+    let mut workbook: Xlsx<_> = Xlsx::new(std::io::Cursor::new(bytes))
+        .map_err(|e| ExtractFailure::Unreadable(format!("xlsx: {e}")))?;
+    let sheets = workbook.sheets_metadata().to_vec();
+
+    let mut out = String::new();
+    let mut chars = 0usize;
+    for (index, sheet) in sheets.iter().enumerate() {
+        if sheet.typ != SheetType::WorkSheet {
+            continue;
+        }
+        let name = sheet.name.replace(['\r', '\n'], " ");
+        let hidden = if sheet.visible == SheetVisible::Visible {
+            ""
+        } else {
+            " (hidden)"
+        };
+        let heading = format!("## Sheet: {name}{hidden}\n");
+        if chars + heading.chars().count() > XLSX_MAX_TOTAL_CHARS {
+            let left = sheets[index..]
+                .iter()
+                .filter(|s| s.typ == SheetType::WorkSheet)
+                .count();
+            out.push_str(&format!(
+                "(truncated: {left} more sheets not shown, text limit reached)\n"
+            ));
+            break;
+        }
+        chars += heading.chars().count();
+        out.push_str(&heading);
+
+        let grid = read_xlsx_sheet(&mut workbook, &sheet.name)?;
+        let Some(grid) = grid else {
+            out.push_str("(empty)\n\n");
+            chars += 9;
+            continue;
+        };
+
+        let last_row = grid.max_row.min(grid.min_row + XLSX_MAX_ROWS_PER_SHEET - 1);
+        let last_col = grid.max_col.min(grid.min_col + XLSX_MAX_COLS - 1);
+        let more_cols = grid.max_col - last_col;
+        let mut stopped_at: Option<u32> = None;
+        for row in grid.min_row..=last_row {
+            let line = csv_line(grid.rows.get(&row), grid.min_col, last_col);
+            let line_chars = line.chars().count() + 1;
+            if chars + line_chars > XLSX_MAX_TOTAL_CHARS {
+                stopped_at = Some(row);
+                break;
+            }
+            chars += line_chars;
+            out.push_str(&line);
+            out.push('\n');
+        }
+        let rows_left = match stopped_at {
+            Some(row) => grid.max_row - row + 1,
+            None => grid.max_row - last_row,
+        };
+        if rows_left > 0 {
+            out.push_str(&format!("(truncated: {rows_left} more rows)\n"));
+        }
+        if more_cols > 0 {
+            out.push_str(&format!("(truncated: {more_cols} more columns)\n"));
+        }
+        if grid.dropped_cells {
+            out.push_str("(truncated: this sheet has more cells than are read)\n");
+        }
+        out.push('\n');
+        if stopped_at.is_some() {
+            let left = sheets[index + 1..]
+                .iter()
+                .filter(|s| s.typ == SheetType::WorkSheet)
+                .count();
+            if left > 0 {
+                out.push_str(&format!(
+                    "(truncated: {left} more sheets not shown, text limit reached)\n"
+                ));
+            }
+            break;
+        }
+    }
+
+    Ok(Extracted {
+        text: out.trim_end().to_string(),
+        mime_type: Some(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
+        ),
+    })
+}
+
+/// The non-empty cells of one sheet, kept sparse.
+struct SheetGrid {
+    rows: std::collections::BTreeMap<u32, std::collections::BTreeMap<u32, String>>,
+    min_row: u32,
+    max_row: u32,
+    min_col: u32,
+    max_col: u32,
+    dropped_cells: bool,
+}
+
+/// Streams a sheet's cells. `None` when it holds no value at all.
+fn read_xlsx_sheet<RS: std::io::Read + std::io::Seek>(
+    workbook: &mut calamine::Xlsx<RS>,
+    name: &str,
+) -> Result<Option<SheetGrid>, ExtractFailure> {
+    let unreadable =
+        |e: calamine::XlsxError| ExtractFailure::Unreadable(format!("xlsx sheet: {e}"));
+    let mut reader = workbook.worksheet_cells_reader(name).map_err(unreadable)?;
+    let mut grid = SheetGrid {
+        rows: Default::default(),
+        min_row: u32::MAX,
+        max_row: 0,
+        min_col: u32::MAX,
+        max_col: 0,
+        dropped_cells: false,
+    };
+    let mut stored = 0usize;
+    while let Some(cell) = reader.next_cell().map_err(unreadable)? {
+        let (row, col) = cell.get_position();
+        let text = xlsx_cell_text(cell.get_value());
+        if text.is_empty() {
+            continue;
+        }
+        grid.min_row = grid.min_row.min(row);
+        grid.max_row = grid.max_row.max(row);
+        grid.min_col = grid.min_col.min(col);
+        grid.max_col = grid.max_col.max(col);
+        let new_row = !grid.rows.contains_key(&row);
+        if stored >= XLSX_MAX_STORED_CELLS
+            || (new_row && grid.rows.len() >= XLSX_MAX_ROWS_PER_SHEET as usize)
+        {
+            // Rows past the row cap are only counted (max_row), not kept.
+            grid.dropped_cells |= stored >= XLSX_MAX_STORED_CELLS;
+            continue;
+        }
+        grid.rows.entry(row).or_default().insert(col, text);
+        stored += 1;
+    }
+    Ok((grid.max_row >= grid.min_row).then_some(grid))
+}
+
+/// One row of cells `first_col..=last_col` as a CSV line (no newline).
+fn csv_line(
+    cells: Option<&std::collections::BTreeMap<u32, String>>,
+    first_col: u32,
+    last_col: u32,
+) -> String {
+    // Each row stops at its own last value, so one wide row does not pad the
+    // thousands of narrow ones with commas.
+    let Some(cells) = cells else {
+        return String::new();
+    };
+    let Some(row_last) = cells
+        .keys()
+        .copied()
+        .filter(|&k| k >= first_col && k <= last_col)
+        .max()
+    else {
+        return String::new();
+    };
+    let fields: Vec<&str> = (first_col..=row_last)
+        .map(|c| cells.get(&c).map_or("", String::as_str))
+        .collect();
+    let mut writer = csv::WriterBuilder::new()
+        .terminator(csv::Terminator::Any(b'\n'))
+        .from_writer(Vec::new());
+    // Writing to a Vec cannot fail.
+    let _ = writer.write_record(&fields);
+    let bytes = writer.into_inner().unwrap_or_default();
+    String::from_utf8_lossy(&bytes)
+        .trim_end_matches('\n')
+        .to_string()
+}
+
+/// One cell's cached value as text; empty for no value.
+fn xlsx_cell_text(value: &calamine::DataRef<'_>) -> String {
+    use calamine::DataRef;
+    match value {
+        DataRef::Empty => String::new(),
+        DataRef::Int(i) => i.to_string(),
+        DataRef::Float(f) => format_xlsx_float(*f),
+        DataRef::String(s) => s.clone(),
+        DataRef::SharedString(s) => (*s).to_string(),
+        DataRef::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
+        DataRef::DateTime(dt) => format_xlsx_datetime(dt),
+        DataRef::DateTimeIso(s) | DataRef::DurationIso(s) => s.clone(),
+        DataRef::Error(e) => e.to_string(),
+    }
+}
+
+/// A number with at most 15 significant digits (what Excel shows), so
+/// `0.1 + 0.2` reads `0.3` rather than `0.30000000000000004`.
+fn format_xlsx_float(f: f64) -> String {
+    if !f.is_finite() {
+        return f.to_string();
+    }
+    if f.fract() == 0.0 && f.abs() < 1e15 {
+        return format!("{}", f as i64);
+    }
+    // Round through scientific notation with 15 significant digits.
+    let rounded: f64 = format!("{f:.14e}").parse().unwrap_or(f);
+    if rounded.abs() >= 1e15 || (rounded != 0.0 && rounded.abs() < 1e-6) {
+        format!("{rounded:e}")
+    } else {
+        format!("{rounded}")
+    }
+}
+
+/// `2024-03-05`, `2024-03-05T14:30:00`, a bare time `14:30:00` (serial under
+/// one day) or a duration `36:15:00`.
+fn format_xlsx_datetime(dt: &calamine::ExcelDateTime) -> String {
+    let serial = dt.as_f64();
+    if dt.is_duration() {
+        let secs = (serial * 86_400.0).round() as i64;
+        return format!("{}:{:02}:{:02}", secs / 3600, (secs / 60) % 60, secs % 60);
+    }
+    // Milliseconds are dropped (truncated, never rounded across midnight).
+    let (y, mo, d, h, mi, s, _ms) = dt.to_ymd_hms_milli();
+    if (0.0..1.0).contains(&serial) {
+        return format!("{h:02}:{mi:02}:{s:02}");
+    }
+    if (h, mi, s) == (0, 0, 0) {
+        format!("{y:04}-{mo:02}-{d:02}")
+    } else {
+        format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}")
+    }
 }
 
 /// `pdf-extract`'s column/row ordering is frequently wrong for tabular PDFs

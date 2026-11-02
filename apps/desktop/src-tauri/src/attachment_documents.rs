@@ -2,8 +2,8 @@
 //! model.
 //!
 //! A chat attachment is either an image (handled by `vision.rs` as before), a
-//! document this module reads (PDF, DOCX, plain text / Markdown / CSV), or
-//! something nothing reads yet (xlsx, pptx, zip…). The kind is decided here by
+//! document this module reads (PDF, DOCX, XLSX, plain text / Markdown / CSV),
+//! or something nothing reads yet (xlsm, xls, ods, pptx, zip…). The kind is decided here by
 //! **sniffing the bytes**, never by trusting the MIME type the renderer sent:
 //! a browser reports `.md` as nothing at all and `.csv` as an Excel type, and a
 //! renamed file says whatever its name says.
@@ -32,6 +32,7 @@ use crate::knowledge::extract::{extract_document_bytes, ExtractFailure};
 pub const PDF_MIME: &str = "application/pdf";
 pub const DOCX_MIME: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+pub const XLSX_MIME: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /// Largest PDF sent to a model as the PDF itself. Above it the PDF still
 /// reaches the model, as extracted text. Matches the image forward cap: the
@@ -66,6 +67,9 @@ pub enum TextFlavor {
 pub enum DocumentKind {
     Pdf,
     Docx,
+    /// An Excel workbook (`.xlsx`). Macro-enabled `.xlsm`, `.xls`, `.ods` and
+    /// `.pptx` are not read.
+    Xlsx,
     Text(TextFlavor),
 }
 
@@ -75,6 +79,7 @@ impl DocumentKind {
         match self {
             DocumentKind::Pdf => PDF_MIME,
             DocumentKind::Docx => DOCX_MIME,
+            DocumentKind::Xlsx => XLSX_MIME,
             DocumentKind::Text(TextFlavor::Plain) => "text/plain",
             DocumentKind::Text(TextFlavor::Markdown) => "text/markdown",
             DocumentKind::Text(TextFlavor::Csv) => "text/csv",
@@ -88,6 +93,7 @@ impl DocumentKind {
         match self {
             DocumentKind::Pdf => "pdf",
             DocumentKind::Docx => "docx",
+            DocumentKind::Xlsx => "xlsx",
             DocumentKind::Text(TextFlavor::Plain) => "txt",
             DocumentKind::Text(TextFlavor::Markdown) => "md",
             DocumentKind::Text(TextFlavor::Csv) => "csv",
@@ -113,7 +119,7 @@ pub fn sniff_document(
         return Some(DocumentKind::Pdf);
     }
     if bytes.starts_with(b"PK\x03\x04") {
-        return is_docx(bytes).then_some(DocumentKind::Docx);
+        return sniff_zip(bytes, filename);
     }
     if crate::workspace_tools::tools::looks_binary(bytes) {
         return None;
@@ -139,11 +145,28 @@ pub fn sniff_document(
     Some(DocumentKind::Text(flavor))
 }
 
-/// A zip archive with a `word/document.xml` entry. Only the central directory
-/// is read, nothing is inflated.
-fn is_docx(bytes: &[u8]) -> bool {
+/// What a zip archive is, from its entry names. Only the central directory is
+/// read, nothing is inflated. `word/document.xml` is a DOCX; `xl/workbook.xml`
+/// is an XLSX unless it is macro-enabled (`xl/vbaProject.bin`, or an `.xlsm` /
+/// `.xltm` name), which stays unsupported so macros are never half-read.
+fn sniff_zip(bytes: &[u8], filename: Option<&str>) -> Option<DocumentKind> {
+    let archive = zip::ZipArchive::new(Cursor::new(bytes)).ok()?;
+    if archive.index_for_name("word/document.xml").is_some() {
+        return Some(DocumentKind::Docx);
+    }
+    let macro_enabled = archive.index_for_name("xl/vbaProject.bin").is_some()
+        || matches!(extension_of(filename).as_deref(), Some("xlsm" | "xltm"));
+    (archive.index_for_name("xl/workbook.xml").is_some() && !macro_enabled)
+        .then_some(DocumentKind::Xlsx)
+}
+
+/// A macro-enabled workbook (`xl/workbook.xml` plus `xl/vbaProject.bin`).
+fn is_macro_workbook(bytes: &[u8]) -> bool {
     zip::ZipArchive::new(Cursor::new(bytes))
-        .map(|archive| archive.index_for_name("word/document.xml").is_some())
+        .map(|a| {
+            a.index_for_name("xl/workbook.xml").is_some()
+                && a.index_for_name("xl/vbaProject.bin").is_some()
+        })
         .unwrap_or(false)
 }
 
@@ -208,7 +231,7 @@ pub fn decide_delivery(
         Some(DocumentKind::Pdf) if pdf_ok && bytes.len() <= PDF_FORWARD_MAX_BYTES => {
             return AttachmentDelivery::of(DeliveryKind::PdfNative);
         }
-        Some(DocumentKind::Pdf | DocumentKind::Docx) => {
+        Some(DocumentKind::Pdf | DocumentKind::Docx | DocumentKind::Xlsx) => {
             return AttachmentDelivery::of(DeliveryKind::Text);
         }
         _ => {}
@@ -228,10 +251,15 @@ pub fn decide_delivery(
     AttachmentDelivery::unsupported(unsupported_reason(bytes, filename))
 }
 
-/// "xlsx files", from the file's name, else from what its bytes look like.
+/// "xls files", from the file's name, else from what its bytes look like.
+/// Macro-enabled workbooks say so: their data is not read at all.
 fn unsupported_reason(bytes: &[u8], filename: Option<&str>) -> Option<String> {
-    let ext = extension_of(filename).or_else(|| infer::get(bytes).map(|k| k.extension().into()))?;
-    Some(format!("{ext} files"))
+    let ext = extension_of(filename).or_else(|| infer::get(bytes).map(|k| k.extension().into()));
+    if matches!(ext.as_deref(), Some("xlsm" | "xltm")) || is_macro_workbook(bytes) {
+        // Reads "Not sent: macro-enabled workbooks aren't supported yet".
+        return Some("macro-enabled workbooks".to_string());
+    }
+    Some(format!("{} files", ext?))
 }
 
 /// A document's extracted text, as cached and as rendered.
@@ -498,12 +526,59 @@ mod tests {
     }
 
     #[test]
-    fn a_zip_that_is_not_a_docx_is_not_a_document() {
+    fn sniffs_xlsx_by_bytes_and_keeps_the_other_office_zips_out() {
         let xlsx = zip_with(&[("xl/workbook.xml", "<workbook/>")]);
+        // By its bytes, whatever the name or claimed type says.
+        for (name, mime) in [
+            ("report.docx", DOCX_MIME),
+            ("book", "application/octet-stream"),
+            ("budget.xlsx", XLSX_MIME),
+        ] {
+            assert_eq!(
+                sniff_document(&xlsx, Some(name), Some(mime)),
+                Some(DocumentKind::Xlsx),
+                "{name}"
+            );
+        }
+        // Macro-enabled: by the macro part, or by the name.
+        let xlsm = zip_with(&[
+            ("xl/workbook.xml", "<workbook/>"),
+            ("xl/vbaProject.bin", "x"),
+        ]);
+        assert_eq!(sniff_document(&xlsm, Some("m.xlsx"), None), None);
+        assert_eq!(sniff_document(&xlsx, Some("m.xlsm"), None), None);
+        // pptx, ods and an arbitrary zip stay unsupported.
+        let pptx = zip_with(&[("ppt/presentation.xml", "<p/>")]);
+        let ods = zip_with(&[("content.xml", "<c/>"), ("mimetype", "x")]);
+        let plain = zip_with(&[("readme.txt", "hi")]);
+        for (bytes, name) in [(&pptx, "d.pptx"), (&ods, "s.ods"), (&plain, "a.zip")] {
+            assert_eq!(sniff_document(bytes, Some(name), None), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn unsupported_office_files_say_why() {
+        let xlsm = zip_with(&[
+            ("xl/workbook.xml", "<workbook/>"),
+            ("xl/vbaProject.bin", "x"),
+        ]);
+        let reason =
+            |bytes: &[u8], name: &str| decide_delivery(bytes, Some(name), None, true, true).reason;
         assert_eq!(
-            sniff_document(&xlsx, Some("report.docx"), Some(DOCX_MIME)),
-            None
+            reason(&xlsm, "macros.xlsm").as_deref(),
+            Some("macro-enabled workbooks")
         );
+        // Renamed: still recognised by its macro part.
+        assert_eq!(
+            reason(&xlsm, "macros.xlsx").as_deref(),
+            Some("macro-enabled workbooks")
+        );
+        assert_eq!(
+            reason(b"\xD0\xCF\x11\xE0junk", "old.xls").as_deref(),
+            Some("xls files")
+        );
+        let pptx = zip_with(&[("ppt/presentation.xml", "<p/>")]);
+        assert_eq!(reason(&pptx, "d.pptx").as_deref(), Some("pptx files"));
     }
 
     #[test]
@@ -561,6 +636,10 @@ mod tests {
         let docx = tiny_docx(&["hi"]);
         let csv = b"a,b\n".to_vec();
         let xlsx = zip_with(&[("xl/workbook.xml", "<workbook/>")]);
+        let xlsm = zip_with(&[
+            ("xl/workbook.xml", "<workbook/>"),
+            ("xl/vbaProject.bin", "x"),
+        ]);
         let d = |bytes: &[u8], name: &str, mime: &str, images: bool, pdf_ok: bool| {
             decide_delivery(bytes, Some(name), Some(mime), images, pdf_ok)
         };
@@ -596,7 +675,21 @@ mod tests {
         );
         assert_eq!(
             d(&xlsx, "budget.xlsx", "application/octet-stream", true, true),
-            AttachmentDelivery::unsupported(Some("xlsx files".into()))
+            of(DeliveryKind::Text)
+        );
+        assert_eq!(
+            d(
+                &xlsx,
+                "budget.xlsx",
+                "application/octet-stream",
+                false,
+                false
+            ),
+            of(DeliveryKind::Text)
+        );
+        assert_eq!(
+            d(&xlsm, "budget.xlsm", "application/octet-stream", true, true),
+            AttachmentDelivery::unsupported(Some("macro-enabled workbooks".into()))
         );
         assert_eq!(
             d(b"\0\0\0", "", "application/octet-stream", true, true),
@@ -699,6 +792,27 @@ mod tests {
         let second =
             document_text(id, b"other".to_vec(), DocumentKind::Text(TextFlavor::Plain)).await;
         assert_eq!(first, second);
+    }
+
+    #[tokio::test]
+    async fn an_xlsx_attachment_reaches_the_model_as_csv_text() {
+        let bytes = include_bytes!("../tests/fixtures/xlsx/sample.xlsx").to_vec();
+        assert_eq!(
+            decide_delivery(&bytes, Some("sample.xlsx"), None, false, false),
+            AttachmentDelivery::of(DeliveryKind::Text)
+        );
+        let text = document_text("ad-xlsx", bytes, DocumentKind::Xlsx).await;
+        let mut budget = REQUEST_TEXT_MAX_CHARS;
+        let out = render_attachment("sample.xlsx", DocumentKind::Xlsx, &text, &mut budget);
+        assert!(
+            out.starts_with("<attachment name=\"sample.xlsx\" kind=\"xlsx\""),
+            "{out}"
+        );
+        assert!(out.contains("truncated=\"false\""), "{out}");
+        assert!(out.contains("## Sheet: Budget\n"), "{out}");
+        assert!(out.contains("\"Widgets, large\",1234.5"), "{out}");
+        assert!(out.contains("## Sheet: Secret (hidden)\n"), "{out}");
+        assert!(out.ends_with("</attachment>"), "{out}");
     }
 
     #[tokio::test]

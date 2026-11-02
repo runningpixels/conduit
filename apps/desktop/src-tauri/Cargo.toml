@@ -102,6 +102,11 @@ csv = "1"
 ironcalc = "=0.9.1"
 quick-xml = "0.39"
 pdf-extract = "0.12.1"
+# xlsx workbooks (chat attachments + knowledge base). Read through the streaming
+# cell reader with xlsx only; calamine's own default features are empty (the
+# optional `chrono`/`dates`/`picture` features stay off, dates are formatted
+# by hand from `to_ymd_hms_milli`).
+calamine = { version = "0.38", default-features = false }
 
 # Writing: split a draft's Markdown into blocks (with source offsets) and
 # render the HTML export. MIT. No default features: `getopts` is only for its

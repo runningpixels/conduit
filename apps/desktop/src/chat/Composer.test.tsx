@@ -1317,7 +1317,7 @@ describe('Composer document attachments', () => {
   it('offers documents as well as images in the picker', () => {
     renderComposer();
     const accept = (document.querySelector('input[type="file"]') as HTMLInputElement).accept;
-    for (const wanted of ['image/png', '.pdf', '.docx', '.txt', '.md', '.csv']) {
+    for (const wanted of ['image/png', '.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv']) {
       expect(accept).toContain(wanted);
     }
   });

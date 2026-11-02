@@ -2546,7 +2546,6 @@
   "workspace.documentPanel.expandTitleWithShortcut": "Artefakt erweitern ({shortcut})",
   "workspace.documentPanel.hidePanelAriaLabel": "Artefakt-Panel ausblenden",
   "workspace.documentPanel.hidePanelTitleWithShortcut": "Artefakt-Panel ausblenden ({shortcut})",
-  "workspace.documentPanel.inlinePayloadFallback": "(Inline-Nutzdaten)",
   "workspace.documentPanel.menu.clearSiteData": "Websitedaten löschen",
   "workspace.documentPanel.menu.copied": "Kopiert",
   "workspace.documentPanel.menu.copyContents": "Inhalt kopieren",

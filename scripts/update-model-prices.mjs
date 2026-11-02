@@ -43,6 +43,12 @@ export const PROVIDER_KEYS = {
   qwen: 'alibaba',
   together: 'togetherai',
   fireworks: 'fireworks-ai',
+  cerebras: 'cerebras',
+  sambanova: 'sambanova',
+  deepinfra: 'deepinfra',
+  novita: 'novita-ai',
+  minimax: 'minimax',
+  nvidia: 'nvidia',
 };
 
 if (process.argv.includes('--check')) {

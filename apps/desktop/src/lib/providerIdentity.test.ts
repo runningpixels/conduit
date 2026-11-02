@@ -26,6 +26,12 @@ describe('providerHueId', () => {
       'qwen',
       'together',
       'fireworks',
+      'cerebras',
+      'sambanova',
+      'deepinfra',
+      'novita',
+      'minimax',
+      'nvidia',
     ]) {
       expect(providerHueId(id)).toBe('custom');
     }

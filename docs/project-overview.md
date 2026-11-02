@@ -51,9 +51,10 @@ The provider-agnostic core. Everything LLM-shaped flows through here.
 - **`adapter.rs`** — the `ProviderAdapter` trait (`validate_credentials`,
   `list_models`, `stream_chat`), the `StreamParser` trait for per-provider SSE
   parsing, and `registry()` / `get_adapter(id)`.
-- **`adapters/`** — seventeen registered providers: `anthropic`, `openai`,
+- **`adapters/`** — twenty-three registered providers: `anthropic`, `openai`,
   `gemini`, `openrouter`, `opencode_zen`, `groq`, `deepseek`, `mistral`,
-  `xai`, `zai`, `moonshot`, `qwen`, `together`, `fireworks`, `lmstudio`,
+  `xai`, `zai`, `moonshot`, `qwen`, `together`, `fireworks`, `cerebras`,
+  `sambanova`, `deepinfra`, `novita`, `minimax`, `nvidia`, `lmstudio`,
   `openai_compat` (any OpenAI-compatible base URL), and `ollama` (local, no
   key). Most of the OpenAI-compatible ones are `openai_preset` presets.
   `adapters/mod.rs` holds `wrap_sse_stream`, which parses raw SSE `data:` lines

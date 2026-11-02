@@ -158,6 +158,84 @@ impl OpenAiPresetAdapter {
         ))
     }
 
+    pub fn cerebras() -> Self {
+        Self(OpenAiAdapter::preset(
+            "cerebras",
+            "Cerebras",
+            "https://api.cerebras.ai/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn sambanova() -> Self {
+        Self(OpenAiAdapter::preset(
+            "sambanova",
+            "SambaNova",
+            "https://api.sambanova.ai/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn deepinfra() -> Self {
+        Self(OpenAiAdapter::preset(
+            "deepinfra",
+            "DeepInfra",
+            "https://api.deepinfra.com/v1/openai",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn novita() -> Self {
+        Self(OpenAiAdapter::preset(
+            "novita",
+            "Novita AI",
+            "https://api.novita.ai/openai/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn minimax() -> Self {
+        Self(OpenAiAdapter::preset(
+            "minimax",
+            "MiniMax",
+            "https://api.minimax.io/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn nvidia() -> Self {
+        Self(OpenAiAdapter::preset(
+            "nvidia",
+            "NVIDIA NIM",
+            "https://integrate.api.nvidia.com/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
     pub fn lmstudio() -> Self {
         Self(OpenAiAdapter::preset(
             "lmstudio",

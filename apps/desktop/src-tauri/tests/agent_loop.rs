@@ -730,6 +730,7 @@ fn validate_agent_guardrails_accepts_minimum_values() {
         max_steps: 1,
         wall_clock_budget_secs: 30,
         finish_after_document_write: None,
+        notify_when_done: None,
         handoff_agents: Vec::new(),
         parallel_helpers: 1,
     };
@@ -742,6 +743,7 @@ fn validate_agent_guardrails_accepts_maximum_values() {
         max_steps: 50,
         wall_clock_budget_secs: 1800,
         finish_after_document_write: None,
+        notify_when_done: None,
         handoff_agents: Vec::new(),
         parallel_helpers: 4,
     };

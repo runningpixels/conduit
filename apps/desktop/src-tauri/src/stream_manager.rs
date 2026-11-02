@@ -339,15 +339,22 @@ pub fn call_leaves_placeholders(call: &CompletedToolCall) -> bool {
     .any(|content| SECTION_PLACEHOLDER.is_match(content))
 }
 
-/// True when a round did nothing but write documents, and every write
+/// True when a round did nothing but create documents, and every write
 /// succeeded — the case where another provider round would only have the model
 /// confirm what it wrote. Any failure, any other tool, or a write the model
 /// will keep building (flagged, or a skeleton with placeholders) needs the
 /// model again.
+///
+/// Edits (`edit_*_document`, `patch_document`) always need it too: a review
+/// or a list of changes is done in passes, and ending on the first one dropped
+/// the rest. Live, turns ended on "1/3 — Light theme. Updating the CSS…" and
+/// "Applying the fixes in three passes — content first:" with the other
+/// passes never made and no word that the turn had stopped.
 pub fn round_only_wrote_documents(calls: &[CompletedToolCall], writes_succeeded: u32) -> bool {
     !calls.is_empty()
         && calls.iter().all(|call| {
             is_document_content_tool(&call.name)
+                && call.name.starts_with("write_")
                 && !call_has_more_to_write(call)
                 && !call_leaves_placeholders(call)
         })
@@ -5121,6 +5128,23 @@ mod document_round_tests {
         for c in [script, html, markdown] {
             assert!(!round_only_wrote_documents(&[c], 1));
         }
+    }
+
+    #[test]
+    fn an_edit_keeps_the_turn_going() {
+        let patch = call(
+            "patch_document",
+            json!({ "artifact_id": "a", "edits": [{ "old": "a", "new": "b" }] }),
+        );
+        let edit = call(
+            "edit_html_document",
+            json!({ "artifact_id": "a", "updated_html": "<p>Done.</p>" }),
+        );
+        let create = call("write_html_document", json!({ "html": "<p>Done.</p>" }));
+        assert!(!round_only_wrote_documents(std::slice::from_ref(&patch), 1));
+        assert!(!round_only_wrote_documents(std::slice::from_ref(&edit), 1));
+        // A create alongside an edit is not a create-only round.
+        assert!(!round_only_wrote_documents(&[create, edit], 2));
     }
 
     #[test]

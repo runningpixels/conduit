@@ -1526,6 +1526,12 @@ html[data-density="compact"] { --rail-btn-h: 46px; }
   font-weight: var(--muted-weight);
 }
 .convo-status[data-status="needs-you"] { color: var(--warn); }
+.convo-status[data-status="done"] { color: var(--ok); font-weight: 600; }
+.convo-status[data-status="done"] .convo-status-mark {
+  border-color: currentColor;
+  background: currentColor;
+  animation: none;
+}
 .convo-status-mark {
   width: 8px;
   height: 8px;

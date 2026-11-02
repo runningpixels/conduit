@@ -1673,6 +1673,46 @@
 }
 .turn-continue-building:hover { background: color-mix(in srgb, var(--hue) 22%, transparent); color: var(--ink); }
 .turn-cutoff-note { color: var(--warn); font-size: var(--fs-xl); margin: 6px 0 0; }
+
+/* Under a turn that created or changed documents: still working / done / stopped. */
+/* One sentence that wraps like text, so a narrow column never strands the
+   separator at the start of a line. */
+.turn-doc-line {
+  margin: 10px 0 0;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.turn-doc-line.live { display: flex; align-items: center; gap: 8px; }
+.turn-doc-line.live .live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-round);
+  background: var(--hue);
+  animation: dot-pulse 1.1s var(--ease-standard) infinite;
+}
+.turn-doc-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  vertical-align: middle;
+  font-weight: 600;
+}
+.turn-doc-line.done .turn-doc-state { color: var(--ok); }
+.turn-doc-line.done .turn-doc-state svg { width: 14px; height: 14px; }
+.turn-doc-line.stopped .turn-doc-state { color: var(--warn); }
+.turn-doc-item > span[aria-hidden="true"] { margin: 0 6px; }
+.turn-doc-open {
+  all: unset;
+  cursor: pointer;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink) 30%, transparent);
+  text-underline-offset: 3px;
+}
+.turn-doc-open:hover { text-decoration-color: currentColor; }
+.turn-doc-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-2); }
+html[data-reduce-motion="on"] .turn-doc-line.live .live-dot { animation: none; }
 /* Per-turn usage: info icon in the reserved footer row. Counts live in an
  * absolutely positioned tip so hover never grows the turn. Status line beneath
  * the composer is the canonical report (§6.3). */

@@ -64,6 +64,9 @@ interface SidebarProps {
   /** The chat whose turn is running, and whether it waits on the user
    *  (UI revamp: status in the list). */
   runStatus?: { conversationId: string; needsYou: boolean } | null;
+  /** Chats whose turn finished while the user was elsewhere and that they
+   *  haven't looked at since: they show "Done" until opened. */
+  finishedUnseen?: ReadonlySet<string>;
   /** Open the Ideas page; `ideasDot` marks something new there. */
   onOpenIdeas?: () => void;
   ideasDot?: boolean;
@@ -144,6 +147,7 @@ export function Sidebar({
   onOpenIdeas,
   ideasDot = false,
   runStatus = null,
+  finishedUnseen,
   onCollapse,
   onRevealWorkspace,
   onOpenSettings,
@@ -349,6 +353,11 @@ export function Sidebar({
             <span className="convo-status" data-status={runStatus.needsYou ? 'needs-you' : 'running'}>
               <i className="convo-status-mark" aria-hidden="true" />
               {runStatus.needsYou ? t('shell.sidebar.status.needsYou') : t('shell.sidebar.status.running')}
+            </span>
+          ) : finishedUnseen?.has(row.id) ? (
+            <span className="convo-status" data-status="done" title={t('shell.sidebar.status.doneTitle')}>
+              <i className="convo-status-mark" aria-hidden="true" />
+              {t('shell.sidebar.status.done')}
             </span>
           ) : (
             <span className="convo-meta">{fmt.timeAgoTerse(row.updatedAt)}</span>

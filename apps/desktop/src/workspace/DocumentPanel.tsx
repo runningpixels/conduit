@@ -31,7 +31,7 @@ import { ArtifactEmptyState } from '../artifacts/ArtifactEmptyState';
 import { ArtifactChatList, newestFirst } from '../artifacts/ArtifactChatList';
 import { ArtifactSwitcher } from './ArtifactSwitcher';
 import { inlineArtifactText } from '../artifacts/format';
-import { ActivityCheckIcon, AppsIcon, FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon, TrashIcon } from '../icons';
+import { ActivityCheckIcon, AppsIcon, CheckIcon, FilePlainIcon, ChevronRight, MoreIcon, PencilIcon, CopyIcon, DownloadIcon, TrashIcon } from '../icons';
 
 /** The documents the Reviewer reads (agents::review::REVIEWABLE_KINDS). */
 const REVIEWABLE_KINDS: readonly string[] = ['html', 'markdown', 'text'];
@@ -83,6 +83,9 @@ function DocPlaceholder({ children }: { children: ReactNode }) {
 interface DocumentPanelProps {
   artifact: Artifact | null;
   pendingArtifact?: PendingArtifact | null;
+  /** The chat's running turn has changed this document ("Editing…", until
+   *  the turn ends), or its last turn did ("Done"). */
+  editState?: 'editing' | 'done';
   openArtifacts: Artifact[];
   fileStateMap: Record<string, FileState>;
   activeFileState: FileState;
@@ -357,6 +360,7 @@ function RestoreIcon() {
 export function DocumentPanel({
   artifact,
   pendingArtifact = null,
+  editState,
   openArtifacts,
   fileStateMap,
   activeFileState,
@@ -1139,6 +1143,24 @@ export function DocumentPanel({
         )}
 
         <span className="doc-toolbar-spacer" />
+
+        {editState && (
+          <span
+            className="doc-edit-state"
+            data-state={editState}
+            role="status"
+            title={
+              editState === 'editing'
+                ? t('workspace.documentPanel.editState.editingTitle')
+                : t('workspace.documentPanel.editState.doneTitle')
+            }
+          >
+            {editState === 'editing' ? <i className="doc-edit-dot" aria-hidden="true" /> : <CheckIcon />}
+            {editState === 'editing'
+              ? t('workspace.documentPanel.editState.editing')
+              : t('workspace.documentPanel.editState.done')}
+          </span>
+        )}
 
         {networkArtifactId && (
           <ArtifactNetworkChip

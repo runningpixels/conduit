@@ -548,14 +548,19 @@ pub struct AgentGuardrails {
     #[serde(default = "default_agent_wall_clock_secs")]
     pub wall_clock_budget_secs: u32,
     /// End the turn once every tool call in a round was a successful document
-    /// write or edit, instead of starting another provider round only for the
-    /// model to confirm what it wrote. Absent means on — settings saved before
-    /// this field existed, and renderer code that builds guardrails without
-    /// it, keep the default. Read it through
+    /// creation, instead of starting another provider round only for the
+    /// model to confirm what it wrote. Edits always get another round. Absent
+    /// means on — settings saved before this field existed, and renderer code
+    /// that builds guardrails without it, keep the default. Read it through
     /// [`AgentGuardrails::finishes_after_document_write`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub finish_after_document_write: Option<bool>,
+    /// Show a system notification when a long turn finishes while Conduit is
+    /// not in front. Read by the renderer only. Absent means on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub notify_when_done: Option<bool>,
     /// Ids of the library agents the chat assistant may hand work to (each
     /// becomes an `ask_<id>` tool). Off by default.
     #[serde(default)]
@@ -591,6 +596,8 @@ pub struct AgentGuardrailsPatch {
     #[ts(optional)]
     pub finish_after_document_write: Option<bool>,
     #[ts(optional)]
+    pub notify_when_done: Option<bool>,
+    #[ts(optional)]
     pub handoff_agents: Option<Vec<String>>,
     #[ts(optional)]
     pub parallel_helpers: Option<u8>,
@@ -607,6 +614,7 @@ impl AgentGuardrailsPatch {
             finish_after_document_write: self
                 .finish_after_document_write
                 .or(base.finish_after_document_write),
+            notify_when_done: self.notify_when_done.or(base.notify_when_done),
             handoff_agents: self
                 .handoff_agents
                 .unwrap_or_else(|| base.handoff_agents.clone()),
@@ -621,6 +629,7 @@ impl From<AgentGuardrails> for AgentGuardrailsPatch {
             max_steps: Some(full.max_steps),
             wall_clock_budget_secs: Some(full.wall_clock_budget_secs),
             finish_after_document_write: full.finish_after_document_write,
+            notify_when_done: full.notify_when_done,
             handoff_agents: Some(full.handoff_agents),
             parallel_helpers: Some(full.parallel_helpers),
         }
@@ -645,6 +654,7 @@ impl Default for AgentGuardrails {
             max_steps: default_agent_max_steps(),
             wall_clock_budget_secs: default_agent_wall_clock_secs(),
             finish_after_document_write: None,
+            notify_when_done: None,
             handoff_agents: Vec::new(),
             parallel_helpers: default_parallel_helpers(),
         }

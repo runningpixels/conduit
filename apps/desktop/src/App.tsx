@@ -5,6 +5,7 @@ import type { StatusState } from './chat/statusTypes';
 import { useUpdateScheduler } from './updates/useUpdateScheduler';
 import { ToastStack } from './workspace/ToastStack';
 import { useSpendAlert } from './workspace/useSpendAlert';
+import { useTurnFinishSignals } from './workspace/useTurnFinishSignals';
 import { makeStatus, fromString, STATUS_DISMISS_MS, TOAST_DISMISS_MS, TOAST_STATUS_KINDS, toastDismissMs, workflowRunStatus } from './chat/statusTypes';
 import {
   checkArtifactFileState,
@@ -743,6 +744,14 @@ export default function App() {
   const [focusTurnId, setFocusTurnId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<ChatTranscript>({ turns: [], citations: {} });
   const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
+  const { finishedUnseen, noteDocumentActivity, documentEditState } = useTurnFinishSignals({
+    runStatus,
+    activeConversationId,
+    titleOf: (id) => conversations.find((c) => c.id === id)?.displayTitle ?? t('chat.title.untitled'),
+    notifyEnabled: settings.agent?.notifyWhenDone ?? true,
+    notify: (title, body) => void Promise.resolve().then(() => notifyUser(title, body)).catch(() => {}),
+    notifyTitle: t('shell.notify.turnFinished'),
+  });
   /** The question whose reply's versions the Compare tab shows. */
   const [compareUserMessageId, setCompareUserMessageId] = useState<string | null>(null);
   useEffect(() => {
@@ -2740,13 +2749,14 @@ export default function App() {
 
   const routeDocumentToolActivity = useCallback(
     (activity: DocumentToolActivity) => {
+      noteDocumentActivity(activity);
       if (activity.phase === 'written') {
         void handleDocumentWritten(activity);
         return;
       }
       handleDocumentToolActivity(activity);
     },
-    [handleDocumentWritten, handleDocumentToolActivity],
+    [handleDocumentWritten, handleDocumentToolActivity, noteDocumentActivity],
   );
 
   const handleCloseArtifactTab = useCallback(
@@ -3888,6 +3898,7 @@ export default function App() {
           }}
           onOpenProjectSettings={setProjectSettingsFolderId}
           runStatus={runStatus}
+          finishedUnseen={finishedUnseen}
         />
 
         {/* The sidebar's sash, laid over its border rather than given a grid
@@ -4402,6 +4413,7 @@ export default function App() {
           onAskToFix={(prompt) => chatViewRef.current?.insertPrompt(prompt)}
           artifact={activeArtifact}
           pendingArtifact={pendingArtifact}
+          editState={documentEditState(activeConversationId, activeArtifact?.id)}
           openArtifacts={openArtifacts}
           fileStateMap={fileStateMap}
           activeFileState={activeFileState}

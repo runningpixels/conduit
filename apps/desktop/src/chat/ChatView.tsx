@@ -4245,6 +4245,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     };
                   })(),
                 }}
+                documentTitles={artifacts}
                 outputLimit={activeTurnOutputLimit}
                 provider={liveTurnInfo.provider}
                 modelId={liveTurnInfo.model}

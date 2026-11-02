@@ -2535,7 +2535,6 @@
   "workspace.documentPanel.expandTitleWithShortcut": "아티팩트 넓히기({shortcut})",
   "workspace.documentPanel.hidePanelAriaLabel": "아티팩트 패널 숨기기",
   "workspace.documentPanel.hidePanelTitleWithShortcut": "아티팩트 패널 숨기기({shortcut})",
-  "workspace.documentPanel.inlinePayloadFallback": "(인라인 데이터)",
   "workspace.documentPanel.menu.clearSiteData": "사이트 데이터 지우기",
   "workspace.documentPanel.menu.copied": "복사됨",
   "workspace.documentPanel.menu.copyContents": "내용 복사",

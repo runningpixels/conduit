@@ -191,8 +191,10 @@ describe('DocumentPanel V7 chrome', () => {
     // "Reveal in Explorer" is gone: a text-backed artifact has no file on disk,
     // so the item was permanently disabled. Save a copy… now reveals the export.
     expect(screen.queryByRole('menuitem', { name: /reveal/i })).toBeNull();
-    // Metadata block: path label + size · modified row.
-    expect(screen.getAllByText('(inline payload)').length).toBeGreaterThan(0);
+    // Metadata block: size · modified row; no path label for an artifact kept
+    // in the database (it used to say "(inline payload)").
+    expect(screen.queryByText('(inline payload)')).toBeNull();
+    expect(document.querySelector('.menu-label')).toBeNull();
     expect(screen.getByText(/14 bytes · modified/)).toBeInTheDocument();
     // The V6 details column is gone.
     expect(screen.queryByRole('button', { name: 'Hide details' })).not.toBeInTheDocument();
@@ -206,12 +208,19 @@ describe('DocumentPanel V7 chrome', () => {
     expect(screen.getByText('v3')).toBeInTheDocument();
   });
 
-  it('renders the persistent foot strip with path and size · saved', () => {
+  it('renders the persistent foot strip with size · saved and no path for a stored artifact', () => {
     renderPanel({ docTab: 'preview' });
     const foot = screen.getByLabelText('Artifact metadata');
-    expect(foot).toHaveTextContent('(inline payload)');
+    expect(foot.querySelector('.foot-path')).toBeNull();
     expect(foot).toHaveTextContent(/14 bytes/);
     expect(foot).toHaveTextContent(/saved/);
+  });
+
+  it('shows the file path when the artifact is backed by a file', () => {
+    const onDisk: Artifact = { ...baseArtifact, contentPath: 'C:/data/artifacts/report.md' };
+    renderPanel({ artifact: onDisk, openArtifacts: [onDisk], docTab: 'preview' });
+    const foot = screen.getByLabelText('Artifact metadata');
+    expect(foot.querySelector('.foot-path')).toHaveTextContent('C:/data/artifacts/report.md');
   });
 });
 

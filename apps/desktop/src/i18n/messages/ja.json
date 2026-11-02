@@ -2535,7 +2535,6 @@
   "workspace.documentPanel.expandTitleWithShortcut": "アーティファクトを広げる（{shortcut}）",
   "workspace.documentPanel.hidePanelAriaLabel": "アーティファクトパネルを隠す",
   "workspace.documentPanel.hidePanelTitleWithShortcut": "アーティファクトパネルを隠す（{shortcut}）",
-  "workspace.documentPanel.inlinePayloadFallback": "（インラインのデータ）",
   "workspace.documentPanel.menu.clearSiteData": "サイトデータを消去",
   "workspace.documentPanel.menu.copied": "コピーしました",
   "workspace.documentPanel.menu.copyContents": "内容をコピー",

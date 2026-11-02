@@ -97,6 +97,14 @@ describe('turnDocumentInProgress', () => {
     expect(turnDocumentInProgress({ toolCalls: [streaming] }, [])).toBe('Bakery Dashboard');
   });
 
+  it('decodes a title the model wrote HTML-escaped, as the saved document will have it', () => {
+    const streaming = call('write_html_document', undefined, {
+      status: undefined,
+      documentWrite: { contentField: 'html', title: 'Maple &amp; Rye &#8212; Menu', contentChars: 10, contentLines: 1 } as ToolCallState['documentWrite'],
+    });
+    expect(turnDocumentInProgress({ toolCalls: [streaming] }, [])).toBe('Maple & Rye — Menu');
+  });
+
   it('is undefined before any document tool ran, and empty when no title is known yet', () => {
     expect(turnDocumentInProgress({ toolCalls: [call('web_search', { q: 'x' })] }, [])).toBeUndefined();
     expect(turnDocumentInProgress({ toolCalls: [call('patch_document', { artifact_id: 'gone' })] }, [])).toBe('');

@@ -32,9 +32,27 @@ function succeeded(call: ToolCallState): boolean {
   return call.status === 'completed' || (call.status === undefined && call.complete && !call.error);
 }
 
+const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+/** Models often write titles HTML-escaped ("Maple &amp; Rye"); the app
+ *  decodes them when it saves the document, so match that while the
+ *  arguments are still all there is. */
+function decodeTitle(title: string): string {
+  return title.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
+    if (name[0] !== '#') return NAMED_ENTITIES[name] ?? whole;
+    const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
+    return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
 function stringArg(call: ToolCallState, key: string): string | undefined {
   const value = call.arguments?.[key];
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function titleArg(call: ToolCallState): string | undefined {
+  const title = stringArg(call, 'title');
+  return title && decodeTitle(title).trim();
 }
 
 /** The documents a turn created or changed, in the order it first touched
@@ -50,7 +68,7 @@ export function turnDocumentOutcomes(
     const created = isDocumentCreateTool(call.name);
     const id = resolveWrittenArtifactId(call.name, stringArg(call, 'artifact_id'), artifacts, messageId);
     const artifact = id ? artifacts.find((a) => a.id === id) : undefined;
-    const title = artifact?.title?.trim() || stringArg(call, 'title') || '';
+    const title = artifact?.title?.trim() || titleArg(call) || '';
     const key = id ?? `title:${title}`;
     const existing = byKey.get(key);
     if (existing) {
@@ -75,7 +93,8 @@ export function turnDocumentInProgress(
     if (!DOCUMENT_CONTENT_TOOL_NAMES.has(call.name) || call.status === 'failed') continue;
     const id = stringArg(call, 'artifact_id');
     const listed = id ? artifacts.find((a) => a.id === id)?.title?.trim() : undefined;
-    return listed || stringArg(call, 'title') || call.documentWrite?.title?.trim() || '';
+    const streamed = call.documentWrite?.title;
+    return listed || titleArg(call) || (streamed && decodeTitle(streamed).trim()) || '';
   }
   return undefined;
 }

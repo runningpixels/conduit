@@ -1,0 +1,465 @@
+{
+  "add_sheet": {
+    "description": "Add a sheet to an existing spreadsheet. name is unique, at most 31 characters, without [ ] : * ? / \\. columns and rows work as in create_spreadsheet. position is the 0-based index to insert at (default: last).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "description": "Optional settings per column, from column A: width in characters and a default format for the column's cells.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number"
+              },
+              "format": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "description": "Rows from the top; each row is an array of cells from column A.",
+          "items": {
+            "type": "array",
+            "items": {
+              "description": "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.",
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "description": "A number, text or true/false."
+                    },
+                    "formula": {
+                      "type": "string",
+                      "description": "An Excel formula starting with =."
+                    },
+                    "format": {
+                      "type": "string",
+                      "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                    },
+                    "style": {
+                      "type": "string",
+                      "enum": [
+                        "header",
+                        "input",
+                        "total",
+                        "note",
+                        "good",
+                        "bad"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "position": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "name"
+      ]
+    }
+  },
+  "append_rows": {
+    "description": "Add rows to the end of a sheet in an existing spreadsheet. Use it to write a large table in several calls: create_spreadsheet with the first rows and more_to_write true, then append_rows until the last call, which leaves more_to_write out. Cells work as in create_spreadsheet; formulas can refer to rows written earlier.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "description": "Rows from the top; each row is an array of cells from column A.",
+          "items": {
+            "type": "array",
+            "items": {
+              "description": "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.",
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "description": "A number, text or true/false."
+                    },
+                    "formula": {
+                      "type": "string",
+                      "description": "An Excel formula starting with =."
+                    },
+                    "format": {
+                      "type": "string",
+                      "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                    },
+                    "style": {
+                      "type": "string",
+                      "enum": [
+                        "header",
+                        "input",
+                        "total",
+                        "note",
+                        "good",
+                        "bad"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "more_to_write": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "sheet",
+        "rows"
+      ]
+    }
+  },
+  "create_spreadsheet": {
+    "description": "Create a spreadsheet (an Excel workbook the user can preview and save as .xlsx). Use it when the user asks for a spreadsheet, workbook, Excel file or a table they will calculate with, such as a budget, cost model, forecast or schedule. Use real formulas for anything calculated, not numbers you worked out. Put inputs and assumptions in their own cells (style input), often on an Assumptions sheet, and refer to them from formulas. Give the header row style header and total rows style total. Every call returns errors for any formula that did not compute (such as #NAME? or #REF!): fix them with update_cells. For a large table, set more_to_write and continue with append_rows. Omit artifact_id; the app assigns it and returns it.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "sheets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Unique, at most 31 characters, without [ ] : * ? / \\."
+              },
+              "columns": {
+                "type": "array",
+                "description": "Optional settings per column, from column A: width in characters and a default format for the column's cells.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "number"
+                    },
+                    "format": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "freeze_header": {
+                "type": "boolean",
+                "description": "Keep row 1 visible when scrolling."
+              },
+              "rows": {
+                "type": "array",
+                "description": "Rows from the top; each row is an array of cells from column A.",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "description": "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.",
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "value": {
+                            "description": "A number, text or true/false."
+                          },
+                          "formula": {
+                            "type": "string",
+                            "description": "An Excel formula starting with =."
+                          },
+                          "format": {
+                            "type": "string",
+                            "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                          },
+                          "style": {
+                            "type": "string",
+                            "enum": [
+                              "header",
+                              "input",
+                              "total",
+                              "note",
+                              "good",
+                              "bad"
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "required": [
+              "name",
+              "rows"
+            ]
+          }
+        },
+        "more_to_write": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title",
+        "sheets"
+      ]
+    }
+  },
+  "edit_sheet": {
+    "description": "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based). Formulas that refer to moved rows are updated.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "rename_to": {
+          "type": "string"
+        },
+        "delete": {
+          "type": "boolean"
+        },
+        "columns": {
+          "type": "array",
+          "description": "Optional settings per column, from column A: width in characters and a default format for the column's cells.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number"
+              },
+              "format": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "freeze_header": {
+          "type": "boolean"
+        },
+        "delete_rows": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "integer"
+            },
+            "count": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "from",
+            "count"
+          ]
+        },
+        "insert_rows": {
+          "type": "object",
+          "properties": {
+            "at": {
+              "type": "integer"
+            },
+            "rows": {
+              "type": "array",
+              "description": "Rows from the top; each row is an array of cells from column A.",
+              "items": {
+                "type": "array",
+                "items": {
+                  "description": "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.",
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "value": {
+                          "description": "A number, text or true/false."
+                        },
+                        "formula": {
+                          "type": "string",
+                          "description": "An Excel formula starting with =."
+                        },
+                        "format": {
+                          "type": "string",
+                          "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                        },
+                        "style": {
+                          "type": "string",
+                          "enum": [
+                            "header",
+                            "input",
+                            "total",
+                            "note",
+                            "good",
+                            "bad"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "required": [
+            "at",
+            "rows"
+          ]
+        }
+      },
+      "required": [
+        "artifact_id",
+        "sheet"
+      ]
+    }
+  },
+  "read_spreadsheet": {
+    "description": "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "range": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id"
+      ]
+    }
+  },
+  "update_cells": {
+    "description": "Overwrite a block of cells in an existing spreadsheet, starting at start (such as B2) and going right and down: rows is a 2-D block of cells, as in create_spreadsheet. null clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "start": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "description": "Rows from the top; each row is an array of cells from column A.",
+          "items": {
+            "type": "array",
+            "items": {
+              "description": "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.",
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "description": "A number, text or true/false."
+                    },
+                    "formula": {
+                      "type": "string",
+                      "description": "An Excel formula starting with =."
+                    },
+                    "format": {
+                      "type": "string",
+                      "description": "currency, currency0, percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\"."
+                    },
+                    "style": {
+                      "type": "string",
+                      "enum": [
+                        "header",
+                        "input",
+                        "total",
+                        "note",
+                        "good",
+                        "bad"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "artifact_id",
+        "sheet",
+        "start",
+        "rows"
+      ]
+    }
+  }
+}

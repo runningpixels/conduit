@@ -18,7 +18,7 @@
 ![Conduit on Windows, light mode: with the Ferry docs and a sync metrics CSV attached, a chat built a dark "Ferry sync health" dashboard for the 21 September stall, open beside it: four tiles for a 50-minute stall, a 2,034 ms peak p95 commit latency, 184,244 chunks waiting and 2,720 stalled clients; a latency chart with the stall shaded and a dashed "Lock released" line the chat added on request; a bar chart of chunks waiting every 5 minutes; a donut of stalled clients by platform; and a cause-and-fix strip citing the runbook](./docs/assets/screenshot-hero.webp)
 
 Conduit is an open-source desktop app for working with large language models.
-Bring your own key for any of seventeen providers, or run a local model with
+Bring your own key for any of twenty-three providers, or run a local model with
 Ollama or LM Studio, and ask for things you can keep: a **personal app** that
 pulls live data, a **slide deck** you edit by asking, an **answer cited from
 your own documents**, a **research report** whose every finding is checked
@@ -261,7 +261,8 @@ has a "Go to" entry for each.
 
 Pick any model you have set up from the composer: Anthropic, OpenAI, Gemini,
 OpenRouter, OpenCode Zen, Groq, DeepSeek, Mistral, xAI, Z.ai, Moonshot AI, Qwen,
-Together AI, Fireworks AI, LM Studio, Ollama, or any OpenAI-compatible endpoint.
+Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax,
+NVIDIA NIM, LM Studio, Ollama, or any OpenAI-compatible endpoint.
 When a chat nears the model's context window, older turns are summarised
 automatically so it keeps going.
 
@@ -332,7 +333,8 @@ dates, numbers and file sizes follow the language you pick.
 ### And more
 
 - **A base URL for each provider** where it makes sense (xAI, Z.ai, Moonshot
-  AI, Qwen, Together AI, Fireworks AI, Anthropic and OpenAI) for regional or
+  AI, Qwen, Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita
+  AI, MiniMax, NVIDIA NIM, Anthropic and OpenAI) for regional or
   self-hosted endpoints, a compatible API or a LiteLLM proxy.
 - **First-run setup** covers language, theme, text size, local-only mode, key
   storage, update checks and diagnostics.
@@ -390,7 +392,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.19 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.20 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -400,7 +402,7 @@ left is checking it on real installs before calling it final.
 
 | Area | State |
 |---|---|
-| Provider streaming (17 providers, cancellation, normalization) | Working |
+| Provider streaming (23 providers, cancellation, normalization) | Working |
 | Local SQLite persistence, migrations, encryption at rest | Working |
 | MCP connector runtime (stdio and streamable HTTP, consent, supervision) | Working |
 | Artifacts — create, render, edit, export | Working |
@@ -430,7 +432,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML on every platform, PDF on Windows | Working |
 | Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.19 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.20 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

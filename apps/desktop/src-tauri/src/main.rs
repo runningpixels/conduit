@@ -242,6 +242,7 @@ fn main() {
             // Automatic updates: non-networked status read + stage-for-quit.
             get_update_status,
             stage_update,
+            restart_to_update,
             // Phase 6 M6.5: diagnostics export disclosure + reveal-in-folder.
             get_diagnostics_disclosure_acknowledged,
             acknowledge_diagnostics_disclosure,

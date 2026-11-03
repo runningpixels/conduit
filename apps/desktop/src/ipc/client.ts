@@ -1019,6 +1019,12 @@ export async function stageUpdate(): Promise<UpdateInfo | null> {
   return invokeCommand<UpdateInfo | null>('stage_update');
 }
 
+/// Restart now and install what `stageUpdate` holds, through the normal quit
+/// path. Rejects when nothing is staged.
+export async function restartToUpdate(): Promise<void> {
+  await invokeCommand('restart_to_update');
+}
+
 // =============================================================================
 // Phase 6 M6.4 — First-run onboarding (BYOK gate)
 // =============================================================================

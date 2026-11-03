@@ -19,6 +19,16 @@
  * correct for a desktop chat client with no background service, and not a thing
  * this app should grow one for.
  *
+ * ## What it tells the user
+ *
+ * An update it finds stays on screen until dismissed, with the install one
+ * click away: "Install and restart" under `notify`, "Restart now" once
+ * `automatic` has staged one. A six-second toast with no button went unseen
+ * for weeks, and "installs when you quit" rarely comes, since closing the
+ * window only hides it to the tray. Each launch checks once whatever the clock
+ * says, so a dismissed prompt comes back next launch; within a session each
+ * version is announced once.
+ *
  * ## What it will not do
  *
  * - Run at all unless `updateCheckEnabled` is on AND the policy is not
@@ -30,10 +40,16 @@
  *   errors.
  */
 
-import { useEffect, useRef } from 'react';
-import type { AppSettings } from '../ipc/contracts';
-import { checkForUpdate, getUpdateStatus, stageUpdate } from '../ipc/client';
-import { makeStatus, type StatusState } from '../chat/statusTypes';
+import { useEffect, useRef } from "react";
+import type { AppSettings } from "../ipc/contracts";
+import {
+  checkForUpdate,
+  downloadAndInstallUpdate,
+  getUpdateStatus,
+  restartToUpdate,
+  stageUpdate,
+} from "../ipc/client";
+import { makeStatus, type StatusState } from "../chat/statusTypes";
 
 /** Delay before the first check, so launch is never competing with it. */
 const STARTUP_DELAY_MS = 60_000;
@@ -60,6 +76,9 @@ const JITTER_RATIO = 0.2;
  */
 const TICK_MS = 15 * 60 * 1000;
 
+/** How often an install the user asked for during a reply looks again. */
+const BUSY_RETRY_MS = 2_000;
+
 export interface UpdateSchedulerOptions {
   /** Null while settings are still loading; the hook stays dormant. */
   settings: AppSettings | null;
@@ -70,7 +89,12 @@ export interface UpdateSchedulerOptions {
   t: (id: string, values?: Record<string, string | number>) => string;
 }
 
-export function useUpdateScheduler({ settings, isBusy, onStatus, t }: UpdateSchedulerOptions) {
+export function useUpdateScheduler({
+  settings,
+  isBusy,
+  onStatus,
+  t,
+}: UpdateSchedulerOptions) {
   // Held in refs so changing them does not restart the schedule: a status
   // callback identity change should not reset the 24h clock.
   const isBusyRef = useRef(isBusy);
@@ -83,8 +107,15 @@ export function useUpdateScheduler({ settings, isBusy, onStatus, t }: UpdateSche
   // One jitter draw per mount, not per tick — re-drawing every tick would
   // average the offset back out to zero and defeat the point.
   const jitterRef = useRef(1 + (Math.random() * 2 - 1) * JITTER_RATIO);
+  // The launch check runs whatever `lastChecked` says; later ones keep the clock.
+  const checkedThisSessionRef = useRef(false);
+  // Versions already put in front of the user this session, so a daily tick
+  // does not stack a second prompt over a dismissed one.
+  const announcedRef = useRef(new Set<string>());
 
-  const enabled = Boolean(settings?.updateCheckEnabled) && settings?.updatePolicy !== 'manual';
+  const enabled =
+    Boolean(settings?.updateCheckEnabled) &&
+    settings?.updatePolicy !== "manual";
   const policy = settings?.updatePolicy;
 
   useEffect(() => {
@@ -92,6 +123,63 @@ export function useUpdateScheduler({ settings, isBusy, onStatus, t }: UpdateSche
 
     let cancelled = false;
     const dueAfterMs = CHECK_INTERVAL_MS * jitterRef.current;
+
+    /** The one-click install. A found update takes the same verified path as
+     *  Settings' button (migration precheck, signature check, restart); a
+     *  staged one is installed by restarting. A reply in flight is let finish
+     *  first — a restart would cut it off. */
+    async function install(kind: "available" | "staged", version: string) {
+      const say = (
+        key: string,
+        kind: StatusState["kind"],
+        values: Record<string, string> = {},
+      ) =>
+        onStatusRef.current(
+          makeStatus(
+            tRef.current(key, { version, ...values }),
+            kind,
+            "settings",
+          ),
+        );
+      if (isBusyRef.current()) {
+        say("settings.updates.prompt.waitingForReply", "active");
+        while (isBusyRef.current())
+          await new Promise((r) => setTimeout(r, BUSY_RETRY_MS));
+      }
+      say("settings.updates.prompt.installing", "active");
+      try {
+        await (kind === "staged"
+          ? restartToUpdate()
+          : downloadAndInstallUpdate());
+      } catch (e) {
+        say("settings.updates.status.installFailed", "error", {
+          error: String(e),
+        });
+      }
+    }
+
+    function announce(kind: "available" | "staged", version: string) {
+      const key = `${kind}:${version}`;
+      if (announcedRef.current.has(key)) return;
+      announcedRef.current.add(key);
+      const t = tRef.current;
+      onStatusRef.current({
+        ...makeStatus(
+          t(`settings.updates.prompt.${kind}`, { version }),
+          "success",
+          "settings",
+          t(`settings.updates.prompt.${kind}Detail`),
+        ),
+        action: {
+          label: t(
+            kind === "available"
+              ? "settings.updates.prompt.install"
+              : "settings.updates.prompt.restartNow",
+          ),
+          run: () => void install(kind, version),
+        },
+      });
+    }
 
     async function tick() {
       if (cancelled) return;
@@ -103,40 +191,34 @@ export function useUpdateScheduler({ settings, isBusy, onStatus, t }: UpdateSche
         const status = await getUpdateStatus();
         if (cancelled) return;
 
-        // Something is already downloaded and waiting for quit. Nothing further
-        // to do this session, whatever the clock says.
-        if (status.staged) return;
+        // Something is already downloaded and waiting for quit: offer the
+        // restart, and check nothing further this session.
+        if (status.staged) {
+          announce("staged", status.staged.version);
+          return;
+        }
 
         const elapsedMs =
-          status.lastChecked === null ? Number.POSITIVE_INFINITY : Date.now() - status.lastChecked * 1000;
-        if (elapsedMs < dueAfterMs) return;
+          status.lastChecked === null
+            ? Number.POSITIVE_INFINITY
+            : Date.now() - status.lastChecked * 1000;
+        if (checkedThisSessionRef.current && elapsedMs < dueAfterMs) return;
+        checkedThisSessionRef.current = true;
 
         // A `.deb` build cannot install silently at quit, so staging there
         // would be a daily check that only ever earns a refusal.
-        if (policy === 'automatic' && !status.automaticSupported) return;
+        if (policy === "automatic" && !status.automaticSupported) return;
 
-        if (policy === 'automatic') {
+        if (policy === "automatic") {
           const staged = await stageUpdate();
           if (cancelled || !staged) return;
-          onStatusRef.current(
-            makeStatus(
-              tRef.current('settings.updates.status.stagedForQuit', { version: staged.version }),
-              'success',
-              'settings',
-            ),
-          );
+          announce("staged", staged.version);
           return;
         }
 
         const found = await checkForUpdate();
         if (cancelled || !found) return;
-        onStatusRef.current(
-          makeStatus(
-            tRef.current('settings.updates.status.available', { version: found.version }),
-            'warning',
-            'settings',
-          ),
-        );
+        announce("available", found.version);
       } catch {
         // Swallowed on purpose. A background check the user did not ask for
         // should not produce an error they have to dismiss; the next tick

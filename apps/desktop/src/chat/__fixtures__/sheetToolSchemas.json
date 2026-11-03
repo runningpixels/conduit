@@ -54,7 +54,7 @@
                     },
                     "format": {
                       "type": "string",
-                      "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
+                      "description": "currency, currency0 (no decimals), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". currency is in the spreadsheet's currency (see create_spreadsheet's currency), else the money format the sheet already uses, else US dollars. Put text such as R$ or kr in quotes: \"R$\" #,##0.00."
                     },
                     "style": {
                       "type": "string",
@@ -123,7 +123,7 @@
                     },
                     "format": {
                       "type": "string",
-                      "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
+                      "description": "currency, currency0 (no decimals), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". currency is in the spreadsheet's currency (see create_spreadsheet's currency), else the money format the sheet already uses, else US dollars. Put text such as R$ or kr in quotes: \"R$\" #,##0.00."
                     },
                     "style": {
                       "type": "string",
@@ -160,6 +160,10 @@
       "properties": {
         "title": {
           "type": "string"
+        },
+        "currency": {
+          "type": "string",
+          "description": "The ISO code of the money in this spreadsheet, such as EUR, JPY or BRL, when it isn't US dollars: cells formatted currency show it."
         },
         "sheets": {
           "type": "array",
@@ -218,7 +222,7 @@
                           },
                           "format": {
                             "type": "string",
-                            "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
+                            "description": "currency, currency0 (no decimals), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". currency is in the spreadsheet's currency (see create_spreadsheet's currency), else the money format the sheet already uses, else US dollars. Put text such as R$ or kr in quotes: \"R$\" #,##0.00."
                           },
                           "style": {
                             "type": "string",
@@ -255,7 +259,7 @@
     }
   },
   "edit_sheet": {
-    "description": "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based). Formulas that refer to moved rows are updated.",
+    "description": "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based); a new row takes the formats and formulas of the row above where its cells are empty, and a total just below takes it in (SUM(B2:B7) becomes SUM(B2:B8)). With rows empty, it inserts count empty rows to fill with update_cells. Formulas that refer to moved rows are updated.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -339,7 +343,7 @@
                         },
                         "format": {
                           "type": "string",
-                          "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
+                          "description": "currency, currency0 (no decimals), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". currency is in the spreadsheet's currency (see create_spreadsheet's currency), else the money format the sheet already uses, else US dollars. Put text such as R$ or kr in quotes: \"R$\" #,##0.00."
                         },
                         "style": {
                           "type": "string",
@@ -357,11 +361,14 @@
                   ]
                 }
               }
+            },
+            "count": {
+              "type": "integer",
+              "description": "With rows empty: how many empty rows to insert (default 1)."
             }
           },
           "required": [
-            "at",
-            "rows"
+            "at"
           ]
         }
       },
@@ -434,7 +441,7 @@
                     },
                     "format": {
                       "type": "string",
-                      "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
+                      "description": "currency, currency0 (no decimals), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". currency is in the spreadsheet's currency (see create_spreadsheet's currency), else the money format the sheet already uses, else US dollars. Put text such as R$ or kr in quotes: \"R$\" #,##0.00."
                     },
                     "style": {
                       "type": "string",
@@ -468,7 +475,7 @@
               },
               "format": {
                 "type": "string",
-                "description": "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00."
+                "description": "currency, currency0 (no decimals), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". currency is in the spreadsheet's currency (see create_spreadsheet's currency), else the money format the sheet already uses, else US dollars. Put text such as R$ or kr in quotes: \"R$\" #,##0.00."
               },
               "style": {
                 "type": "string",

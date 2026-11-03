@@ -170,9 +170,30 @@ fn apply_style(base: &mut ironcalc::base::types::Style, style: Option<CellStyle>
     }
 }
 
+/// `4000` or `-12.5` written as text: a number a model quoted by mistake.
+fn plain_number(text: &str) -> Option<f64> {
+    let t = text.trim();
+    let digits = t.strip_prefix('-').unwrap_or(t);
+    let (int, frac) = digits.split_once('.').unwrap_or((digits, "0"));
+    let ok = !int.is_empty()
+        && !frac.is_empty()
+        && int.chars().all(|c| c.is_ascii_digit())
+        && frac.chars().all(|c| c.is_ascii_digit());
+    ok.then(|| t.parse().ok()).flatten()
+}
+
+/// A format that shows numbers (not text or a date).
+fn is_number_format(format: &str) -> bool {
+    matches!(
+        format,
+        "currency" | "currency0" | "percent" | "percent1" | "integer" | "decimal"
+    ) || (!matches!(format, "text" | "@" | "date") && format.contains(['0', '#']))
+}
+
 fn set_cell(
     model: &mut Model<'static>,
     sheet: &Sheet,
+    money: &spec::MoneyFormats,
     si: u32,
     row0: usize,
     col0: usize,
@@ -196,9 +217,13 @@ fn set_cell(
             Some(Scalar::Bool(b)) => model.update_cell_with_bool(si, r, c, *b)?,
             Some(Scalar::Text(t)) => {
                 // A YYYY-MM-DD string in a date-formatted (or unformatted) cell is a date.
-                match (format, date_serial(t)) {
-                    (Some("date"), Some(serial)) => {
+                // "4000" in a money or percent cell is the number 4000.
+                match (format, date_serial(t), plain_number(t)) {
+                    (Some("date"), Some(serial), _) => {
                         model.update_cell_with_number(si, r, c, serial)?
+                    }
+                    (Some(f), _, Some(n)) if is_number_format(f) => {
+                        model.update_cell_with_number(si, r, c, n)?
                     }
                     _ => model.update_cell_with_text(si, r, c, t)?,
                 }
@@ -209,7 +234,7 @@ fn set_cell(
     if cell.style.is_some() || format.is_some() {
         let mut style = model.get_style_for_cell(si, r, c)?;
         if let Some(f) = format {
-            style.num_fmt = spec::excel_format(f);
+            style.num_fmt = spec::excel_format_in(f, money);
         }
         apply_style(&mut style, cell.style);
         model.set_cell_style(si, r, c, &style)?;
@@ -229,6 +254,7 @@ pub fn build_model(workbook: &Workbook) -> Result<Model<'static>, String> {
             model.add_sheet(&sheet.name)?;
         }
     }
+    let money = workbook.money_formats();
     for (i, sheet) in workbook.sheets.iter().enumerate() {
         let si = i as u32;
         for (c, col) in sheet.columns.iter().enumerate() {
@@ -242,7 +268,7 @@ pub fn build_model(workbook: &Workbook) -> Result<Model<'static>, String> {
         for (r, row) in sheet.rows.iter().enumerate() {
             for (c, cell) in row.iter().enumerate() {
                 if !cell.is_blank() {
-                    set_cell(&mut model, sheet, si, r, c, cell)?;
+                    set_cell(&mut model, sheet, &money, si, r, c, cell)?;
                 }
             }
         }
@@ -274,7 +300,25 @@ pub fn evaluated_model(workbook: &Workbook) -> Result<Model<'static>, String> {
 // Reading results
 // ---------------------------------------------------------------------------
 
+/// Numbers formatted as in English: what a model reads.
 pub fn compute(workbook: &Workbook) -> Result<ComputedWorkbook, String> {
+    compute_in(workbook, "en")
+}
+
+/// The locale to show numbers in for an app language: decimal comma and
+/// grouping as the user reads them. IronCalc knows de, es, fr and English;
+/// Portuguese writes numbers as Spanish does.
+pub fn number_locale(language: &str) -> &'static str {
+    match language {
+        "de" => "de",
+        "es" | "pt-BR" | "pt" => "es",
+        "fr" => "fr",
+        _ => "en",
+    }
+}
+
+/// As `compute`, with numbers shown in `locale` (see `number_locale`).
+pub fn compute_in(workbook: &Workbook, locale: &str) -> Result<ComputedWorkbook, String> {
     let model = evaluated_model(workbook)?;
     let mut out = ComputedWorkbook::default();
     for (i, sheet) in workbook.sheets.iter().enumerate() {
@@ -298,8 +342,8 @@ pub fn compute(workbook: &Workbook) -> Result<ComputedWorkbook, String> {
             for c in 0..col_count {
                 let cell = sheet.cell(r, c).filter(|cell| !cell.is_blank());
                 row.push(match cell {
-                    Some(cell) => Some(read_cell(&model, si, r, c, cell)?),
-                    None => spilled_cell(&model, si, r, c, &blank)?,
+                    Some(cell) => Some(read_cell(&model, si, r, c, cell, locale)?),
+                    None => spilled_cell(&model, si, r, c, &blank, locale)?,
                 });
             }
             rows.push(row);
@@ -350,12 +394,13 @@ fn spilled_cell(
     row0: usize,
     col0: usize,
     blank: &Cell,
+    locale: &str,
 ) -> Result<Option<ComputedCell>, String> {
     let (r, c) = (row0 as i32 + 1, col0 as i32 + 1);
     if matches!(model.get_cell_value_by_index(si, r, c)?, CellValue::None) {
         return Ok(None);
     }
-    read_cell(model, si, row0, col0, blank).map(Some)
+    read_cell(model, si, row0, col0, blank, locale).map(Some)
 }
 
 fn read_cell(
@@ -364,13 +409,14 @@ fn read_cell(
     row0: usize,
     col0: usize,
     cell: &Cell,
+    locale: &str,
 ) -> Result<ComputedCell, String> {
     let (r, c) = (row0 as i32 + 1, col0 as i32 + 1);
     let raw = model.get_cell_value_by_index(si, r, c)?;
     let display = match raw {
         CellValue::Number(n) => {
             let format = model.get_style_for_cell(si, r, c)?.num_fmt;
-            number_format::format_number(excel_rounding_value(n), &format, "en").text
+            number_format::format_number(excel_rounding_value(n), &format, locale).text
         }
         _ => model.get_formatted_cell_value(si, r, c)?,
     };
@@ -511,6 +557,59 @@ mod tests {
         );
         assert_eq!(cell(&c, "F", "H1").kind, CellKind::Bool);
         assert_eq!(cell(&c, "F", "I1").kind, CellKind::Text);
+    }
+
+    #[test]
+    fn a_number_written_as_text_in_a_number_format_is_a_number() {
+        let c = compute(&wb(json!([{ "name": "F", "rows": [[
+            {"value": "4000", "format": "#,##0.00 \"€\""},
+            {"value": "-12.5", "format": "currency"},
+            {"value": "4000"},
+            {"value": "4000", "format": "text"},
+            {"value": "1e5", "format": "integer"},
+            {"formula": "=A1+B1"}
+        ]]}])))
+        .unwrap();
+        assert_eq!(display(&c, "F", "A1"), "4,000.00 €");
+        assert_eq!(cell(&c, "F", "A1").kind, CellKind::Number);
+        // `currency` follows the euros A1 already uses.
+        assert_eq!(display(&c, "F", "B1"), "-12.50 €");
+        // No format, a text format, or not a plain number: text, as written.
+        assert_eq!(cell(&c, "F", "C1").kind, CellKind::Text);
+        assert_eq!(cell(&c, "F", "D1").kind, CellKind::Text);
+        assert_eq!(cell(&c, "F", "E1").kind, CellKind::Text);
+        assert_eq!(display(&c, "F", "F1"), "3987.5");
+    }
+
+    #[test]
+    fn numbers_show_in_the_app_language() {
+        let w = wb(json!([{ "name": "F", "rows": [[
+            {"value": 6000.5, "format": "#,##0.00 \"€\""},
+            {"value": 0.256, "format": "percent1"}
+        ]]}]));
+        let shown = |language: &str| {
+            let c = compute_in(&w, number_locale(language)).unwrap();
+            (display(&c, "F", "A1"), display(&c, "F", "B1"))
+        };
+        assert_eq!(shown("de"), ("6.000,50 €".to_string(), "25,6%".to_string()));
+        assert_eq!(
+            shown("pt-BR"),
+            ("6.000,50 €".to_string(), "25,6%".to_string())
+        );
+        assert_eq!(shown("ja"), ("6,000.50 €".to_string(), "25.6%".to_string()));
+        let fr = shown("fr").0;
+        assert!(fr.starts_with('6') && fr.ends_with("000,50 €"), "{fr}");
+    }
+
+    #[test]
+    fn a_bare_r_dollar_format_shows_instead_of_value_error() {
+        let c = compute(&wb(json!([{ "name": "F", "rows": [[
+            {"value": 20000, "format": "R$ #,##0.00"},
+            {"value": 5, "format": "#,##0 kr"}
+        ]]}])))
+        .unwrap();
+        assert_eq!(display(&c, "F", "A1"), "R$ 20,000.00");
+        assert_eq!(display(&c, "F", "B1"), "5 kr");
     }
 
     #[test]

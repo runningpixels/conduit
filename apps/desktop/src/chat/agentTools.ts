@@ -1304,8 +1304,11 @@ const SHEET_PHRASE_REGEX = new RegExp(
   `\\b(${SHEET_QUALIFIERS})\\s+sheets?\\b|\\btime\\s?sheets?\\b|\\b(cost|financial|budget|forecast|revenue|loan)\\s+(model|template)\\b`,
   'i',
 );
+/** One character within a sentence: a `.` ends it, unless a digit follows
+ *  ("Ferry 1.0", "3.5%"). */
+const SENTENCE_GAP = '(?:[^.?!\\n]|\\.(?=\\d))';
 const TABLE_TO_CALCULATE_REGEX =
-  /\b(tables?|grid)\b[^.?!\n]{0,40}\b(calculate|calculations?|formulas?|totals?|sums?|auto-?sum)\b|\b(pivot\s+tables?|loan\s+(schedule|amortization)|amortization\s+(schedule|table)|bill\s+of\s+materials)\b/i;
+  /\b(tables?|grid)\b(?:[^.?!\n]|\.(?=\d)){0,40}\b(calculate|calculations?|formulas?|totals?|sums?|auto-?sum)\b|\b(pivot\s+tables?|loan\s+(schedule|amortization)|amortization\s+(schedule|table)|bill\s+of\s+materials)\b/i;
 const BOM_REGEX = /\bBOMs?\b/;
 /** The same asks in the app's other languages: the word for a spreadsheet or
  *  workbook, or a table with totals or formulas (a wider gap than English
@@ -1315,16 +1318,16 @@ const SPREADSHEET_I18N_REGEX = new RegExp(
   [
     // de
     '\\b(tabellenkalkulation|kalkulationstabelle|arbeitsmappe)',
-    '\\btabelle\\b[^.?!\\n]{0,120}\\b(summen?|formeln?|berechn)',
+    `\\btabelle\\b${SENTENCE_GAP}{0,120}\\b(summen?|formeln?|berechn|budget|kalkul)`,
     // fr
     '\\b(tableur|feuille de calcul|classeur)',
-    '\\btableau\\b[^.?!\\n]{0,120}\\b(totaux|total|formules?|calcul)',
+    `\\btableau\\b${SENTENCE_GAP}{0,120}\\b(totaux|total|formules?|calcul)`,
     // es
     '\\bhojas? de c[aá]lculo',
-    '\\btabla\\b[^.?!\\n]{0,120}\\b(totales|total|f[oó]rmulas?|c[aá]lcul|calcul)',
+    `\\btabla\\b${SENTENCE_GAP}{0,120}\\b(totales|total|f[oó]rmulas?|c[aá]lcul|calcul)`,
     // pt-BR
     '\\bplanilhas?\\b',
-    '\\btabela\\b[^.?!\\n]{0,120}\\b(totais|total|f[oó]rmulas?|c[aá]lcul|calcul)',
+    `\\btabela\\b${SENTENCE_GAP}{0,120}\\b(totais|total|f[oó]rmulas?|c[aá]lcul|calcul)`,
     // ja, ko, zh-CN
     'スプレッドシート|表計算|エクセル|스프레드시트|엑셀|电子表格|工作簿',
   ].join('|'),

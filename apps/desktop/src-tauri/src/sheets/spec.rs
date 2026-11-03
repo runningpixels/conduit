@@ -46,24 +46,154 @@ const NAMED_FORMATS: [(&str, &str); 8] = [
     ("text", "@"),
 ];
 
-/// The Excel number-format string for a spec format (a named one or a custom
-/// string, which passes through).
-pub fn excel_format(format: &str) -> String {
-    NAMED_FORMATS
+/// Currencies a workbook can name (`"currency": "EUR"`), with the formats
+/// `currency` and `currency0` stand for in it. Letters are quoted: IronCalc
+/// can't read a bare `R$` or `kr`.
+const CURRENCIES: [(&str, &str, &str); 16] = [
+    ("USD", "$#,##0.00", "$#,##0"),
+    ("EUR", "#,##0.00 €", "#,##0 €"),
+    ("GBP", "£#,##0.00", "£#,##0"),
+    ("JPY", "¥#,##0", "¥#,##0"),
+    ("CNY", "¥#,##0.00", "¥#,##0"),
+    ("KRW", "₩#,##0", "₩#,##0"),
+    ("BRL", "\"R$\" #,##0.00", "\"R$\" #,##0"),
+    ("INR", "₹#,##0.00", "₹#,##0"),
+    ("CHF", "\"CHF\" #,##0.00", "\"CHF\" #,##0"),
+    ("CAD", "$#,##0.00", "$#,##0"),
+    ("AUD", "$#,##0.00", "$#,##0"),
+    ("MXN", "$#,##0.00", "$#,##0"),
+    ("SEK", "#,##0.00 \"kr\"", "#,##0 \"kr\""),
+    ("NOK", "#,##0.00 \"kr\"", "#,##0 \"kr\""),
+    ("DKK", "#,##0.00 \"kr\"", "#,##0 \"kr\""),
+    ("PLN", "#,##0.00 \"zł\"", "#,##0 \"zł\""),
+];
+
+/// Symbols that mark a custom format as money, for `Workbook::money_formats`.
+const MONEY_SYMBOLS: [&str; 15] = [
+    "$", "€", "£", "¥", "₩", "₹", "円", "元", "₽", "₺", "₫", "₱", "฿", "zł", "kr",
+];
+
+/// The ISO code for a workbook's `currency`, given as a code or a symbol
+/// that names one currency.
+fn currency_code(value: &str) -> Result<&'static str, String> {
+    let wanted = match value.trim() {
+        "€" => "EUR",
+        "£" => "GBP",
+        "₩" => "KRW",
+        "₹" => "INR",
+        "R$" => "BRL",
+        "円" => "JPY",
+        "元" => "CNY",
+        other => other,
+    }
+    .to_uppercase();
+    CURRENCIES
         .iter()
-        .find(|(name, _)| *name == format)
-        .map(|(_, excel)| (*excel).to_string())
-        .unwrap_or_else(|| quote_symbols(format))
+        .find(|(code, _, _)| *code == wanted)
+        .map(|(code, _, _)| *code)
+        .ok_or_else(|| {
+            let codes: Vec<&str> = CURRENCIES.iter().map(|(c, _, _)| *c).collect();
+            format!(
+                "currency '{value}' isn't one this app knows; use an ISO code: {}. For another currency leave it out and use an Excel format such as #,##0.00 \"€\"",
+                codes.join(", ")
+            )
+        })
+}
+
+/// The formats `currency` and `currency0` stand for: (two decimals, none).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MoneyFormats {
+    pub currency: String,
+    pub currency0: String,
+}
+
+impl Default for MoneyFormats {
+    fn default() -> Self {
+        MoneyFormats {
+            currency: NAMED_FORMATS[0].1.to_string(),
+            currency0: NAMED_FORMATS[1].1.to_string(),
+        }
+    }
+}
+
+/// The Excel number-format string for a spec format (a named one or a custom
+/// string, which passes through), with `currency` in US dollars.
+pub fn excel_format(format: &str) -> String {
+    excel_format_in(format, &MoneyFormats::default())
+}
+
+/// As `excel_format`, with `currency` and `currency0` in a workbook's money.
+pub fn excel_format_in(format: &str, money: &MoneyFormats) -> String {
+    match format {
+        "currency" => quote_symbols(&money.currency),
+        "currency0" => quote_symbols(&money.currency0),
+        _ => NAMED_FORMATS
+            .iter()
+            .find(|(name, _)| *name == format)
+            .map(|(_, excel)| (*excel).to_string())
+            .unwrap_or_else(|| quote_symbols(format)),
+    }
+}
+
+/// A custom format that shows money: it has a digit placeholder and a
+/// currency symbol.
+fn is_money_format(format: &str) -> bool {
+    !NAMED_FORMATS.iter().any(|(name, _)| *name == format)
+        && format.contains(['0', '#'])
+        && MONEY_SYMBOLS.iter().any(|s| format.contains(s))
+}
+
+/// `#,##0.00 "€"` without its decimals: `#,##0 "€"`.
+fn without_decimals(format: &str) -> String {
+    let mut out = String::with_capacity(format.len());
+    let mut chars = format.chars().peekable();
+    let mut quoted = false;
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            quoted = !quoted;
+        }
+        if !quoted && ch == '.' && chars.peek() == Some(&'0') {
+            while chars.peek() == Some(&'0') {
+                chars.next();
+            }
+            continue;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// Quotes non-ASCII literals such as ¥ or 円 outside quotes and `[...]`:
 /// Excel accepts `¥#,##0` bare, but IronCalc's formatter can't read it and
 /// shows #VALUE!. `"¥"#,##0` means the same to both.
+///
+/// Runs of ASCII letters are literals too (`R$`, `CHF`, `kr`), except date
+/// and time codes (`yyyy`, `mm`, `h`), AM/PM, `General` and an exponent `E+`.
 fn quote_symbols(format: &str) -> String {
+    let chars: Vec<char> = format.chars().collect();
+    // Which letters are literal text, decided per run of letters.
+    let mut letter_literal = vec![false; chars.len()];
+    let mut i = 0;
+    while i < chars.len() {
+        if !chars[i].is_ascii_alphabetic() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && chars[i].is_ascii_alphabetic() {
+            i += 1;
+        }
+        let run: String = chars[start..i].iter().collect();
+        let lower = run.to_ascii_lowercase();
+        let code = lower.chars().all(|c| "dmyhs".contains(c))
+            || matches!(lower.as_str(), "am" | "pm" | "a" | "p" | "general")
+            || (lower == "e" && matches!(chars.get(i), Some('+' | '-')));
+        letter_literal[start..i].fill(!code);
+    }
     let mut out = String::with_capacity(format.len() + 4);
     let (mut quoted, mut bracket, mut escaped, mut open) = (false, false, false, false);
-    for ch in format.chars() {
-        let literal = !ch.is_ascii() && !quoted && !bracket && !escaped;
+    for (k, &ch) in chars.iter().enumerate() {
+        let literal = (!ch.is_ascii() || letter_literal[k]) && !quoted && !bracket && !escaped;
         if literal != open {
             out.push('"');
             open = literal;
@@ -231,9 +361,49 @@ impl Sheet {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Workbook {
     pub sheets: Vec<Sheet>,
+    /// ISO code of the money `currency` and `currency0` show, if named.
+    pub currency: Option<String>,
 }
 
 impl Workbook {
+    /// What `currency` and `currency0` stand for here: the workbook's own
+    /// currency if it names one, else the money format its cells already use
+    /// (so a row a model adds in `currency` matches a euro sheet), else US
+    /// dollars.
+    pub fn money_formats(&self) -> MoneyFormats {
+        if let Some((_, two, none)) = self
+            .currency
+            .as_deref()
+            .and_then(|code| CURRENCIES.iter().find(|(c, _, _)| *c == code))
+        {
+            return MoneyFormats {
+                currency: (*two).to_string(),
+                currency0: (*none).to_string(),
+            };
+        }
+        let used = self.sheets.iter().find_map(|sheet| {
+            sheet
+                .columns
+                .iter()
+                .filter_map(|c| c.format.as_deref())
+                .chain(
+                    sheet
+                        .rows
+                        .iter()
+                        .flatten()
+                        .filter_map(|c| c.format.as_deref()),
+                )
+                .find(|f| is_money_format(f))
+        });
+        match used {
+            Some(format) => MoneyFormats {
+                currency: format.to_string(),
+                currency0: without_decimals(format),
+            },
+            None => MoneyFormats::default(),
+        }
+    }
+
     pub fn sheet_index(&self, name: &str) -> Option<usize> {
         let wanted = name.trim().to_lowercase();
         self.sheets
@@ -260,6 +430,12 @@ impl Workbook {
         for (i, sheet) in sheets.iter().enumerate() {
             workbook.sheets.push(parse_sheet(sheet, i)?);
         }
+        workbook.currency = match value.get("currency") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) if s.trim().is_empty() => None,
+            Some(Value::String(s)) => Some(currency_code(s)?.to_string()),
+            Some(_) => return Err("currency must be text, an ISO code such as EUR".to_string()),
+        };
         validate(&workbook)?;
         Ok(workbook)
     }
@@ -267,7 +443,11 @@ impl Workbook {
     /// The stored JSON form: bare values where a cell has nothing else.
     pub fn to_value(&self) -> Value {
         let sheets = self.sheets.iter().map(sheet_to_value).collect::<Vec<_>>();
-        serde_json::json!({ "sheets": sheets })
+        let mut out = serde_json::json!({ "sheets": sheets });
+        if let Some(code) = &self.currency {
+            out["currency"] = Value::String(code.clone());
+        }
+        out
     }
 }
 
@@ -511,17 +691,16 @@ pub fn parse_cell(value: &Value, sheet: &str, row0: usize, col0: usize) -> Resul
                     ));
                 }
             }
-            let has = |k: &str| obj.get(k).is_some_and(|v| !v.is_null());
-            if has("value") && has("formula") {
-                return Err(format!("{at}: give either value or formula, not both"));
-            }
             let formula = match obj.get("formula") {
                 None | Some(Value::Null) => None,
                 Some(Value::String(f)) => Some(check_formula(f, &at)?),
                 Some(_) => return Err(format!("{at}: formula must be text starting with =")),
             };
+            // With a formula, a value is the model's guess at its result:
+            // the formula wins.
             let value = match obj.get("value") {
                 None => None,
+                Some(_) if formula.is_some() => None,
                 Some(v) => scalar(v, &at)?,
             };
             let format = match obj.get("format") {
@@ -930,9 +1109,7 @@ mod tests {
 
     #[test]
     fn errors_name_the_sheet_and_cell() {
-        let e =
-            wb(json!([{ "name": "BOM", "rows": [[1, 2], [1, {"formula": "=SUM(", "value": 3}]] }]))
-                .unwrap_err();
+        let e = wb(json!([{ "name": "BOM", "rows": [[1, 2], [1, {"formula": 3}]] }])).unwrap_err();
         assert!(e.contains("'BOM'") && e.contains("B2"), "{e}");
         let e = wb(json!([{ "name": "BOM", "rows": [[1, [2]]] }])).unwrap_err();
         assert!(e.contains("B1"), "{e}");
@@ -1062,5 +1239,74 @@ mod tests {
         assert_eq!(excel_format("\\€#,##0"), "\\€#,##0");
         let long = "0".repeat(65);
         assert!(wb(json!([{ "name": "S", "rows": [[{"value": 1, "format": long}]] }])).is_err());
+    }
+
+    #[test]
+    fn letters_in_a_format_are_quoted_unless_they_are_codes() {
+        // IronCalc shows #VALUE! for a bare R$, CHF or kr.
+        assert_eq!(excel_format("R$ #,##0.00"), "\"R\"$ #,##0.00");
+        assert_eq!(excel_format("CHF #,##0"), "\"CHF\" #,##0");
+        assert_eq!(excel_format("#,##0.00 kr"), "#,##0.00 \"kr\"");
+        assert_eq!(excel_format("\"R$\" #,##0.00"), "\"R$\" #,##0.00");
+        for code in [
+            "yyyy-mm-dd",
+            "dd/mm/yyyy hh:mm",
+            "h:mm AM/PM",
+            "0.00E+00",
+            "General",
+        ] {
+            assert_eq!(excel_format(code), code);
+        }
+    }
+
+    #[test]
+    fn a_value_beside_a_formula_is_dropped() {
+        let w =
+            wb(json!([{ "name": "S", "rows": [[1, {"formula": "=A1*2", "value": 2}]] }])).unwrap();
+        let cell = w.sheets[0].cell(0, 1).unwrap();
+        assert_eq!(cell.formula.as_deref(), Some("=A1*2"));
+        assert_eq!(cell.value, None);
+    }
+
+    #[test]
+    fn currency_follows_the_workbook() {
+        let euro = Workbook::from_value(
+            &json!({ "currency": "eur", "sheets": [{ "name": "S", "rows": [[1]] }] }),
+        )
+        .unwrap();
+        assert_eq!(euro.currency.as_deref(), Some("EUR"));
+        assert_eq!(
+            excel_format_in("currency", &euro.money_formats()),
+            "#,##0.00 \"€\""
+        );
+        assert_eq!(
+            excel_format_in("currency0", &euro.money_formats()),
+            "#,##0 \"€\""
+        );
+        assert_eq!(Workbook::from_value(&euro.to_value()).unwrap(), euro);
+        let symbol = Workbook::from_value(
+            &json!({ "currency": "R$", "sheets": [{ "name": "S", "rows": [[1]] }] }),
+        );
+        assert_eq!(symbol.unwrap().currency.as_deref(), Some("BRL"));
+        let e = Workbook::from_value(
+            &json!({ "currency": "XYZ", "sheets": [{ "name": "S", "rows": [[1]] }] }),
+        )
+        .unwrap_err();
+        assert!(e.contains("EUR"), "{e}");
+
+        // Unnamed: the money format the sheet already uses.
+        let yen = wb(json!([{ "name": "S", "columns": [null, {"format": "¥#,##0.00"}], "rows": [["a", 1]] }])).unwrap();
+        let money = yen.money_formats();
+        assert_eq!(
+            (money.currency.as_str(), money.currency0.as_str()),
+            ("¥#,##0.00", "¥#,##0")
+        );
+        // Nothing to go on: dollars.
+        assert_eq!(
+            wb(json!([{ "name": "S", "rows": [[{"value": 1, "format": "percent"}]] }]))
+                .unwrap()
+                .money_formats(),
+            MoneyFormats::default()
+        );
     }
 }

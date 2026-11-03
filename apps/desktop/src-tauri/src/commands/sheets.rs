@@ -1,5 +1,6 @@
 //! Spreadsheet commands: the computed view the panel draws, and Save as Excel.
 
+use provider_core::schema::LanguageSetting;
 use serde::Serialize;
 use tauri::State;
 
@@ -38,7 +39,15 @@ pub async fn get_spreadsheet_view(
     artifact_id: String,
 ) -> Result<SpreadsheetView, String> {
     let (artifact, workbook) = load_spreadsheet(&state, &artifact_id).await?;
-    let computed = compute::compute(&workbook)?;
+    // Numbers read as the user writes them: 6.000,00 € in German.
+    let language = match state.settings()?.language {
+        LanguageSetting::De => "de",
+        LanguageSetting::Es => "es",
+        LanguageSetting::Fr => "fr",
+        LanguageSetting::PtBr => "pt-BR",
+        _ => "en",
+    };
+    let computed = compute::compute_in(&workbook, compute::number_locale(language))?;
     Ok(sheets::build_view(artifact.title, &computed))
 }
 

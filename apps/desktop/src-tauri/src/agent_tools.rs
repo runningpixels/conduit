@@ -2278,14 +2278,14 @@ const CREATE_SPREADSHEET_DESCRIPTION: &str = "Create a spreadsheet (an Excel wor
 const APPEND_ROWS_DESCRIPTION: &str = "Add rows to the end of a sheet in an existing spreadsheet. Use it to write a large table in several calls: create_spreadsheet with the first rows and more_to_write true, then append_rows until the last call, which leaves more_to_write out. Cells work as in create_spreadsheet; formulas can refer to rows written earlier.";
 const UPDATE_CELLS_DESCRIPTION: &str = "Change cells in an existing spreadsheet. For a block, give start (such as B2) and rows, a 2-D block of cells as in create_spreadsheet, going right and down from start. For cells scattered around the sheet, give cells instead, all in one call: [{\"cell\": \"D4\", \"value\": 25}, {\"cell\": \"F9\", \"formula\": \"=SUM(F2:F8)\"}]. null, or a cells item with only its address, clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.";
 const ADD_SHEET_DESCRIPTION: &str = "Add a sheet to an existing spreadsheet. name is unique, at most 31 characters, without [ ] : * ? / \\. columns and rows work as in create_spreadsheet. position is the 0-based index to insert at (default: last).";
-const EDIT_SHEET_DESCRIPTION: &str = "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based). Formulas that refer to moved rows are updated.";
+const EDIT_SHEET_DESCRIPTION: &str = "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based); a new row takes the formats and formulas of the row above where its cells are empty, and a total just below takes it in (SUM(B2:B7) becomes SUM(B2:B8)). With rows empty, it inserts count empty rows to fill with update_cells. Formulas that refer to moved rows are updated.";
 const READ_SPREADSHEET_DESCRIPTION: &str = "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range.";
 
 const SHEET_CELL_DESCRIPTION: &str = "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.";
 const SHEET_ROWS_DESCRIPTION: &str =
     "Rows from the top; each row is an array of cells from column A.";
 const SHEET_COLUMNS_DESCRIPTION: &str = "Optional settings per column, from column A: width in characters and a default format for the column's cells.";
-const SHEET_FORMAT_DESCRIPTION: &str = "currency, currency0 (US dollars), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". For another currency use an Excel format, such as #,##0.00 \"€\" or \"£\"#,##0.00.";
+const SHEET_FORMAT_DESCRIPTION: &str = "currency, currency0 (no decimals), percent, percent1, integer, decimal, date (value as YYYY-MM-DD), text, or an Excel number format such as 0.00\" kg\". currency is in the spreadsheet's currency (see create_spreadsheet's currency), else the money format the sheet already uses, else US dollars. Put text such as R$ or kr in quotes: \"R$\" #,##0.00.";
 
 fn sheet_cell_schema() -> Value {
     serde_json::json!({
@@ -2340,6 +2340,10 @@ fn create_spreadsheet_schema() -> Value {
         "type": "object",
         "properties": {
             "title": { "type": "string" },
+            "currency": {
+                "type": "string",
+                "description": "The ISO code of the money in this spreadsheet, such as EUR, JPY or BRL, when it isn't US dollars: cells formatted currency show it."
+            },
             "sheets": {
                 "type": "array",
                 "items": {
@@ -2437,9 +2441,13 @@ fn edit_sheet_schema() -> Value {
                 "type": "object",
                 "properties": {
                     "at": { "type": "integer" },
-                    "rows": sheet_rows_schema()
+                    "rows": sheet_rows_schema(),
+                    "count": {
+                        "type": "integer",
+                        "description": "With rows empty: how many empty rows to insert (default 1)."
+                    }
                 },
-                "required": ["at", "rows"]
+                "required": ["at"]
             }
         },
         "required": ["artifact_id", "sheet"]
@@ -2467,6 +2475,8 @@ const SHEET_READ_MAX_CELLS: usize = 400;
 struct CreateSpreadsheetInput {
     title: Option<String>,
     sheets: Value,
+    #[serde(default)]
+    currency: Option<Value>,
     // `more_to_write` is read by the turn loop (see stream_manager); a model
     // that omits or sends it is never refused here.
 }
@@ -2508,7 +2518,10 @@ struct SheetRowsDelete {
 #[derive(Debug, Deserialize)]
 struct SheetRowsInsert {
     at: i64,
+    #[serde(default)]
     rows: Value,
+    #[serde(default)]
+    count: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2521,6 +2534,12 @@ struct EditSheetInput {
     freeze_header: Option<bool>,
     delete_rows: Option<SheetRowsDelete>,
     insert_rows: Option<SheetRowsInsert>,
+    // `at` and `rows` without the insert_rows wrapper, as models sometimes
+    // send them: read as insert_rows.
+    #[serde(default)]
+    at: Option<i64>,
+    #[serde(default)]
+    rows: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2628,8 +2647,9 @@ async fn create_spreadsheet(
     ctx: &AgentToolContext<'_>,
     input: CreateSpreadsheetInput,
 ) -> Result<Value, String> {
-    let workbook =
-        crate::sheets::spec::Workbook::from_value(&serde_json::json!({ "sheets": input.sheets }))?;
+    let workbook = crate::sheets::spec::Workbook::from_value(
+        &serde_json::json!({ "sheets": input.sheets, "currency": input.currency }),
+    )?;
     let computed = crate::sheets::compute::compute(&workbook)?;
     let title = resolve_title(input.title, None);
     let artifact = artifacts::create(
@@ -2716,7 +2736,33 @@ async fn edit_sheet_tool(
             .transpose()?,
         insert_rows: input
             .insert_rows
-            .map(|i| Ok::<_, String>((positive(i.at, "insert_rows.at")?, i.rows)))
+            .or_else(|| {
+                input.at.map(|at| SheetRowsInsert {
+                    at,
+                    rows: input.rows.unwrap_or(Value::Null),
+                    count: None,
+                })
+            })
+            .map(|i| {
+                let at = positive(i.at, "insert_rows.at")?;
+                // No rows: empty ones, for update_cells to fill.
+                let empty = match &i.rows {
+                    Value::Null => true,
+                    Value::Array(rows) => rows.is_empty(),
+                    _ => false,
+                };
+                let rows = if empty {
+                    let count = i
+                        .count
+                        .map_or(Ok(1), |c| positive(c, "insert_rows.count"))?;
+                    // Past the row limit insert_rows refuses it; no need to build more.
+                    let count = count.min(crate::sheets::spec::MAX_ROWS + 1);
+                    Value::Array(vec![Value::Array(Vec::new()); count])
+                } else {
+                    i.rows
+                };
+                Ok::<_, String>((at, rows))
+            })
             .transpose()?,
     };
     crate::sheets::ops::edit_sheet(&mut workbook, &input.sheet, edit)?;

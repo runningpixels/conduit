@@ -3733,7 +3733,15 @@
     "workspace.workflows.step.summarizeData": "dfd05115c70b93fe7f025c1d4712224216da7270",
     "workspace.workflows.step.template": "83a3abbf308f407b06ae5dc5641498117147a8e5",
     "workspace.workflows.step.webSearch": "cf2801b1c6af8d0459d897b63d7844b3c8eaf8ac",
-    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b"
+    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
+    "settings.updates.prompt.available": "74baf58f98eced6dc83557e4df08d012ddfb2a42",
+    "settings.updates.prompt.availableDetail": "0777a548924c1229b786f1cd5e2e22d3beff3db2",
+    "settings.updates.prompt.install": "47b1875387f2f6e375f50dd58561375b363fdd7b",
+    "settings.updates.prompt.installing": "874e06dd3ca581aebe56bd5f2cd32c362ce22eb1",
+    "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
+    "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
+    "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7469,7 +7477,15 @@
     "workspace.workflows.step.summarizeData": "dfd05115c70b93fe7f025c1d4712224216da7270",
     "workspace.workflows.step.template": "83a3abbf308f407b06ae5dc5641498117147a8e5",
     "workspace.workflows.step.webSearch": "cf2801b1c6af8d0459d897b63d7844b3c8eaf8ac",
-    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b"
+    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
+    "settings.updates.prompt.available": "74baf58f98eced6dc83557e4df08d012ddfb2a42",
+    "settings.updates.prompt.availableDetail": "0777a548924c1229b786f1cd5e2e22d3beff3db2",
+    "settings.updates.prompt.install": "47b1875387f2f6e375f50dd58561375b363fdd7b",
+    "settings.updates.prompt.installing": "874e06dd3ca581aebe56bd5f2cd32c362ce22eb1",
+    "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
+    "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
+    "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11205,7 +11221,15 @@
     "workspace.workflows.step.summarizeData": "dfd05115c70b93fe7f025c1d4712224216da7270",
     "workspace.workflows.step.template": "83a3abbf308f407b06ae5dc5641498117147a8e5",
     "workspace.workflows.step.webSearch": "cf2801b1c6af8d0459d897b63d7844b3c8eaf8ac",
-    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b"
+    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
+    "settings.updates.prompt.available": "74baf58f98eced6dc83557e4df08d012ddfb2a42",
+    "settings.updates.prompt.availableDetail": "0777a548924c1229b786f1cd5e2e22d3beff3db2",
+    "settings.updates.prompt.install": "47b1875387f2f6e375f50dd58561375b363fdd7b",
+    "settings.updates.prompt.installing": "874e06dd3ca581aebe56bd5f2cd32c362ce22eb1",
+    "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
+    "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
+    "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -14941,7 +14965,15 @@
     "workspace.workflows.step.summarizeData": "dfd05115c70b93fe7f025c1d4712224216da7270",
     "workspace.workflows.step.template": "83a3abbf308f407b06ae5dc5641498117147a8e5",
     "workspace.workflows.step.webSearch": "cf2801b1c6af8d0459d897b63d7844b3c8eaf8ac",
-    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b"
+    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
+    "settings.updates.prompt.available": "74baf58f98eced6dc83557e4df08d012ddfb2a42",
+    "settings.updates.prompt.availableDetail": "0777a548924c1229b786f1cd5e2e22d3beff3db2",
+    "settings.updates.prompt.install": "47b1875387f2f6e375f50dd58561375b363fdd7b",
+    "settings.updates.prompt.installing": "874e06dd3ca581aebe56bd5f2cd32c362ce22eb1",
+    "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
+    "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
+    "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -18677,7 +18709,15 @@
     "workspace.workflows.step.summarizeData": "dfd05115c70b93fe7f025c1d4712224216da7270",
     "workspace.workflows.step.template": "83a3abbf308f407b06ae5dc5641498117147a8e5",
     "workspace.workflows.step.webSearch": "cf2801b1c6af8d0459d897b63d7844b3c8eaf8ac",
-    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b"
+    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
+    "settings.updates.prompt.available": "74baf58f98eced6dc83557e4df08d012ddfb2a42",
+    "settings.updates.prompt.availableDetail": "0777a548924c1229b786f1cd5e2e22d3beff3db2",
+    "settings.updates.prompt.install": "47b1875387f2f6e375f50dd58561375b363fdd7b",
+    "settings.updates.prompt.installing": "874e06dd3ca581aebe56bd5f2cd32c362ce22eb1",
+    "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
+    "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
+    "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -22413,7 +22453,15 @@
     "workspace.workflows.step.summarizeData": "dfd05115c70b93fe7f025c1d4712224216da7270",
     "workspace.workflows.step.template": "83a3abbf308f407b06ae5dc5641498117147a8e5",
     "workspace.workflows.step.webSearch": "cf2801b1c6af8d0459d897b63d7844b3c8eaf8ac",
-    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b"
+    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
+    "settings.updates.prompt.available": "74baf58f98eced6dc83557e4df08d012ddfb2a42",
+    "settings.updates.prompt.availableDetail": "0777a548924c1229b786f1cd5e2e22d3beff3db2",
+    "settings.updates.prompt.install": "47b1875387f2f6e375f50dd58561375b363fdd7b",
+    "settings.updates.prompt.installing": "874e06dd3ca581aebe56bd5f2cd32c362ce22eb1",
+    "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
+    "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
+    "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -26149,6 +26197,14 @@
     "workspace.workflows.step.summarizeData": "dfd05115c70b93fe7f025c1d4712224216da7270",
     "workspace.workflows.step.template": "83a3abbf308f407b06ae5dc5641498117147a8e5",
     "workspace.workflows.step.webSearch": "cf2801b1c6af8d0459d897b63d7844b3c8eaf8ac",
-    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b"
+    "workspace.workflows.steps.title": "cdde4f20ba31a24db2cc7ae71135c8353631907b",
+    "settings.updates.prompt.available": "74baf58f98eced6dc83557e4df08d012ddfb2a42",
+    "settings.updates.prompt.availableDetail": "0777a548924c1229b786f1cd5e2e22d3beff3db2",
+    "settings.updates.prompt.install": "47b1875387f2f6e375f50dd58561375b363fdd7b",
+    "settings.updates.prompt.installing": "874e06dd3ca581aebe56bd5f2cd32c362ce22eb1",
+    "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
+    "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
+    "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
   }
 }

@@ -404,6 +404,22 @@ pub fn install_staged_update(app: &AppHandle) {
     }
 }
 
+/// "Restart now" on a staged update. Restarts through the normal exit path,
+/// whose last step installs what is staged ([`install_staged_update`]) after
+/// connectors are shut down — so nothing is downloaded or installed twice.
+/// Called from a command thread, `restart` requests that exit rather than
+/// skipping it.
+#[tauri::command]
+pub async fn restart_to_update(
+    app: AppHandle,
+    staged: State<'_, StagedUpdate>,
+) -> Result<(), String> {
+    if staged.info().is_none() {
+        return Err("No update is ready to install.".to_string());
+    }
+    app.restart()
+}
+
 /// Download and install the pending update, but only after the migration
 /// precheck passes. Installs via Tauri's signature-verified path
 /// (`installMode: passive` → the user confirms before applying), then restarts

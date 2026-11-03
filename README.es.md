@@ -427,7 +427,7 @@ Consulta [`CHANGELOG.md`](./CHANGELOG.md) para ver todo lo incluido en cada vers
 
 ## Estado
 
-**v1.0.0-rc.20 — versión candidata.** Los instaladores para Windows, macOS
+**v1.0.0-rc.21 — versión candidata.** Los instaladores para Windows, macOS
 (Apple silicon e Intel) y Linux están en la
 [página de versiones](https://github.com/runningpixels/conduit/releases). No
 están firmados por el sistema operativo, así que el primer arranque muestra un
@@ -449,7 +449,8 @@ falta es comprobarlo en instalaciones reales antes de darla por final.
 | Skills (`SKILL.md`) y memoria cifrada aprobada por el usuario | Funciona |
 | Fijar y archivar conversaciones, y proyectos (instrucciones, documentos, skills y carpeta de trabajo compartidos) | Funciona |
 | Versiones de respuesta, reintentar con otro modelo, comparar respuestas lado a lado | Funciona |
-| Adjuntos de imagen y de documento (PDF, Word, texto, Markdown, CSV, HTML), Mermaid/KaTeX, exportación de conversaciones | Funciona |
+| Adjuntos de imagen y de documento (PDF, Word, Excel, texto, Markdown, CSV, HTML), Mermaid/KaTeX, exportación de conversaciones | Funciona |
+| Hojas de cálculo — fórmulas, formatos y varias hojas, editadas pidiéndolo; exportación a .xlsx | Funciona |
 | Uso y costo — cada llamada a un modelo, precios de catálogo y publicados con ajustes propios, alerta de gasto diario | Funciona |
 | Búsqueda web (OpenAI/Gemini/Anthropic/OpenRouter alojada + Exa, Tavily, Brave, SearXNG) | Funciona |
 | Base de conocimiento — colecciones de documentos con recuperación híbrida y citas | Funciona |
@@ -469,7 +470,7 @@ falta es comprobarlo en instalaciones reales antes de darla por final.
 | Exportación de Diapositivas — HTML en todas las plataformas, PDF en Windows | Funciona |
 | Inicio y navegación — campo de petición, te necesita, novedades, continúa donde lo dejaste, mosaicos de áreas, barra agrupada, `Ctrl+1`…`9` | Funciona |
 | Interfaz en ocho idiomas | Funciona |
-| Canal de actualización y empaquetado, con actualizaciones automáticas opcionales | Funciona — 1.0.0-rc.20 compilada, firmada y publicada en los cuatro destinos; la actualización se ha comprobado en una instalación real de Windows, aún no en macOS ni Linux |
+| Canal de actualización y empaquetado, con actualizaciones automáticas opcionales | Funciona — 1.0.0-rc.21 compilada, firmada y publicada en los cuatro destinos; la actualización se ha comprobado en una instalación real de Windows, aún no en macOS ni Linux |
 | Firma de código del SO | Sin hacer — los paquetes no están firmados |
 | Sincronización en la nube / cuentas | No previsto en este repositorio |
 

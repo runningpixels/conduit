@@ -7,6 +7,52 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.21] - 2026-11-02
+
+Spreadsheets in chat, Excel files you can attach, a clear sign when a model has
+finished editing, and an update prompt you can't miss.
+
+### Added
+
+- **Spreadsheets.** Ask for a budget, a price list or a loan calculator and the
+  chat builds a real spreadsheet: formulas that recalculate, number, currency,
+  percent and date formats, several sheets, frozen headers. It opens beside the
+  chat, and you change it by asking ("add a row for March", "make column C
+  euros"). Export it as an .xlsx file that opens in Excel, Numbers or Google
+  Sheets.
+- **Excel attachments.** Attach an .xlsx file to a chat, or add one to
+  Documents, and the model reads its sheets as tables.
+- **You can see when a model has finished editing.** Under the reply, a line
+  says "✓ Done · Updated “Menu” · 3 changes" (or "Still working on…" while it
+  runs); click the title to open the document. The document panel shows
+  "Editing…" and then "✓ Done". A chat that finishes while you are in another
+  one shows "Done" in the sidebar until you open it, and if Conduit is in the
+  background when a long reply finishes you get a system notification
+  (Settings → Agent to turn it off).
+- **An update prompt that stays.** With update checks on, a new version now
+  shows a message that stays until you close it, with **Install and restart**.
+  With automatic updates, a downloaded update offers **Restart now**. Conduit
+  checks each time it starts, and an install you start during a reply waits
+  for the reply to finish.
+
+### Fixed
+
+- **A model editing a document in several passes now finishes.** The turn
+  ended after the first edit, so "three changes, one at a time" stopped after
+  one. Only a turn that creates a document can now end straight after writing
+  it.
+- Document titles a model wrote HTML-escaped ("Maple &amp;amp; Rye") now read
+  "Maple & Rye".
+- The document panel no longer shows "(inline payload)" for a stored document.
+
+### Changed
+
+- "Finish after a document write" in Settings → Agent is now "Finish after
+  creating a document": edits always get a closing round.
+- Model prices refreshed from models.dev.
+- `pulldown-cmark` 0.13.6 (RUSTSEC-2026-0433) and `async-executor` 1.14.1
+  (1.14.0 was yanked).
+
 ## [1.0.0-rc.20] - 2026-11-01
 
 Six new providers, fewer wrongly blocked tool results, and a connector you
@@ -1717,7 +1763,8 @@ First packaged release candidate. Unsigned installers for Windows, macOS
 - Initial public release: AGPL-3.0 licensing, contributor documentation, and
   third-party attribution.
 
-[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.20...HEAD
+[Unreleased]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.21...HEAD
+[1.0.0-rc.21]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.20...v1.0.0-rc.21
 [1.0.0-rc.20]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.19...v1.0.0-rc.20
 [1.0.0-rc.19]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.18...v1.0.0-rc.19
 [1.0.0-rc.18]: https://github.com/runningpixels/conduit/compare/v1.0.0-rc.17...v1.0.0-rc.18

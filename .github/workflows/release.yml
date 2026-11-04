@@ -242,6 +242,16 @@ jobs:
           prerelease: ${{ needs.meta.outputs.channel == 'beta' }}
           args: ${{ matrix.args }}
 
+      # Start the app just built and fail the leg if it crashes at launch. The
+      # manifest job needs every leg, so a failure here leaves the release a
+      # draft. macOS only: no one launches those builds before users do.
+      - name: Launch smoke (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          triple="$(echo "${{ matrix.args }}" | awk '{print $2}')"
+          bash scripts/launch-smoke.sh "target/$triple/release/bundle/macos/Conduit.app"
+
       # Upload the updater-signed bundle + .sig as a workflow artifact so the
       # manifest job can read them without querying the GitHub API.
       # The bundles land in the workspace target dir at the repo root, not

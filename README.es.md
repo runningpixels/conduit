@@ -23,7 +23,8 @@ Conduit es una aplicación de escritorio de código abierto para trabajar con
 grandes modelos de lenguaje. Aporta tu propia clave de cualquiera de veintitrés
 proveedores, o ejecuta un modelo local con Ollama o LM Studio, y pide cosas que
 puedas conservar: una **app personal** que obtiene datos en vivo, una
-**presentación** que editas pidiéndolo, una **respuesta citada de tus propios
+**presentación** que editas pidiéndolo, una **hoja de cálculo** cuyas fórmulas
+se recalculan, una **respuesta citada de tus propios
 documentos**, un **informe de investigación** en el que cada hallazgo se
 comprueba contra la página de la que salió, un **flujo de trabajo** que se
 ejecuta según un horario o cuando llega algo nuevo y se detiene a preguntar. Conecta tus herramientas
@@ -115,6 +116,25 @@ diapositiva grande en el centro y el chat a su lado.
 | Guion: cada palabra de la presentación como un solo documento | La ventana del presentador: diapositiva siguiente, notas, temporizador |
 | --- | --- |
 | ![La pestaña Guion junto a la presentación, con el título, los puntos y las notas de cada diapositiva](./docs/assets/screenshot-slides-script.webp) | ![La ventana del presentador con la diapositiva actual, la siguiente, un temporizador y notas del orador en letra grande](./docs/assets/screenshot-presenter.webp) |
+
+### Hojas de cálculo
+
+Pide un presupuesto, una lista de precios o una calculadora de préstamos en
+cualquier chat, y el asistente crea una hoja de cálculo de verdad que se abre a
+su lado: fórmulas que se recalculan, formatos de número, moneda, porcentaje y
+fecha, varias hojas y encabezados fijos. Como una presentación, es **una sola
+hoja viva**: pide un cambio («añade una fila para la auditoría de seguridad»,
+«pon la columna C en euros») y el asistente edita esas celdas.
+
+- **Las filas nuevas encajan.** Una fila que añades toma los formatos y las
+  fórmulas de la fila de arriba, y los totales crecen para incluirla.
+- **Tu moneda, tu forma de escribir números.** Los importes van en la moneda que
+  pediste, y la hoja muestra los números como los escribe el idioma de la app.
+- **Excel de entrada y de salida.** Adjunta un archivo .xlsx y el modelo lee sus
+  hojas como tablas; exporta cualquier hoja de cálculo como un archivo .xlsx que
+  se abre en Excel, Numbers o Google Sheets.
+
+![Una hoja de cálculo «Presupuesto de lanzamiento de Ferry 1.0» abierta junto al chat: previsto, real, diferencia y porcentaje del presupuesto para siete partidas, una fila «Auditoría de seguridad» que el asistente acaba de añadir a petición, y una fila de totales cuyas fórmulas ya la incluyen](./docs/assets/screenshot-spreadsheet.webp)
 
 ### Respuestas a partir de tus propios documentos
 

@@ -20,7 +20,8 @@
 Conduit is an open-source desktop app for working with large language models.
 Bring your own key for any of twenty-three providers, or run a local model with
 Ollama or LM Studio, and ask for things you can keep: a **personal app** that
-pulls live data, a **slide deck** you edit by asking, an **answer cited from
+pulls live data, a **slide deck** you edit by asking, a **spreadsheet** whose formulas
+recalculate, an **answer cited from
 your own documents**, a **research report** whose every finding is checked
 against the page it came from, a **workflow** that runs on a schedule or when
 something new arrives, and stops to ask. Connect your tools over MCP: tools
@@ -106,6 +107,25 @@ studio with the slide large in the middle and the chat beside it.
 | Script: every word of the deck as one document | The presenter window: next slide, notes, timer |
 | --- | --- |
 | ![The Script tab beside the deck, listing each slide's title, bullets and notes](./docs/assets/screenshot-slides-script.webp) | ![The presenter window with the current slide, the next slide, a timer and large speaker notes](./docs/assets/screenshot-presenter.webp) |
+
+### Spreadsheets
+
+Ask for a budget, a price list or a loan calculator in any chat, and the
+assistant builds a real spreadsheet that opens beside it: formulas that
+recalculate, number, currency, percent and date formats, several sheets and
+frozen headers. Like a deck, it is **one live spreadsheet**: ask for a change
+("add a row for the security audit", "make column C euros") and the assistant
+edits those cells.
+
+- **New rows fit in.** A row you add takes the formats and formulas of the row
+  above it, and the totals grow to include it.
+- **Your currency, your number style.** Amounts use the currency you asked for,
+  and the sheet shows numbers the way your app language writes them.
+- **Excel in and out.** Attach an .xlsx file and the model reads its sheets as
+  tables; export any spreadsheet as an .xlsx file that opens in Excel, Numbers
+  or Google Sheets.
+
+![A "Ferry 1.0 Launch Budget" spreadsheet open beside the chat: planned, actual, difference and share of budget for seven items, a "Security audit" row the assistant just added on request, and a total row whose formulas now include it](./docs/assets/screenshot-spreadsheet.webp)
 
 ### Answers from your own documents
 

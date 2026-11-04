@@ -23,7 +23,8 @@ O Conduit é um aplicativo de desktop de código aberto para trabalhar com grand
 modelos de linguagem. Traga a sua própria chave de qualquer um dos vinte e três
 provedores, ou rode um modelo local com Ollama ou LM Studio, e peça coisas que
 você possa guardar: um **app pessoal** que busca dados ao vivo, uma
-**apresentação** que você edita pedindo, uma **resposta com citações dos seus
+**apresentação** que você edita pedindo, uma **planilha** cujas fórmulas se
+recalculam, uma **resposta com citações dos seus
 próprios documentos**, um **relatório de pesquisa** em que cada achado é
 conferido com a página de onde veio, um **fluxo de trabalho** que roda em um
 horário ou quando chega algo novo e para para perguntar. Conecte as suas ferramentas por MCP: as
@@ -115,6 +116,26 @@ centro e o chat ao lado.
 | Roteiro: cada palavra da apresentação como um único documento | A janela do apresentador: próximo slide, notas, cronômetro |
 | --- | --- |
 | ![A aba Roteiro ao lado da apresentação, listando o título, os tópicos e as notas de cada slide](./docs/assets/screenshot-slides-script.webp) | ![A janela do apresentador com o slide atual, o próximo slide, um cronômetro e notas grandes do apresentador](./docs/assets/screenshot-presenter.webp) |
+
+### Planilhas
+
+Peça um orçamento, uma lista de preços ou uma calculadora de empréstimo em
+qualquer chat, e o assistente monta uma planilha de verdade que abre ao lado:
+fórmulas que se recalculam, formatos de número, moeda, porcentagem e data,
+várias abas e cabeçalho congelado. Como uma apresentação, é **uma única planilha
+viva**: peça uma mudança ("adicione uma linha para a auditoria de segurança",
+"coloque a coluna C em euros") e o assistente edita essas células.
+
+- **Linhas novas se encaixam.** Uma linha adicionada herda os formatos e as
+  fórmulas da linha de cima, e os totais crescem para incluí-la.
+- **Sua moeda, seu jeito de escrever números.** Os valores ficam na moeda que
+  você pediu, e a planilha mostra os números do jeito que o idioma do app
+  escreve.
+- **Excel na entrada e na saída.** Anexe um arquivo .xlsx e o modelo lê as abas
+  como tabelas; exporte qualquer planilha como um arquivo .xlsx que abre no
+  Excel, no Numbers ou no Google Planilhas.
+
+![Uma planilha "Orçamento de lançamento do Ferry 1.0" aberta ao lado do chat: previsto, real, diferença e participação no orçamento para sete itens, uma linha "Auditoria de segurança" que o assistente acabou de adicionar a pedido, e uma linha de total cujas fórmulas agora a incluem](./docs/assets/screenshot-spreadsheet.webp)
 
 ### Respostas a partir dos seus próprios documentos
 

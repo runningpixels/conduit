@@ -149,6 +149,39 @@ mod tests {
         assert!(args.ends_with(" --proxy-bypass-list=https://images.example.com"));
     }
 
+    /// The setup hook builds the main window itself. A platform config replaces
+    /// the whole `windows` array (JSON merge patch), so each one must repeat
+    /// `create: false`, or Tauri builds "main" first and setup panics with
+    /// "a webview with label `main` already exists" (issue #301, every Mac).
+    #[test]
+    fn every_config_leaves_the_main_window_to_setup() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut checked = 0;
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            if !(name.starts_with("tauri.") && name.ends_with("conf.json")) {
+                continue;
+            }
+            let config: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let Some(windows) = config["app"]["windows"].as_array() else {
+                continue;
+            };
+            let main = windows.iter().find(|w| w["label"] == "main");
+            let main = main.unwrap_or_else(|| panic!("{name}: windows has no \"main\" entry"));
+            assert_eq!(
+                main["create"], false,
+                "{name}: main window needs \"create\": false"
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 2,
+            "expected tauri.conf.json and tauri.macos.conf.json"
+        );
+    }
+
     #[test]
     fn rejects_entries_that_could_inject_arguments() {
         let args = main_webview_browser_args(

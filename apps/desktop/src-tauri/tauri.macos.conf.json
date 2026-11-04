@@ -4,10 +4,15 @@
     "windows": [
       {
         "label": "main",
-        "decorations": true,
+        "title": "Conduit",
+        "width": 1360,
+        "height": 900,
+        "resizable": true,
         "minWidth": 360,
         "minHeight": 560,
-        "titleBarStyle": "Overlay"
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "create": false
       }
     ]
   }

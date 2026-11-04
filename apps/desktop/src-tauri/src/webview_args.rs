@@ -170,10 +170,16 @@ mod tests {
             };
             let main = windows.iter().find(|w| w["label"] == "main");
             let main = main.unwrap_or_else(|| panic!("{name}: windows has no \"main\" entry"));
-            assert_eq!(main["create"], false, "{name}: main window needs \"create\": false");
+            assert_eq!(
+                main["create"], false,
+                "{name}: main window needs \"create\": false"
+            );
             checked += 1;
         }
-        assert!(checked >= 2, "expected tauri.conf.json and tauri.macos.conf.json");
+        assert!(
+            checked >= 2,
+            "expected tauri.conf.json and tauri.macos.conf.json"
+        );
     }
 
     #[test]

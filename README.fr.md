@@ -24,7 +24,7 @@ modèles de langage. Apportez votre propre clé pour l'un des vingt-trois
 fournisseurs, ou faites tourner un modèle local avec Ollama ou LM Studio, et
 demandez des choses que vous pouvez garder : une **app personnelle** qui
 récupère des données en direct, une **présentation** que vous modifiez en
-demandant, une **réponse citée à partir de vos propres documents**, un **rapport
+demandant, un **tableur** dont les formules se recalculent, une **réponse citée à partir de vos propres documents**, un **rapport
 de recherche** dont chaque constat est vérifié par rapport à la page dont il
 vient, un **flux de travail** qui s'exécute selon un calendrier ou quand quelque chose de nouveau arrive et s'arrête pour
 demander. Branchez vos outils via MCP : les outils qui modifient quelque chose,
@@ -123,6 +123,27 @@ la conversation à côté.
 | Script : chaque mot de la présentation comme un seul document | La fenêtre de présentateur : diapositive suivante, notes, minuteur |
 | --- | --- |
 | ![L'onglet Script à côté de la présentation, listant le titre, les puces et les notes de chaque diapositive](./docs/assets/screenshot-slides-script.webp) | ![La fenêtre de présentateur avec la diapositive actuelle, la diapositive suivante, un minuteur et de grandes notes de l'orateur](./docs/assets/screenshot-presenter.webp) |
+
+### Tableurs
+
+Demandez un budget, une liste de prix ou un simulateur de prêt dans n'importe
+quelle conversation, et l'assistant construit un vrai tableur qui s'ouvre à
+côté : des formules qui se recalculent, des formats de nombre, de devise, de
+pourcentage et de date, plusieurs feuilles et des en-têtes figés. Comme une
+présentation, c'est **un seul tableur vivant** : demandez une modification
+(« ajoute une ligne pour l'audit de sécurité », « mets la colonne C en euros »)
+et l'assistant modifie ces cellules.
+
+- **Les nouvelles lignes s'intègrent.** Une ligne ajoutée reprend les formats et
+  les formules de la ligne du dessus, et les totaux s'étendent pour l'inclure.
+- **Votre devise, votre façon d'écrire les nombres.** Les montants sont dans la
+  devise demandée, et la feuille affiche les nombres comme les écrit la langue
+  de l'app.
+- **Excel en entrée et en sortie.** Joignez un fichier .xlsx et le modèle lit
+  ses feuilles comme des tableaux ; exportez n'importe quel tableur en fichier
+  .xlsx qui s'ouvre dans Excel, Numbers ou Google Sheets.
+
+![Un tableur « Budget de lancement de Ferry 1.0 » ouvert à côté de la conversation : prévu, réel, écart et part du budget pour sept postes, une ligne « Audit de sécurité » que l'assistant vient d'ajouter à la demande, et une ligne de total dont les formules l'incluent désormais](./docs/assets/screenshot-spreadsheet.webp)
 
 ### Des réponses tirées de vos propres documents
 

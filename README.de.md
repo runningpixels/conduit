@@ -23,7 +23,8 @@ Conduit ist eine quelloffene Desktop-App für die Arbeit mit großen
 Sprachmodellen. Bringen Sie Ihren eigenen Schlüssel für einen von dreiundzwanzig
 Anbietern mit oder betreiben Sie ein lokales Modell mit Ollama oder LM Studio,
 und bitten Sie um Dinge, die Sie behalten können: eine **persönliche App**, die
-aktuelle Daten abruft, eine **Präsentation**, die Sie per Zuruf bearbeiten, eine
+aktuelle Daten abruft, eine **Präsentation**, die Sie per Zuruf bearbeiten, eine **Tabelle**, deren
+Formeln mitrechnen, eine
 **Antwort mit Quellenangaben aus Ihren eigenen Dokumenten**, einen
 **Recherchebericht**, dessen Aussagen alle gegen die Seite geprüft sind, von der
 sie stammen, einen **Workflow**, der nach Zeitplan oder bei Neuem läuft und nachfragt, wenn er
@@ -121,6 +122,26 @@ Chat daneben.
 | Skript: jedes Wort der Präsentation als ein Dokument | Das Referentenfenster: nächste Folie, Notizen, Timer |
 | --- | --- |
 | ![Der Reiter Skript neben der Präsentation, mit Titel, Aufzählungspunkten und Notizen jeder Folie](./docs/assets/screenshot-slides-script.webp) | ![Das Referentenfenster mit der aktuellen Folie, der nächsten Folie, einem Timer und großen Sprechernotizen](./docs/assets/screenshot-presenter.webp) |
+
+### Tabellen
+
+Bitten Sie in einem beliebigen Chat um ein Budget, eine Preisliste oder einen
+Kreditrechner, und der Assistent baut eine echte Tabelle, die sich neben dem
+Chat öffnet: Formeln, die neu rechnen, Zahlen-, Währungs-, Prozent- und
+Datumsformate, mehrere Blätter und fixierte Kopfzeilen. Wie eine Präsentation
+ist sie **eine lebende Tabelle**: Bitten Sie um eine Änderung („füge eine Zeile
+für das Sicherheitsaudit hinzu“, „Spalte C in Euro“), und der Assistent
+bearbeitet genau diese Zellen.
+
+- **Neue Zeilen passen sich ein.** Eine neue Zeile übernimmt die Formate und
+  Formeln der Zeile darüber, und die Summen wachsen mit.
+- **Ihre Währung, Ihre Zahlenschreibweise.** Beträge stehen in der gewünschten
+  Währung, und die Tabelle zeigt Zahlen so, wie Ihre App-Sprache sie schreibt.
+- **Excel rein und raus.** Hängen Sie eine .xlsx-Datei an, und das Modell liest
+  ihre Blätter als Tabellen; jede Tabelle lässt sich als .xlsx-Datei
+  exportieren, die sich in Excel, Numbers oder Google Sheets öffnet.
+
+![Eine Tabelle „Ferry 1.0 Launch-Budget“ neben dem Chat: geplant, tatsächlich, Differenz und Anteil am Budget für sieben Posten, eine Zeile „Sicherheitsaudit“, die der Assistent gerade auf Wunsch hinzugefügt hat, und eine Summenzeile, deren Formeln sie jetzt einschließen](./docs/assets/screenshot-spreadsheet.webp)
 
 ### Antworten aus Ihren eigenen Dokumenten
 

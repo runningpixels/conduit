@@ -88,6 +88,9 @@ describe('looksLikeSpreadsheetRequest', () => {
     // The app's other languages.
     'Erstelle mir eine Tabelle für mein monatliches Haushaltsbudget mit Einnahmen, Ausgaben nach Kategorien und Summen.',
     'Mach eine Tabellenkalkulation für die Hochzeit',
+    // A version number's "." doesn't end the sentence before "Summenzeile".
+    'Erstelle eine Tabelle für das Launch-Budget von Ferry 1.0 in Euro mit einer Summenzeile.',
+    'Erstelle eine Tabelle für unser Budget',
     'Crée un tableur pour mon budget',
     'Fais une feuille de calcul des dépenses',
     'Haz una hoja de cálculo con los gastos del mes',
@@ -113,6 +116,7 @@ describe('looksLikeSpreadsheetRequest', () => {
     'Build a landing page with a pricing table',
     'Change the bed sheet colour in the picture',
     'Erstelle eine Tabelle mit den Hauptstädten Europas',
+    'Erstelle eine Tabelle der Planeten. Rechne dann im Kopf die Summen nach.',
     'Haz una tabla comparando tres teléfonos',
     'Fais un tableau des rois de France',
     '',

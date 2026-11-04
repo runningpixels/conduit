@@ -7,12 +7,15 @@
 //! from the spec, let IronCalc make the change, and read every formula back
 //! into the spec. See `read_back`.
 
+use std::sync::OnceLock;
+
 use ironcalc::base::Model;
+use regex::Regex;
 use serde_json::Value;
 
 use super::{
     compute::build_model,
-    spec::{self, Cell, Sheet, Workbook},
+    spec::{self, Cell, CellStyle, Sheet, Workbook},
 };
 
 /// Add rows after the last used row of a sheet.
@@ -27,8 +30,29 @@ pub fn append_rows(wb: &mut Workbook, sheet: &str, rows: &Value) -> Result<(), S
     spec::validate(wb)
 }
 
-/// Overwrite a block starting at `start` (A1). A `null` clears its cell; any
-/// other cell replaces what was there, format and style included.
+/// Write `new` over `old` as typing into Excel does: a `null` (blank) cell
+/// clears it; otherwise the cell keeps the format and style `new` doesn't
+/// give, and a cell that only sets a format or style keeps its content.
+fn write_cell(old: &mut Cell, new: Cell) {
+    if new.is_blank() {
+        *old = Cell::default();
+        return;
+    }
+    let (value, formula) = if new.has_content() {
+        (new.value, new.formula)
+    } else {
+        (old.value.take(), old.formula.take())
+    };
+    *old = Cell {
+        value,
+        formula,
+        format: new.format.or_else(|| old.format.take()),
+        style: new.style.or(old.style),
+    };
+}
+
+/// Overwrite a block starting at `start` (A1). A `null` clears its cell; see
+/// `write_cell` for what a cell keeps.
 pub fn update_cells(
     wb: &mut Workbook,
     sheet: &str,
@@ -55,7 +79,7 @@ pub fn update_cells(
     let target = &mut wb.sheets[idx];
     for (r, row) in parsed.into_iter().enumerate() {
         for (c, cell) in row.into_iter().enumerate() {
-            *target.cell_mut(row0 + r, col0 + c) = cell;
+            write_cell(target.cell_mut(row0 + r, col0 + c), cell);
         }
     }
     spec::validate(wb)
@@ -111,7 +135,7 @@ pub fn update_cell_list(wb: &mut Workbook, sheet: &str, cells: &Value) -> Result
     }
     let target = &mut wb.sheets[idx];
     for (row0, col0, cell) in parsed {
-        *target.cell_mut(row0, col0) = cell;
+        write_cell(target.cell_mut(row0, col0), cell);
     }
     spec::validate(wb)
 }
@@ -262,20 +286,113 @@ fn insert_rows(wb: &mut Workbook, idx: usize, at: usize, rows: &Value) -> Result
             spec::MAX_ROWS
         ));
     }
+    // The data row the new rows copy from: the one above, else the one below.
+    let template = [at.checked_sub(2), Some(at - 1)]
+        .into_iter()
+        .flatten()
+        .find(|&r| is_data_row(&wb.sheets[idx], r));
     let mut model = build_model(wb)?;
     model.insert_rows(idx as u32, at as i32, count as i32)?;
     let names: Vec<Option<String>> = wb.sheets.iter().map(|s| Some(s.name.clone())).collect();
+    let moved = |r: usize| if r >= at - 1 { r + count } else { r };
     read_back(wb, &model, &names, &|s, r| {
-        Some(if s == idx && r >= at - 1 {
-            r + count
-        } else {
-            r
-        })
+        Some(if s == idx { moved(r) } else { r })
     });
     let target = &mut wb.sheets[idx];
     target.rows.truncate(used);
     target.rows.splice(at - 1..at - 1, parsed);
+
+    // New rows look like their neighbours: the template's formats and input
+    // style, and its formulas, moved to the new row, where a cell is empty.
+    if let Some(template) = template.map(moved) {
+        let template_row = target.rows[template].clone();
+        for r in at - 1..at - 1 + count {
+            for (c, from) in template_row.iter().enumerate() {
+                let cell = target.cell_mut(r, c);
+                if !cell.has_content() && from.formula.is_some() {
+                    if let Ok(formula) = model.extend_to(
+                        idx as u32,
+                        template as i32 + 1,
+                        c as i32 + 1,
+                        r as i32 + 1,
+                        c as i32 + 1,
+                    ) {
+                        cell.formula = formula.starts_with('=').then_some(formula);
+                    }
+                }
+                if cell.format.is_none() {
+                    cell.format = from.format.clone();
+                }
+                if cell.style.is_none()
+                    && from.style == Some(CellStyle::Input)
+                    && cell.formula.is_none()
+                {
+                    cell.style = from.style;
+                }
+            }
+        }
+    }
+
+    // A total right below the new rows takes them in: SUM(B2:B7) becomes
+    // SUM(B2:B8) when a row goes in at 8, as the model meant.
+    if at >= 2 {
+        for row in target.rows.iter_mut().skip(at - 1 + count) {
+            for cell in row.iter_mut() {
+                if let Some(formula) = &cell.formula {
+                    cell.formula = Some(widen_ranges(formula, at - 1, count));
+                }
+            }
+        }
+    }
     Ok(())
+}
+
+/// A row of data: below row 1, with content, no total or note cell, and not
+/// all header (models sometimes style the labels in column A as headers).
+fn is_data_row(sheet: &Sheet, row0: usize) -> bool {
+    let Some(row) = sheet.rows.get(row0) else {
+        return false;
+    };
+    let filled = || row.iter().filter(|c| c.has_content());
+    row0 > 0
+        && filled().next().is_some()
+        && !filled().all(|c| c.style == Some(CellStyle::Header))
+        && !row
+            .iter()
+            .any(|c| matches!(c.style, Some(CellStyle::Total | CellStyle::Note)))
+}
+
+/// Ranges in `formula` on its own sheet that end at row `end_row` (1-based)
+/// and start above it, stretched `by` rows further down. Text in quotes and
+/// ranges on other sheets (`Sheet!A1:A9`) are left alone.
+fn widen_ranges(formula: &str, end_row: usize, by: usize) -> String {
+    static RANGE: OnceLock<Regex> = OnceLock::new();
+    let range = RANGE.get_or_init(|| {
+        #[allow(clippy::unwrap_used)] // a constant pattern
+        Regex::new(r"(^|[^A-Za-z0-9_!$.'])(\$?[A-Za-z]{1,3}\$?)(\d+):(\$?[A-Za-z]{1,3}\$?)(\d+)")
+            .unwrap()
+    });
+    formula
+        .split('"')
+        .enumerate()
+        .map(|(i, part)| {
+            if i % 2 == 1 {
+                return part.to_string();
+            }
+            range
+                .replace_all(part, |c: &regex::Captures| {
+                    let (start, end) = (c[3].parse::<usize>(), c[5].parse::<usize>());
+                    match (start, end) {
+                        (Ok(start), Ok(end)) if end == end_row && start < end => {
+                            format!("{}{}{}:{}{}", &c[1], &c[2], start, &c[4], end + by)
+                        }
+                        _ => c[0].to_string(),
+                    }
+                })
+                .into_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("\"")
 }
 
 fn delete_rows(wb: &mut Workbook, idx: usize, from: usize, count: usize) -> Result<(), String> {
@@ -639,6 +756,108 @@ mod tests {
         assert!(c.all_errors().is_empty());
         assert_eq!(shown(&c, "Calc", "B7"), "360");
         assert_eq!(shown(&c, "Calc", "B9"), "1360");
+    }
+
+    /// A euro launch budget as the cheap models built them: inputs in B and C,
+    /// formulas in D and E, a total in row 5.
+    fn euro_budget() -> Workbook {
+        let eur = "#,##0.00 \"€\"";
+        wb(json!([{ "name": "Budget", "rows": [
+            [{"value": "Item", "style": "header"}, {"value": "Planned", "style": "header"}, {"value": "Actual", "style": "header"}, {"value": "Diff", "style": "header"}, {"value": "Share", "style": "header"}],
+            ["Website", {"value": 4500, "format": eur, "style": "input"}, {"value": 4850, "format": eur, "style": "input"}, {"formula": "=B2-C2", "format": eur}, {"formula": "=B2/$B$5", "format": "percent1"}],
+            ["Docs", {"value": 1800, "format": eur, "style": "input"}, {"value": 1620, "format": eur, "style": "input"}, {"formula": "=B3-C3", "format": eur}, {"formula": "=B3/$B$5", "format": "percent1"}],
+            ["Booth", {"value": 3500, "format": eur, "style": "input"}, {"value": 3800, "format": eur, "style": "input"}, {"formula": "=B4-C4", "format": eur}, {"formula": "=B4/$B$5", "format": "percent1"}],
+            [{"value": "Total", "style": "total"}, {"formula": "=SUM(B2:B4)", "format": eur, "style": "total"}, {"formula": "=SUM(C2:C4)", "format": eur, "style": "total"}, {"formula": "=B5-C5", "format": eur, "style": "total"}, {"formula": "=SUM(E2:E4)", "format": "percent1", "style": "total"}]
+        ]}]))
+    }
+
+    #[test]
+    fn a_row_inserted_above_the_total_looks_like_its_neighbours_and_is_counted() {
+        let mut w = euro_budget();
+        // What the models sent: the label and the two inputs, in `currency`
+        // or with no format at all, and no formulas.
+        edit_sheet(
+            &mut w,
+            "Budget",
+            EditSheet {
+                insert_rows: Some((
+                    5,
+                    json!([["Audit", {"value": 4000, "format": "currency"}, 3600]]),
+                )),
+                ..EditSheet::default()
+            },
+        )
+        .unwrap();
+        // The total took the new row in, and the new row got the formulas.
+        assert_eq!(formula(&w, "Budget", "B6").as_deref(), Some("=SUM(B2:B5)"));
+        assert_eq!(formula(&w, "Budget", "E6").as_deref(), Some("=SUM(E2:E5)"));
+        assert_eq!(formula(&w, "Budget", "D5").as_deref(), Some("=B5-C5"));
+        assert_eq!(formula(&w, "Budget", "E5").as_deref(), Some("=B5/$B$6"));
+        let row = &w.sheets[0].rows[4];
+        assert_eq!(row[2].style, Some(CellStyle::Input));
+        assert_eq!(row[3].style, None);
+        let c = compute(&w).unwrap();
+        assert!(c.all_errors().is_empty(), "{:?}", c.all_errors());
+        // `currency` follows the sheet's euros; the unformatted C5 took the row above's.
+        assert_eq!(shown(&c, "Budget", "B5"), "4,000.00 €");
+        assert_eq!(shown(&c, "Budget", "C5"), "3,600.00 €");
+        assert_eq!(shown(&c, "Budget", "D5"), "400.00 €");
+        assert_eq!(shown(&c, "Budget", "B6"), "13,800.00 €");
+        assert_eq!(shown(&c, "Budget", "E6"), "100.0%");
+    }
+
+    #[test]
+    fn empty_rows_can_be_inserted_and_filled_later() {
+        let mut w = euro_budget();
+        edit_sheet(
+            &mut w,
+            "Budget",
+            EditSheet {
+                insert_rows: Some((5, json!([[]]))),
+                ..EditSheet::default()
+            },
+        )
+        .unwrap();
+        // The model fills it with bare values: the formats stay.
+        update_cell_list(
+            &mut w,
+            "Budget",
+            &json!([{"cell": "A5", "value": "Audit"}, {"cell": "B5", "value": 4000}, {"cell": "C5", "value": 3600}]),
+        )
+        .unwrap();
+        let c = compute(&w).unwrap();
+        assert_eq!(shown(&c, "Budget", "B5"), "4,000.00 €");
+        assert_eq!(shown(&c, "Budget", "D5"), "400.00 €");
+        assert_eq!(shown(&c, "Budget", "B6"), "13,800.00 €");
+    }
+
+    #[test]
+    fn widening_leaves_other_ranges_alone() {
+        assert_eq!(widen_ranges("=SUM(B2:B7)", 7, 1), "=SUM(B2:B8)");
+        assert_eq!(widen_ranges("=SUM($B$2:$B$7)/2", 7, 2), "=SUM($B$2:$B$9)/2");
+        // Ends elsewhere, another sheet, inside text, one row.
+        assert_eq!(widen_ranges("=SUM(B2:B6)", 7, 1), "=SUM(B2:B6)");
+        assert_eq!(widen_ranges("=SUM(Data!B2:B7)", 7, 1), "=SUM(Data!B2:B7)");
+        assert_eq!(widen_ranges("=\"B2:B7\"&A1", 7, 1), "=\"B2:B7\"&A1");
+        assert_eq!(widen_ranges("=SUM(B7:B7)", 7, 1), "=SUM(B7:B7)");
+    }
+
+    #[test]
+    fn writing_a_value_keeps_the_cells_format() {
+        let mut w = euro_budget();
+        update_cell_list(
+            &mut w,
+            "Budget",
+            &json!([{"cell": "B2", "value": 5000}, {"cell": "C2", "style": "bad"}]),
+        )
+        .unwrap();
+        let row = &w.sheets[0].rows[1];
+        assert_eq!(row[1].value, Some(spec::Scalar::Number(5000.0)));
+        assert_eq!(row[1].style, Some(CellStyle::Input));
+        // A style alone keeps the value.
+        assert_eq!(row[2].value, Some(spec::Scalar::Number(4850.0)));
+        assert_eq!(row[2].style, Some(CellStyle::Bad));
+        assert_eq!(shown(&compute(&w).unwrap(), "Budget", "B2"), "5,000.00 €");
     }
 
     #[test]

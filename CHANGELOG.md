@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.22] - 2026-11-03
+
+Conduit starts on macOS again, and spreadsheets get the currency, new rows and
+totals right.
+
+### Fixed
+
+- **Conduit crashed on launch on every Mac** with "a webview with label `main`
+  already exists" (#301). The macOS window settings left out a flag, so the
+  main window was created twice. The window also opens at its proper size
+  again.
+- **Spreadsheets use the currency you asked for.** Euro, yen or yuan sheets no
+  longer show `$`, on new rows or anywhere else, and formats such as `R$` or
+  `CHF` no longer turn cells into `#VALUE!`.
+- **An inserted row fits in.** It takes the formats and formulas of the row
+  above, and a total that ends just above it grows to include it
+  (`SUM(B2:B7)` becomes `SUM(B2:B8)`).
+- Writing a value into a formatted cell keeps its format, and numbers a model
+  sends as text are stored as numbers.
+- Fewer failed spreadsheet edits from small differences in how a model words
+  the change.
+- A request for a "Tabelle" or a budget mentioning a version number ("Ferry
+  1.0") builds a spreadsheet instead of a web page.
+
+### Changed
+
+- The spreadsheet panel shows numbers the way your app language writes them
+  (for example `6.000,00 €` in German).
+- Model prices refreshed from models.dev.
+
 ## [1.0.0-rc.21] - 2026-11-02
 
 Spreadsheets in chat, Excel files you can attach, a clear sign when a model has

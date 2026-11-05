@@ -305,8 +305,12 @@ function readLastArtifactMap(): Record<string, string> {
   }
 }
 
-/** The artifact the user last had open in `conversationId`, if remembered.
- *  Opening the chat again shows it instead of the chat's artifact list. */
+/** Remembered in place of an artifact id when the reader went back to the
+ *  chat's artifact list, so opening the chat again shows the list. */
+export const ARTIFACT_LIST = '#list';
+
+/** The artifact the user last had open in `conversationId` (or
+ *  `ARTIFACT_LIST`), if remembered. Opening the chat again shows it. */
 export function readLastArtifact(conversationId: string): string | undefined {
   const id = readLastArtifactMap()[conversationId];
   return typeof id === 'string' && id ? id : undefined;

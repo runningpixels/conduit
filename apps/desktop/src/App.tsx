@@ -117,8 +117,10 @@ import type { Idea } from './ideas/catalog';
 import { readyCapabilities, resolveCapabilities, type SetupTarget } from './ideas/capabilities';
 import { notePicked, observeReady, setRowHidden, useIdeaState } from './ideas/ideaState';
 import { useKnowledgeDrop } from './workspace/useKnowledgeDrop';
+import { mostRecentlyUpdated } from './artifacts/ArtifactChatList';
 import {
   applyUiPrefs,
+  ARTIFACT_LIST,
   migrateRetiredThemePrefs,
   readLastArtifact,
   THEME_CHANGED_EVENT,
@@ -2481,9 +2483,11 @@ export default function App() {
   const pendingWorkflowDocRef = useRef<{ conversationId: string; artifactId: string } | null>(null);
 
   // Opening a chat brings back the artifact the reader last had open in it,
-  // once its artifact list has arrived. Without one, the panel lists the
-  // chat's artifacts (DocumentPanel). Declared before the workflow open below
-  // so that open, which names its own document, can claim the chat first.
+  // once its artifact list has arrived; with nothing remembered (a chat first
+  // opened in another build or install), its most recently updated one. Only
+  // a reader who went back to the list gets the list (DocumentPanel).
+  // Declared before the workflow open below so that open, which names its own
+  // document, can claim the chat first.
   const restoredConversationRef = useRef<string | null>(null);
   useEffect(() => {
     if (!activeConversationId || artifactsConversationId !== activeConversationId) return;
@@ -2492,12 +2496,15 @@ export default function App() {
     if (pendingWorkflowDocRef.current?.conversationId === activeConversationId) return;
     if (activeArtifact || pendingArtifact || openArtifactIds.length > 0) return;
     const remembered = readLastArtifact(activeConversationId);
-    if (!remembered) return;
-    if (!chatArtifacts.some((artifact) => artifact.id === remembered)) {
+    if (remembered === ARTIFACT_LIST) return;
+    let target = remembered;
+    if (target && !chatArtifacts.some((artifact) => artifact.id === target)) {
       writeLastArtifact(activeConversationId, null);
-      return;
+      target = undefined;
     }
-    void handleOpenArtifact(remembered, { reveal: false, forConversation: activeConversationId });
+    target ??= mostRecentlyUpdated(chatArtifacts)?.id;
+    if (!target) return;
+    void handleOpenArtifact(target, { reveal: false, forConversation: activeConversationId });
   }, [
     activeConversationId,
     artifactsConversationId,
@@ -2766,7 +2773,7 @@ export default function App() {
       // should show that list too. Closing one of several hands over to the
       // next, which is remembered as it opens.
       if (activeConversationId && openArtifactIds.every((id) => id === artifactId)) {
-        writeLastArtifact(activeConversationId, null);
+        writeLastArtifact(activeConversationId, ARTIFACT_LIST);
       }
     },
     [activeConversationId, openArtifactIds],
@@ -2775,7 +2782,7 @@ export default function App() {
   /** The header switcher's "All artifacts in this chat": back to the list. */
   const handleShowArtifactList = useCallback(() => {
     setOpenArtifactIds([]);
-    if (activeConversationId) writeLastArtifact(activeConversationId, null);
+    if (activeConversationId) writeLastArtifact(activeConversationId, ARTIFACT_LIST);
   }, [activeConversationId]);
 
   /** The header switcher: show another of the chat's artifacts in place. */

@@ -12,6 +12,15 @@ export function newestFirst(artifacts: readonly Artifact[]): Artifact[] {
   return [...artifacts].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
 }
 
+/** The artifact changed last (an edit counts, not only creation), if any. */
+export function mostRecentlyUpdated(artifacts: readonly Artifact[]): Artifact | undefined {
+  const stamp = (a: Artifact) => a.updatedAt ?? a.createdAt ?? '';
+  return artifacts.reduce<Artifact | undefined>(
+    (best, a) => (best && stamp(best) >= stamp(a) ? best : a),
+    undefined,
+  );
+}
+
 export interface ArtifactChatListProps {
   /** The open chat's artifacts, in any order. */
   artifacts: readonly Artifact[];

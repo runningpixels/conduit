@@ -1,15 +1,15 @@
 /**
  * Opening a chat restores the artifact last open in it, per chat and across
  * restarts, without showing a hidden panel; a chat with nothing remembered
- * lists its artifacts instead of the generic empty state. Every IPC call is a
- * stub.
+ * opens its most recently updated artifact, and one where the reader went back
+ * to the list shows the list. Every IPC call is a stub.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { AppSettings, ConversationSummary } from '@conduit/config-schema';
 import type { Artifact } from './ipc/contracts';
-import { readLastArtifact, writeLastArtifact } from './shell/uiPrefs';
+import { ARTIFACT_LIST, readLastArtifact, writeLastArtifact } from './shell/uiPrefs';
 import { __writeStoredDocPanelForTest } from './workspace/useLayout';
 
 const conversations: ConversationSummary[] = [
@@ -238,14 +238,10 @@ describe('the panel remembers the artifact open in each chat', { timeout: 30_000
     await boot();
     await waitFor(() => expect(openTitle()).toBe('Alpha two'));
 
-    // Nothing remembered for B: its list, not the generic empty state.
+    // Nothing remembered for B: its newest artifact opens, and is remembered.
     selectChat('Chat B');
-    await waitFor(() => expect(listShown()).toBe(true));
-    expect(screen.getByText('1 artifact')).toBeInTheDocument();
-    expect(screen.queryByText('Artifacts live here')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Beta one' }));
     await waitFor(() => expect(openTitle()).toBe('Beta one'));
-    expect(readLastArtifact('cB')).toBe('b1');
+    await waitFor(() => expect(readLastArtifact('cB')).toBe('b1'));
 
     selectChat('Chat A');
     await waitFor(() => expect(openTitle()).toBe('Alpha two'));
@@ -253,14 +249,34 @@ describe('the panel remembers the artifact open in each chat', { timeout: 30_000
     await waitFor(() => expect(openTitle()).toBe('Beta one'));
   });
 
-  it('closing the artifact returns to the list and forgets it', async () => {
+  // A chat first opened in another build or install has nothing remembered:
+  // the one changed last opens, even when another was created later.
+  it('opens the most recently updated artifact when nothing is remembered', async () => {
+    const original = byConversation.cA;
+    byConversation.cA = [{ ...a1, updatedAt: '2026-10-05T00:00:00Z' }, a2];
+    try {
+      await boot();
+      await waitFor(() => expect(openTitle()).toBe('Alpha one'));
+      expect(listShown()).toBe(false);
+    } finally {
+      byConversation.cA = original;
+    }
+  });
+
+  it('closing the artifact returns to the list, and the chat reopens on it', async () => {
     writeLastArtifact('cA', 'a2');
     await boot();
     await waitFor(() => expect(openTitle()).toBe('Alpha two'));
     fireEvent.click(screen.getByRole('button', { name: 'Close Alpha two' }));
     await waitFor(() => expect(listShown()).toBe(true));
     expect(screen.getByText('2 artifacts')).toBeInTheDocument();
-    expect(readLastArtifact('cA')).toBeUndefined();
+    expect(readLastArtifact('cA')).toBe(ARTIFACT_LIST);
+
+    selectChat('Chat B');
+    await waitFor(() => expect(openTitle()).toBe('Beta one'));
+    selectChat('Chat A');
+    await waitFor(() => expect(listShown()).toBe(true));
+    expect(openTitle()).toBeNull();
   });
 
   it('switches from the header and returns to the list from it', async () => {
@@ -277,16 +293,14 @@ describe('the panel remembers the artifact open in each chat', { timeout: 30_000
     fireEvent.click(screen.getByRole('button', { name: /Alpha one/, expanded: false }));
     fireEvent.click(screen.getByRole('option', { name: 'All artifacts in this chat' }));
     await waitFor(() => expect(listShown()).toBe(true));
-    expect(readLastArtifact('cA')).toBeUndefined();
+    expect(readLastArtifact('cA')).toBe(ARTIFACT_LIST);
   });
 
-  it('forgets an artifact that no longer exists and shows the list', async () => {
+  it('forgets an artifact that no longer exists and opens the newest', async () => {
     writeLastArtifact('cA', 'gone');
     const ipc = await boot();
-    await waitFor(() => expect(listShown()).toBe(true));
-    // The list can show before the chat's artifacts arrive; forgetting waits
-    // for them, so it is an effect that lands after the list.
-    await waitFor(() => expect(readLastArtifact('cA')).toBeUndefined());
+    await waitFor(() => expect(openTitle()).toBe('Alpha two'));
+    await waitFor(() => expect(readLastArtifact('cA')).toBe('a2'));
     expect(ipc.getArtifact).not.toHaveBeenCalledWith('gone');
   });
 
@@ -294,6 +308,8 @@ describe('the panel remembers the artifact open in each chat', { timeout: 30_000
   // the first chat's page in the second chat's panel, and its ⋮ → Save as app
   // then saved the first chat's page.
   it('does not show a chat’s page in another chat when its open lands late', async () => {
+    writeLastArtifact('cA', ARTIFACT_LIST);
+    writeLastArtifact('cB', ARTIFACT_LIST);
     const ipc = await boot();
     await waitFor(() => expect(listShown()).toBe(true));
     let release: (artifact: Artifact) => void = () => {};

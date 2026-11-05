@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.23] - 2026-11-05
+
+Opening a chat brings back its latest artifact.
+
+### Fixed
+
+- **Opening a previous chat shows its artifact again.** The panel used to show
+  the chat's artifact list until you clicked one. It now opens the artifact you
+  last had open, or the most recently changed one. A chat you left on the list
+  still opens on the list.
+
+### Changed
+
+- Every macOS build is now launched before a release is published, so a build
+  that crashes at startup can't ship.
+- The README lists Spreadsheets as a feature.
+- Model prices refreshed from models.dev.
+
 ## [1.0.0-rc.22] - 2026-11-03
 
 Conduit starts on macOS again, and spreadsheets get the currency, new rows and

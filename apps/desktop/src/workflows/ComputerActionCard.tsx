@@ -10,6 +10,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useT, type Translate } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { answerWorkflowAction, getWorkflowRun } from '../ipc/client';
+import { computerApprovalSubject, describeApproval } from '../lib/approvalSentence';
 import type { ComputerRecord, ComputerRequest, WorkflowAction } from '../ipc/contracts';
 import { rejectionText } from './CommandRuleList';
 import { FileDiff } from './FileDiff';
@@ -180,6 +181,9 @@ export function ComputerActionCard({
       <b id={headingId} className="cc-headline">
         {request.why ? request.why : t(titleKey)}
       </b>
+      <p className="approval-sentence">
+        {describeApproval(computerApprovalSubject(request), t, (bytes) => fmt.size(bytes))}
+      </p>
 
       {command ? (
         editing ? (

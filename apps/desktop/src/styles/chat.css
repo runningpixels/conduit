@@ -794,6 +794,9 @@
   padding: 11px 12px;
 }
 .consent p { margin: 0 0 9px; font-size: var(--fs-2xl); color: var(--ink); }
+/* The plain-language sentence at the top of every tool approval. */
+.approval-sentence { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.consent p.approval-sentence { margin: 0 0 9px; }
 .consent .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .consent-remember {
   display: flex;

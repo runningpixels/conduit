@@ -1,4 +1,5 @@
-//! Writing export: a draft as a Markdown file or a standalone HTML page.
+//! Writing export: a draft as a Markdown file, a standalone HTML page or a
+//! Word document (see [`crate::draft_docx`]).
 //!
 //! The HTML is rendered here with pulldown-cmark, never by the renderer, and is
 //! safe to open anywhere: raw HTML in the Markdown is shown as text (escaped),
@@ -41,16 +42,18 @@ pub fn extension(format: DraftExportFormat) -> &'static str {
     match format {
         DraftExportFormat::Markdown => "md",
         DraftExportFormat::Html => "html",
+        DraftExportFormat::Docx => "docx",
     }
 }
 
 /// The file contents for a draft in `format`, with a Sources section listing
 /// the pages it links to (see [`with_sources`]).
-pub fn render(title: &str, markdown: &str, format: DraftExportFormat) -> String {
+pub fn render(title: &str, markdown: &str, format: DraftExportFormat) -> Result<Vec<u8>, String> {
     let markdown = with_sources(markdown);
     match format {
-        DraftExportFormat::Markdown => markdown_file(&markdown),
-        DraftExportFormat::Html => html_page(title, &markdown),
+        DraftExportFormat::Markdown => Ok(markdown_file(&markdown).into_bytes()),
+        DraftExportFormat::Html => Ok(html_page(title, &markdown).into_bytes()),
+        DraftExportFormat::Docx => crate::draft_docx::build(title, &markdown),
     }
 }
 
@@ -263,8 +266,8 @@ pub fn html_page(title: &str, markdown: &str) -> String {
 }
 
 /// Write the export to the path the user picked.
-pub fn write(path: &Path, contents: &str) -> Result<(), String> {
-    std::fs::write(path, contents.as_bytes()).map_err(|e| format!("Couldn't save the file: {e}"))
+pub fn write(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), String> {
+    std::fs::write(path, contents).map_err(|e| format!("Couldn't save the file: {e}"))
 }
 
 #[cfg(test)]
@@ -322,8 +325,9 @@ mod tests {
         );
         assert!(out.starts_with("## Moss\n\nMoss holds"));
         // Both formats carry it.
-        assert!(render("T", md, DraftExportFormat::Markdown).contains("## Sources"));
-        let html = render("T", md, DraftExportFormat::Html);
+        let text = |f| String::from_utf8(render("T", md, f).unwrap()).unwrap();
+        assert!(text(DraftExportFormat::Markdown).contains("## Sources"));
+        let html = text(DraftExportFormat::Html);
         assert!(html.contains("<h2>Sources</h2>"), "{html}");
         assert!(html.contains("<a href=\"https://ref.example/x\">ref link</a>"));
     }

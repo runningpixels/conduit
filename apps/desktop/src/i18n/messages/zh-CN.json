@@ -3524,6 +3524,7 @@
   "writing.editor.saving": "正在保存…",
   "writing.editor.writing": "正在撰写…",
   "writing.export.button": "导出",
+  "writing.export.docx": "Word 文档 (.docx)",
   "writing.export.failed": "无法导出此草稿。{reason}",
   "writing.export.html": "HTML 文件 (.html)",
   "writing.export.markdown": "Markdown 文件 (.md)",

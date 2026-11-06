@@ -3524,6 +3524,7 @@
   "writing.editor.saving": "Saving…",
   "writing.editor.writing": "Writing…",
   "writing.export.button": "Export",
+  "writing.export.docx": "Word document (.docx)",
   "writing.export.failed": "Couldn't export this draft. {reason}",
   "writing.export.html": "HTML file (.html)",
   "writing.export.markdown": "Markdown file (.md)",

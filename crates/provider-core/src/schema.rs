@@ -2119,6 +2119,7 @@ pub struct DraftSnapshotSummary {
 pub enum DraftExportFormat {
     Markdown,
     Html,
+    Docx,
 }
 
 /// An app with its page, for opening it.

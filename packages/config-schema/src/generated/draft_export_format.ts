@@ -3,4 +3,4 @@
 /**
  * The file format a draft is exported as.
  */
-export type DraftExportFormat = "markdown" | "html";
+export type DraftExportFormat = "markdown" | "html" | "docx";

@@ -3524,6 +3524,7 @@
   "writing.editor.saving": "Enregistrement…",
   "writing.editor.writing": "Rédaction…",
   "writing.export.button": "Exporter",
+  "writing.export.docx": "Document Word (.docx)",
   "writing.export.failed": "Impossible d'exporter ce brouillon. {reason}",
   "writing.export.html": "Fichier HTML (.html)",
   "writing.export.markdown": "Fichier Markdown (.md)",

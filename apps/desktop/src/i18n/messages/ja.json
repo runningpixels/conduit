@@ -3524,6 +3524,7 @@
   "writing.editor.saving": "保存しています…",
   "writing.editor.writing": "執筆中…",
   "writing.export.button": "エクスポート",
+  "writing.export.docx": "Word 文書 (.docx)",
   "writing.export.failed": "この下書きをエクスポートできませんでした。{reason}",
   "writing.export.html": "HTML ファイル (.html)",
   "writing.export.markdown": "Markdown ファイル (.md)",

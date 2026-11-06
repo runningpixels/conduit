@@ -56,6 +56,13 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    // Vite inlines assets under 4 KiB as data: URIs. One KaTeX font
+    // (KaTeX_Size3 woff2) falls under that, and the app CSP's `font-src
+    // 'self'` refuses data: fonts. Keep every font a real file instead of
+    // widening font-src. Returning undefined keeps Vite's default otherwise.
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf|eot)$/i.test(file) ? false : undefined),
+  },
   test: {
     // M6: artifact renderer tests need a DOM. Pure-function tests (escape,
     // buildArtifactCsp, selectRenderer dispatch) also pass under jsdom.

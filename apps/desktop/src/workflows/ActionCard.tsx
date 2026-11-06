@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { answerWorkflowAction } from '../ipc/client';
+import { describeApproval } from '../lib/approvalSentence';
 import type { WorkflowAction } from '../ipc/contracts';
 import { ComputerActionCard } from './ComputerActionCard';
 import { formatNextRun } from './ScheduleSection';
@@ -187,6 +188,13 @@ function ConnectorActionCard({
       data-run-id={action.runId}
     >
       <b id={headingId}>{t('workspace.workflows.action.title')}</b>
+      <p className="approval-sentence">
+        {describeApproval(
+          { kind: 'tool', tool: action.tool, connector: action.connectorName, flag: action.sensitive ? 'sensitive' : undefined },
+          t,
+          (bytes) => fmt.size(bytes),
+        )}
+      </p>
       <p className="wf-review-what">
         {t('workspace.workflows.action.what', { tool: action.tool, connector: action.connectorName })}
       </p>

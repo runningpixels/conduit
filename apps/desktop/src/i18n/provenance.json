@@ -3741,7 +3741,15 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "consent.sentence.runCommand": "a8db62e1c0d30d50021f41cabda604d5aad560fa",
+    "consent.sentence.writeFile": "45efeb67d68daf341dfdb615be01710c6953f74d",
+    "consent.sentence.replaceFile": "faabf21b0a2267006681f89a4071385f77b861d8",
+    "consent.sentence.editFile": "1768720b8f597a087de6b42d12d42e414cbb4248",
+    "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
+    "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
+    "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7485,7 +7493,15 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "consent.sentence.runCommand": "a8db62e1c0d30d50021f41cabda604d5aad560fa",
+    "consent.sentence.writeFile": "45efeb67d68daf341dfdb615be01710c6953f74d",
+    "consent.sentence.replaceFile": "faabf21b0a2267006681f89a4071385f77b861d8",
+    "consent.sentence.editFile": "1768720b8f597a087de6b42d12d42e414cbb4248",
+    "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
+    "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
+    "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11229,7 +11245,15 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "consent.sentence.runCommand": "a8db62e1c0d30d50021f41cabda604d5aad560fa",
+    "consent.sentence.writeFile": "45efeb67d68daf341dfdb615be01710c6953f74d",
+    "consent.sentence.replaceFile": "faabf21b0a2267006681f89a4071385f77b861d8",
+    "consent.sentence.editFile": "1768720b8f597a087de6b42d12d42e414cbb4248",
+    "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
+    "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
+    "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -14973,7 +14997,15 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "consent.sentence.runCommand": "a8db62e1c0d30d50021f41cabda604d5aad560fa",
+    "consent.sentence.writeFile": "45efeb67d68daf341dfdb615be01710c6953f74d",
+    "consent.sentence.replaceFile": "faabf21b0a2267006681f89a4071385f77b861d8",
+    "consent.sentence.editFile": "1768720b8f597a087de6b42d12d42e414cbb4248",
+    "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
+    "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
+    "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -18717,7 +18749,15 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "consent.sentence.runCommand": "a8db62e1c0d30d50021f41cabda604d5aad560fa",
+    "consent.sentence.writeFile": "45efeb67d68daf341dfdb615be01710c6953f74d",
+    "consent.sentence.replaceFile": "faabf21b0a2267006681f89a4071385f77b861d8",
+    "consent.sentence.editFile": "1768720b8f597a087de6b42d12d42e414cbb4248",
+    "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
+    "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
+    "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -22461,7 +22501,15 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "consent.sentence.runCommand": "a8db62e1c0d30d50021f41cabda604d5aad560fa",
+    "consent.sentence.writeFile": "45efeb67d68daf341dfdb615be01710c6953f74d",
+    "consent.sentence.replaceFile": "faabf21b0a2267006681f89a4071385f77b861d8",
+    "consent.sentence.editFile": "1768720b8f597a087de6b42d12d42e414cbb4248",
+    "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
+    "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
+    "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -26205,6 +26253,14 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "consent.sentence.runCommand": "a8db62e1c0d30d50021f41cabda604d5aad560fa",
+    "consent.sentence.writeFile": "45efeb67d68daf341dfdb615be01710c6953f74d",
+    "consent.sentence.replaceFile": "faabf21b0a2267006681f89a4071385f77b861d8",
+    "consent.sentence.editFile": "1768720b8f597a087de6b42d12d42e414cbb4248",
+    "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
+    "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
+    "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
   }
 }

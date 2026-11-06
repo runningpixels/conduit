@@ -182,6 +182,22 @@ mod tests {
         );
     }
 
+    /// Tauri does not add its IPC origins to a custom CSP. Without them every
+    /// command is blocked by connect-src and falls back to postMessage (slower;
+    /// logged as a violation). Pin exactly these two extras so connect-src
+    /// neither loses them nor quietly widens to anything else.
+    #[test]
+    fn connect_src_allows_ipc_and_nothing_remote() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let config: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let csp = &config["app"]["security"]["csp"];
+        let mut sources: Vec<&str> = csp["connect-src"].as_str().unwrap().split(' ').collect();
+        sources.sort_unstable();
+        assert_eq!(sources, ["'self'", "http://ipc.localhost", "ipc:"]);
+        assert_eq!(csp["font-src"], "'self'", "fonts must be files, not data:");
+    }
+
     #[test]
     fn rejects_entries_that_could_inject_arguments() {
         let args = main_webview_browser_args(

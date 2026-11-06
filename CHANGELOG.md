@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.25] - 2026-11-06
+
+The window no longer opens black on older macOS versions.
+
+### Fixed
+
+- **The window stayed black on macOS Monterey** (#310). macOS runs Conduit's
+  interface in the system WebKit, and the interface had been built for
+  Safari 16.4 and newer. Older WebKit couldn't read the main script, so
+  nothing drew. It is now built for Safari 14, which covers macOS 11 and up.
+  Thanks to the reporter, whose startup check report pointed straight at it.
+
+### Changed
+
+- Model prices refreshed from models.dev.
+
 ## [1.0.0-rc.24] - 2026-11-06
 
 Ollama tool calls work again, and Conduit reports a window that opens blank.

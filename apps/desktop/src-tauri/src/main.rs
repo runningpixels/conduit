@@ -711,3 +711,25 @@ fn show_startup_error(app_name: &str, message: &str) {
         .set_buttons(rfd::MessageButtons::Ok)
         .show();
 }
+
+#[cfg(test)]
+mod capability_tests {
+    /// `tauri-plugin-notification` injects a script into every webview that
+    /// calls `plugin:notification|is_permission_granted` on page load (it is
+    /// skipped on Windows only). Without this grant macOS/Linux log an
+    /// unhandled rejection at startup. Notifications themselves are shown from
+    /// Rust, so nothing broader than this read-only check may be granted.
+    #[test]
+    fn capability_grants_only_the_notification_probe() {
+        let raw = include_str!("../capabilities/default.json");
+        let cap: serde_json::Value = serde_json::from_str(raw).expect("valid capability json");
+        let perms: Vec<&str> = cap["permissions"]
+            .as_array()
+            .expect("permissions array")
+            .iter()
+            .filter_map(|p| p.as_str())
+            .filter(|p| p.starts_with("notification:"))
+            .collect();
+        assert_eq!(perms, ["notification:allow-is-permission-granted"]);
+    }
+}

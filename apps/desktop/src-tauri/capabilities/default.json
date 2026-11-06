@@ -14,6 +14,7 @@
     "core:window:allow-close",
     "core:window:allow-set-title",
     "core:window:allow-set-fullscreen",
-    "core:window:allow-set-focus"
+    "core:window:allow-set-focus",
+    "notification:allow-is-permission-granted"
   ]
 }

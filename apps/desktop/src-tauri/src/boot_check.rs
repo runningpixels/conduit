@@ -135,7 +135,7 @@ pub enum Outcome {
 /// The plain-text report written to `boot-check.txt`.
 pub fn report_text(outcome: &Outcome, native: Option<&str>, version: &str) -> String {
     let mut lines = vec![
-        format!("Conduit {version} startup check"),
+        format!("{} {version} startup check", crate::brand::app_name()),
         format!("OS: {} {}", std::env::consts::OS, std::env::consts::ARCH),
     ];
     match outcome {
@@ -284,9 +284,10 @@ fn save_report<R: Runtime>(window: &WebviewWindow<R>, report: &str) -> Option<st
 fn show_dialog<R: Runtime>(window: &WebviewWindow<R>, saved: Option<&std::path::Path>) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
-    let mut text = String::from(
-        "Conduit started, but its window didn't load, so it may stay blank.\n\n\
-         Please report this at github.com/runningpixels/conduit/issues",
+    let name = crate::brand::app_name();
+    let mut text = format!(
+        "{name} started, but its window didn't load, so it may stay blank.\n\n\
+         Please report this at github.com/runningpixels/conduit/issues"
     );
     match saved {
         Some(path) => {
@@ -301,7 +302,7 @@ fn show_dialog<R: Runtime>(window: &WebviewWindow<R>, saved: Option<&std::path::
         .app_handle()
         .dialog()
         .message(text)
-        .title("Conduit's window didn't load")
+        .title(format!("{name}'s window didn't load"))
         .kind(MessageDialogKind::Error)
         .show(|_| {});
 }
@@ -406,7 +407,8 @@ mod tests {
             Some("in no window, 1360x900, hidden false, has superview true"),
             "1.0.0-rc.24",
         );
-        assert!(report.starts_with("Conduit 1.0.0-rc.24 startup check\n"));
+        let heading = format!("{} 1.0.0-rc.24 startup check\n", crate::brand::app_name());
+        assert!(report.starts_with(&heading));
         assert!(report.contains("the interface did not render"));
         assert!(report.contains("Root element: present, 0 children"));
         assert!(report.contains("  - blocked by CSP (script-src)"));

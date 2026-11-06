@@ -1,27 +1,27 @@
 {
-  "version": "1.0.0-rc.25",
-  "notes": "Conduit v1.0.0-rc.25 (stable channel).",
-  "pub_date": "2026-11-06T17:40:42.004Z",
+  "version": "1.0.0-rc.26",
+  "notes": "Conduit v1.0.0-rc.26 (stable channel).",
+  "pub_date": "2026-11-06T21:59:38.506Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQmdYUldEb2E4OHpRMDZLa1BXSkVDZytBMDhSVWhMSTBKWEc2UEQrbzA2ajlCNU1CVVRFRjRLM2VKSU1FVitMMTlReTRVVklPSG1RTWo3OVh3ajJlYXdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTg2Nzc1CWZpbGU6Q29uZHVpdC5hcHAudGFyLmd6CXZlcnNpb246MS4wLjAtcmMuMjUKbllKNElwUkFaa2RKaWVZZTY2M0FxRzBwY1RyRG1yTi9KYUp2eENYbTNSU2cybS92Q29yT0JaOW1sbUhSUTNNbGtFNUV0ek82UUcyWUliUXNHTE03QlE9PQo=",
-      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.25/Conduit_1.0.0-rc.25_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQmt4aFl0Yjl5b0laRWdPVThadGdmMW8zS2pGVFFIOU44ZldWK0Y1UXlONFN6ajFmSTh4RUNVTU9Ddmx5Z1M1TnNnUXVBaXVtMUhUQUJhWXgvckU1SVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDAxNDczCWZpbGU6Q29uZHVpdC5hcHAudGFyLmd6CXZlcnNpb246MS4wLjAtcmMuMjYKbkFEQUhUWVo2WStIQmxTNzk3Qkt6bXNmcWNvU0cxRlV4cDZ2S29IdUhyaFJBUzNLN3VDZ1l5M3Vpc2p4V3BYWnFnRkwxMVZkWHREeVMzRytHZCtjQkE9PQo=",
+      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.26/Conduit_1.0.0-rc.26_aarch64.app.tar.gz"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQml1LytrWWJhcFdTRVhNWENCT0RWTExUaTROR1VjQ2RJdUxPbHdtdlI5Vm1DTmlaSlI3K0c5cVEwUUk2MW40SWphZE8yUU00bGFIL0hpU3R1VTA1SVFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTg1MjM4CWZpbGU6Q29uZHVpdF8xLjAuMC1yYy4yNV9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjEuMC4wLXJjLjI1CkRqQnF5Q2NFNUppMStBd3VQVmtSQ0pjdEVNUXk4bDV4U1lxK3o1cVpjL1YyZmRpa3Ayb2l3MlNRVE5vTnJuSVhLTjJ3WUpKKzl0K2s4ZmJBY2IyeENBPT0K",
-      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.25/Conduit_1.0.0-rc.25_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQm93cjFLSFFvdkRGMHpWeE0yUEpqbElGak5xeTI0Z0hzU3BhaXpRRlp5bkovNTJTN0tybDlaYXgrOWFXbHhRMGFUcWo0YWhMSHUxSEJudzVhYlk2OGdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDAxMzMwCWZpbGU6Q29uZHVpdF8xLjAuMC1yYy4yNl9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjEuMC4wLXJjLjI2CkQ0cm55T0loRm94K0lJL1U4eXRVME9xaEd6a2FDem5Wek1TUzdRMW1tT2RvcnJ6ZCtYWFZKR3pNMDFpbHpyTXdXaXYyejgyRG44R041ekFodHVQSkRBPT0K",
+      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.26/Conduit_1.0.0-rc.26_amd64.AppImage"
     },
     "linux-x86_64-deb": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQnBpanc4OHVuWlZYYnA1MkdzUkNTYWNZR0oyeXVET3RBVEZmWlVCditNNmZLTWFzalAvZlQ2QUlTczVNclMyRlkwdW5TTnFwWkEvSUlsR3lNbTlxMGdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTg1MjM4CWZpbGU6Q29uZHVpdF8xLjAuMC1yYy4yNV9hbWQ2NC5kZWIJdmVyc2lvbjoxLjAuMC1yYy4yNQpzL2xrUno3L0R1bEFIU2JvWmxLdng0eTJyQ2g0Nlk3QTNDOEsxMmNYK1JRWW5sT3pwbFRmNyt1Z3BreENEWWZ4WmlFNzczajZ1NmR5VGRqTHlwZk9BQT09Cg==",
-      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.25/Conduit_1.0.0-rc.25_amd64.deb"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQmdSaTdYNmpKRWFHa0hFMngwZVBTdHZzUnlDTTFiY0NBOFZCb2NVSGdMeG1XeDJZdTM3U0d1ajdVeUJXZGpsNWQwdWkxbGlUdHlIWm5kRUdDSUNPMUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDAxMzMwCWZpbGU6Q29uZHVpdF8xLjAuMC1yYy4yNl9hbWQ2NC5kZWIJdmVyc2lvbjoxLjAuMC1yYy4yNgpzZkx6OUJyNmxUaWd2WGFIL2dPRk03VFdONUZsOWxobVVVbnkxdjlvakpQMnIwRTdKdVRuVXZYTlMwWHdRNEVqU0d5dTIrTWZJdUU5aUIzOEc1YUxCdz09Cg==",
+      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.26/Conduit_1.0.0-rc.26_amd64.deb"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQm5IYy9MN240dFFrMXZzUjNRNlBsV3RFTFdZbndTVlh3ZktPNnM2c1dtNGd5R0phYnE4OWhGTUI5eThzRm8zRzhtMDRoNStIYVg2d01RbmdUN3pJTUFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTg1MzY1CWZpbGU6Q29uZHVpdF8xLjAuMC1yYy4yNV94NjQtc2V0dXAuZXhlCXZlcnNpb246MS4wLjAtcmMuMjUKZC9CZWpZaTdFQ3ZtU21ZT3BRdlAvdkxoNnAxNHgreWw5SU9TMGxHTG5DSzloVzFCMkFaS3dNZmdsU28xa0VmWmNLSnpoTmtOVUVXY2NYT0VkRXIxQWc9PQo=",
-      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.25/Conduit_1.0.0-rc.25_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQnNjU1FyMm9hQ0N2R3JLSHBTUXVEbk1OTnZObHNJZzVSNVkzcWIxMk1GUjZJY01OTlJYdk9zME1sNGIzZTJHRzI0QUxMWHRSZisrcjNpSDQ1RXJrRHdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDAxODAwCWZpbGU6Q29uZHVpdF8xLjAuMC1yYy4yNl94NjQtc2V0dXAuZXhlCXZlcnNpb246MS4wLjAtcmMuMjYKTWF1Tmt4MG9FcUdYWm81YkFobWFWNHdoSFdZdi9xMDIzMjZmRGluY2xCekNkRVJ3RFE2NXZOcXhCNTF1VG9qNVhESXhUVC9rdG15MTk2YVhIemt4QkE9PQo=",
+      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.26/Conduit_1.0.0-rc.26_x64-setup.exe"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQmcwMmcwRWhzUTI1ZHBwcXZSRDcrM3NINnBGTjhUNEtVMlZxdmdtOHpoSVdobmpEOGlaTFdrUmJ5U01ZaVBEbU4wUWRzczZlRWVHemV6bDB1dmo2K2c4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTg1NjEwCWZpbGU6Q29uZHVpdC5hcHAudGFyLmd6CXZlcnNpb246MS4wLjAtcmMuMjUKbVVZN3dZU25yWHRYQ2FDOFFjeS8ydStGZEREQkhrV2JjcXlEMVVncm1HQjEwbGxPS1UyeFpMZkk0VnR5RXpIWjhwOXMvZ2kvSWZQbEswUnQwQkxrRGc9PQo=",
-      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.25/Conduit_1.0.0-rc.25_x64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUaW41Vk81MzFlQnNLUEpvd29LZUY4dDcvUDNrREVabjZTNkJFeWUwMEcyNVB4aytIL0U3ZUlkdVhoaDYvOHhRYzJPSm15S2ZFd2tkaHg4YTNpRlFzdVVSdzRpdkxmUlFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDAyMzA3CWZpbGU6Q29uZHVpdC5hcHAudGFyLmd6CXZlcnNpb246MS4wLjAtcmMuMjYKRmgrUzRILytyZVkvMUU1UUFUTHJGSUppL21peko4S0ZZSDg2VW1CNFZGbUoxOWEyOTdvdHIwdTBQWnk4dnVZeUdZZDBqckpPOTg4Sm5KeWg1MFM3QWc9PQo=",
+      "url": "https://github.com/runningpixels/conduit/releases/download/v1.0.0-rc.26/Conduit_1.0.0-rc.26_x64.app.tar.gz"
     }
   }
 }

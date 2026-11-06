@@ -97,7 +97,7 @@ describe('WritingStudio', () => {
     fireEvent.click(toggle);
   });
 
-  it('exports as Markdown or HTML', () => {
+  it('exports as Markdown, HTML or Word', () => {
     const p = props({ draft: DRAFTED });
     render(<WritingStudio {...p} />);
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
@@ -106,6 +106,9 @@ describe('WritingStudio', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'HTML file (.html)' }));
     expect(p.onExport).toHaveBeenLastCalledWith('html');
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Word document (.docx)' }));
+    expect(p.onExport).toHaveBeenLastCalledWith('docx');
   });
 
   it('renames on Enter and goes back to the list', () => {

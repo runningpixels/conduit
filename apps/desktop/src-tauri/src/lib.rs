@@ -27,6 +27,7 @@ pub mod db;
 pub mod diagnostics;
 pub mod document_prompts;
 pub mod draft_blocks;
+pub mod draft_docx;
 pub mod draft_export;
 pub mod drop_grant;
 pub mod encryption;

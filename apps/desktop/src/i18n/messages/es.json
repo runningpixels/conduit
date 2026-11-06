@@ -3516,6 +3516,7 @@
   "writing.editor.saving": "Guardando…",
   "writing.editor.writing": "Escribiendo…",
   "writing.export.button": "Exportar",
+  "writing.export.docx": "Documento de Word (.docx)",
   "writing.export.failed": "No se pudo exportar este borrador. {reason}",
   "writing.export.html": "Archivo HTML (.html)",
   "writing.export.markdown": "Archivo Markdown (.md)",

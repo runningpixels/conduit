@@ -62,6 +62,8 @@ describe('Writing IPC wrappers', () => {
     expect(invoke).toHaveBeenLastCalledWith('restore_draft_snapshot', { draftId: 'd1', snapshotId: 's1' });
     await exportDraft('d1', 'html');
     expect(invoke).toHaveBeenLastCalledWith('export_draft', { draftId: 'd1', format: 'html' });
+    await exportDraft('d1', 'docx');
+    expect(invoke).toHaveBeenLastCalledWith('export_draft', { draftId: 'd1', format: 'docx' });
     expect(await draftForConversation('c1')).toBeNull();
     expect(invoke).toHaveBeenLastCalledWith('draft_for_conversation', { conversationId: 'c1' });
   });

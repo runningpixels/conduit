@@ -3516,6 +3516,7 @@
   "writing.editor.saving": "Salvando…",
   "writing.editor.writing": "Escrevendo…",
   "writing.export.button": "Exportar",
+  "writing.export.docx": "Documento do Word (.docx)",
   "writing.export.failed": "Não foi possível exportar este rascunho. {reason}",
   "writing.export.html": "Arquivo HTML (.html)",
   "writing.export.markdown": "Arquivo Markdown (.md)",

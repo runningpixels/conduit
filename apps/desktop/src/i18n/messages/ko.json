@@ -3516,6 +3516,7 @@
   "writing.editor.saving": "저장하는 중…",
   "writing.editor.writing": "작성 중…",
   "writing.export.button": "내보내기",
+  "writing.export.docx": "Word 문서 (.docx)",
   "writing.export.failed": "이 초안을 내보내지 못했습니다. {reason}",
   "writing.export.html": "HTML 파일(.html)",
   "writing.export.markdown": "Markdown 파일(.md)",

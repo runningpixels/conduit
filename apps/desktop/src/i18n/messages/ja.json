@@ -59,7 +59,7 @@
   "app.status.switchProviderFailed": "プロバイダーを切り替えられませんでした",
   "app.status.switchedProvider": "{provider} に切り替えました",
   "app.windowTitle": "{title} — {appName}",
-  "consent.sentence.runCommand": "{where} で `{command}` を実行する{flag, select, risky {（リスクありとして指定）} sensitive {（機密として指定）} other {}}",
+  "consent.sentence.runCommand": "{where}で「{command}」を実行する{flag, select, risky {（リスクありとして指定）} sensitive {（機密として指定）} other {}}",
   "consent.sentence.writeFile": "{where} に {file}（{size}）を書き込む{flag, select, risky {（リスクありとして指定）} sensitive {（機密として指定）} other {}}",
   "consent.sentence.replaceFile": "{where} の {file}（{size}）を置き換える{flag, select, risky {（リスクありとして指定）} sensitive {（機密として指定）} other {}}",
   "consent.sentence.editFile": "{where} の {file} を編集する{flag, select, risky {（リスクありとして指定）} sensitive {（機密として指定）} other {}}",

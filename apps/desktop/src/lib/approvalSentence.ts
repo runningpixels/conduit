@@ -1,4 +1,4 @@
-/// One plain-language sentence for every tool approval ("Run `npm test` in
+/// One plain-language sentence for every tool approval ("Run “npm test” in
 /// ferry", "Write report.md (2.1 KB) in Documents").
 ///
 /// Every approval surface (the chat connector-tool prompt, the workflow action

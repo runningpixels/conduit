@@ -59,7 +59,7 @@
   "app.status.switchProviderFailed": "No se pudo cambiar de proveedor",
   "app.status.switchedProvider": "Se cambió a {provider}",
   "app.windowTitle": "{title} — {appName}",
-  "consent.sentence.runCommand": "Ejecutar `{command}` en {where}{flag, select, risky { (marcado como arriesgado)} sensitive { (marcado como sensible)} other {}}",
+  "consent.sentence.runCommand": "Ejecutar “{command}” en {where}{flag, select, risky { (marcado como arriesgado)} sensitive { (marcado como sensible)} other {}}",
   "consent.sentence.writeFile": "Escribir {file} ({size}) en {where}{flag, select, risky { (marcado como arriesgado)} sensitive { (marcado como sensible)} other {}}",
   "consent.sentence.replaceFile": "Reemplazar {file} ({size}) en {where}{flag, select, risky { (marcado como arriesgado)} sensitive { (marcado como sensible)} other {}}",
   "consent.sentence.editFile": "Editar {file} en {where}{flag, select, risky { (marcado como arriesgado)} sensitive { (marcado como sensible)} other {}}",

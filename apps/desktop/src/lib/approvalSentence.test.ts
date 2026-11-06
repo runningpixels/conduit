@@ -30,13 +30,13 @@ describe('describeApproval', () => {
         folder: String.raw`C:\work\ferry`,
         path: '.',
       }),
-    ).toBe('Run `npm test` in ferry');
+    ).toBe('Run “npm test” in ferry');
   });
 
   it('adds the inner folder and quotes arguments with spaces', () => {
     expect(
       say({ kind: 'run_command', program: '/usr/bin/git', args: ['commit', '-m', 'fix the build'], folder: '/work/ferry', path: 'src/app' }),
-    ).toBe('Run `git commit -m "fix the build"` in ferry/src/app');
+    ).toBe('Run “git commit -m "fix the build"” in ferry/src/app');
   });
 
   it('writes a new file with its size', () => {
@@ -70,13 +70,13 @@ describe('describeApproval', () => {
       'Use the read_inbox tool from Mail (marked as sensitive)',
     );
     expect(say({ kind: 'run_command', program: 'rm', args: ['-rf', 'build'], folder: '/w/ferry', path: '.', flag: 'risky' })).toBe(
-      'Run `rm -rf build` in ferry (marked as risky)',
+      'Run “rm -rf build” in ferry (marked as risky)',
     );
   });
 
   it('cuts a long command and a long path', () => {
     const long = say({ kind: 'run_command', program: 'node', args: ['x'.repeat(300)], folder: '/w/ferry', path: '.' });
-    const command = /`([^`]*)`/.exec(long)?.[1] ?? '';
+    const command = /“([^”]*)”/.exec(long)?.[1] ?? '';
     expect(command.length).toBe(APPROVAL_COMMAND_MAX_CHARS);
     expect(command.endsWith('…')).toBe(true);
 
@@ -104,7 +104,7 @@ describe('describeApproval', () => {
   });
 
   it('ignores non-string arguments and an unknown folder', () => {
-    expect(say({ kind: 'run_command', program: 'ls', args: ['a', 3, null, 'b'] })).toBe('Run `ls a b` in the folder');
+    expect(say({ kind: 'run_command', program: 'ls', args: ['a', 3, null, 'b'] })).toBe('Run “ls a b” in the folder');
     expect(say({ kind: 'write_file', path: 'a.txt', content: 'abc' })).toBe('Write a.txt (0.0 KB) in the folder');
     // A write with no readable content is described as an edit rather than guessing a size.
     expect(say({ kind: 'write_file', path: 'a.txt', folder: '/w/x', content: 5 })).toBe('Edit a.txt in x');
@@ -129,8 +129,8 @@ describe('computerApprovalSubject', () => {
   const base: ComputerRequest = { kind: 'run_command', folder: '/w/ferry', path: '.', reason: 'x', program: 'npm', args: ['test'] };
 
   it('carries a request into the subject, with its risky flag', () => {
-    expect(say(computerApprovalSubject(base))).toBe('Run `npm test` in ferry');
-    expect(say(computerApprovalSubject({ ...base, risky: true }))).toBe('Run `npm test` in ferry (marked as risky)');
+    expect(say(computerApprovalSubject(base))).toBe('Run “npm test” in ferry');
+    expect(say(computerApprovalSubject({ ...base, risky: true }))).toBe('Run “npm test” in ferry (marked as risky)');
     expect(
       say(computerApprovalSubject({ kind: 'write_file', folder: '/w/ferry', path: 'a.md', content: 'hi', reason: 'x' })),
     ).toBe('Write a.md (0.0 KB) in ferry');

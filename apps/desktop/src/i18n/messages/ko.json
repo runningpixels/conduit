@@ -59,7 +59,7 @@
   "app.status.switchProviderFailed": "공급자를 전환하지 못했습니다",
   "app.status.switchedProvider": "{provider}(으)로 전환했습니다",
   "app.windowTitle": "{title} — {appName}",
-  "consent.sentence.runCommand": "{where}에서 `{command}` 실행{flag, select, risky { (위험으로 표시됨)} sensitive { (민감으로 표시됨)} other {}}",
+  "consent.sentence.runCommand": "{where}에서 ‘{command}’ 실행{flag, select, risky { (위험으로 표시됨)} sensitive { (민감으로 표시됨)} other {}}",
   "consent.sentence.writeFile": "{where}에 {file}({size}) 쓰기{flag, select, risky { (위험으로 표시됨)} sensitive { (민감으로 표시됨)} other {}}",
   "consent.sentence.replaceFile": "{where}의 {file}({size}) 바꾸기{flag, select, risky { (위험으로 표시됨)} sensitive { (민감으로 표시됨)} other {}}",
   "consent.sentence.editFile": "{where}의 {file} 편집{flag, select, risky { (위험으로 표시됨)} sensitive { (민감으로 표시됨)} other {}}",

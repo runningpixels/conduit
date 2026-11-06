@@ -71,7 +71,7 @@ describe('ActionCard for a command', () => {
     expect(screen.getByRole('group', { name: 'See what changed lately' })).toBeInTheDocument();
     expect(screen.getByText(/Site check · step “s1” ·/)).toBeInTheDocument();
     expect(screen.getByLabelText('Command').textContent).toBe('site> git log --oneline -5');
-    expect(screen.getByText('Run `git log --oneline -5` in site')).toBeInTheDocument();
+    expect(screen.getByText('Run “git log --oneline -5” in site')).toBeInTheDocument();
     expect(screen.getByText('git is C:\\Program Files\\Git\\cmd\\git.exe')).toBeInTheDocument();
     expect(screen.getByText('It is not on your list of commands that run without asking.')).toBeInTheDocument();
     expect(screen.queryByText(/It says/)).toBeNull();

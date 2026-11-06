@@ -46,7 +46,12 @@ pub const INIT_SCRIPT: &str = r#"(function () {
     note('unhandled rejection: ' + (reason && reason.message ? reason.message : reason));
   });
   document.addEventListener('securitypolicyviolation', function (event) {
-    note('blocked by CSP (' + event.violatedDirective + '): ' + event.blockedURI);
+    // Tauri's IPC tries a fetch to its own endpoint first and falls back to
+    // postMessage when the CSP refuses it; one refusal per call would fill
+    // the list and push out whatever actually went wrong.
+    var uri = String(event.blockedURI || '');
+    if (uri.indexOf('ipc:') === 0 || uri.indexOf('http://ipc.localhost') === 0) return;
+    note('blocked by CSP (' + event.violatedDirective + '): ' + uri);
   });
 })();"#;
 

@@ -91,6 +91,11 @@ describe('looksLikeSpreadsheetRequest', () => {
     // A version number's "." doesn't end the sentence before "Summenzeile".
     'Erstelle eine Tabelle für das Launch-Budget von Ferry 1.0 in Euro mit einer Summenzeile.',
     'Erstelle eine Tabelle für unser Budget',
+    // The same for a decimal or version number in the other languages.
+    'Erstelle eine Tabelle für Ferry 1.0 … Summenzeile',
+    'Crée un tableau des dépenses de Ferry 1.0 avec une ligne de total',
+    'Crea una tabla de gastos de la versión 2.5 con los totales',
+    'Faça uma tabela do orçamento da versão 1.0 com os totais',
     'Crée un tableur pour mon budget',
     'Fais une feuille de calcul des dépenses',
     'Haz una hoja de cálculo con los gastos del mes',
@@ -118,6 +123,8 @@ describe('looksLikeSpreadsheetRequest', () => {
     'Erstelle eine Tabelle mit den Hauptstädten Europas',
     'Erstelle eine Tabelle der Planeten. Rechne dann im Kopf die Summen nach.',
     'Haz una tabla comparando tres teléfonos',
+    'Erstelle eine Tabelle der Planeten von Version 1.0. Rechne dann im Kopf die Summen nach.',
+    'Fais un tableau des rois de France de 1.0. Ajoute le total à la main.',
     'Fais un tableau des rois de France',
     '',
   ])('is not a spreadsheet request: %s', (prompt) => {

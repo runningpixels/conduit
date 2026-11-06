@@ -836,6 +836,7 @@ dependencies = [
  "keyring",
  "libsqlite3-sys",
  "mcp-runtime",
+ "objc2-app-kit",
  "pdf-extract",
  "provider-core",
  "pulldown-cmark",

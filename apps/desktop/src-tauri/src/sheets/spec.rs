@@ -6,6 +6,8 @@
 
 use serde_json::{Map, Value};
 
+use super::charts::{self, Chart};
+
 pub const MAX_SHEETS: usize = 20;
 pub const MAX_ROWS: usize = 5_000;
 pub const MAX_COLS: usize = 100;
@@ -299,6 +301,7 @@ pub struct Sheet {
     pub freeze_header: bool,
     pub hidden: bool,
     pub rows: Vec<Vec<Cell>>,
+    pub charts: Vec<Chart>,
 }
 
 impl Sheet {
@@ -523,12 +526,25 @@ fn parse_sheet(value: &Value, index: usize) -> Result<Sheet, String> {
         None | Some(Value::Null) => Vec::new(),
         Some(v) => parse_rows(v, &name, 0, 0)?,
     };
+    let charts = match obj.get("charts") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(items)) => {
+            let anchor = || charts::default_anchor(&Sheet::default());
+            items
+                .iter()
+                .map(|item| Chart::from_value(item, true, &anchor))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("Sheet '{name}': {e}"))?
+        }
+        Some(_) => return Err(format!("Sheet '{name}': charts must be an array")),
+    };
     Ok(Sheet {
         name: name.clone(),
         columns,
         freeze_header: optional_bool(obj, "freeze_header", &name)?,
         hidden: optional_bool(obj, "hidden", &name)?,
         rows,
+        charts,
     })
 }
 
@@ -912,7 +928,7 @@ pub fn validate(workbook: &Workbook) -> Result<(), String> {
     if workbook.sheets.iter().all(|s| s.hidden) {
         return Err("At least one sheet must be visible".to_string());
     }
-    Ok(())
+    charts::validate(workbook)
 }
 
 // ---------------------------------------------------------------------------
@@ -995,6 +1011,10 @@ fn sheet_to_value(sheet: &Sheet) -> Value {
         })
         .collect();
     obj.insert("rows".into(), Value::Array(rows));
+    if !sheet.charts.is_empty() {
+        let charts = sheet.charts.iter().map(Chart::to_value).collect();
+        obj.insert("charts".into(), Value::Array(charts));
+    }
     Value::Object(obj)
 }
 
@@ -1307,6 +1327,57 @@ mod tests {
                 .unwrap()
                 .money_formats(),
             MoneyFormats::default()
+        );
+    }
+
+    #[test]
+    fn charts_round_trip_and_old_workbooks_load_unchanged() {
+        let old = json!({ "sheets": [{ "name": "A", "rows": [[1, 2]] }] });
+        let w = Workbook::from_value(&old).unwrap();
+        assert!(w.sheets[0].charts.is_empty());
+        // No charts key is written when there are none.
+        assert_eq!(w.to_value(), old);
+
+        let with = json!({ "sheets": [{ "name": "A", "rows": [["a", 1], ["b", 2]], "charts": [
+            { "id": "chart1", "type": "pie", "title": "Share", "categories": "A1:A2",
+              "series": [{ "name": "N", "values": "B1:B2" }], "anchor": "D2" }
+        ]}]});
+        let w = Workbook::from_value(&with).unwrap();
+        assert_eq!(w.sheets[0].charts.len(), 1);
+        assert_eq!(w.to_value(), with);
+        // A chart whose rows were deleted is stored as #REF! and loads again.
+        let broken = json!({ "sheets": [{ "name": "A", "rows": [[1]], "charts": [
+            { "id": "c", "type": "bar", "title": "", "categories": "#REF!",
+              "series": [{ "values": "#REF!" }], "anchor": "C1" }
+        ]}]});
+        assert_eq!(Workbook::from_value(&broken).unwrap().to_value(), broken);
+    }
+
+    #[test]
+    fn chart_ids_must_be_unique_across_the_workbook() {
+        let chart = |id: &str| {
+            json!({ "id": id, "type": "bar", "categories": "A1:A2",
+            "series": [{ "values": "A1:A2" }], "anchor": "D1" })
+        };
+        let e = Workbook::from_value(&json!({ "sheets": [
+            { "name": "A", "rows": [[1], [2]], "charts": [chart("x")] },
+            { "name": "B", "rows": [[1], [2]], "charts": [chart("X")] }
+        ]}))
+        .unwrap_err();
+        assert!(e.contains("used twice"), "{e}");
+        let e = Workbook::from_value(&json!({ "sheets": [
+            { "name": "A", "rows": [[1], [2]], "charts": "no" }
+        ]}))
+        .unwrap_err();
+        assert!(e.contains("charts must be an array"), "{e}");
+        let e = Workbook::from_value(&json!({ "sheets": [
+            { "name": "A", "rows": [[1], [2]], "charts": [{"id": "x", "type": "bar", "categories": "A1:A2",
+              "series": [{ "values": "A1:A3" }]}] }
+        ]}))
+        .unwrap_err();
+        assert!(
+            e.contains("Sheet 'A'") && e.contains("same number of cells"),
+            "{e}"
         );
     }
 }

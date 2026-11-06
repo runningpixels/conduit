@@ -178,6 +178,111 @@
   color: var(--err);
 }
 
+/* ── Charts below the grid (SpreadsheetChart.tsx) ────────────────────────
+   Series colours are theme tokens, set as currentColor on each series group. */
+.sheet-charts {
+  flex: 0 1 auto;
+  max-height: 55%;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--card);
+}
+.sheet-chart {
+  flex: 1 1 320px;
+  max-width: 560px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  background: var(--card-hi);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+}
+.sheet-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.sheet-chart-caption {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+.sheet-chart-message {
+  margin: 6px 0 0;
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+}
+.sheet-chart-broken .sheet-chart-message {
+  color: var(--err);
+}
+.sheet-chart-title {
+  fill: var(--ink);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+.sheet-chart-text {
+  fill: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.sheet-chart-bar {
+  shape-rendering: crispEdges;
+}
+.sheet-chart-dot {
+  stroke: var(--card-hi);
+  stroke-width: 1;
+}
+.sheet-chart-legend {
+  pointer-events: none;
+}
+.sheet-chart-grid {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+.sheet-chart-axis {
+  stroke: var(--line-hi);
+  stroke-width: 1;
+}
+.sheet-chart-line {
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.sheet-chart-slice {
+  stroke: var(--card-hi);
+  stroke-width: 1.5;
+}
+/* A categorical palette of its own, not the status tokens: accent/link are
+   both blue in light and accent/err both coral in dark, and a series is not an
+   error. Blue, orange, aqua, yellow, magenta, green in fixed order, each mode
+   stepped for its card colour and checked for colour-blind separation. */
+.sheet-chart {
+  --sheet-chart-1: #3987e5;
+  --sheet-chart-2: #d95926;
+  --sheet-chart-3: #199e70;
+  --sheet-chart-4: #c98500;
+  --sheet-chart-5: #d55181;
+  --sheet-chart-6: #008300;
+}
+[data-theme="light"] .sheet-chart {
+  --sheet-chart-1: #2a78d6;
+  --sheet-chart-2: #eb6834;
+  --sheet-chart-3: #1baf7a;
+  --sheet-chart-4: #eda100;
+  --sheet-chart-5: #e87ba4;
+  --sheet-chart-6: #008300;
+}
+.sheet-chart-c0 { color: var(--sheet-chart-1); }
+.sheet-chart-c1 { color: var(--sheet-chart-2); }
+.sheet-chart-c2 { color: var(--sheet-chart-3); }
+.sheet-chart-c3 { color: var(--sheet-chart-4); }
+.sheet-chart-c4 { color: var(--sheet-chart-5); }
+.sheet-chart-c5 { color: var(--sheet-chart-6); }
+
 /* ── Footer: sheet tabs, notes ─────────────────────────────────────────── */
 .sheet-foot {
   flex: none;

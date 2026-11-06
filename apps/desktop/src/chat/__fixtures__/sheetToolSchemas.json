@@ -1,4 +1,66 @@
 {
+  "add_chart": {
+    "description": "Add a chart (bar, line or pie) of data already in a sheet of an existing spreadsheet; write the data first. categories is the range of labels (such as A2:A7) and each series' values is a range of numbers (such as B2:B7), all on sheet: one column or one row each, the same length, 1 to 50 cells. Up to 6 series; a pie takes exactly one. Formula cells work as data. anchor is the cell for the chart's top-left corner in Excel (default: beside the data). Omit id and it is returned; an id that exists replaces that chart. Charts follow inserted and deleted rows. The chart shows in the panel and is a native Excel chart in the .xlsx.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "bar",
+            "line",
+            "pie"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "categories": {
+          "type": "string",
+          "description": "Range of the labels on sheet, such as A2:A7."
+        },
+        "series": {
+          "type": "array",
+          "description": "One to six series; a pie takes exactly one.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "values": {
+                "type": "string",
+                "description": "Range of the numbers on sheet, such as B2:B7."
+              }
+            },
+            "required": [
+              "values"
+            ]
+          }
+        },
+        "anchor": {
+          "type": "string",
+          "description": "Cell for the chart's top-left corner in Excel, such as E2."
+        }
+      },
+      "required": [
+        "artifact_id",
+        "sheet",
+        "type",
+        "categories",
+        "series"
+      ]
+    }
+  },
   "add_sheet": {
     "description": "Add a sheet to an existing spreadsheet. name is unique, at most 31 characters, without [ ] : * ? / \\. columns and rows work as in create_spreadsheet. position is the 0-based index to insert at (default: last).",
     "input_schema": {
@@ -154,7 +216,7 @@
     }
   },
   "create_spreadsheet": {
-    "description": "Create a spreadsheet (an Excel workbook the user can preview and save as .xlsx). Use it when the user asks for a spreadsheet, workbook, Excel file or a table they will calculate with, such as a budget, cost model, forecast or schedule. Use real formulas for anything calculated, not numbers you worked out. Put inputs and assumptions in their own cells (style input), often on an Assumptions sheet, and refer to them from formulas. Give the header row style header and total rows style total. Every call returns errors for any formula that did not compute (such as #NAME? or #REF!): fix them with update_cells. For a large table, set more_to_write and continue with append_rows. Omit artifact_id; the app assigns it and returns it.",
+    "description": "Create a spreadsheet (an Excel workbook the user can preview and save as .xlsx). Use it when the user asks for a spreadsheet, workbook, Excel file or a table they will calculate with, such as a budget, cost model, forecast or schedule. Use real formulas for anything calculated, not numbers you worked out. Put inputs and assumptions in their own cells (style input), often on an Assumptions sheet, and refer to them from formulas. Give the header row style header and total rows style total. Every call returns errors for any formula that did not compute (such as #NAME? or #REF!): fix them with update_cells. For a large table, set more_to_write and continue with append_rows. Omit artifact_id; the app assigns it and returns it. To chart the data, call add_chart once it is written.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -255,6 +317,24 @@
       "required": [
         "title",
         "sheets"
+      ]
+    }
+  },
+  "delete_chart": {
+    "description": "Delete a chart from an existing spreadsheet by chart_id (add_chart and read_spreadsheet return it).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "chart_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "chart_id"
       ]
     }
   },
@@ -383,7 +463,7 @@
     }
   },
   "read_spreadsheet": {
-    "description": "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range.",
+    "description": "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range. It also lists the charts (id, sheet, type, title, ranges).",
     "input_schema": {
       "type": "object",
       "properties": {

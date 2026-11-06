@@ -14,6 +14,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use super::{
+    charts,
     compute::build_model,
     spec::{self, Cell, CellStyle, Sheet, Workbook},
 };
@@ -313,6 +314,9 @@ fn insert_rows(wb: &mut Workbook, idx: usize, at: usize, rows: &Value) -> Result
     let target = &mut wb.sheets[idx];
     target.rows.truncate(used);
     target.rows.splice(at - 1..at - 1, parsed);
+    for chart in &mut target.charts {
+        chart.rows_inserted(at, count);
+    }
 
     // New rows look like their neighbours: the template's formats and input
     // style, and its formulas, moved to the new row, where a cell is empty.
@@ -377,7 +381,7 @@ fn is_data_row(sheet: &Sheet, row0: usize) -> bool {
 /// Ranges in `formula` on its own sheet that end at row `end_row` (1-based)
 /// and start above it, stretched `by` rows further down. Text in quotes and
 /// ranges on other sheets (`Sheet!A1:A9`) are left alone.
-fn widen_ranges(formula: &str, end_row: usize, by: usize) -> String {
+pub(super) fn widen_ranges(formula: &str, end_row: usize, by: usize) -> String {
     static RANGE: OnceLock<Regex> = OnceLock::new();
     let range = RANGE.get_or_init(|| {
         #[allow(clippy::unwrap_used)] // a constant pattern
@@ -437,6 +441,9 @@ fn delete_rows(wb: &mut Workbook, idx: usize, from: usize, count: usize) -> Resu
     let target = &mut wb.sheets[idx];
     target.rows.truncate(used);
     target.rows.drain(from0..from0 + count);
+    for chart in &mut target.charts {
+        chart.rows_deleted(from, count);
+    }
     Ok(())
 }
 
@@ -477,6 +484,86 @@ fn read_back(
             }
         }
     }
+}
+
+/// Add a chart to `sheet`, or replace the chart with the same id (wherever
+/// it is). `chart` is the model's JSON: type, title, categories, series, and
+/// optionally id and anchor. Returns the chart's id.
+pub fn add_chart(wb: &mut Workbook, sheet: &str, chart: &Value) -> Result<String, String> {
+    let idx = wb.find_sheet(sheet)?;
+    let mut obj = chart
+        .as_object()
+        .cloned()
+        .ok_or("a chart must be an object with type, title, categories and series")?;
+    let wanted = obj
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string);
+    // The same id replaces: take the old chart out, remembering its place.
+    let mut place = None;
+    if let Some(id) = &wanted {
+        for (s, sh) in wb.sheets.iter_mut().enumerate() {
+            if let Some(i) = sh.charts.iter().position(|c| c.id.eq_ignore_ascii_case(id)) {
+                sh.charts.remove(i);
+                place = Some((s, i));
+            }
+        }
+    }
+    let id = wanted.unwrap_or_else(|| charts::next_id(wb));
+    obj.insert("id".into(), Value::String(id.clone()));
+    let target = &wb.sheets[idx];
+    let anchor = || charts::default_anchor(target);
+    let parsed = charts::Chart::from_value(&Value::Object(obj), false, &anchor)
+        .map_err(|e| format!("Sheet '{}': {e}", target.name))?;
+    // Ranges over empty cells would draw nothing: say where the data ends.
+    let (rows, cols) = (target.used_rows(), target.used_cols());
+    let ranges = std::iter::once(("categories", &parsed.categories))
+        .chain(parsed.series.iter().map(|s| ("values", &s.values)));
+    for (what, text) in ranges {
+        if let Some(r) = charts::stored_range(text) {
+            if r.row0 >= rows || r.col0 >= cols {
+                return Err(format!(
+                    "Sheet '{}': {what} {text} is empty; the sheet's data ends at {}",
+                    target.name,
+                    spec::a1(rows.saturating_sub(1), cols.saturating_sub(1))
+                ));
+            }
+        }
+    }
+    let target = &mut wb.sheets[idx];
+    match place {
+        Some((s, i)) if s == idx => target.charts.insert(i.min(target.charts.len()), parsed),
+        _ => target.charts.push(parsed),
+    }
+    spec::validate(wb)?;
+    Ok(id)
+}
+
+/// Remove the chart with this id.
+pub fn delete_chart(wb: &mut Workbook, id: &str) -> Result<(), String> {
+    let id = id.trim();
+    for sheet in &mut wb.sheets {
+        if let Some(i) = sheet
+            .charts
+            .iter()
+            .position(|c| c.id.eq_ignore_ascii_case(id))
+        {
+            sheet.charts.remove(i);
+            return Ok(());
+        }
+    }
+    let ids: Vec<&str> = wb
+        .sheets
+        .iter()
+        .flat_map(|s| s.charts.iter().map(|c| c.id.as_str()))
+        .collect();
+    Err(if ids.is_empty() {
+        format!("No chart with id '{id}': this spreadsheet has no charts")
+    } else {
+        format!("No chart with id '{id}'. Charts: {}.", ids.join(", "))
+    })
 }
 
 #[cfg(test)]
@@ -1129,5 +1216,244 @@ mod tests {
         assert_eq!(w.sheets[1].rows[0], before);
         assert_eq!(w.sheets[1].rows[5][0].style, Some(spec::CellStyle::Total));
         assert_eq!(w.sheets[1].rows[5][1].style, Some(spec::CellStyle::Total));
+    }
+
+    fn sales() -> Workbook {
+        wb(json!([
+            { "name": "Sales", "rows": [
+                [{"value": "Item", "style": "header"}, {"value": "Q1", "style": "header"}, {"value": "Q2", "style": "header"}],
+                ["a", 10, {"formula": "=B2*2"}],
+                ["b", 20, {"formula": "=B3*2"}],
+                ["c", 30, {"formula": "=B4*2"}],
+                ["d", 40, {"formula": "=B5*2"}],
+                ["e", 50, {"formula": "=B6*2"}],
+                [{"value": "Total", "style": "total"}, {"formula": "=SUM(B2:B6)", "style": "total"}, {"formula": "=SUM(C2:C6)", "style": "total"}]
+            ]},
+            { "name": "Other", "rows": [[1, 2]] }
+        ]))
+    }
+
+    fn bar(range: &str) -> Value {
+        json!({"type": "bar", "title": "Q1", "categories": "A2:A6",
+               "series": [{"name": "Q1", "values": range}]})
+    }
+
+    fn chart_ranges(w: &Workbook, sheet: &str) -> (String, String) {
+        let c = &w.sheets[w.find_sheet(sheet).unwrap()].charts[0];
+        (c.categories.clone(), c.series[0].values.clone())
+    }
+
+    #[test]
+    fn add_chart_assigns_ids_replaces_and_validates() {
+        let mut w = sales();
+        let id = add_chart(&mut w, "sales", &bar("b2:b6")).unwrap();
+        assert_eq!(id, "chart1");
+        assert_eq!(w.sheets[0].charts[0].series[0].values, "B2:B6");
+        // Beside the data: one empty column right of column C.
+        assert_eq!(w.sheets[0].charts[0].anchor, "E1");
+        let id2 = add_chart(&mut w, "Sales", &bar("C2:C6")).unwrap();
+        assert_eq!(id2, "chart2");
+        assert_eq!(w.sheets[0].charts[1].anchor, "E17");
+
+        // The same id replaces, in place, and can move to another sheet.
+        let mut again = bar("C2:C6");
+        again["id"] = json!("chart1");
+        again["title"] = json!("Q2");
+        assert_eq!(add_chart(&mut w, "Sales", &again).unwrap(), "chart1");
+        assert_eq!(w.sheets[0].charts.len(), 2);
+        assert_eq!(w.sheets[0].charts[0].title, "Q2");
+        again["categories"] = json!("A1:B1");
+        again["series"] = json!([{"values": "A1:B1"}]);
+        assert_eq!(add_chart(&mut w, "Other", &again).unwrap(), "chart1");
+        assert_eq!(w.sheets[0].charts.len(), 1);
+        assert_eq!(w.sheets[1].charts.len(), 1);
+
+        let err =
+            |w: &mut Workbook, sheet: &str, chart: Value| add_chart(w, sheet, &chart).unwrap_err();
+        assert!(err(&mut w, "Nope", bar("B2:B6")).contains("Sales, Other"));
+        assert!(err(&mut w, "Sales", bar("B2:B5")).contains("same number of cells"));
+        assert!(err(&mut w, "Sales", bar("B2:C6")).contains("one column or one row"));
+        assert!(err(&mut w, "Sales", bar("Other!B2:B6")).contains("leave the sheet name out"));
+        assert!(err(&mut w, "Sales", bar("B9:B13")).contains("is empty"));
+        let mut pie = bar("B2:B6");
+        pie["type"] = json!("pie");
+        pie["series"] = json!([{"values": "B2:B6"}, {"values": "C2:C6"}]);
+        assert!(err(&mut w, "Sales", pie).contains("exactly one series"));
+        let mut many = bar("B2:B6");
+        many["series"] = json!((0..7)
+            .map(|_| json!({"values": "B2:B6"}))
+            .collect::<Vec<_>>());
+        assert!(err(&mut w, "Sales", many).contains("limit is 6"));
+        let mut long = bar("B2:B6");
+        long["categories"] = json!("A1:A60");
+        long["series"] = json!([{"values": "B1:B60"}]);
+        assert!(err(&mut w, "Sales", long).contains("1 to 50"));
+        // A refused chart changes nothing.
+        assert_eq!(w.sheets[0].charts.len(), 1);
+    }
+
+    #[test]
+    fn delete_chart_removes_by_id() {
+        let mut w = sales();
+        add_chart(&mut w, "Sales", &bar("B2:B6")).unwrap();
+        let e = delete_chart(&mut w, "nope").unwrap_err();
+        assert!(e.contains("Charts: chart1"), "{e}");
+        delete_chart(&mut w, "CHART1").unwrap();
+        assert!(w.sheets[0].charts.is_empty());
+        assert!(delete_chart(&mut w, "chart1")
+            .unwrap_err()
+            .contains("no charts"));
+    }
+
+    fn insert_at(w: &mut Workbook, at: usize) {
+        edit_sheet(
+            w,
+            "Sales",
+            EditSheet {
+                insert_rows: Some((at, json!([["new", 1, 2]]))),
+                ..EditSheet::default()
+            },
+        )
+        .unwrap();
+    }
+
+    fn delete_from(w: &mut Workbook, from: usize, count: usize) {
+        edit_sheet(
+            w,
+            "Sales",
+            EditSheet {
+                delete_rows: Some((from, count)),
+                ..EditSheet::default()
+            },
+        )
+        .unwrap();
+    }
+
+    /// The range inside the total's SUM, which shifts the way the chart does.
+    fn total_range(w: &Workbook) -> String {
+        let used = w.sheets[0].used_rows();
+        let f = w.sheets[0].rows[used - 1][1].formula.clone().unwrap();
+        f.trim_start_matches("=SUM(")
+            .trim_end_matches(')')
+            .to_string()
+    }
+
+    #[test]
+    fn charts_follow_inserted_rows_like_formulas() {
+        for (at, want) in [(4, "B2:B7"), (7, "B2:B7"), (2, "B3:B7"), (8, "B2:B6")] {
+            let mut w = sales();
+            add_chart(&mut w, "Sales", &bar("B2:B6")).unwrap();
+            insert_at(&mut w, at);
+            let (cats, vals) = chart_ranges(&w, "Sales");
+            assert_eq!(vals, want, "insert at {at}");
+            assert_eq!(cats, want.replace('B', "A"), "insert at {at}");
+            if at != 8 {
+                // The total's SUM shifted or widened to the same range.
+                assert_eq!(total_range(&w), want, "insert at {at}");
+            }
+        }
+    }
+
+    #[test]
+    fn charts_follow_deleted_rows_like_formulas() {
+        for (from, count, want) in [
+            (3, 2, "B2:B4"),
+            (2, 1, "B2:B5"),
+            (6, 1, "B2:B5"),
+            (1, 1, "B1:B5"),
+        ] {
+            let mut w = sales();
+            add_chart(&mut w, "Sales", &bar("B2:B6")).unwrap();
+            delete_from(&mut w, from, count);
+            assert_eq!(chart_ranges(&w, "Sales").1, want, "delete {from}+{count}");
+            // IronCalc turns a SUM whose first or last row was deleted into
+            // #REF!; the chart shrinks as Excel does, so compare interior deletes.
+            if from == 3 {
+                assert_eq!(total_range(&w), want, "delete {from}+{count}");
+            }
+        }
+        // Every row of the data goes: the chart reports an error and the
+        // workbook still computes.
+        let mut w = sales();
+        add_chart(&mut w, "Sales", &bar("B2:B6")).unwrap();
+        delete_from(&mut w, 2, 5);
+        assert_eq!(chart_ranges(&w, "Sales").1, "#REF!");
+        let computed = compute(&w).unwrap();
+        let chart = &computed.sheet("Sales").unwrap().charts[0];
+        assert!(chart.error.as_deref().unwrap().contains("add_chart"));
+        assert!(chart.categories.is_empty() && chart.series.is_empty());
+        // The stored form loads again.
+        let again = Workbook::from_value(&w.to_value()).unwrap();
+        assert_eq!(again.sheets[0].charts, w.sheets[0].charts);
+        // The chart can be replaced under its id.
+        let mut fix = bar("B2:B2");
+        fix["id"] = json!("chart1");
+        fix["categories"] = json!("A2");
+        update_cells(&mut w, "Sales", "A2", &json!([["x", 5]])).unwrap();
+        add_chart(&mut w, "Sales", &fix).unwrap();
+        assert!(compute(&w).unwrap().sheet("Sales").unwrap().charts[0]
+            .error
+            .is_none());
+    }
+
+    #[test]
+    fn charts_survive_renaming_and_go_with_a_deleted_sheet() {
+        let mut w = sales();
+        add_chart(&mut w, "Sales", &bar("B2:B6")).unwrap();
+        edit_sheet(
+            &mut w,
+            "Sales",
+            EditSheet {
+                rename_to: Some("Sales 'Q1' team".into()),
+                ..EditSheet::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(w.sheets[0].name, "Sales 'Q1' team");
+        assert_eq!(chart_ranges(&w, "Sales 'Q1' team").1, "B2:B6");
+        assert_eq!(
+            compute(&w)
+                .unwrap()
+                .sheet("Sales 'Q1' team")
+                .unwrap()
+                .charts[0]
+                .series[0]
+                .values
+                .len(),
+            5
+        );
+        // Another sheet's edit leaves it alone.
+        edit_sheet(
+            &mut w,
+            "Other",
+            EditSheet {
+                insert_rows: Some((1, json!([[9]]))),
+                ..EditSheet::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(chart_ranges(&w, "Sales 'Q1' team").1, "B2:B6");
+
+        edit_sheet(
+            &mut w,
+            "Sales 'Q1' team",
+            EditSheet {
+                delete: true,
+                ..EditSheet::default()
+            },
+        )
+        .unwrap();
+        assert!(w.sheets.iter().all(|s| s.charts.is_empty()));
+        // The id is free again.
+        assert_eq!(
+            add_chart(
+                &mut w,
+                "Other",
+                &json!({"type": "line", "categories": "A1:B1",
+            "series": [{"values": "A1:B1"}]})
+            )
+            .unwrap(),
+            "chart1"
+        );
     }
 }

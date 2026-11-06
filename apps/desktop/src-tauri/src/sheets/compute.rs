@@ -13,7 +13,10 @@ use ironcalc::base::{
 use serde::Serialize;
 use serde_json::Value;
 
-use super::spec::{self, a1, Cell, CellStyle, Scalar, Sheet, Workbook};
+use super::{
+    charts::{self, Chart, ChartKind},
+    spec::{self, a1, Cell, CellStyle, Scalar, Sheet, Workbook},
+};
 
 /// Pixels per character of column width, plus the padding Excel adds.
 const PX_PER_CHAR: f64 = 7.0;
@@ -53,6 +56,76 @@ pub struct ComputedSheet {
     pub col_count: usize,
     /// `row_count` rows of `col_count` cells; `None` is an empty cell.
     pub rows: Vec<Vec<Option<ComputedCell>>>,
+    pub charts: Vec<ComputedChart>,
+}
+
+/// One series of a chart, from the computed cells: a gap is `None`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComputedSeries {
+    pub name: Option<String>,
+    pub values: Vec<Option<f64>>,
+}
+
+/// A chart with its ranges resolved to the labels and numbers they hold. When
+/// `error` is set the ranges are gone and the lists are empty.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComputedChart {
+    pub id: String,
+    pub kind: ChartKind,
+    pub title: String,
+    pub categories: Vec<String>,
+    pub series: Vec<ComputedSeries>,
+    pub anchor: String,
+    pub error: Option<String>,
+}
+
+/// Resolve a chart's ranges against a sheet's computed grid. Formula cells
+/// count by their computed value; text, errors and empty cells are gaps.
+fn compute_chart(chart: &Chart, rows: &[Vec<Option<ComputedCell>>]) -> ComputedChart {
+    let cell = |r: usize, c: usize| {
+        rows.get(r)
+            .and_then(|row| row.get(c))
+            .and_then(Option::as_ref)
+    };
+    let mut out = ComputedChart {
+        id: chart.id.clone(),
+        kind: chart.kind,
+        title: chart.title.clone(),
+        categories: Vec::new(),
+        series: Vec::new(),
+        anchor: chart.anchor.clone(),
+        error: chart.error(),
+    };
+    if out.error.is_some() {
+        return out;
+    }
+    if let Some(range) = charts::stored_range(&chart.categories) {
+        out.categories = range
+            .cells()
+            .into_iter()
+            .map(|(r, c)| cell(r, c).map(|x| x.display.clone()).unwrap_or_default())
+            .collect();
+    }
+    for series in &chart.series {
+        let values = charts::stored_range(&series.values)
+            .map(|range| {
+                range
+                    .cells()
+                    .into_iter()
+                    .map(|(r, c)| {
+                        cell(r, c)
+                            .filter(|x| x.kind == CellKind::Number)
+                            .and_then(|x| x.value.as_f64())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.series.push(ComputedSeries {
+            name: series.name.clone(),
+            values,
+        });
+    }
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -364,6 +437,11 @@ pub fn compute_in(workbook: &Workbook, locale: &str) -> Result<ComputedWorkbook,
             column_widths,
             row_count,
             col_count,
+            charts: sheet
+                .charts
+                .iter()
+                .map(|c| compute_chart(c, &rows))
+                .collect(),
             rows,
         });
     }
@@ -764,5 +842,47 @@ mod tests {
         .unwrap();
         assert_eq!(display(&c, "Main", "A1"), "42");
         assert!(c.sheet("Data").unwrap().hidden);
+    }
+
+    #[test]
+    fn charts_read_computed_values_and_gap_the_rest() {
+        let w = wb(json!([{ "name": "S", "rows": [
+            ["Label", "Base", "Calc"],
+            ["a", 10, {"formula": "=B2*2", "format": "currency"}],
+            ["b", "n/a", {"formula": "=1/0"}],
+            [{"formula": "=\"c\"&\"!\""}, 30, {"formula": "=SUM(B2:B4)"}],
+            ["d", true]
+        ], "charts": [
+            {"id": "c1", "type": "line", "title": "T", "categories": "A2:A5",
+             "series": [{"name": "Base", "values": "B2:B5"}, {"values": "C2:C5"}], "anchor": "E2"}
+        ]}]));
+        let c = compute(&w).unwrap();
+        let chart = &c.sheet("S").unwrap().charts[0];
+        assert_eq!(chart.categories, vec!["a", "b", "c!", "d"]);
+        // Text, booleans and empty cells are gaps.
+        assert_eq!(
+            chart.series[0].values,
+            vec![Some(10.0), None, Some(30.0), None]
+        );
+        assert_eq!(chart.series[0].name.as_deref(), Some("Base"));
+        // Formulas count by value; an error is a gap.
+        assert_eq!(
+            chart.series[1].values,
+            vec![Some(20.0), None, Some(40.0), None]
+        );
+        assert!(chart.series[1].name.is_none());
+        assert!(chart.error.is_none());
+        assert_eq!(chart.anchor, "E2");
+    }
+
+    #[test]
+    fn a_chart_over_cells_past_the_data_is_all_gaps() {
+        let w = wb(json!([{ "name": "S", "rows": [[1]], "charts": [
+            {"id": "c1", "type": "bar", "categories": "A2:A3", "series": [{"values": "B2:B3"}], "anchor": "D1"}
+        ]}]));
+        let computed = compute(&w).unwrap();
+        let chart = &computed.sheet("S").unwrap().charts[0];
+        assert_eq!(chart.categories, vec!["", ""]);
+        assert_eq!(chart.series[0].values, vec![None, None]);
     }
 }

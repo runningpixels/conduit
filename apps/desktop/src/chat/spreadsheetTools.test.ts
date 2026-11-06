@@ -24,7 +24,7 @@ const fixture = JSON.parse(readFileSync(join(here, '__fixtures__', 'sheetToolSch
   { description: string; input_schema: Record<string, unknown> }
 >;
 
-const SHEET_TOOLS = ['create_spreadsheet', 'append_rows', 'update_cells', 'add_sheet', 'edit_sheet', 'read_spreadsheet'];
+const SHEET_TOOLS = ['create_spreadsheet', 'append_rows', 'update_cells', 'add_sheet', 'edit_sheet', 'add_chart', 'delete_chart', 'read_spreadsheet'];
 const EDIT_SHEET_TOOLS = SHEET_TOOLS.filter((name) => name !== 'create_spreadsheet');
 
 const settings = { memoryEnabled: false } as Parameters<typeof selectBuiltinTurnTools>[1];
@@ -133,7 +133,7 @@ describe('looksLikeSpreadsheetRequest', () => {
 });
 
 describe('offering the spreadsheet tools', () => {
-  it('offers all six on a spreadsheet request, in place of the document write and edit tools', () => {
+  it('offers all eight on a spreadsheet request, in place of the document write and edit tools', () => {
     for (const prompt of ['Make me a spreadsheet for my budget', 'create an excel workbook for the cafe menu']) {
       const offered = names(prompt);
       expect(offered).toEqual(expect.arrayContaining(SHEET_TOOLS));
@@ -167,7 +167,7 @@ describe('offering the spreadsheet tools', () => {
     expect(sheetNames('Create an HTML page about otters', true)).toEqual([]);
   });
 
-  it('offers all six on a new spreadsheet request even with one in the chat', () => {
+  it('offers all eight on a new spreadsheet request even with one in the chat', () => {
     expect(sheetNames('make another spreadsheet for the second quarter', true)).toEqual(SHEET_TOOLS);
   });
 
@@ -247,5 +247,11 @@ describe('spreadsheet calls in the turn history and activity', () => {
       action: 'edit',
       kind: 'spreadsheet',
     });
+    for (const name of ['add_chart', 'delete_chart']) {
+      expect(summarizeDocumentToolCall(call(name, { artifact_id: 's1' })), name).toMatchObject({
+        action: 'edit',
+        kind: 'spreadsheet',
+      });
+    }
   });
 });

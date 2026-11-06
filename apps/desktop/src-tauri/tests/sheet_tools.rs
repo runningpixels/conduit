@@ -342,6 +342,84 @@ async fn edit_sheet_renames_the_spreadsheet_and_decodes_entities() {
 }
 
 #[tokio::test]
+async fn chart_tools_add_replace_follow_edits_and_delete() {
+    use conduit_desktop::agent_tools::{ADD_CHART_TOOL, DELETE_CHART_TOOL};
+    let env = env().await;
+    let (out, _) = call(
+        &env,
+        CREATE_SPREADSHEET_TOOL,
+        json!({"title": "Sales", "sheets": [{"name": "Data", "rows": [
+            ["Item", "Qty"], ["a", 1], ["b", 2], ["c", 3],
+            [{"value": "Total", "style": "total"}, {"formula": "=SUM(B2:B4)"}]
+        ]}]}),
+    )
+    .await;
+    let id = out["artifact_id"].as_str().unwrap().to_string();
+
+    let (out, is_error) = call(
+        &env,
+        ADD_CHART_TOOL,
+        json!({"artifact_id": id, "sheet": "Data", "type": "bar", "title": "Fish &amp; chips",
+               "categories": "A2:A4", "series": [{"name": "Qty", "values": "B2:B4"}]}),
+    )
+    .await;
+    assert!(!is_error, "{out}");
+    assert_eq!(out["chart_id"], "chart1");
+    assert_eq!(out["charts"][0]["title"], "Fish & chips");
+    assert_eq!(out["charts"][0]["anchor"], "D1");
+
+    // A row inserted above the total goes into the chart.
+    let (out, is_error) = call(
+        &env,
+        EDIT_SHEET_TOOL,
+        json!({"artifact_id": id, "sheet": "Data", "insert_rows": {"at": 5, "rows": [["d", 4]]}}),
+    )
+    .await;
+    assert!(!is_error, "{out}");
+    assert_eq!(out["charts"][0]["series"], json!(["B2:B5"]));
+
+    let (read, _) = call(&env, READ_SPREADSHEET_TOOL, json!({"artifact_id": id})).await;
+    assert_eq!(read["charts"][0]["categories"], "A2:A5");
+
+    // The same id replaces; a bad range is a plain message.
+    let (out, is_error) = call(
+        &env,
+        ADD_CHART_TOOL,
+        json!({"artifact_id": id, "sheet": "Data", "id": "chart1", "type": "pie",
+               "categories": "A2:A5", "series": [{"values": "B2:B5"}]}),
+    )
+    .await;
+    assert!(!is_error, "{out}");
+    assert_eq!(out["charts"].as_array().unwrap().len(), 1);
+    assert_eq!(out["charts"][0]["type"], "pie");
+    let (out, is_error) = call(
+        &env,
+        ADD_CHART_TOOL,
+        json!({"artifact_id": id, "sheet": "Data", "type": "pie",
+               "categories": "A2:A5", "series": [{"values": "B2:B4"}]}),
+    )
+    .await;
+    assert!(is_error);
+    assert!(out.to_string().contains("same number of cells"), "{out}");
+
+    let (out, is_error) = call(
+        &env,
+        DELETE_CHART_TOOL,
+        json!({"artifact_id": id, "chart_id": "chart1"}),
+    )
+    .await;
+    assert!(!is_error, "{out}");
+    assert!(out.get("charts").is_none(), "{out}");
+    let (out, is_error) = call(
+        &env,
+        DELETE_CHART_TOOL,
+        json!({"artifact_id": id, "chart_id": "chart1"}),
+    )
+    .await;
+    assert!(is_error, "{out}");
+}
+
+#[tokio::test]
 async fn read_spreadsheet_caps_large_sheets_and_reads_ranges() {
     let env = env().await;
     let rows: Vec<Value> = (1..=100)

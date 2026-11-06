@@ -736,9 +736,15 @@ async fn a_draft_is_outlined_written_edited_and_exported() {
     assert!(!draft.markdown.contains(" tea"));
 
     // ── Export ───────────────────────────────────────────────────────────
-    let md = draft_export::render(&draft.title, &draft.markdown, DraftExportFormat::Markdown);
+    let md = String::from_utf8(
+        draft_export::render(&draft.title, &draft.markdown, DraftExportFormat::Markdown).unwrap(),
+    )
+    .unwrap();
     assert_eq!(md, draft.markdown);
-    let html = draft_export::render(&draft.title, &draft.markdown, DraftExportFormat::Html);
+    let html = String::from_utf8(
+        draft_export::render(&draft.title, &draft.markdown, DraftExportFormat::Html).unwrap(),
+    )
+    .unwrap();
     assert!(html.starts_with("<!DOCTYPE html>"));
     assert!(html.contains("<title>Brewing green tea</title>"));
     assert!(html.contains("<h2>Why green leaves</h2>"), "{html}");

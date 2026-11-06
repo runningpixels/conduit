@@ -71,6 +71,7 @@ describe('ActionCard for a command', () => {
     expect(screen.getByRole('group', { name: 'See what changed lately' })).toBeInTheDocument();
     expect(screen.getByText(/Site check · step “s1” ·/)).toBeInTheDocument();
     expect(screen.getByLabelText('Command').textContent).toBe('site> git log --oneline -5');
+    expect(screen.getByText('Run “git log --oneline -5” in site')).toBeInTheDocument();
     expect(screen.getByText('git is C:\\Program Files\\Git\\cmd\\git.exe')).toBeInTheDocument();
     expect(screen.getByText('It is not on your list of commands that run without asking.')).toBeInTheDocument();
     expect(screen.queryByText(/It says/)).toBeNull();
@@ -282,6 +283,7 @@ describe('ActionCard for a file change', () => {
   it('shows the path, the counts and the change as a line diff', () => {
     setup(fileChange);
     expect(screen.getByRole('group', { name: 'Check before it changes a file' })).toBeInTheDocument();
+    expect(screen.getByText('Edit notes.txt in site')).toBeInTheDocument();
     expect(screen.getByText('notes.txt')).toBeInTheDocument();
     expect(screen.getByText('+1')).toBeInTheDocument();
     expect(screen.getByText('−1')).toBeInTheDocument();
@@ -296,6 +298,7 @@ describe('ActionCard for a file change', () => {
   it('badges a new file and shows its content', () => {
     setup({ ...fileChange, kind: 'write_file', previous: undefined, content: 'hello' });
     expect(screen.getByText('New file')).toBeInTheDocument();
+    expect(screen.getByText(/^Write notes.txt (.+) in site$/)).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'File content' })).toHaveTextContent('hello');
   });
 

@@ -85,6 +85,14 @@ describe('ToolCallBlock consent card', () => {
     expect(text).not.toContain('may change an external system');
   });
 
+  it('leads with one plain sentence and keeps the details below it', () => {
+    const text = render(<ToolCallBlock toolCall={asking(false)} defaultCollapsed={false} />).container.textContent ?? '';
+    expect(text).toContain('Use the ask_question tool from DeepWiki');
+    expect(text.indexOf('Use the ask_question tool from DeepWiki')).toBeLessThan(text.indexOf('may change an external system'));
+    expect(text).toContain('repoName');
+    expect(text).toContain('a/b');
+  });
+
   it('keeps the side-effect sentence for a tool that says it changes things', () => {
     const text = render(<ToolCallBlock toolCall={asking(false)} defaultCollapsed={false} />).container.textContent ?? '';
     expect(text).toContain('may change an external system');

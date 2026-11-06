@@ -53,10 +53,16 @@ describe('ActionCard', () => {
     setup();
     expect(screen.getByRole('group', { name: 'Check before it sends' })).toBeInTheDocument();
     expect(screen.getByText('“post_message” in Slack')).toBeInTheDocument();
+    expect(screen.getByText('Use the post_message tool from Slack')).toBeInTheDocument();
     expect(screen.getByText('Posts a message to a channel')).toBeInTheDocument();
     expect(screen.getByText('channel')).toBeInTheDocument();
     expect(screen.getByText('#news')).toBeInTheDocument();
     expect(screen.getByText(/Line one\s*Line two/)).toBeInTheDocument();
+  });
+
+  it('says plainly when the tool always asks', () => {
+    setup({ sensitive: true });
+    expect(screen.getByText('Use the post_message tool from Slack (marked as sensitive)')).toBeInTheDocument();
   });
 
   it('sends as is', async () => {

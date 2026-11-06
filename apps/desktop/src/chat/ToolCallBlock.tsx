@@ -13,6 +13,7 @@ import { ConnectorsIcon, FilePlainIcon, GithubIcon, SlackIcon } from '../icons';
 import { useRichT, useT } from '../i18n';
 import { documentKindLabel } from '../lib/documentKind';
 import { useFormatters } from '../i18n/formatters';
+import { describeApproval } from '../lib/approvalSentence';
 import { documentWriteDetail } from './documentWriteScan';
 import type { Translate } from '../i18n';
 
@@ -352,6 +353,18 @@ export function ToolCallBlock({
             {body}
             {showConsentGate && (
               <div className="consent">
+                <p className="approval-sentence">
+                  {describeApproval(
+                    {
+                      kind: 'tool',
+                      tool: prompt?.toolName ?? toolCall.name,
+                      connector: prompt?.connectorName,
+                      flag: prompt?.permissionLevel === 'sensitive' ? 'sensitive' : undefined,
+                    },
+                    t,
+                    (bytes) => fmt.size(bytes),
+                  )}
+                </p>
                 <p>
                   {tr('chat.toolCall.consent.prompt', {
                     connectorName: prompt?.connectorName ?? t('chat.toolCall.consent.defaultConnectorName'),

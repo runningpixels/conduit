@@ -175,6 +175,9 @@ export function WritingStudio({
               <button type="button" role="menuitem" className="menu-item" onClick={() => pickExport('html')}>
                 {t('writing.export.html')}
               </button>
+              <button type="button" role="menuitem" className="menu-item" onClick={() => pickExport('docx')}>
+                {t('writing.export.docx')}
+              </button>
             </Menu>
           </span>
         </div>

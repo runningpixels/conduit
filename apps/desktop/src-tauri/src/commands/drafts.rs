@@ -226,7 +226,7 @@ pub async fn get_draft_research_material(
     .map_err(message)
 }
 
-/// Save the draft as Markdown or as an HTML page through the native save
+/// Save the draft as Markdown, an HTML page or a Word document through the native save
 /// dialog. `Ok(None)` means the user cancelled. The renderer never supplies a
 /// path (ADR-008). The dialog's title and filter name arrive translated (D15);
 /// when the renderer leaves them out, plain English ones are used.
@@ -240,11 +240,12 @@ pub async fn export_draft(
     filter_name: Option<String>,
 ) -> Result<Option<String>, String> {
     let draft = detail(&state, &draft_id).await?;
-    let contents = draft_export::render(&draft.title, &draft.markdown, format);
+    let contents = draft_export::render(&draft.title, &draft.markdown, format)?;
     let extension = draft_export::extension(format);
     let (default_title, default_filter) = match format {
         DraftExportFormat::Markdown => ("Export as Markdown", "Markdown"),
         DraftExportFormat::Html => ("Export as HTML", "HTML"),
+        DraftExportFormat::Docx => ("Export as Word", "Word"),
     };
     let picked = pick_save_path(
         &app,
@@ -254,7 +255,7 @@ pub async fn export_draft(
         &slides_export::suggested_file_name(&draft.title, extension),
     )
     .await?;
-    export_draft_impl(picked, &contents)
+    export_draft_impl(picked, contents)
 }
 
 /// Post-picker half of [`export_draft`], split out so cancel vs write can be
@@ -262,7 +263,7 @@ pub async fn export_draft(
 #[doc(hidden)]
 pub fn export_draft_impl(
     picked: Option<std::path::PathBuf>,
-    contents: &str,
+    contents: impl AsRef<[u8]>,
 ) -> Result<Option<String>, String> {
     let Some(path) = picked else {
         return Ok(None);

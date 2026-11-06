@@ -212,6 +212,17 @@ fn ollama_headers() -> HeaderMap {
     headers
 }
 
+/// Ollama's `/api/chat` takes `function.arguments` as a JSON object, unlike
+/// OpenAI's string. A stringified object makes Ollama reject the whole request
+/// ("Value looks like object, but can't find closing '}' symbol", #308), so
+/// the stored argument string is parsed back into an object here.
+fn tool_arguments_object(raw: Option<&str>) -> Value {
+    match raw.map(|s| serde_json::from_str::<Value>(s.trim())) {
+        Some(Ok(value @ Value::Object(_))) => value,
+        _ => json!({}),
+    }
+}
+
 fn build_payload(normalized: &NormalizedRequest) -> Value {
     let request = &normalized.request;
     let mut messages = Vec::new();
@@ -245,7 +256,7 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                                 "type": "function",
                                 "function": {
                                     "name": name,
-                                    "arguments": p.content.as_deref().unwrap_or("{}"),
+                                    "arguments": tool_arguments_object(p.content.as_deref()),
                                 }
                             })
                         })
@@ -278,9 +289,11 @@ fn build_payload(normalized: &NormalizedRequest) -> Value {
                                     "type": "function",
                                     "function": {
                                         "name": tc.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                                        "arguments": tc.get("arguments")
-                                            .map(|a| a.to_string())
-                                            .unwrap_or_else(|| "{}".to_string()),
+                                        "arguments": match tc.get("arguments") {
+                                            Some(Value::String(s)) => tool_arguments_object(Some(s)),
+                                            Some(v) => v.clone(),
+                                            None => json!({}),
+                                        },
                                     }
                                 })
                             })
@@ -738,6 +751,89 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    /// #308: a tool round re-sent to Ollama must carry the call's arguments as
+    /// an object. A string made Ollama reject the request with "Value looks
+    /// like object, but can't find closing '}' symbol".
+    #[test]
+    fn payload_sends_tool_call_arguments_as_object() {
+        use crate::schema::Message;
+
+        let part = |kind, content: &str, tool_call_id: &str, metadata| MessagePart {
+            id: format!("p-{tool_call_id}"),
+            message_id: "m".into(),
+            index: 0,
+            kind,
+            content: Some(content.into()),
+            mime_type: None,
+            tool_call_id: Some(tool_call_id.into()),
+            artifact_id: None,
+            attachment_id: None,
+            blob_ref: None,
+            metadata,
+            created_at: "2026-11-05T00:00:00Z".into(),
+        };
+        let message = |role, parts| Message {
+            id: "m".into(),
+            conversation_id: "c".into(),
+            role,
+            author_label: None,
+            provider_message_id: None,
+            request_id: None,
+            interrupted_at: None,
+            metadata: None,
+            parts,
+            created_at: "2026-11-05T00:00:00Z".into(),
+        };
+        let request = ProviderRequest {
+            request_id: "req-tool-round".into(),
+            conversation_id: "c".into(),
+            model_id: "qwen3:8b".into(),
+            messages: vec![
+                message(
+                    MessageRole::Assistant,
+                    vec![
+                        part(
+                            MessagePartKind::ToolCall,
+                            r#"{"expression":"12 * 8"}"#,
+                            "call_1",
+                            Some(json!({"name": "calculator"})),
+                        ),
+                        // Unparseable arguments still go out as an object.
+                        part(
+                            MessagePartKind::ToolCall,
+                            "not json",
+                            "call_2",
+                            Some(json!({"name": "calculator"})),
+                        ),
+                    ],
+                ),
+                message(
+                    MessageRole::Tool,
+                    vec![part(MessagePartKind::ToolResult, "96", "call_1", None)],
+                ),
+            ],
+            system_prompt: None,
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+            continue_message_id: None,
+        };
+
+        let body = build_payload(&NormalizedRequest { request });
+        let calls = body
+            .pointer("/messages/0/tool_calls")
+            .and_then(|v| v.as_array())
+            .expect("tool_calls");
+        assert_eq!(
+            calls[0].pointer("/function/arguments"),
+            Some(&json!({"expression": "12 * 8"}))
+        );
+        assert_eq!(calls[1].pointer("/function/arguments"), Some(&json!({})));
     }
 
     #[test]

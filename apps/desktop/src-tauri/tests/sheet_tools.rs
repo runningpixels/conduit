@@ -281,6 +281,67 @@ async fn add_and_edit_sheet_keep_formulas_pointing_at_the_right_cells() {
 }
 
 #[tokio::test]
+async fn edit_sheet_renames_the_spreadsheet_and_decodes_entities() {
+    let env = env().await;
+    let (out, _) = call(&env, CREATE_SPREADSHEET_TOOL, menu_board()).await;
+    let id = out["artifact_id"].as_str().unwrap().to_string();
+    assert_eq!(out["title"], "Menu board");
+
+    // Title alone.
+    let (out, is_error) = call(
+        &env,
+        EDIT_SHEET_TOOL,
+        json!({"artifact_id": id, "sheet": "BOM", "title": "Maple &amp; Rye costs"}),
+    )
+    .await;
+    assert!(!is_error, "{out}");
+    assert_eq!(out["title"], "Maple & Rye costs");
+    let stored = artifacts::get(&env.pool, &env.enc, &id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.title.as_deref(), Some("Maple & Rye costs"));
+
+    // With a structural change.
+    let (out, is_error) = call(
+        &env,
+        EDIT_SHEET_TOOL,
+        json!({"artifact_id": id, "sheet": "BOM", "title": "5 Products", "freeze_header": false}),
+    )
+    .await;
+    assert!(!is_error, "{out}");
+    assert_eq!(out["title"], "5 Products");
+
+    // A refused edit leaves the title alone; an empty title or unknown sheet is refused.
+    let (out, is_error) = call(
+        &env,
+        EDIT_SHEET_TOOL,
+        json!({"artifact_id": id, "sheet": "BOM", "title": "Nope", "delete_rows": {"from": 0, "count": 1}}),
+    )
+    .await;
+    assert!(is_error, "{out}");
+    let (out, is_error) = call(
+        &env,
+        EDIT_SHEET_TOOL,
+        json!({"artifact_id": id, "sheet": "BOM", "title": "  "}),
+    )
+    .await;
+    assert!(is_error, "{out}");
+    let (out, is_error) = call(
+        &env,
+        EDIT_SHEET_TOOL,
+        json!({"artifact_id": id, "sheet": "Missing", "title": "Nope"}),
+    )
+    .await;
+    assert!(is_error, "{out}");
+    let stored = artifacts::get(&env.pool, &env.enc, &id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.title.as_deref(), Some("5 Products"));
+}
+
+#[tokio::test]
 async fn read_spreadsheet_caps_large_sheets_and_reads_ranges() {
     let env = env().await;
     let rows: Vec<Value> = (1..=100)

@@ -185,6 +185,18 @@ pub struct EditSheet {
     pub insert_rows: Option<(usize, Value)>,
 }
 
+impl EditSheet {
+    /// No structural change asked for (the tool may still carry a new title).
+    pub fn is_empty(&self) -> bool {
+        self.rename_to.is_none()
+            && !self.delete
+            && self.columns.is_none()
+            && self.freeze_header.is_none()
+            && self.delete_rows.is_none()
+            && self.insert_rows.is_none()
+    }
+}
+
 pub fn edit_sheet(wb: &mut Workbook, sheet: &str, edit: EditSheet) -> Result<(), String> {
     let idx = wb.find_sheet(sheet)?;
     if edit.delete {
@@ -207,7 +219,7 @@ pub fn edit_sheet(wb: &mut Workbook, sheet: &str, edit: EditSheet) -> Result<(),
         && edit.insert_rows.is_none()
     {
         return Err(
-            "nothing to change: pass rename_to, delete, columns, freeze_header, delete_rows or insert_rows"
+            "nothing to change: pass title, rename_to, delete, columns, freeze_header, delete_rows or insert_rows"
                 .to_string(),
         );
     }

@@ -2278,7 +2278,7 @@ const CREATE_SPREADSHEET_DESCRIPTION: &str = "Create a spreadsheet (an Excel wor
 const APPEND_ROWS_DESCRIPTION: &str = "Add rows to the end of a sheet in an existing spreadsheet. Use it to write a large table in several calls: create_spreadsheet with the first rows and more_to_write true, then append_rows until the last call, which leaves more_to_write out. Cells work as in create_spreadsheet; formulas can refer to rows written earlier.";
 const UPDATE_CELLS_DESCRIPTION: &str = "Change cells in an existing spreadsheet. For a block, give start (such as B2) and rows, a 2-D block of cells as in create_spreadsheet, going right and down from start. For cells scattered around the sheet, give cells instead, all in one call: [{\"cell\": \"D4\", \"value\": 25}, {\"cell\": \"F9\", \"formula\": \"=SUM(F2:F8)\"}]. null, or a cells item with only its address, clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.";
 const ADD_SHEET_DESCRIPTION: &str = "Add a sheet to an existing spreadsheet. name is unique, at most 31 characters, without [ ] : * ? / \\. columns and rows work as in create_spreadsheet. position is the 0-based index to insert at (default: last).";
-const EDIT_SHEET_DESCRIPTION: &str = "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based); a new row takes the formats and formulas of the row above where its cells are empty, and a total just below takes it in (SUM(B2:B7) becomes SUM(B2:B8)). With rows empty, it inserts count empty rows to fill with update_cells. Formulas that refer to moved rows are updated.";
+const EDIT_SHEET_DESCRIPTION: &str = "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based); a new row takes the formats and formulas of the row above where its cells are empty, and a total just below takes it in (SUM(B2:B7) becomes SUM(B2:B8)). With rows empty, it inserts count empty rows to fill with update_cells. Formulas that refer to moved rows are updated. title renames the spreadsheet itself (the name shown for the file, not a sheet); give it with any sheet, alone or with other changes.";
 const READ_SPREADSHEET_DESCRIPTION: &str = "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range.";
 
 const SHEET_CELL_DESCRIPTION: &str = "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.";
@@ -2426,6 +2426,10 @@ fn edit_sheet_schema() -> Value {
             "artifact_id": { "type": "string" },
             "sheet": { "type": "string" },
             "rename_to": { "type": "string" },
+            "title": {
+                "type": "string",
+                "description": "A new title for the whole spreadsheet."
+            },
             "delete": { "type": "boolean" },
             "columns": sheet_columns_schema(),
             "freeze_header": { "type": "boolean" },
@@ -2529,6 +2533,8 @@ struct EditSheetInput {
     artifact_id: String,
     sheet: String,
     rename_to: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
     delete: Option<bool>,
     columns: Option<Value>,
     freeze_header: Option<bool>,
@@ -2720,6 +2726,18 @@ async fn edit_sheet_tool(
     input: EditSheetInput,
 ) -> Result<Value, String> {
     let (artifact, mut workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
+    // The title belongs to the artifact, not the workbook. Models send it
+    // HTML-escaped ("Maple &amp; Rye") as often as in the write tools.
+    let title = match input.title.as_deref() {
+        Some(raw) => {
+            let decoded = decode_title_entities(raw).trim().to_string();
+            if decoded.is_empty() {
+                return Err("title can't be empty".to_string());
+            }
+            Some(decoded)
+        }
+        None => None,
+    };
     let edit = crate::sheets::ops::EditSheet {
         rename_to: input.rename_to,
         delete: input.delete.unwrap_or(false),
@@ -2765,7 +2783,18 @@ async fn edit_sheet_tool(
             })
             .transpose()?,
     };
-    crate::sheets::ops::edit_sheet(&mut workbook, &input.sheet, edit)?;
+    if title.is_some() && edit.is_empty() {
+        // Only a new title: the sheet must exist, nothing else changes.
+        workbook.find_sheet(&input.sheet)?;
+    } else {
+        crate::sheets::ops::edit_sheet(&mut workbook, &input.sheet, edit)?;
+    }
+    // After the structural edit, so a refused edit leaves the title alone.
+    if let Some(title) = &title {
+        artifacts::set_title(ctx.db, &artifact.id, title)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     commit_spreadsheet(ctx, &artifact.id, &workbook).await
 }
 

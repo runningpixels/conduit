@@ -259,7 +259,7 @@
     }
   },
   "edit_sheet": {
-    "description": "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based); a new row takes the formats and formulas of the row above where its cells are empty, and a total just below takes it in (SUM(B2:B7) becomes SUM(B2:B8)). With rows empty, it inserts count empty rows to fill with update_cells. Formulas that refer to moved rows are updated.",
+    "description": "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based); a new row takes the formats and formulas of the row above where its cells are empty, and a total just below takes it in (SUM(B2:B7) becomes SUM(B2:B8)). With rows empty, it inserts count empty rows to fill with update_cells. Formulas that refer to moved rows are updated. title renames the spreadsheet itself (the name shown for the file, not a sheet); give it with any sheet, alone or with other changes.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -271,6 +271,10 @@
         },
         "rename_to": {
           "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "description": "A new title for the whole spreadsheet."
         },
         "delete": {
           "type": "boolean"

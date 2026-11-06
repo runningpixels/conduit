@@ -57,6 +57,13 @@ export default defineConfig({
     port: 5173,
   },
   build: {
+    // macOS runs the interface in the system WebKit, and
+    // tauri.conf.json's minimumSystemVersion (11.0) ships Safari 14.
+    // Vite's default target assumes Safari 16.4, so dependency syntax such
+    // as class static blocks reached the bundle and older WebKit refused
+    // to parse it: a blank window on Monterey (#310). Keep this in step
+    // with minimumSystemVersion.
+    target: 'safari14',
     // Vite inlines assets under 4 KiB as data: URIs. One KaTeX font
     // (KaTeX_Size3 woff2) falls under that, and the app CSP's `font-src
     // 'self'` refuses data: fonts. Keep every font a real file instead of

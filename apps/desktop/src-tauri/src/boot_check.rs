@@ -223,12 +223,14 @@ async fn run<R: Runtime>(
     if !loaded {
         return Outcome::NeverLoaded;
     }
+    tracing::debug!("startup check: the page finished loading");
     let simulate = std::env::var_os(SIMULATE_ENV).is_some();
 
     tokio::time::sleep(FIRST_PROBE_AFTER).await;
-    match probe(window).await {
-        Ok(found) if found.rendered() && !simulate => return Outcome::Rendered,
-        _ => {}
+    let first = probe(window).await;
+    tracing::debug!(?first, "startup check: first probe");
+    if matches!(&first, Ok(found) if found.rendered() && !simulate) {
+        return Outcome::Rendered;
     }
     tokio::time::sleep(SECOND_PROBE_AFTER - FIRST_PROBE_AFTER).await;
     match probe(window).await {

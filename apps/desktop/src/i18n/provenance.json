@@ -3741,7 +3741,16 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "artifacts.spreadsheet.chartBroken": "e36ce6bbf0e3bdc6e4cbde78149d6c86291c0414",
+    "artifacts.spreadsheet.chartKindBar": "10644b0f669690ec71d5feb037d3d075ab96ee28",
+    "artifacts.spreadsheet.chartKindLine": "5b92de66321a8f34dc92e36c457f483fc16d1dfb",
+    "artifacts.spreadsheet.chartKindPie": "3154856d16874b9c09baae2b2e83734355d90081",
+    "artifacts.spreadsheet.chartLabel": "c144f173d71a052df77bea43c12c9f0d1f2fd594",
+    "artifacts.spreadsheet.chartNoData": "ec3dbb963ca08e0c1636fd8ea2ab8e371d45d167",
+    "artifacts.spreadsheet.chartSeriesN": "a707ac5033ba8b55840cb7b0e81fb95d9a349c87",
+    "artifacts.spreadsheet.chartUntitled": "9f273e321a1d1ea40251ab0a45f8ca8cbdd135da",
+    "artifacts.spreadsheet.chartsLabel": "8610e3e26dd7e3b13329a05dea5f2f41834060d5"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7485,7 +7494,16 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "artifacts.spreadsheet.chartBroken": "e36ce6bbf0e3bdc6e4cbde78149d6c86291c0414",
+    "artifacts.spreadsheet.chartKindBar": "10644b0f669690ec71d5feb037d3d075ab96ee28",
+    "artifacts.spreadsheet.chartKindLine": "5b92de66321a8f34dc92e36c457f483fc16d1dfb",
+    "artifacts.spreadsheet.chartKindPie": "3154856d16874b9c09baae2b2e83734355d90081",
+    "artifacts.spreadsheet.chartLabel": "c144f173d71a052df77bea43c12c9f0d1f2fd594",
+    "artifacts.spreadsheet.chartNoData": "ec3dbb963ca08e0c1636fd8ea2ab8e371d45d167",
+    "artifacts.spreadsheet.chartSeriesN": "a707ac5033ba8b55840cb7b0e81fb95d9a349c87",
+    "artifacts.spreadsheet.chartUntitled": "9f273e321a1d1ea40251ab0a45f8ca8cbdd135da",
+    "artifacts.spreadsheet.chartsLabel": "8610e3e26dd7e3b13329a05dea5f2f41834060d5"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11229,7 +11247,16 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "artifacts.spreadsheet.chartBroken": "e36ce6bbf0e3bdc6e4cbde78149d6c86291c0414",
+    "artifacts.spreadsheet.chartKindBar": "10644b0f669690ec71d5feb037d3d075ab96ee28",
+    "artifacts.spreadsheet.chartKindLine": "5b92de66321a8f34dc92e36c457f483fc16d1dfb",
+    "artifacts.spreadsheet.chartKindPie": "3154856d16874b9c09baae2b2e83734355d90081",
+    "artifacts.spreadsheet.chartLabel": "c144f173d71a052df77bea43c12c9f0d1f2fd594",
+    "artifacts.spreadsheet.chartNoData": "ec3dbb963ca08e0c1636fd8ea2ab8e371d45d167",
+    "artifacts.spreadsheet.chartSeriesN": "a707ac5033ba8b55840cb7b0e81fb95d9a349c87",
+    "artifacts.spreadsheet.chartUntitled": "9f273e321a1d1ea40251ab0a45f8ca8cbdd135da",
+    "artifacts.spreadsheet.chartsLabel": "8610e3e26dd7e3b13329a05dea5f2f41834060d5"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -14973,7 +15000,16 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "artifacts.spreadsheet.chartBroken": "e36ce6bbf0e3bdc6e4cbde78149d6c86291c0414",
+    "artifacts.spreadsheet.chartKindBar": "10644b0f669690ec71d5feb037d3d075ab96ee28",
+    "artifacts.spreadsheet.chartKindLine": "5b92de66321a8f34dc92e36c457f483fc16d1dfb",
+    "artifacts.spreadsheet.chartKindPie": "3154856d16874b9c09baae2b2e83734355d90081",
+    "artifacts.spreadsheet.chartLabel": "c144f173d71a052df77bea43c12c9f0d1f2fd594",
+    "artifacts.spreadsheet.chartNoData": "ec3dbb963ca08e0c1636fd8ea2ab8e371d45d167",
+    "artifacts.spreadsheet.chartSeriesN": "a707ac5033ba8b55840cb7b0e81fb95d9a349c87",
+    "artifacts.spreadsheet.chartUntitled": "9f273e321a1d1ea40251ab0a45f8ca8cbdd135da",
+    "artifacts.spreadsheet.chartsLabel": "8610e3e26dd7e3b13329a05dea5f2f41834060d5"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -18717,7 +18753,16 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "artifacts.spreadsheet.chartBroken": "e36ce6bbf0e3bdc6e4cbde78149d6c86291c0414",
+    "artifacts.spreadsheet.chartKindBar": "10644b0f669690ec71d5feb037d3d075ab96ee28",
+    "artifacts.spreadsheet.chartKindLine": "5b92de66321a8f34dc92e36c457f483fc16d1dfb",
+    "artifacts.spreadsheet.chartKindPie": "3154856d16874b9c09baae2b2e83734355d90081",
+    "artifacts.spreadsheet.chartLabel": "c144f173d71a052df77bea43c12c9f0d1f2fd594",
+    "artifacts.spreadsheet.chartNoData": "ec3dbb963ca08e0c1636fd8ea2ab8e371d45d167",
+    "artifacts.spreadsheet.chartSeriesN": "a707ac5033ba8b55840cb7b0e81fb95d9a349c87",
+    "artifacts.spreadsheet.chartUntitled": "9f273e321a1d1ea40251ab0a45f8ca8cbdd135da",
+    "artifacts.spreadsheet.chartsLabel": "8610e3e26dd7e3b13329a05dea5f2f41834060d5"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -22461,7 +22506,16 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "artifacts.spreadsheet.chartBroken": "e36ce6bbf0e3bdc6e4cbde78149d6c86291c0414",
+    "artifacts.spreadsheet.chartKindBar": "10644b0f669690ec71d5feb037d3d075ab96ee28",
+    "artifacts.spreadsheet.chartKindLine": "5b92de66321a8f34dc92e36c457f483fc16d1dfb",
+    "artifacts.spreadsheet.chartKindPie": "3154856d16874b9c09baae2b2e83734355d90081",
+    "artifacts.spreadsheet.chartLabel": "c144f173d71a052df77bea43c12c9f0d1f2fd594",
+    "artifacts.spreadsheet.chartNoData": "ec3dbb963ca08e0c1636fd8ea2ab8e371d45d167",
+    "artifacts.spreadsheet.chartSeriesN": "a707ac5033ba8b55840cb7b0e81fb95d9a349c87",
+    "artifacts.spreadsheet.chartUntitled": "9f273e321a1d1ea40251ab0a45f8ca8cbdd135da",
+    "artifacts.spreadsheet.chartsLabel": "8610e3e26dd7e3b13329a05dea5f2f41834060d5"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -26205,6 +26259,15 @@
     "settings.updates.prompt.restartNow": "af2c3d8ef2fedd158fe4cc0d409e83f3e4fffc0d",
     "settings.updates.prompt.staged": "dbcc62f08eaa64cc257af41edfd00603e6964f19",
     "settings.updates.prompt.stagedDetail": "bf6ed751631328a19ba1cdbf938a053a5709a9ab",
-    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13"
+    "settings.updates.prompt.waitingForReply": "bd7aa5ca5124359f15b7244c7465a0d1fcc1ae13",
+    "artifacts.spreadsheet.chartBroken": "e36ce6bbf0e3bdc6e4cbde78149d6c86291c0414",
+    "artifacts.spreadsheet.chartKindBar": "10644b0f669690ec71d5feb037d3d075ab96ee28",
+    "artifacts.spreadsheet.chartKindLine": "5b92de66321a8f34dc92e36c457f483fc16d1dfb",
+    "artifacts.spreadsheet.chartKindPie": "3154856d16874b9c09baae2b2e83734355d90081",
+    "artifacts.spreadsheet.chartLabel": "c144f173d71a052df77bea43c12c9f0d1f2fd594",
+    "artifacts.spreadsheet.chartNoData": "ec3dbb963ca08e0c1636fd8ea2ab8e371d45d167",
+    "artifacts.spreadsheet.chartSeriesN": "a707ac5033ba8b55840cb7b0e81fb95d9a349c87",
+    "artifacts.spreadsheet.chartUntitled": "9f273e321a1d1ea40251ab0a45f8ca8cbdd135da",
+    "artifacts.spreadsheet.chartsLabel": "8610e3e26dd7e3b13329a05dea5f2f41834060d5"
   }
 }

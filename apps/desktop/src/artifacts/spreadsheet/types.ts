@@ -27,6 +27,23 @@ export interface SpreadsheetSheetView {
   rows: (SpreadsheetCellView | null)[][];
   /** Rows not sent (`rowCount - rows.length`). */
   truncatedRows: number;
+  /** Absent when the sheet has no charts. */
+  charts?: SpreadsheetChartView[];
+}
+
+export type ChartType = 'bar' | 'line' | 'pie';
+
+/** A chart resolved to the labels and numbers its ranges hold. */
+export interface SpreadsheetChartView {
+  id: string;
+  type: ChartType;
+  title: string;
+  categories: string[];
+  series: { name?: string; /** `null` is a gap (text, error or empty cell). */ values: (number | null)[] }[];
+  /** Where the chart sits in Excel (A1), not used for the panel. */
+  anchor: string;
+  /** Set when the chart's ranges are gone; the lists are then empty. */
+  error?: string;
 }
 
 export interface SpreadsheetFormulaError {

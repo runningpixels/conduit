@@ -15,6 +15,7 @@ import type { Artifact } from '../../ipc/contracts';
 import { getSpreadsheetView } from '../../ipc/client';
 import { useT } from '../../i18n';
 import { cellRefLabel, columnLabel } from './cellRef';
+import { SpreadsheetChart } from './SpreadsheetChart';
 import { useRowWindow } from './useRowWindow';
 import type { CellStyle, SpreadsheetCellView, SpreadsheetSheetView, SpreadsheetView } from './types';
 
@@ -304,6 +305,7 @@ function SpreadsheetBook({ view, sheet, sheetIndex, selection, onSelect, onSelec
 
   const formulaText = selectedCell ? (selectedCell.formula ?? selectedCell.display) : '';
   const errorCount = view.errors.length;
+  const charts = sheet.charts ?? [];
   const viewStyle = { '--sheet-row-h': `${SHEET_ROW_HEIGHT}px`, '--sheet-gutter-w': `${GUTTER_WIDTH}px` } as CSSProperties;
 
   return (
@@ -346,6 +348,13 @@ function SpreadsheetBook({ view, sheet, sheetIndex, selection, onSelect, onSelec
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {charts.length > 0 && (
+        <div className="sheet-charts" role="group" aria-label={t('artifacts.spreadsheet.chartsLabel')}>
+          {charts.map((chart) => (
+            <SpreadsheetChart key={chart.id} chart={chart} />
+          ))}
         </div>
       )}
       <div className="sheet-foot">

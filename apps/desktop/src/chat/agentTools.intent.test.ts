@@ -66,8 +66,8 @@ describe('selectBuiltinDocumentTools', () => {
   it('keeps the full catalog available for reference', () => {
     // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember
     // + patch_document + read_document + generate_image + 10 deck tools + start_deck
-    // + 5 draft tools + search_tools + 6 spreadsheet tools.
-    expect(builtinToolDefinitions()).toHaveLength(49);
+    // + 5 draft tools + search_tools + 8 spreadsheet tools.
+    expect(builtinToolDefinitions()).toHaveLength(51);
   });
 
   it('offers the deck tools by stage and never through the other selectors', () => {

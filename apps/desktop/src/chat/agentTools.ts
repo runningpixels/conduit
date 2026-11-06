@@ -235,6 +235,8 @@ const SHEET_TOOL_ORDER = [
   'update_cells',
   'add_sheet',
   'edit_sheet',
+  'add_chart',
+  'delete_chart',
   'read_spreadsheet',
 ] as const;
 
@@ -1378,14 +1380,14 @@ export function spreadsheetScopePrompt(
     .slice(0, 5)
     .map((artifact) => `- ${artifact.title ? `"${clipNoteValue(artifact.title)}" ` : ''}(artifact_id ${artifact.id})`);
   return [
-    'Spreadsheets in this chat (use the artifact_id with read_spreadsheet, append_rows, update_cells, add_sheet and edit_sheet to change one; read it first when you need its cells):',
+    'Spreadsheets in this chat (use the artifact_id with read_spreadsheet, append_rows, update_cells, add_sheet, edit_sheet, add_chart and delete_chart to change one; read it first when you need its cells):',
     ...lines,
   ].join('\n');
 }
 
 /**
  * The spreadsheet tools for a turn. A request for a new spreadsheet gets all
- * six; a turn in a chat that already has one gets `read_spreadsheet` and the
+ * eight; a turn in a chat that already has one gets `read_spreadsheet` and the
  * edit tools, not `create_spreadsheet`.
  */
 export function selectBuiltinSpreadsheetTools(mode: 'create' | 'edit'): ToolDefinition[] {
@@ -1899,6 +1901,8 @@ const KIND_BY_TOOL: Record<string, string> = {
   update_cells: 'spreadsheet',
   add_sheet: 'spreadsheet',
   edit_sheet: 'spreadsheet',
+  add_chart: 'spreadsheet',
+  delete_chart: 'spreadsheet',
   read_spreadsheet: 'spreadsheet',
 };
 
@@ -1908,6 +1912,8 @@ const ACTION_BY_TOOL: Record<string, string> = {
   update_cells: 'edit',
   add_sheet: 'edit',
   edit_sheet: 'edit',
+  add_chart: 'edit',
+  delete_chart: 'edit',
   read_spreadsheet: 'read',
   write_html_document: 'create',
   edit_html_document: 'edit',

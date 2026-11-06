@@ -3,6 +3,8 @@
 //! and everything here is pure: parse and validate (`spec`), calculate with
 //! IronCalc (`compute`), write .xlsx (`xlsx`), change a spec (`ops`).
 
+pub mod chart_xlsx;
+pub mod charts;
 pub mod compute;
 pub mod ops;
 pub mod spec;
@@ -60,6 +62,31 @@ pub struct SpreadsheetSheetView {
     pub col_count: usize,
     pub rows: Vec<Vec<Option<SpreadsheetCellView>>>,
     pub truncated_rows: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub charts: Vec<SpreadsheetChartView>,
+}
+
+/// A chart ready to draw: labels and numbers, a gap as `null`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpreadsheetChartView {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub title: String,
+    pub categories: Vec<String>,
+    pub series: Vec<SpreadsheetSeriesView>,
+    pub anchor: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpreadsheetSeriesView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub values: Vec<Option<f64>>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -108,6 +135,26 @@ pub fn build_view(title: Option<String>, computed: &ComputedWorkbook) -> Spreads
                 row_count: sheet.row_count,
                 col_count: sheet.col_count,
                 truncated_rows: sheet.row_count - rows.len(),
+                charts: sheet
+                    .charts
+                    .iter()
+                    .map(|c| SpreadsheetChartView {
+                        id: c.id.clone(),
+                        kind: c.kind.as_str(),
+                        title: c.title.clone(),
+                        categories: c.categories.clone(),
+                        series: c
+                            .series
+                            .iter()
+                            .map(|s| SpreadsheetSeriesView {
+                                name: s.name.clone(),
+                                values: s.values.clone(),
+                            })
+                            .collect(),
+                        anchor: c.anchor.clone(),
+                        error: c.error.clone(),
+                    })
+                    .collect(),
                 rows,
             }
         })
@@ -160,6 +207,36 @@ mod tests {
             v["errors"],
             json!([{"sheet": "A", "cell": "A2", "formula": "=C1/0", "error": "#DIV/0!"}])
         );
+    }
+
+    #[test]
+    fn charts_reach_the_view_with_values_and_errors() {
+        let wb = spec::Workbook::from_value(&json!({ "sheets": [{ "name": "A",
+            "rows": [["x", 1], ["y", {"formula": "=B1*3"}], ["z", "t"]],
+            "charts": [
+              {"id": "c1", "type": "bar", "title": "T", "categories": "A1:A3",
+               "series": [{"name": "N", "values": "B1:B3"}], "anchor": "D1"},
+              {"id": "c2", "type": "pie", "title": "", "categories": "#REF!",
+               "series": [{"values": "B1:B3"}], "anchor": "D20"}
+            ]}] }))
+        .unwrap();
+        let view = build_view(None, &compute::compute(&wb).unwrap());
+        let v = serde_json::to_value(&view).unwrap();
+        let charts = &v["sheets"][0]["charts"];
+        assert_eq!(
+            charts[0],
+            json!({"id": "c1", "type": "bar", "title": "T", "categories": ["x", "y", "z"],
+                   "series": [{"name": "N", "values": [1.0, 3.0, null]}], "anchor": "D1"})
+        );
+        assert_eq!(charts[1]["type"], "pie");
+        assert!(charts[1]["error"].as_str().unwrap().contains("add_chart"));
+        assert_eq!(charts[1]["categories"], json!([]));
+        // A sheet without charts sends no key at all.
+        let plain =
+            spec::Workbook::from_value(&json!({ "sheets": [{ "name": "A", "rows": [[1]] }] }))
+                .unwrap();
+        let v = serde_json::to_value(build_view(None, &compute::compute(&plain).unwrap())).unwrap();
+        assert!(v["sheets"][0].get("charts").is_none());
     }
 
     #[test]

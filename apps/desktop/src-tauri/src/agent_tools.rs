@@ -151,6 +151,8 @@ pub const APPEND_ROWS_TOOL: &str = "append_rows";
 pub const UPDATE_CELLS_TOOL: &str = "update_cells";
 pub const ADD_SHEET_TOOL: &str = "add_sheet";
 pub const EDIT_SHEET_TOOL: &str = "edit_sheet";
+pub const ADD_CHART_TOOL: &str = "add_chart";
+pub const DELETE_CHART_TOOL: &str = "delete_chart";
 pub const READ_SPREADSHEET_TOOL: &str = "read_spreadsheet";
 
 /// True for the spreadsheet tools that change a spreadsheet (everything but
@@ -164,6 +166,8 @@ pub fn is_sheet_write_tool(name: &str) -> bool {
             | UPDATE_CELLS_TOOL
             | ADD_SHEET_TOOL
             | EDIT_SHEET_TOOL
+            | ADD_CHART_TOOL
+            | DELETE_CHART_TOOL
     )
 }
 
@@ -973,6 +977,18 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             PermissionLevel::SideEffectful,
         ),
         sheet_tool(
+            ADD_CHART_TOOL,
+            ADD_CHART_DESCRIPTION,
+            add_chart_schema(),
+            PermissionLevel::SideEffectful,
+        ),
+        sheet_tool(
+            DELETE_CHART_TOOL,
+            DELETE_CHART_DESCRIPTION,
+            delete_chart_schema(),
+            PermissionLevel::SideEffectful,
+        ),
+        sheet_tool(
             READ_SPREADSHEET_TOOL,
             READ_SPREADSHEET_DESCRIPTION,
             read_spreadsheet_schema(),
@@ -1051,6 +1067,8 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | UPDATE_CELLS_TOOL
             | ADD_SHEET_TOOL
             | EDIT_SHEET_TOOL
+            | ADD_CHART_TOOL
+            | DELETE_CHART_TOOL
             | READ_SPREADSHEET_TOOL
     )
 }
@@ -1433,6 +1451,14 @@ pub async fn execute_builtin_tool(
         EDIT_SHEET_TOOL => {
             let input: EditSheetInput = parse_args(tool_name, arguments)?;
             edit_sheet_tool(ctx, input).await
+        }
+        ADD_CHART_TOOL => {
+            let input: AddChartInput = parse_args(tool_name, arguments)?;
+            add_chart_tool(ctx, input).await
+        }
+        DELETE_CHART_TOOL => {
+            let input: DeleteChartInput = parse_args(tool_name, arguments)?;
+            delete_chart_tool(ctx, input).await
         }
         READ_SPREADSHEET_TOOL => {
             let input: ReadSpreadsheetInput = parse_args(tool_name, arguments)?;
@@ -2274,12 +2300,15 @@ async fn write_brand_theme(
 
 // Word for word what `src/chat/__fixtures__/sheetToolSchemas.json` holds; the
 // TS mirror (agentTools.ts) is checked against the same fixture.
-const CREATE_SPREADSHEET_DESCRIPTION: &str = "Create a spreadsheet (an Excel workbook the user can preview and save as .xlsx). Use it when the user asks for a spreadsheet, workbook, Excel file or a table they will calculate with, such as a budget, cost model, forecast or schedule. Use real formulas for anything calculated, not numbers you worked out. Put inputs and assumptions in their own cells (style input), often on an Assumptions sheet, and refer to them from formulas. Give the header row style header and total rows style total. Every call returns errors for any formula that did not compute (such as #NAME? or #REF!): fix them with update_cells. For a large table, set more_to_write and continue with append_rows. Omit artifact_id; the app assigns it and returns it.";
+const CREATE_SPREADSHEET_DESCRIPTION: &str = "Create a spreadsheet (an Excel workbook the user can preview and save as .xlsx). Use it when the user asks for a spreadsheet, workbook, Excel file or a table they will calculate with, such as a budget, cost model, forecast or schedule. Use real formulas for anything calculated, not numbers you worked out. Put inputs and assumptions in their own cells (style input), often on an Assumptions sheet, and refer to them from formulas. Give the header row style header and total rows style total. Every call returns errors for any formula that did not compute (such as #NAME? or #REF!): fix them with update_cells. For a large table, set more_to_write and continue with append_rows. Omit artifact_id; the app assigns it and returns it. To chart the data, call add_chart once it is written.";
 const APPEND_ROWS_DESCRIPTION: &str = "Add rows to the end of a sheet in an existing spreadsheet. Use it to write a large table in several calls: create_spreadsheet with the first rows and more_to_write true, then append_rows until the last call, which leaves more_to_write out. Cells work as in create_spreadsheet; formulas can refer to rows written earlier.";
 const UPDATE_CELLS_DESCRIPTION: &str = "Change cells in an existing spreadsheet. For a block, give start (such as B2) and rows, a 2-D block of cells as in create_spreadsheet, going right and down from start. For cells scattered around the sheet, give cells instead, all in one call: [{\"cell\": \"D4\", \"value\": 25}, {\"cell\": \"F9\", \"formula\": \"=SUM(F2:F8)\"}]. null, or a cells item with only its address, clears a cell. Use it to change values, fix formulas that returned errors, or add a column. Other cells are left as they are.";
 const ADD_SHEET_DESCRIPTION: &str = "Add a sheet to an existing spreadsheet. name is unique, at most 31 characters, without [ ] : * ? / \\. columns and rows work as in create_spreadsheet. position is the 0-based index to insert at (default: last).";
 const EDIT_SHEET_DESCRIPTION: &str = "Change a sheet's structure in an existing spreadsheet: rename_to renames it (formulas that refer to it are updated), delete removes it, columns replaces column settings, freeze_header sets row 1 frozen, delete_rows removes count rows starting at row from (1-based), insert_rows inserts rows before row at (1-based); a new row takes the formats and formulas of the row above where its cells are empty, and a total just below takes it in (SUM(B2:B7) becomes SUM(B2:B8)). With rows empty, it inserts count empty rows to fill with update_cells. Formulas that refer to moved rows are updated. title renames the spreadsheet itself (the name shown for the file, not a sheet); give it with any sheet, alone or with other changes.";
-const READ_SPREADSHEET_DESCRIPTION: &str = "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range.";
+const READ_SPREADSHEET_DESCRIPTION: &str = "Read an existing spreadsheet: for each cell its formula (if any) and computed value. Without sheet it lists the sheets with their sizes and returns the first sheet; range (such as A1:F40) limits what is returned. Large sheets are cut off with a note; read further with range. It also lists the charts (id, sheet, type, title, ranges).";
+
+const ADD_CHART_DESCRIPTION: &str = "Add a chart (bar, line or pie) of data already in a sheet of an existing spreadsheet; write the data first. categories is the range of labels (such as A2:A7) and each series' values is a range of numbers (such as B2:B7), all on sheet: one column or one row each, the same length, 1 to 50 cells. Up to 6 series; a pie takes exactly one. Formula cells work as data. anchor is the cell for the chart's top-left corner in Excel (default: beside the data). Omit id and it is returned; an id that exists replaces that chart. Charts follow inserted and deleted rows. The chart shows in the panel and is a native Excel chart in the .xlsx.";
+const DELETE_CHART_DESCRIPTION: &str = "Delete a chart from an existing spreadsheet by chart_id (add_chart and read_spreadsheet return it).";
 
 const SHEET_CELL_DESCRIPTION: &str = "A cell: a number, text, true/false, null for empty, or an object. Use the object for a formula ({\"formula\": \"=SUM(B2:B9)\"}) or to add format/style to a value ({\"value\": 700, \"format\": \"currency\", \"style\": \"input\"}). Text is always stored as text, even if it starts with =.";
 const SHEET_ROWS_DESCRIPTION: &str =
@@ -2458,6 +2487,54 @@ fn edit_sheet_schema() -> Value {
     })
 }
 
+fn add_chart_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "artifact_id": { "type": "string" },
+            "sheet": { "type": "string" },
+            "id": { "type": "string" },
+            "type": { "type": "string", "enum": ["bar", "line", "pie"] },
+            "title": { "type": "string" },
+            "categories": {
+                "type": "string",
+                "description": "Range of the labels on sheet, such as A2:A7."
+            },
+            "series": {
+                "type": "array",
+                "description": "One to six series; a pie takes exactly one.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "values": {
+                            "type": "string",
+                            "description": "Range of the numbers on sheet, such as B2:B7."
+                        }
+                    },
+                    "required": ["values"]
+                }
+            },
+            "anchor": {
+                "type": "string",
+                "description": "Cell for the chart's top-left corner in Excel, such as E2."
+            }
+        },
+        "required": ["artifact_id", "sheet", "type", "categories", "series"]
+    })
+}
+
+fn delete_chart_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "artifact_id": { "type": "string" },
+            "chart_id": { "type": "string" }
+        },
+        "required": ["artifact_id", "chart_id"]
+    })
+}
+
 fn read_spreadsheet_schema() -> Value {
     serde_json::json!({
         "type": "object",
@@ -2549,6 +2626,28 @@ struct EditSheetInput {
 }
 
 #[derive(Debug, Deserialize)]
+struct AddChartInput {
+    artifact_id: String,
+    sheet: String,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    title: Option<String>,
+    categories: Value,
+    series: Value,
+    #[serde(default)]
+    anchor: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteChartInput {
+    artifact_id: String,
+    chart_id: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ReadSpreadsheetInput {
     artifact_id: String,
     sheet: Option<String>,
@@ -2631,10 +2730,39 @@ fn sheet_write_result(
     if created {
         out["created"] = Value::Bool(true);
     }
+    let charts = chart_list(workbook);
+    if !charts.is_empty() {
+        out["charts"] = Value::Array(charts);
+    }
     if total_errors > errors.len() {
         out["more_errors"] = Value::from(total_errors - errors.len());
     }
     out
+}
+
+/// The workbook's charts for a tool result: id, sheet, type, title, ranges,
+/// and why a chart can't be drawn (its rows were deleted).
+fn chart_list(workbook: &crate::sheets::spec::Workbook) -> Vec<Value> {
+    workbook
+        .sheets
+        .iter()
+        .flat_map(|s| s.charts.iter().map(move |c| (s, c)))
+        .map(|(sheet, chart)| {
+            let mut entry = serde_json::json!({
+                "id": chart.id,
+                "sheet": sheet.name,
+                "type": chart.kind.as_str(),
+                "title": chart.title,
+                "categories": chart.categories,
+                "series": chart.series.iter().map(|s| s.values.clone()).collect::<Vec<_>>(),
+                "anchor": chart.anchor,
+            });
+            if let Some(error) = chart.error() {
+                entry["error"] = Value::String(error);
+            }
+            entry
+        })
+        .collect()
 }
 
 /// Calculate, save, and describe a changed spreadsheet. Nothing is saved when
@@ -2798,6 +2926,37 @@ async fn edit_sheet_tool(
     commit_spreadsheet(ctx, &artifact.id, &workbook).await
 }
 
+async fn add_chart_tool(ctx: &AgentToolContext<'_>, input: AddChartInput) -> Result<Value, String> {
+    let (artifact, mut workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
+    let mut chart = serde_json::json!({
+        "type": input.kind,
+        "categories": input.categories,
+        "series": input.series,
+    });
+    if let Some(id) = input.id {
+        chart["id"] = Value::String(id);
+    }
+    if let Some(title) = input.title {
+        chart["title"] = Value::String(decode_title_entities(&title));
+    }
+    if let Some(anchor) = input.anchor {
+        chart["anchor"] = anchor;
+    }
+    let id = crate::sheets::ops::add_chart(&mut workbook, &input.sheet, &chart)?;
+    let mut out = commit_spreadsheet(ctx, &artifact.id, &workbook).await?;
+    out["chart_id"] = Value::String(id);
+    Ok(out)
+}
+
+async fn delete_chart_tool(
+    ctx: &AgentToolContext<'_>,
+    input: DeleteChartInput,
+) -> Result<Value, String> {
+    let (artifact, mut workbook) = load_spreadsheet(ctx, &input.artifact_id).await?;
+    crate::sheets::ops::delete_chart(&mut workbook, &input.chart_id)?;
+    commit_spreadsheet(ctx, &artifact.id, &workbook).await
+}
+
 /// `A1:F40` or a single cell `B2`, as 0-based (row0, col0, row1, col1).
 fn parse_sheet_range(range: &str) -> Result<(usize, usize, usize, usize), String> {
     let bad = || format!("range '{range}' isn't a range like A1:F40 (or a single cell like B2)");
@@ -2913,6 +3072,10 @@ async fn read_spreadsheet(
         "range": format!("{}:{}", a1(r0, c0), a1(last_row.max(r0), last_col.max(c0))),
         "cells": cells,
     });
+    let charts = chart_list(&workbook);
+    if !charts.is_empty() {
+        out["charts"] = Value::Array(charts);
+    }
     let cut = next_row.or_else(|| {
         (explicit.is_none() && calc.row_count > SHEET_READ_DEFAULT_ROWS)
             .then_some(SHEET_READ_DEFAULT_ROWS)
@@ -4865,7 +5028,8 @@ mod tests {
         // + 5 draft tools (Writing) = 42
         // + search_tools (connector tool search) = 43
         // + 6 spreadsheet tools = 49
-        assert_eq!(defs.len(), 49);
+        // + add_chart, delete_chart = 51
+        assert_eq!(defs.len(), 51);
     }
 
     #[test]
@@ -4876,6 +5040,8 @@ mod tests {
             UPDATE_CELLS_TOOL,
             ADD_SHEET_TOOL,
             EDIT_SHEET_TOOL,
+            ADD_CHART_TOOL,
+            DELETE_CHART_TOOL,
             READ_SPREADSHEET_TOOL,
         ];
         let defs = builtin_tool_definitions();

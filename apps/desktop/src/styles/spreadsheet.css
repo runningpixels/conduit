@@ -178,6 +178,91 @@
   color: var(--err);
 }
 
+/* ── Charts below the grid (SpreadsheetChart.tsx) ────────────────────────
+   Series colours are theme tokens, set as currentColor on each series group. */
+.sheet-charts {
+  flex: 0 1 auto;
+  max-height: 55%;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--card);
+}
+.sheet-chart {
+  flex: 1 1 320px;
+  max-width: 560px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  background: var(--card-hi);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+}
+.sheet-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.sheet-chart-caption {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+.sheet-chart-message {
+  margin: 6px 0 0;
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+}
+.sheet-chart-broken .sheet-chart-message {
+  color: var(--err);
+}
+.sheet-chart-title {
+  fill: var(--ink);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+.sheet-chart-text {
+  fill: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.sheet-chart-bar {
+  shape-rendering: crispEdges;
+}
+.sheet-chart-dot {
+  stroke: var(--card-hi);
+  stroke-width: 1;
+}
+.sheet-chart-legend {
+  pointer-events: none;
+}
+.sheet-chart-grid {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+.sheet-chart-axis {
+  stroke: var(--line-hi);
+  stroke-width: 1;
+}
+.sheet-chart-line {
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.sheet-chart-slice {
+  stroke: var(--card-hi);
+  stroke-width: 1.5;
+}
+.sheet-chart-c0 { color: var(--accent); }
+.sheet-chart-c1 { color: var(--link); }
+.sheet-chart-c2 { color: var(--ok); }
+.sheet-chart-c3 { color: var(--warn); }
+.sheet-chart-c4 { color: var(--err); }
+.sheet-chart-c5 { color: var(--ink-3); }
+
 /* ── Footer: sheet tabs, notes ─────────────────────────────────────────── */
 .sheet-foot {
   flex: none;

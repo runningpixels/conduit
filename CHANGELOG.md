@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.24] - 2026-11-06
+
+Ollama tool calls work again, and Conduit reports a window that opens blank.
+
+### Fixed
+
+- **Ollama failed after any tool call** with "Value looks like object, but
+  can't find closing '}' symbol" (#308). Conduit sent the arguments of earlier
+  tool calls to Ollama as text, but Ollama needs an object, so the next request
+  was rejected even though the tool had already run. Tool calls now go through.
+
+### Changed
+
+- Once per launch, Conduit checks that its interface actually appeared. If the
+  window stays blank, it writes `boot-check.txt` to the app's log folder and
+  shows a dialog saying where to report it. This is to track down the black
+  window on macOS Monterey (#310).
+- Calls from the interface to the app's backend no longer bounce off the
+  content security policy and fall back to a slower route, and one math font
+  is now shipped as a file instead of inline.
+- macOS and Linux no longer log a refused notification permission check on
+  every launch. It had no visible effect.
+- Model prices refreshed from models.dev.
+
 ## [1.0.0-rc.23] - 2026-11-05
 
 Opening a chat brings back its latest artifact.

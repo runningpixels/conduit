@@ -449,7 +449,7 @@ Consulta [`CHANGELOG.md`](./CHANGELOG.md) para ver todo lo incluido en cada vers
 
 ## Estado
 
-**v1.0.0-rc.23 — versión candidata.** Los instaladores para Windows, macOS
+**v1.0.0-rc.24 — versión candidata.** Los instaladores para Windows, macOS
 (Apple silicon e Intel) y Linux están en la
 [página de versiones](https://github.com/runningpixels/conduit/releases). No
 están firmados por el sistema operativo, así que el primer arranque muestra un
@@ -492,7 +492,7 @@ falta es comprobarlo en instalaciones reales antes de darla por final.
 | Exportación de Diapositivas — HTML en todas las plataformas, PDF en Windows | Funciona |
 | Inicio y navegación — campo de petición, te necesita, novedades, continúa donde lo dejaste, mosaicos de áreas, barra agrupada, `Ctrl+1`…`9` | Funciona |
 | Interfaz en ocho idiomas | Funciona |
-| Canal de actualización y empaquetado, con actualizaciones automáticas opcionales | Funciona — 1.0.0-rc.23 compilada, firmada y publicada en los cuatro destinos; la actualización se ha comprobado en una instalación real de Windows, aún no en macOS ni Linux |
+| Canal de actualización y empaquetado, con actualizaciones automáticas opcionales | Funciona — 1.0.0-rc.24 compilada, firmada y publicada en los cuatro destinos; la actualización se ha comprobado en una instalación real de Windows, aún no en macOS ni Linux |
 | Firma de código del SO | Sin hacer — los paquetes no están firmados |
 | Sincronización en la nube / cuentas | No previsto en este repositorio |
 

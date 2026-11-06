@@ -3758,7 +3758,8 @@
     "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
-    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7519,7 +7520,8 @@
     "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
-    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11280,7 +11282,8 @@
     "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
-    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -15041,7 +15044,8 @@
     "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
-    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -18802,7 +18806,8 @@
     "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
-    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -22563,7 +22568,8 @@
     "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
-    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -26324,6 +26330,7 @@
     "consent.sentence.tool": "aa43e37493a5ddad675af04e86fabb94c820ee3a",
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
-    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa"
+    "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
   }
 }

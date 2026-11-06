@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.26] - 2026-11-06
+
+Charts in spreadsheets, Word export for documents, and approvals that say what
+they'll do.
+
+### Added
+
+- **Charts in spreadsheets** (#321). Ask for a bar, line or pie chart and it
+  appears under the sheet, in the app's colours for both themes. Charts follow
+  the data when rows are added or removed, and the downloaded .xlsx has real
+  Excel charts.
+- **Save as Word** (#319). Writing documents export as a Word file (.docx)
+  next to Markdown and HTML, with real headings, lists, tables, links and code
+  blocks.
+- **Approvals say what will happen** (#318). Each approval now opens with one
+  plain sentence, such as "Run “npm test” in ferry" or "Write report.md
+  (2.1 KB) in Documents". The tool, arguments and folder are still shown below.
+- **Rename a spreadsheet** (#320). The assistant can now change a
+  spreadsheet's title, for example after removing a product from "6 Products".
+
+### Changed
+
+- Model prices refreshed from models.dev.
+
 ## [1.0.0-rc.25] - 2026-11-06
 
 The window no longer opens black on older macOS versions.

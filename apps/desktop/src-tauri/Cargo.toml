@@ -184,6 +184,17 @@ windows = { version = "0.62", features = [
     "Win32_System_Threading",
 ] }
 
+# macOS only: the startup check asks AppKit where the webview is
+# (`boot_check::native_view_facts`). The version and features wry already uses.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+] }
+
 [dev-dependencies]
 
 # tests/webkit_webrtc_linux.rs initialises GTK for a bare WebKitGTK view.

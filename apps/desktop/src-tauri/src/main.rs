@@ -8,7 +8,7 @@
 use conduit_desktop::{
     agents::calls::AGENT_CALL_CHANGED_EVENT,
     artifact_frames::{self, ArtifactFrames},
-    brand,
+    boot_check, brand,
     commands::*,
     connector_runtime::ConnectorRuntimeManager,
     quick_ask::{self, QuickAsk},
@@ -523,10 +523,20 @@ fn main() {
             let guard_proxy_port: Option<u16> = None;
             let browser_args =
                 webview_args::main_webview_browser_args(&allowlist, guard_proxy_port);
+            // The startup check (#310): records page errors from the first
+            // script on, and probes the page once it has loaded.
+            let (page_loaded_tx, page_loaded_rx) = boot_check::page_load_flag();
             let _window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
                 .additional_browser_args(&browser_args)
                 .visible(visible)
+                .initialization_script(boot_check::INIT_SCRIPT)
+                .on_page_load(move |_window, payload| {
+                    if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                        page_loaded_tx.send_replace(true);
+                    }
+                })
                 .build()?;
+            boot_check::spawn(_window.clone(), page_loaded_rx);
             // Every later webview (the Slides presenter view) must be built
             // with these same arguments: WebView2 refuses a second webview
             // whose environment differs from the first one's.

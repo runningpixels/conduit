@@ -198,6 +198,13 @@ export const SendIcon = (p: IconProps) => (
 export const StopIcon = (p: IconProps) => (
   <Svg {...p}><rect x="6" y="6" width="12" height="12" rx="2" /></Svg>
 );
+/** Read aloud. */
+export const SpeakerIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M11 5 6 9H3v6h3l5 4V5z" />
+    <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+  </Svg>
+);
 export const CopyIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="9" y="9" width="13" height="13" rx="2" />

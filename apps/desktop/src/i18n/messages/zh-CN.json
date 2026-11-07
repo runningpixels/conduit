@@ -371,6 +371,16 @@
   "chat.askUser.waiting": "正在等待你回答上面的问题",
   "chat.assistant.actions.copiedLabel": "已复制",
   "chat.assistant.actions.copyLabel": "复制消息",
+
+  "chat.assistant.actions.readAloud": "朗读",
+
+  "chat.assistant.actions.readAloudLabel": "朗读这条回复",
+
+  "chat.assistant.actions.stopReading": "停止",
+
+  "chat.assistant.actions.stopReadingLabel": "停止朗读",
+
+  "chat.assistant.actions.noVoice": "此电脑未安装{language}语音。你可以在系统的语音设置中添加。",
   "chat.assistant.actions.deleteTitle": "删除这条回复",
   "chat.assistant.actions.forkLabel": "从这条消息分支聊天",
   "chat.assistant.actions.retryTitle": "重试这条回复。当前回复会保留为较早的版本。",

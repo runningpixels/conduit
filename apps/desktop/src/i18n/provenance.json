@@ -3759,7 +3759,12 @@
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
     "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
-    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab",
+    "chat.assistant.actions.readAloud": "562107b866b5a754180755ea14b7f445fde2e751",
+    "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
+    "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
+    "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7521,7 +7526,12 @@
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
     "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
-    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab",
+    "chat.assistant.actions.readAloud": "562107b866b5a754180755ea14b7f445fde2e751",
+    "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
+    "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
+    "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11283,7 +11293,12 @@
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
     "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
-    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab",
+    "chat.assistant.actions.readAloud": "562107b866b5a754180755ea14b7f445fde2e751",
+    "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
+    "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
+    "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -15045,7 +15060,12 @@
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
     "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
-    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab",
+    "chat.assistant.actions.readAloud": "562107b866b5a754180755ea14b7f445fde2e751",
+    "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
+    "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
+    "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -18807,7 +18827,12 @@
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
     "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
-    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab",
+    "chat.assistant.actions.readAloud": "562107b866b5a754180755ea14b7f445fde2e751",
+    "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
+    "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
+    "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -22569,7 +22594,12 @@
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
     "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
-    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab",
+    "chat.assistant.actions.readAloud": "562107b866b5a754180755ea14b7f445fde2e751",
+    "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
+    "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
+    "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -26331,6 +26361,11 @@
     "consent.sentence.toolNoConnector": "42fde2db6ace712a6b43da6a13038e40e50918b7",
     "consent.sentence.generic": "bd0ae74eb3a14896a184672bdeb5d4c4b1844f59",
     "consent.sentence.thisFolder": "ca12b97760213db27444f3b12f55a266efb770fa",
-    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab"
+    "writing.export.docx": "cf140f363c864604aca2b263e068328b95adb2ab",
+    "chat.assistant.actions.readAloud": "562107b866b5a754180755ea14b7f445fde2e751",
+    "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
+    "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
+    "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
   }
 }

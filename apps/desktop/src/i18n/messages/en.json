@@ -371,6 +371,16 @@
   "chat.askUser.waiting": "Waiting for your answer above",
   "chat.assistant.actions.copiedLabel": "Copied",
   "chat.assistant.actions.copyLabel": "Copy message",
+
+  "chat.assistant.actions.readAloud": "Read aloud",
+
+  "chat.assistant.actions.readAloudLabel": "Read this reply aloud",
+
+  "chat.assistant.actions.stopReading": "Stop",
+
+  "chat.assistant.actions.stopReadingLabel": "Stop reading aloud",
+
+  "chat.assistant.actions.noVoice": "No {language} voice is installed on this computer. You can add one in your system’s speech settings.",
   "chat.assistant.actions.deleteTitle": "Delete this response",
   "chat.assistant.actions.forkLabel": "Fork chat at this message",
   "chat.assistant.actions.retryTitle": "Retry this response. This one is kept as an earlier version.",

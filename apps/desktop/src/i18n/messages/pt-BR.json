@@ -371,6 +371,16 @@
   "chat.askUser.waiting": "Aguardando sua resposta acima",
   "chat.assistant.actions.copiedLabel": "Copiado",
   "chat.assistant.actions.copyLabel": "Copiar mensagem",
+
+  "chat.assistant.actions.readAloud": "Ler em voz alta",
+
+  "chat.assistant.actions.readAloudLabel": "Ler esta resposta em voz alta",
+
+  "chat.assistant.actions.stopReading": "Parar",
+
+  "chat.assistant.actions.stopReadingLabel": "Parar a leitura em voz alta",
+
+  "chat.assistant.actions.noVoice": "Nenhuma voz em {language} está instalada neste computador. Você pode adicionar uma nas configurações de voz do sistema.",
   "chat.assistant.actions.deleteTitle": "Excluir esta resposta",
   "chat.assistant.actions.forkLabel": "Bifurcar o chat nesta mensagem",
   "chat.assistant.actions.retryTitle": "Tentar esta resposta novamente. Esta fica guardada como versão anterior.",

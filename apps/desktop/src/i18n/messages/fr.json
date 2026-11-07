@@ -371,6 +371,16 @@
   "chat.askUser.waiting": "En attente de ta réponse ci-dessus",
   "chat.assistant.actions.copiedLabel": "Copié",
   "chat.assistant.actions.copyLabel": "Copier le message",
+
+  "chat.assistant.actions.readAloud": "Lire à voix haute",
+
+  "chat.assistant.actions.readAloudLabel": "Lire cette réponse à voix haute",
+
+  "chat.assistant.actions.stopReading": "Arrêter",
+
+  "chat.assistant.actions.stopReadingLabel": "Arrêter la lecture à voix haute",
+
+  "chat.assistant.actions.noVoice": "Aucune voix en {language} n’est installée sur cet ordinateur. Vous pouvez en ajouter une dans les réglages vocaux de votre système.",
   "chat.assistant.actions.deleteTitle": "Supprimer cette réponse",
   "chat.assistant.actions.forkLabel": "Bifurquer la conversation à ce message",
   "chat.assistant.actions.retryTitle": "Réessayer cette réponse. Celle-ci est conservée comme version précédente.",

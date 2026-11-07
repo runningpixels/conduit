@@ -371,6 +371,16 @@
   "chat.askUser.waiting": "上の質問への回答を待っています",
   "chat.assistant.actions.copiedLabel": "コピーしました",
   "chat.assistant.actions.copyLabel": "メッセージをコピー",
+
+  "chat.assistant.actions.readAloud": "読み上げ",
+
+  "chat.assistant.actions.readAloudLabel": "この返信を読み上げる",
+
+  "chat.assistant.actions.stopReading": "停止",
+
+  "chat.assistant.actions.stopReadingLabel": "読み上げを停止",
+
+  "chat.assistant.actions.noVoice": "このコンピューターには{language}の音声がインストールされていません。システムの音声設定から追加できます。",
   "chat.assistant.actions.deleteTitle": "この応答を削除",
   "chat.assistant.actions.forkLabel": "このメッセージでチャットを分岐",
   "chat.assistant.actions.retryTitle": "この応答を再試行します。今の応答は以前のバージョンとして残ります。",

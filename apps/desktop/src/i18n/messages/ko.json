@@ -371,6 +371,16 @@
   "chat.askUser.waiting": "위 질문에 대한 답변을 기다리는 중",
   "chat.assistant.actions.copiedLabel": "복사됨",
   "chat.assistant.actions.copyLabel": "메시지 복사",
+
+  "chat.assistant.actions.readAloud": "소리 내어 읽기",
+
+  "chat.assistant.actions.readAloudLabel": "이 답변을 소리 내어 읽기",
+
+  "chat.assistant.actions.stopReading": "중지",
+
+  "chat.assistant.actions.stopReadingLabel": "소리 내어 읽기 중지",
+
+  "chat.assistant.actions.noVoice": "이 컴퓨터에 {language} 음성이 설치되어 있지 않습니다. 시스템의 음성 설정에서 추가할 수 있습니다.",
   "chat.assistant.actions.deleteTitle": "이 응답 삭제",
   "chat.assistant.actions.forkLabel": "이 메시지에서 채팅 분기",
   "chat.assistant.actions.retryTitle": "이 응답을 다시 시도합니다. 지금 응답은 이전 버전으로 남습니다.",

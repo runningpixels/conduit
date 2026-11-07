@@ -15,6 +15,7 @@ import { providerHueId } from '../lib/providerIdentity';
 import { useT } from '../i18n';
 import { TurnBody, proseCarriesCaret } from './TurnBody';
 import { ScheduleThisButton } from './ScheduleThisButton';
+import { ReadAloudButton } from './ReadAloudButton';
 import { turnDocumentInProgress, turnDocumentOutcomes } from './turnDocumentOutcome';
 
 export { groupToolCalls, synthesizeSegments, toolCallStaysInline } from './TurnBody';
@@ -451,6 +452,7 @@ export function AssistantMessage({
             {t('common.actions.copy')}
           </button>
         )}
+        {messageId && !state.streaming && <ReadAloudButton id={messageId} text={text} />}
         {showActions && onRetry && (
           <button
             type="button"

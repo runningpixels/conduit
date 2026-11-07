@@ -371,6 +371,16 @@
   "chat.askUser.waiting": "Wartet auf deine Antwort oben",
   "chat.assistant.actions.copiedLabel": "Kopiert",
   "chat.assistant.actions.copyLabel": "Nachricht kopieren",
+
+  "chat.assistant.actions.readAloud": "Vorlesen",
+
+  "chat.assistant.actions.readAloudLabel": "Diese Antwort vorlesen",
+
+  "chat.assistant.actions.stopReading": "Stopp",
+
+  "chat.assistant.actions.stopReadingLabel": "Vorlesen beenden",
+
+  "chat.assistant.actions.noVoice": "Auf diesem Computer ist keine Stimme für {language} installiert. Sie können eine in den Spracheinstellungen Ihres Systems hinzufügen.",
   "chat.assistant.actions.deleteTitle": "Diese Antwort löschen",
   "chat.assistant.actions.forkLabel": "Chat an dieser Nachricht verzweigen",
   "chat.assistant.actions.retryTitle": "Diese Antwort erneut versuchen. Diese bleibt als frühere Version erhalten.",

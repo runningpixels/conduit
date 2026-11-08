@@ -161,7 +161,12 @@ pub async fn hydrate_request_for_vision(
             // 2. Images (unless the bytes are a PDF/DOCX whatever was claimed).
             let signed_document = matches!(
                 document,
-                Some(DocumentKind::Pdf | DocumentKind::Docx | DocumentKind::Xlsx)
+                Some(
+                    DocumentKind::Pdf
+                        | DocumentKind::Docx
+                        | DocumentKind::Xlsx
+                        | DocumentKind::Pptx
+                )
             );
             if !signed_document {
                 if let Some(mime) = resolve_image_mime(&bytes, Some(&claimed_mime)) {

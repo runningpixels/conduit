@@ -4,7 +4,7 @@
 //! [`extract_document_bytes`] does the same for a document already in memory
 //! (a chat attachment, or a workspace file `workspace_read` sniffed).
 //! Dispatch is by lowercased extension: `txt|md|markdown|mdown|text` (read as
-//! UTF-8, lossy), `csv`, `docx`, `xlsx`, `pdf`. Anything else is
+//! UTF-8, lossy), `csv`, `docx`, `xlsx`, `pptx` (see [`super::extract_pptx`]), `pdf`. Anything else is
 //! [`ExtractFailure::UnsupportedFormat`].
 //!
 //! Safe Rust prevents memory corruption, **not** resource exhaustion — a
@@ -107,6 +107,7 @@ enum Format {
     Csv,
     Docx,
     Xlsx,
+    Pptx,
     Pdf,
     Html,
 }
@@ -179,6 +180,7 @@ fn format_for_extension(extension: &str) -> Result<Format, ExtractFailure> {
         "csv" => Format::Csv,
         "docx" => Format::Docx,
         "xlsx" => Format::Xlsx,
+        "pptx" => Format::Pptx,
         "pdf" => Format::Pdf,
         "html" | "htm" => Format::Html,
         other => return Err(ExtractFailure::UnsupportedFormat(other.to_string())),
@@ -249,6 +251,7 @@ fn parse_sync(bytes: &[u8], format: Format) -> Result<Extracted, ExtractFailure>
         Format::Csv => extract_csv(bytes),
         Format::Docx => extract_docx(bytes),
         Format::Xlsx => extract_xlsx(bytes),
+        Format::Pptx => super::extract_pptx::extract_pptx(bytes),
         Format::Pdf => extract_pdf(bytes),
         Format::Html => extract_html(bytes),
     }
@@ -427,11 +430,21 @@ const XLSX_MAX_STORED_CELLS: usize = 500_000;
 /// inflated). A bomb can lie in the directory, but the zip reader never
 /// yields more than an entry declares, so the declared total bounds the read.
 fn check_xlsx_zip_limits(bytes: &[u8]) -> Result<(), ExtractFailure> {
+    check_zip_limits(bytes, "xlsx", XLSX_MAX_ENTRIES)
+}
+
+/// The same limits for any Office zip (`label` names it in the errors), with
+/// its own entry limit. pptx uses it too.
+pub(super) fn check_zip_limits(
+    bytes: &[u8],
+    label: &str,
+    max_entries: usize,
+) -> Result<(), ExtractFailure> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| ExtractFailure::Unreadable(format!("not a valid xlsx/zip archive: {e}")))?;
-    if archive.len() > XLSX_MAX_ENTRIES {
+        .map_err(|e| ExtractFailure::Unreadable(format!("not a valid {label}/zip archive: {e}")))?;
+    if archive.len() > max_entries {
         return Err(ExtractFailure::Unreadable(format!(
-            "xlsx archive has {} entries, over the {XLSX_MAX_ENTRIES} entry limit",
+            "{label} archive has {} entries, over the {max_entries} entry limit",
             archive.len()
         )));
     }
@@ -439,7 +452,7 @@ fn check_xlsx_zip_limits(bytes: &[u8]) -> Result<(), ExtractFailure> {
     for i in 0..archive.len() {
         let entry = archive
             .by_index_raw(i)
-            .map_err(|e| ExtractFailure::Unreadable(format!("xlsx archive entry {i}: {e}")))?;
+            .map_err(|e| ExtractFailure::Unreadable(format!("{label} archive entry {i}: {e}")))?;
         total = total.saturating_add(entry.size());
         compressed = compressed.saturating_add(entry.compressed_size());
     }
@@ -451,7 +464,7 @@ fn check_xlsx_zip_limits(bytes: &[u8]) -> Result<(), ExtractFailure> {
     }
     if total > 1024 * 1024 && total / compressed.max(1) > XLSX_MAX_RATIO {
         return Err(ExtractFailure::Unreadable(format!(
-            "xlsx archive inflates {}x, over the {XLSX_MAX_RATIO}x limit (decompression bomb?)",
+            "{label} archive inflates {}x, over the {XLSX_MAX_RATIO}x limit (decompression bomb?)",
             total / compressed.max(1)
         )));
     }

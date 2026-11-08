@@ -21,6 +21,7 @@
 
 pub mod chunk;
 pub mod extract;
+pub mod extract_pptx;
 pub mod ingest;
 pub mod search;
 pub mod vector;

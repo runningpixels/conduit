@@ -24,6 +24,8 @@ pub mod continue_reply;
 pub mod conversation_export;
 pub mod credentials;
 pub mod db;
+pub mod deck_pptx;
+pub mod deck_pptx_parts;
 pub mod diagnostics;
 pub mod document_prompts;
 pub mod draft_blocks;

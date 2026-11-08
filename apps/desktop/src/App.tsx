@@ -161,6 +161,7 @@ import {
   exportConversationDialog,
   exportDeckHtml,
   exportDeckPdf,
+  exportDeckPptx,
   installStarterApp,
   listApps,
   listStarterApps,
@@ -172,6 +173,7 @@ import {
 } from './ipc/client';
 import { SlidesPage } from './pages/SlidesPage';
 import { DeckWorkspace } from './slides/DeckWorkspace';
+import type { DeckExportKind } from './slides/StudioHeader';
 import { buildDeckHtmlExport, buildDeckPrintHtml } from './slides/deckExport';
 import { PresentationView } from './slides/PresentationView';
 import { STARTER_THEMES } from './slides/themes';
@@ -1592,22 +1594,24 @@ export default function App() {
   const { locale: exportLocale } = useLocale();
   const [exportingDeck, setExportingDeck] = useState(false);
   const handleExportDeck = useCallback(
-    async (kind: 'html' | 'pdf') => {
+    async (kind: DeckExportKind) => {
       const deck = activeDeckRef.current;
       if (!deck || deck.slides.length === 0 || exportingDeckRef.current) return;
       exportingDeckRef.current = true;
       setExportingDeck(true);
       try {
+        // Format names are not translated (D7).
         const saved =
           kind === 'html'
             ? await exportDeckHtml(
                 deck.id,
                 buildDeckHtmlExport(deck, { lang: exportLocale, generator: appName() }),
                 t('slides.export.htmlDialogTitle'),
-                // Format names are not translated (D7).
                 'HTML',
               )
-            : await exportDeckPdf(deck.id, buildDeckPrintHtml(deck), t('slides.export.pdfDialogTitle'), 'PDF');
+            : kind === 'pdf'
+              ? await exportDeckPdf(deck.id, buildDeckPrintHtml(deck), t('slides.export.pdfDialogTitle'), 'PDF')
+              : await exportDeckPptx(deck.id, t('slides.export.pptxDialogTitle'), 'PowerPoint');
         if (saved === null) return;
         const name = saved.split(/[\\/]/).pop() ?? saved;
         setStatus(makeStatus(t('slides.export.saved', { name }), 'success'));

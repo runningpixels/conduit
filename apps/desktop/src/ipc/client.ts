@@ -633,6 +633,16 @@ export async function exportDeckPdf(
   return invokeCommand<string | null>('export_deck_pdf', { deckId, html, dialogTitle, filterName });
 }
 
+/** Saves a deck as an editable PowerPoint file (built in Rust from the stored
+ *  deck); resolves the saved path, or null on cancel. */
+export async function exportDeckPptx(
+  deckId: string,
+  dialogTitle: string,
+  filterName: string,
+): Promise<string | null> {
+  return invokeCommand<string | null>('export_deck_pptx', { deckId, dialogTitle, filterName });
+}
+
 // =============================================================================
 // Phase 6 M6.5 — Diagnostics export hardening: disclosure gate + reveal.
 //

@@ -163,6 +163,11 @@ tauri-plugin-global-shortcut = "~2.4"
 # Also used by in-crate tests, so it lives in `[dependencies]` (not dev-only).
 tempfile = "3"
 
+# Slides saved as PowerPoint: each SVG picture also goes in as a PNG, which
+# PowerPoint before 2016, Google Slides and Keynote show instead of the SVG.
+# Text renders with the system fonts; no raster images are read.
+resvg = { version = "0.49.0", default-features = false, features = ["text", "system-fonts"] }
+
 # Linux only: the WebKitGTK settings object, to turn WebRTC off in the main
 # webview (`webview_args::disable_webrtc`). Same crate and version tauri/wry
 # already link; `v2_38` exposes `set_enable_webrtc`.

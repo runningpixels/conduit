@@ -2324,6 +2324,10 @@
   "slides.export.menuAria": "このプレゼンをエクスポート",
   "slides.export.pdf": "PDF",
   "slides.export.pdfDialogTitle": "プレゼンを PDF としてエクスポート",
+
+  "slides.export.pptx": "PowerPoint: 編集できるスライド",
+
+  "slides.export.pptxDialogTitle": "プレゼンを PowerPoint ファイルとしてエクスポート",
   "slides.export.saved": "{name} を保存しました",
   "slides.export.working": "エクスポートしています…",
   "slides.frame.title": "スライドのプレビュー",

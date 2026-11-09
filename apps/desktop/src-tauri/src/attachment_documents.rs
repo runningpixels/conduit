@@ -2,8 +2,8 @@
 //! model.
 //!
 //! A chat attachment is either an image (handled by `vision.rs` as before), a
-//! document this module reads (PDF, DOCX, XLSX, plain text / Markdown / CSV),
-//! or something nothing reads yet (xlsm, xls, ods, pptx, zip…). The kind is decided here by
+//! document this module reads (PDF, DOCX, XLSX, PPTX, plain text / Markdown / CSV),
+//! or something nothing reads yet (xlsm, pptm, xls, ppt, ods, zip…). The kind is decided here by
 //! **sniffing the bytes**, never by trusting the MIME type the renderer sent:
 //! a browser reports `.md` as nothing at all and `.csv` as an Excel type, and a
 //! renamed file says whatever its name says.
@@ -33,6 +33,7 @@ pub const PDF_MIME: &str = "application/pdf";
 pub const DOCX_MIME: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 pub const XLSX_MIME: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+pub const PPTX_MIME: &str = crate::knowledge::extract_pptx::PPTX_MIME;
 
 /// Largest PDF sent to a model as the PDF itself. Above it the PDF still
 /// reaches the model, as extracted text. Matches the image forward cap: the
@@ -67,9 +68,12 @@ pub enum TextFlavor {
 pub enum DocumentKind {
     Pdf,
     Docx,
-    /// An Excel workbook (`.xlsx`). Macro-enabled `.xlsm`, `.xls`, `.ods` and
-    /// `.pptx` are not read.
+    /// An Excel workbook (`.xlsx`). Macro-enabled `.xlsm`, `.xls` and `.ods`
+    /// are not read.
     Xlsx,
+    /// A PowerPoint presentation (`.pptx`, also `.potx` / `.ppsx`, which share
+    /// its parts). Macro-enabled `.pptm` and the old binary `.ppt` are not read.
+    Pptx,
     Text(TextFlavor),
 }
 
@@ -80,6 +84,7 @@ impl DocumentKind {
             DocumentKind::Pdf => PDF_MIME,
             DocumentKind::Docx => DOCX_MIME,
             DocumentKind::Xlsx => XLSX_MIME,
+            DocumentKind::Pptx => PPTX_MIME,
             DocumentKind::Text(TextFlavor::Plain) => "text/plain",
             DocumentKind::Text(TextFlavor::Markdown) => "text/markdown",
             DocumentKind::Text(TextFlavor::Csv) => "text/csv",
@@ -94,6 +99,7 @@ impl DocumentKind {
             DocumentKind::Pdf => "pdf",
             DocumentKind::Docx => "docx",
             DocumentKind::Xlsx => "xlsx",
+            DocumentKind::Pptx => "pptx",
             DocumentKind::Text(TextFlavor::Plain) => "txt",
             DocumentKind::Text(TextFlavor::Markdown) => "md",
             DocumentKind::Text(TextFlavor::Csv) => "csv",
@@ -149,10 +155,19 @@ pub fn sniff_document(
 /// read, nothing is inflated. `word/document.xml` is a DOCX; `xl/workbook.xml`
 /// is an XLSX unless it is macro-enabled (`xl/vbaProject.bin`, or an `.xlsm` /
 /// `.xltm` name), which stays unsupported so macros are never half-read.
+/// `ppt/presentation.xml` is a PPTX, under the same rule for `.pptm` and kin.
 fn sniff_zip(bytes: &[u8], filename: Option<&str>) -> Option<DocumentKind> {
     let archive = zip::ZipArchive::new(Cursor::new(bytes)).ok()?;
     if archive.index_for_name("word/document.xml").is_some() {
         return Some(DocumentKind::Docx);
+    }
+    if archive.index_for_name("ppt/presentation.xml").is_some() {
+        let macro_enabled = archive.index_for_name("ppt/vbaProject.bin").is_some()
+            || matches!(
+                extension_of(filename).as_deref(),
+                Some("pptm" | "potm" | "ppsm")
+            );
+        return (!macro_enabled).then_some(DocumentKind::Pptx);
     }
     let macro_enabled = archive.index_for_name("xl/vbaProject.bin").is_some()
         || matches!(extension_of(filename).as_deref(), Some("xlsm" | "xltm"));
@@ -166,6 +181,16 @@ fn is_macro_workbook(bytes: &[u8]) -> bool {
         .map(|a| {
             a.index_for_name("xl/workbook.xml").is_some()
                 && a.index_for_name("xl/vbaProject.bin").is_some()
+        })
+        .unwrap_or(false)
+}
+
+/// A macro-enabled presentation (`ppt/presentation.xml` plus `ppt/vbaProject.bin`).
+fn is_macro_presentation(bytes: &[u8]) -> bool {
+    zip::ZipArchive::new(Cursor::new(bytes))
+        .map(|a| {
+            a.index_for_name("ppt/presentation.xml").is_some()
+                && a.index_for_name("ppt/vbaProject.bin").is_some()
         })
         .unwrap_or(false)
 }
@@ -231,7 +256,7 @@ pub fn decide_delivery(
         Some(DocumentKind::Pdf) if pdf_ok && bytes.len() <= PDF_FORWARD_MAX_BYTES => {
             return AttachmentDelivery::of(DeliveryKind::PdfNative);
         }
-        Some(DocumentKind::Pdf | DocumentKind::Docx | DocumentKind::Xlsx) => {
+        Some(DocumentKind::Pdf | DocumentKind::Docx | DocumentKind::Xlsx | DocumentKind::Pptx) => {
             return AttachmentDelivery::of(DeliveryKind::Text);
         }
         _ => {}
@@ -258,6 +283,9 @@ fn unsupported_reason(bytes: &[u8], filename: Option<&str>) -> Option<String> {
     if matches!(ext.as_deref(), Some("xlsm" | "xltm")) || is_macro_workbook(bytes) {
         // Reads "Not sent: macro-enabled workbooks aren't supported yet".
         return Some("macro-enabled workbooks".to_string());
+    }
+    if matches!(ext.as_deref(), Some("pptm" | "potm" | "ppsm")) || is_macro_presentation(bytes) {
+        return Some("macro-enabled presentations".to_string());
     }
     Some(format!("{} files", ext?))
 }
@@ -547,13 +575,57 @@ mod tests {
         ]);
         assert_eq!(sniff_document(&xlsm, Some("m.xlsx"), None), None);
         assert_eq!(sniff_document(&xlsx, Some("m.xlsm"), None), None);
-        // pptx, ods and an arbitrary zip stay unsupported.
-        let pptx = zip_with(&[("ppt/presentation.xml", "<p/>")]);
+        // ods and an arbitrary zip stay unsupported.
         let ods = zip_with(&[("content.xml", "<c/>"), ("mimetype", "x")]);
         let plain = zip_with(&[("readme.txt", "hi")]);
-        for (bytes, name) in [(&pptx, "d.pptx"), (&ods, "s.ods"), (&plain, "a.zip")] {
+        for (bytes, name) in [(&ods, "s.ods"), (&plain, "a.zip")] {
             assert_eq!(sniff_document(bytes, Some(name), None), None, "{name}");
         }
+    }
+
+    #[test]
+    fn sniffs_pptx_by_bytes_and_keeps_macro_presentations_out() {
+        let pptx = zip_with(&[("ppt/presentation.xml", "<p/>")]);
+        for name in ["deck.pptx", "download", "template.potx", "show.ppsx"] {
+            assert_eq!(
+                sniff_document(&pptx, Some(name), None),
+                Some(DocumentKind::Pptx),
+                "{name}"
+            );
+        }
+        let pptm = zip_with(&[
+            ("ppt/presentation.xml", "<p/>"),
+            ("ppt/vbaProject.bin", "x"),
+        ]);
+        assert_eq!(sniff_document(&pptm, Some("d.pptx"), None), None);
+        assert_eq!(sniff_document(&pptx, Some("d.pptm"), None), None);
+        let reason =
+            |bytes: &[u8], name: &str| decide_delivery(bytes, Some(name), None, true, true).reason;
+        assert_eq!(
+            reason(&pptm, "d.pptx").as_deref(),
+            Some("macro-enabled presentations")
+        );
+        assert_eq!(
+            decide_delivery(&pptx, Some("d.pptx"), None, false, false).kind,
+            DeliveryKind::Text
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pptx_attachment_reaches_the_model_as_slide_text() {
+        let bytes = crate::knowledge::extract_pptx::test_fixtures::tiny_pptx(&[(
+            "Launch plan",
+            &["Beta in May"],
+            Some("Mention pricing."),
+        )]);
+        let text = document_text("ad-pptx", bytes, DocumentKind::Pptx).await;
+        let mut budget = REQUEST_TEXT_MAX_CHARS;
+        let out = render_attachment("plan.pptx", DocumentKind::Pptx, &text, &mut budget);
+        assert!(out.contains("kind=\"pptx\""), "{out}");
+        assert!(
+            out.contains("## Slide 1: Launch plan\nBeta in May\nNotes:\nMention pricing."),
+            "{out}"
+        );
     }
 
     #[test]
@@ -577,8 +649,10 @@ mod tests {
             reason(b"\xD0\xCF\x11\xE0junk", "old.xls").as_deref(),
             Some("xls files")
         );
-        let pptx = zip_with(&[("ppt/presentation.xml", "<p/>")]);
-        assert_eq!(reason(&pptx, "d.pptx").as_deref(), Some("pptx files"));
+        assert_eq!(
+            reason(b"\xD0\xCF\x11\xE0junk", "old.ppt").as_deref(),
+            Some("ppt files")
+        );
     }
 
     #[test]

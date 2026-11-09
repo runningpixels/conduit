@@ -344,6 +344,23 @@ impl ProviderAdapter for OpenAiPresetAdapter {
     /// trait's default "unsupported" error — pinned by
     /// `generate_embeddings_is_unsupported_on_every_preset_except_openrouter`
     /// below.
+    /// Dictation: OpenRouter and Groq serve OpenAI's
+    /// `/audio/transcriptions` shape, so they delegate; every other preset
+    /// keeps the trait's "unsupported" error.
+    async fn transcribe_audio(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+        ctx: &crate::adapter::AdapterContext,
+    ) -> Result<String, ProviderError> {
+        if crate::transcription::default_transcription_model(self.id()).is_none() {
+            return Err(fatal(format!(
+                "{} does not support transcription",
+                self.id()
+            )));
+        }
+        self.0.transcribe_audio(request, ctx).await
+    }
+
     async fn generate_embeddings(
         &self,
         request: EmbeddingRequest,

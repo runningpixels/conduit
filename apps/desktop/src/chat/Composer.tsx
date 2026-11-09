@@ -17,6 +17,8 @@ import { ComposerMcpResources } from './ComposerMcpResources';
 import type { AttachmentDelivery, ConnectorPromptInfo, ConnectorResourceInfo, ResourceRef } from '../ipc/contracts';
 import { brand } from '../brand';
 import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
+import { DictationButton } from './DictationButton';
+import { insertDictation } from '../lib/dictation';
 import { StatusLine, type CredentialMode } from '../shell/StatusLine';
 import {
   ATTACHMENT_INLINE_CAP_BYTES,
@@ -301,6 +303,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const deliveryKey = deliveryKeyFor(settings.activeProvider, settings.activeModel);
 
   useComposerAutosize(textareaRef, prompt);
+
+  /** Dictated text goes where the caret is (or over the selection). */
+  const insertDictated = (text: string) => {
+    const ta = textareaRef.current;
+    const start = ta?.selectionStart ?? prompt.length;
+    const end = ta?.selectionEnd ?? start;
+    const next = insertDictation(prompt, start, end, text);
+    onPromptChange(next.value);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(next.caret, next.caret);
+    });
+  };
 
   // D6: at least one collection with at least one document must exist before
   // `#` does anything at all -- same "zero cost, zero UI" gate as the
@@ -1614,13 +1631,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </button>
           ) : null}
           {/* Everything before the spacer acts on the message; everything after
-              it says who will answer and sends. */}
+              it says who will answer, then dictates and sends. */}
           <span className="spacer" />
           <ComposerModelPicker
             ref={modelPickerRef}
             settings={settings}
             onSelectModel={onSelectModel}
             disabled={streaming}
+          />
+          <DictationButton
+            onText={insertDictated}
+            refreshKey={`${settings.activeProvider}|${settings.localOnly}|${credentialRef ?? ''}`}
           />
           {streaming && !sendOverride ? (
             <>

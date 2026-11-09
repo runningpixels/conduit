@@ -28,6 +28,7 @@ pub mod deck_pptx;
 pub mod deck_pptx_parts;
 pub mod deck_pptx_scene;
 pub mod diagnostics;
+pub mod dictation;
 pub mod document_prompts;
 pub mod draft_blocks;
 pub mod draft_docx;

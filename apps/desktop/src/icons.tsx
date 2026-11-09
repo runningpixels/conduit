@@ -205,6 +205,13 @@ export const SpeakerIcon = (p: IconProps) => (
     <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
   </Svg>
 );
+/** Dictate. */
+export const MicIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+  </Svg>
+);
 export const CopyIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="9" y="9" width="13" height="13" rx="2" />

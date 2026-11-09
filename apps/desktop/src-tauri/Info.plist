@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the app's Info.plist by tauri-build (it reads Info.plist next to tauri.conf.json). -->
+<plist version="1.0">
+<dict>
+  <!-- Dictation records the microphone (src/dictation.rs); macOS shows this when it first asks. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Conduit uses the microphone when you dictate a message.</string>
+</dict>
+</plist>

@@ -648,6 +648,40 @@ export async function exportDeckPptx(
 }
 
 // =============================================================================
+// Dictation: record the microphone, transcribe with the user's own key.
+// =============================================================================
+
+/** Whether dictation can be used now (`commands/dictation.rs`). */
+export interface DictationStatus {
+  /** Provider id the recording would go to. */
+  provider: string | null;
+  providerName: string | null;
+  /** Why it can't be used: local-only mode, or no provider that transcribes. */
+  blocked: 'localOnly' | 'noProvider' | null;
+  /** Longest recording kept, in seconds. */
+  maxSeconds: number;
+}
+
+export async function dictationStatus(): Promise<DictationStatus> {
+  return invokeCommand<DictationStatus>('dictation_status');
+}
+
+/** Opens the microphone. Rejects when there is none or it can't be opened. */
+export async function dictationStart(): Promise<void> {
+  return invokeCommand<void>('dictation_start');
+}
+
+/** Stops recording and resolves with the transcribed text. */
+export async function dictationStop(): Promise<string> {
+  return invokeCommand<string>('dictation_stop');
+}
+
+/** Stops recording and discards it. */
+export async function dictationCancel(): Promise<void> {
+  return invokeCommand<void>('dictation_cancel');
+}
+
+// =============================================================================
 // Phase 6 M6.5 — Diagnostics export hardening: disclosure gate + reveal.
 //
 // `getDiagnosticsDisclosureAcknowledged` reads the once-ever disclosure flag

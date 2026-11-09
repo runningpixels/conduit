@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.27] - 2026-11-09
+
+PowerPoint in and out, and replies read aloud.
+
+### Added
+
+- **Save a deck as PowerPoint** (#325). Slides' Export menu has a new option,
+  "PowerPoint — slides you can edit", on every platform. The file matches the
+  deck as the app draws it: the same fonts, sizes, colours, cards, lines and
+  backgrounds, in the same places. Text stays editable, charts are native
+  PowerPoint charts ("Edit Data" opens their numbers), and speaker notes come
+  along.
+- **Read PowerPoint files** (#324). Attach a .pptx to a message, or add one to
+  Documents, and the model reads its slides in order, with tables, chart
+  data and speaker notes. Macro-enabled .pptm files are still refused.
+- **Read aloud** (#323). A speaker button under each reply reads it out with
+  your system's voices, in the reply's language. Click it again to stop.
+
+### Changed
+
+- Model prices refreshed from models.dev.
+
 ## [1.0.0-rc.26] - 2026-11-06
 
 Charts in spreadsheets, Word export for documents, and approvals that say what

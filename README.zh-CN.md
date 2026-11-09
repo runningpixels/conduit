@@ -349,7 +349,7 @@ Brave 或你自己的 SearXNG）进行搜索，设置中还有获取密钥的链
 
 ## 状态
 
-**v1.0.0-rc.26：发布候选版。** 适用于 Windows、macOS（Apple 芯片与 Intel）和
+**v1.0.0-rc.27：发布候选版。** 适用于 Windows、macOS（Apple 芯片与 Intel）和
 Linux 的安装包在[发布页](https://github.com/runningpixels/conduit/releases)。
 它们没有经过操作系统层面的代码签名，因此首次启动会出现 Gatekeeper 或 SmartScreen
 警告。从源码构建同样可行。
@@ -369,7 +369,7 @@ Linux 的安装包在[发布页](https://github.com/runningpixels/conduit/releas
 | 技能（`SKILL.md`）与经用户批准的加密记忆 | 可用 |
 | 对话置顶、归档与项目（共享说明、文档、技能、工作文件夹） | 可用 |
 | 回复版本、换模型重试、并排比较回复 | 可用 |
-| 图像与文档附件（PDF、Word、Excel、文本、Markdown、CSV、HTML）、Mermaid/KaTeX、对话导出 | 可用 |
+| 图像与文档附件（PDF、Word、Excel、PowerPoint、文本、Markdown、CSV、HTML）、Mermaid/KaTeX、对话导出 | 可用 |
 | 电子表格——公式、格式与多个工作表，开口即可修改；可导出 .xlsx | 可用 |
 | 用量与费用——每一次模型调用、价目表与公布价格（可覆盖）、每日支出提醒 | 可用 |
 | 网页搜索（托管的 OpenAI/Gemini/Anthropic/OpenRouter + Exa、Tavily、Brave、SearXNG） | 可用 |
@@ -386,11 +386,11 @@ Linux 的安装包在[发布页](https://github.com/runningpixels/conduit/releas
 | 使用电脑——智能体在你选定的文件夹里运行命令、修改文件，需经批准，带命令规则和权限标签页 | 可用，默认关闭；仅在 Windows 上把命令限制在该文件夹内 |
 | 个人应用——保存页面、九个入门应用、逐应用存储、设置、模型访问和用量上限 | 可用 |
 | 幻灯片——故事线、由版式部件搭建的一份实时演示文稿、依据数据绘制的图表、每次改动后的版式检查、脚本、历史记录、主题、演示者窗口 | 可用 |
-| 幻灯片导出——所有平台支持 HTML，Windows 支持 PDF | 可用 |
+| 幻灯片导出——所有平台支持 HTML 和 PowerPoint，Windows 支持 PDF | 可用 |
 | 新配置中的首次运行示例 | 可用 |
 | 首页与导航——输入框、待处理、工作流的最新动态、继续、区域磁贴、分组的导航栏、`Ctrl+1`…`9` | 可用 |
 | 八种语言的界面 | 可用 |
-| 更新/打包流水线，自动更新需主动开启 | 可用——1.0.0-rc.26 已在全部四个目标平台构建、签名并发布；更新已在真实的 Windows 安装上验证，macOS 和 Linux 上尚未验证 |
+| 更新/打包流水线，自动更新需主动开启 | 可用——1.0.0-rc.27 已在全部四个目标平台构建、签名并发布；更新已在真实的 Windows 安装上验证，macOS 和 Linux 上尚未验证 |
 | 操作系统代码签名 | 未完成——安装包未签名 |
 | 云同步 / 账号 | 本仓库不做规划 |
 

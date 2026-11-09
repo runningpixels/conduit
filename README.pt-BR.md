@@ -444,7 +444,7 @@ Veja o [`CHANGELOG.md`](./CHANGELOG.md) para tudo o que muda em cada versão.
 
 ## Situação
 
-**v1.0.0-rc.26 — versão candidata.** Os instaladores para Windows, macOS (Apple
+**v1.0.0-rc.27 — versão candidata.** Os instaladores para Windows, macOS (Apple
 silicon e Intel) e Linux estão na
 [página de versões](https://github.com/runningpixels/conduit/releases). Eles não
 são assinados no nível do sistema operacional, então a primeira execução exibe um
@@ -466,7 +466,7 @@ Esta é a versão candidata da 1.0: tudo o que está abaixo funciona, e o que fa
 | Skills (`SKILL.md`) e memória criptografada aprovada pelo usuário | Funcionando |
 | Fixar e arquivar conversas, e projetos (instruções, documentos, skills e pasta de trabalho compartilhados) | Funcionando |
 | Versões de resposta, tentar novamente com outro modelo, comparar respostas lado a lado | Funcionando |
-| Anexos de imagem e de documento (PDF, Word, Excel, texto, Markdown, CSV, HTML), Mermaid/KaTeX, exportação de conversas | Funcionando |
+| Anexos de imagem e de documento (PDF, Word, Excel, PowerPoint, texto, Markdown, CSV, HTML), Mermaid/KaTeX, exportação de conversas | Funcionando |
 | Planilhas — fórmulas, formatos e várias abas, editadas pedindo; exportação em .xlsx | Funcionando |
 | Uso e custo — cada chamada de modelo, preços de catálogo e listados com substituições, alerta de gasto diário | Funcionando |
 | Busca na web (OpenAI/Gemini/Anthropic/OpenRouter hospedados + Exa, Tavily, Brave, SearXNG) | Funcionando |
@@ -484,10 +484,10 @@ Esta é a versão candidata da 1.0: tudo o que está abaixo funciona, e o que fa
 | Apps pessoais — salvar uma página, nove apps iniciais, armazenamento por app, configurações, acesso ao modelo e limites de uso | Funcionando |
 | Exemplos de primeiro uso em um perfil novo | Funcionando |
 | Slides — narrativa, uma apresentação ao vivo montada com partes de layout, gráficos desenhados a partir de dados, uma verificação do layout após cada mudança, Roteiro, histórico, temas, janela do apresentador | Funcionando |
-| Exportação do Slides — HTML em todas as plataformas, PDF no Windows | Funcionando |
+| Exportação do Slides — HTML e PowerPoint em todas as plataformas, PDF no Windows | Funcionando |
 | Início e navegação — campo de pedido, precisa de você, novidades, continue de onde parou, blocos de áreas, barra agrupada, `Ctrl+1`…`9` | Funcionando |
 | Interface em oito idiomas | Funcionando |
-| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.26 foi compilada, assinada e publicada nos quatro alvos; a atualização foi verificada em uma instalação real do Windows, ainda não no macOS nem no Linux |
+| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.27 foi compilada, assinada e publicada nos quatro alvos; a atualização foi verificada em uma instalação real do Windows, ainda não no macOS nem no Linux |
 | Assinatura de código do SO | Não feita — os pacotes não são assinados |
 | Sincronização na nuvem / contas | Não planejado neste repositório |
 

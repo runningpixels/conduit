@@ -486,7 +486,7 @@ Voir [`CHANGELOG.md`](./CHANGELOG.md) pour le détail de chaque version.
 
 ## État
 
-**v1.0.0-rc.26 — version candidate.** Les installateurs pour Windows, macOS (Apple
+**v1.0.0-rc.27 — version candidate.** Les installateurs pour Windows, macOS (Apple
 silicon et Intel) et Linux se trouvent sur la
 [page des versions](https://github.com/runningpixels/conduit/releases). Ils ne
 sont pas signés au niveau du système, si bien que le premier lancement affiche
@@ -508,7 +508,7 @@ C'est la version candidate de la 1.0 : tout ce qui suit fonctionne, et il reste
 | Skills (`SKILL.md`) et mémoire chiffrée approuvée par l'utilisateur | Fonctionnel |
 | Épinglage, archivage et projets de conversations (instructions, documents, skills et dossier de travail partagés) | Fonctionnel |
 | Versions de réponse, nouvel essai avec un autre modèle, comparaison des réponses côte à côte | Fonctionnel |
-| Pièces jointes d'images et de documents (PDF, Word, Excel, texte, Markdown, CSV, HTML), Mermaid/KaTeX, export de conversation | Fonctionnel |
+| Pièces jointes d'images et de documents (PDF, Word, Excel, PowerPoint, texte, Markdown, CSV, HTML), Mermaid/KaTeX, export de conversation | Fonctionnel |
 | Tableurs — formules, formats et plusieurs feuilles, modifiés sur demande ; export en .xlsx | Fonctionnel |
 | Utilisation et coût — chaque appel de modèle, prix du catalogue et affichés avec valeurs personnalisées, alerte de dépenses quotidiennes | Fonctionnel |
 | Recherche web (OpenAI/Gemini/Anthropic/OpenRouter hébergée + Exa, Tavily, Brave, SearXNG) | Fonctionnel |
@@ -526,10 +526,10 @@ C'est la version candidate de la 1.0 : tout ce qui suit fonctionne, et il reste
 | Apps personnelles — enregistrer une page, neuf apps de départ, stockage par app, réglages, accès au modèle et limites d'utilisation | Fonctionnel |
 | Exemples au premier lancement dans un nouveau profil | Fonctionnel |
 | Présentations — trame, une présentation vivante composée de blocs de mise en page, graphiques tracés à partir de données, une vérification de la mise en page après chaque modification, Script, historique, thèmes, fenêtre de présentateur | Fonctionnel |
-| Export des présentations — HTML sur toutes les plateformes, PDF sous Windows | Fonctionnel |
+| Export des présentations — HTML et PowerPoint sur toutes les plateformes, PDF sous Windows | Fonctionnel |
 | Accueil et navigation — zone de saisie, À vous, résultats récents, reprise, tuiles des espaces, barre regroupée, `Ctrl+1`…`9` | Fonctionnel |
 | Interface en huit langues | Fonctionnel |
-| Chaîne de mise à jour et de packaging, avec mises à jour automatiques facultatives | Fonctionnel — la 1.0.0-rc.26 est compilée, signée et publiée sur les quatre cibles ; la mise à jour a été vérifiée sur une vraie installation Windows, pas encore sur macOS ni Linux |
+| Chaîne de mise à jour et de packaging, avec mises à jour automatiques facultatives | Fonctionnel — la 1.0.0-rc.27 est compilée, signée et publiée sur les quatre cibles ; la mise à jour a été vérifiée sur une vraie installation Windows, pas encore sur macOS ni Linux |
 | Signature de code au niveau du système | Non fait — les bundles ne sont pas signés |
 | Synchronisation cloud / comptes | Non prévu dans ce dépôt |
 

@@ -477,7 +477,7 @@ Siehe [`CHANGELOG.md`](./CHANGELOG.md) für alles, was in jeder Version enthalte
 
 ## Status
 
-**v1.0.0-rc.26 — Release Candidate.** Installationsprogramme für Windows, macOS (Apple
+**v1.0.0-rc.27 — Release Candidate.** Installationsprogramme für Windows, macOS (Apple
 Silicon und Intel) und Linux liegen auf der
 [Releases-Seite](https://github.com/runningpixels/conduit/releases). Sie sind
 nicht vom Betriebssystem signiert, daher zeigt der erste Start eine Gatekeeper-
@@ -499,7 +499,7 @@ gilt.
 | Skills (`SKILL.md`) und vom Nutzer freigegebene, verschlüsselte gespeicherte Fakten | Funktioniert |
 | Unterhaltungen anheften, archivieren und Projekte (gemeinsame Anweisungen, Dokumente, Skills, Arbeitsordner) | Funktioniert |
 | Antwortversionen, erneuter Versuch mit einem anderen Modell, Antworten nebeneinander vergleichen | Funktioniert |
-| Bild- und Dokumentanhänge (PDF, Word, Excel, Text, Markdown, CSV, HTML), Mermaid/KaTeX, Export von Unterhaltungen | Funktioniert |
+| Bild- und Dokumentanhänge (PDF, Word, Excel, PowerPoint, Text, Markdown, CSV, HTML), Mermaid/KaTeX, Export von Unterhaltungen | Funktioniert |
 | Tabellen — Formeln, Formate und mehrere Blätter, per Anfrage bearbeitet; Export als .xlsx | Funktioniert |
 | Nutzung & Kosten — jeder Modellaufruf, Katalog- und gelistete Preise mit Überschreibungen, tägliche Ausgabenwarnung | Funktioniert |
 | Websuche (gehostet bei OpenAI/Gemini/Anthropic/OpenRouter + Exa, Tavily, Brave, SearXNG) | Funktioniert |
@@ -517,10 +517,10 @@ gilt.
 | Persönliche Apps — eine Seite speichern, neun Starter-Apps, Speicher pro App, Einstellungen, Modellzugriff und Nutzungslimits | Funktioniert |
 | Erste Beispiele in einem neuen Profil | Funktioniert |
 | Folien — Handlungsbogen, eine lebendige Präsentation aus Layout-Bausteinen, aus Daten gezeichnete Diagramme, eine Layoutprüfung nach jeder Änderung, Skript, Verlauf, Designs, Referentenfenster | Funktioniert |
-| Folien-Export — HTML auf jeder Plattform, PDF unter Windows | Funktioniert |
+| Folien-Export — HTML und PowerPoint auf jeder Plattform, PDF unter Windows | Funktioniert |
 | Start und Navigation — Eingabefeld, Braucht dich, neue Ergebnisse, Weitermachen, Bereichskacheln, gruppierte Navigationsleiste, `Ctrl+1`…`9` | Funktioniert |
 | Oberfläche in acht Sprachen | Funktioniert |
-| Update-/Paketierungs-Pipeline, mit optionalen automatischen Updates | Funktioniert — 1.0.0-rc.26 für alle vier Ziele gebaut, signiert und veröffentlicht; das Update auf einer echten Windows-Installation geprüft, auf macOS und Linux noch nicht |
+| Update-/Paketierungs-Pipeline, mit optionalen automatischen Updates | Funktioniert — 1.0.0-rc.27 für alle vier Ziele gebaut, signiert und veröffentlicht; das Update auf einer echten Windows-Installation geprüft, auf macOS und Linux noch nicht |
 | Code-Signierung durch das Betriebssystem | Nicht erledigt — die Bundles sind unsigniert |
 | Cloud-Synchronisierung / Konten | In diesem Repository nicht geplant |
 

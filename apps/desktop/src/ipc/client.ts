@@ -3,6 +3,7 @@ import { invokeCommand, IpcError } from './errors';
 import type { BridgeErrorCode } from '../artifacts/pageBridge';
 import type { SpreadsheetExportResult, SpreadsheetView } from '../artifacts/spreadsheet/types';
 import type { RequestEventLog } from '../chat/streamState';
+import type { DeckSceneSlide } from '../slides/deckSceneBus';
 import type {
   AddLocalConnectorRequest,
   AddLocalConnectorResult,
@@ -635,12 +636,15 @@ export async function exportDeckPdf(
 
 /** Saves a deck as an editable PowerPoint file (built in Rust from the stored
  *  deck); resolves the saved path, or null on cancel. */
+/** `scenes`: what the deck frame measured on each slide (`deckSceneBus`), so the
+ *  file matches the app; null rebuilds every slide from its fields. */
 export async function exportDeckPptx(
   deckId: string,
   dialogTitle: string,
   filterName: string,
+  scenes: DeckSceneSlide[] | null = null,
 ): Promise<string | null> {
-  return invokeCommand<string | null>('export_deck_pptx', { deckId, dialogTitle, filterName });
+  return invokeCommand<string | null>('export_deck_pptx', { deckId, dialogTitle, filterName, scenes });
 }
 
 // =============================================================================

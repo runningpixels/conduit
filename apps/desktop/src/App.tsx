@@ -175,6 +175,7 @@ import { SlidesPage } from './pages/SlidesPage';
 import { DeckWorkspace } from './slides/DeckWorkspace';
 import type { DeckExportKind } from './slides/StudioHeader';
 import { buildDeckHtmlExport, buildDeckPrintHtml } from './slides/deckExport';
+import { captureDeckScene } from './slides/deckSceneBus';
 import { PresentationView } from './slides/PresentationView';
 import { STARTER_THEMES } from './slides/themes';
 import { DeckDock, type DockTab } from './slides/DeckDock';
@@ -1611,7 +1612,13 @@ export default function App() {
               )
             : kind === 'pdf'
               ? await exportDeckPdf(deck.id, buildDeckPrintHtml(deck), t('slides.export.pdfDialogTitle'), 'PDF')
-              : await exportDeckPptx(deck.id, t('slides.export.pptxDialogTitle'), 'PowerPoint');
+              : await exportDeckPptx(
+                  deck.id,
+                  t('slides.export.pptxDialogTitle'),
+                  'PowerPoint',
+                  // As drawn in the studio, so the file matches the app.
+                  await captureDeckScene(deck.id),
+                );
         if (saved === null) return;
         const name = saved.split(/[\\/]/).pop() ?? saved;
         setStatus(makeStatus(t('slides.export.saved', { name }), 'success'));

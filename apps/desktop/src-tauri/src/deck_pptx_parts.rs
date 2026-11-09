@@ -173,9 +173,13 @@ impl Theme {
             ink2: color("ink-2", if dark { "B8B4AD" } else { "4A4B5C" }),
             accent: color("accent", "4B4DED"),
             surface: color("surface", if dark { "171923" } else { "FFFFFF" }),
-            font_display: safe_font(css_token(css, "font-display").unwrap_or("sans-serif")),
-            font_body: safe_font(css_token(css, "font-body").unwrap_or("sans-serif")),
-            font_mono: safe_font(css_token(css, "font-mono").unwrap_or("monospace")),
+            font_display: face_for(
+                css_token(css, "font-display").unwrap_or("sans-serif"),
+                400.0,
+            )
+            .0,
+            font_body: face_for(css_token(css, "font-body").unwrap_or("sans-serif"), 400.0).0,
+            font_mono: face_for(css_token(css, "font-mono").unwrap_or("monospace"), 400.0).0,
             bg,
             ink,
             dark,
@@ -497,6 +501,11 @@ fn solid(color: &str, alpha: Option<u32>) -> String {
     }
 }
 
+/// Like `text_props`, bold (value labels).
+fn text_props_bold(t: &Theme, size_px: f64, color: &str) -> String {
+    text_props(t, size_px, color, None).replacen("<a:defRPr ", "<a:defRPr b=\"1\" ", 1)
+}
+
 fn text_props(t: &Theme, size_px: f64, color: &str, rot: Option<i64>) -> String {
     let rot = rot
         .map(|r| format!(" rot=\"{r}\" vert=\"horz\""))
@@ -584,11 +593,23 @@ pub fn chart_xml(data: &ChartData, t: &Theme) -> String {
         sers.push_str("</c:ser>");
     }
 
+    // Values above the columns, as on the slide, when there is room for them.
+    let value_labels = if data.kind == ChartKind::Column && n * data.series.len() <= 16 {
+        format!(
+            "<c:dLbls><c:numFmt formatCode=\"{}\" sourceLinked=\"0\"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>{}             <c:dLblPos val=\"outEnd\"/><c:showLegendKey val=\"0\"/><c:showVal val=\"1\"/><c:showCatName val=\"0\"/>             <c:showSerName val=\"0\"/><c:showPercent val=\"0\"/><c:showBubbleSize val=\"0\"/></c:dLbls>",
+            esc(&data.number_format),
+            text_props_bold(t, 26.0, &t.ink)
+        )
+    } else {
+        String::new()
+    };
     let plot = match data.kind {
         ChartKind::Column | ChartKind::Bars => format!(
             "<c:barChart><c:barDir val=\"{}\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>{sers}\
-             <c:gapWidth val=\"60\"/><c:axId val=\"500000001\"/><c:axId val=\"500000002\"/></c:barChart>",
-            if data.kind == ChartKind::Bars { "bar" } else { "col" }
+             {labels}<c:gapWidth val=\"43\"/>{overlap}<c:axId val=\"500000001\"/><c:axId val=\"500000002\"/></c:barChart>",
+            if data.kind == ChartKind::Bars { "bar" } else { "col" },
+            labels = value_labels,
+            overlap = if data.series.len() > 1 { "<c:overlap val=\"-8\"/>" } else { "" },
         ),
         ChartKind::Line => format!(
             "<c:lineChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>{sers}\
@@ -596,6 +617,29 @@ pub fn chart_xml(data: &ChartData, t: &Theme) -> String {
         ),
     };
     let horizontal = data.kind == ChartKind::Bars;
+    // The value axis the slide draws: from 0 for bars, the data's range for
+    // lines, with the same "nice" steps.
+    let values: Vec<f64> = data
+        .series
+        .iter()
+        .flat_map(|(_, v)| v.iter().copied())
+        .filter(|v| v.is_finite())
+        .collect();
+    let max = values.iter().copied().fold(f64::MIN, f64::max);
+    let min = values.iter().copied().fold(f64::MAX, f64::min);
+    let axis = if values.is_empty() {
+        None
+    } else if data.kind == ChartKind::Line {
+        Some(crate::slide_charts::range_axis(min, max))
+    } else {
+        Some(crate::slide_charts::zero_axis(max))
+    };
+    let scaling = axis.map_or(String::new(), |a| {
+        format!("<c:max val=\"{}\"/><c:min val=\"{}\"/>", a.max, a.min)
+    });
+    let major = axis.map_or(String::new(), |a| {
+        format!("<c:majorUnit val=\"{}\"/>", a.step)
+    });
     // A funnel reads top to bottom: the category axis runs max-to-min.
     let cat_orientation = if horizontal { "maxMin" } else { "minMax" };
     let (cat_pos, val_pos) = if horizontal { ("l", "b") } else { ("b", "l") };
@@ -623,8 +667,9 @@ pub fn chart_xml(data: &ChartData, t: &Theme) -> String {
         .unwrap_or_default();
     let legend = if data.series.len() > 1 {
         format!(
-            "<c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/>{}</c:legend>",
-            text_props(t, 28.0, &t.ink2, None)
+            // One row at the top right, as the slide draws it.
+            "<c:legend><c:legendPos val=\"t\"/><c:layout><c:manualLayout><c:xMode val=\"edge\"/><c:yMode val=\"edge\"/><c:x val=\"0.55\"/><c:y val=\"0\"/><c:w val=\"0.45\"/><c:h val=\"0.08\"/></c:manualLayout></c:layout><c:overlay val=\"0\"/>{}</c:legend>",
+            text_props(t, 26.0, &t.ink2, None).replacen("<a:pPr>", "<a:pPr algn=\"r\">", 1)
         )
     } else {
         String::new()
@@ -635,14 +680,14 @@ pub fn chart_xml(data: &ChartData, t: &Theme) -> String {
          <c:catAx><c:axId val=\"500000001\"/><c:scaling><c:orientation val=\"{cat_orientation}\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"{cat_pos}\"/>\
          <c:numFmt formatCode=\"General\" sourceLinked=\"0\"/><c:majorTickMark val=\"none\"/><c:minorTickMark val=\"none\"/><c:tickLblPos val=\"nextTo\"/>{axis_line}{cat_text}\
          <c:crossAx val=\"500000002\"/><c:crosses val=\"autoZero\"/><c:auto val=\"1\"/><c:lblAlgn val=\"ctr\"/><c:lblOffset val=\"100\"/><c:noMultiLvlLbl val=\"0\"/></c:catAx>\
-         <c:valAx><c:axId val=\"500000002\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"{val_pos}\"/>{grid}{val_title}\
+         <c:valAx><c:axId val=\"500000002\"/><c:scaling><c:orientation val=\"minMax\"/>{scaling}</c:scaling><c:delete val=\"0\"/><c:axPos val=\"{val_pos}\"/>{grid}{val_title}\
          <c:numFmt formatCode=\"{fmt}\" sourceLinked=\"0\"/><c:majorTickMark val=\"none\"/><c:minorTickMark val=\"none\"/><c:tickLblPos val=\"nextTo\"/>\
-         <c:spPr><a:ln><a:noFill/></a:ln></c:spPr>{val_text}<c:crossAx val=\"500000001\"/><c:crosses val=\"{crosses}\"/><c:crossBetween val=\"between\"/></c:valAx>\
+         <c:spPr><a:ln><a:noFill/></a:ln></c:spPr>{val_text}<c:crossAx val=\"500000001\"/><c:crosses val=\"{crosses}\"/><c:crossBetween val=\"between\"/>{major}</c:valAx>\
          <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>{legend}<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart>\
          <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>{root_text}\
          <c:externalData r:id=\"rId1\"><c:autoUpdate val=\"0\"/></c:externalData></c:chartSpace>",
         cat_text = text_props(t, 28.0, &t.ink2, None),
-        val_text = text_props(t, 28.0, &t.ink2, None),
+        val_text = text_props(t, 26.0, &t.ink2, None),
         root_text = text_props(t, 28.0, &t.ink2, None),
         fmt = esc(&data.number_format),
         // With the category axis reversed, the value axis would cross at the top.
@@ -717,6 +762,181 @@ fn fonts() -> Arc<resvg::usvg::fontdb::Database> {
     .clone()
 }
 
+/// Every installed font family name, lowercased.
+fn installed_families() -> &'static std::collections::HashSet<String> {
+    static NAMES: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    NAMES.get_or_init(|| {
+        fonts()
+            .faces()
+            .flat_map(|f| f.families.iter().map(|(name, _)| name.to_lowercase()))
+            .collect()
+    })
+}
+
+/// Whether Office will find `name`. A variable font is one family here
+/// ("Segoe UI Variable") but several to Office, one per named instance
+/// ("Segoe UI Variable Display", "... Display Semib"), so a name that extends
+/// an installed family's name by whole words counts too.
+fn is_installed(name: &str) -> bool {
+    installed_families().contains(&name.to_lowercase()) || is_instance(name)
+}
+
+/// `name` extends an installed family's name by whole words (a variable
+/// font's named instance), and isn't itself a family here.
+fn is_instance(name: &str) -> bool {
+    let name = name.to_lowercase();
+    let names = installed_families();
+    !names.contains(&name)
+        && name
+            .match_indices(' ')
+            .any(|(at, _)| at >= 8 && names.contains(&name[..at]))
+}
+
+/// The family PowerPoint should use for a CSS `font-family` stack drawn at
+/// `weight`, and whether to set bold. The first family installed here wins,
+/// as in the browser; a weight between regular and bold picks the family's
+/// "Semibold" or "Light" face when one is installed (Office names a face by
+/// its family, cut to 31 characters). Generic names map to a system face.
+pub fn face_for(stack: &str, weight: f64) -> (String, bool) {
+    let names: Vec<String> = stack
+        .split(',')
+        .map(|n| n.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
+        .filter(|n| !n.is_empty())
+        .collect();
+    let generic = |n: &str| {
+        matches!(
+            n.to_ascii_lowercase().as_str(),
+            "serif"
+                | "sans-serif"
+                | "monospace"
+                | "cursive"
+                | "fantasy"
+                | "system-ui"
+                | "ui-sans-serif"
+                | "ui-serif"
+                | "ui-monospace"
+                | "ui-rounded"
+                | "-apple-system"
+                | "blinkmacsystemfont"
+                | "math"
+                | "emoji"
+        )
+    };
+    let family = names
+        .iter()
+        .find(|n| !generic(n) && is_installed(n))
+        .cloned()
+        .or_else(|| {
+            names.iter().find(|n| generic(n)).map(|g| {
+                let g = g.to_ascii_lowercase();
+                let pick: &[&str] = if g.contains("mono") {
+                    &["Cascadia Mono", "Consolas", "Menlo", "Courier New"]
+                } else if g.contains("serif") && !g.contains("sans") {
+                    &["Georgia", "Times New Roman"]
+                } else {
+                    &["Segoe UI", "Helvetica Neue", "Arial"]
+                };
+                pick.iter()
+                    .find(|p| is_installed(p))
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| safe_font(stack))
+            })
+        })
+        .unwrap_or_else(|| safe_font(stack));
+    // A static family has its weights as separate families here ("Segoe UI
+    // Semibold"). A variable font's weights are named instances that
+    // PowerPoint doesn't resolve by name, so those use the bold flag.
+    let variant = |suffix: &str| {
+        let name: String = format!("{family} {suffix}").chars().take(31).collect();
+        installed_families()
+            .contains(&name.to_lowercase())
+            .then_some(name)
+    };
+    if weight >= 670.0 {
+        (family, true)
+    } else if weight >= 560.0 {
+        variant("Semibold")
+            .or_else(|| variant("SemiBold"))
+            .map(|n| (n, false))
+            .unwrap_or((family, true))
+    } else if weight <= 340.0 {
+        variant("Light")
+            .map(|n| (n, false))
+            .unwrap_or((family, false))
+    } else {
+        (family, false)
+    }
+}
+
+/// The (ascent, descent) in ems a browser uses for the first installed font
+/// of a CSS stack: the OS/2 table's Windows metrics, else hhea. Used to put
+/// text's first baseline where the browser drew it. Falls back to Segoe UI's.
+pub fn vertical_metrics(stack: &str) -> (f64, f64) {
+    const DEFAULT: (f64, f64) = (1.079, 0.251);
+    use resvg::usvg::fontdb::{Family, Query};
+    let db = fonts();
+    let names: Vec<String> = stack
+        .split(',')
+        .map(|n| n.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
+        .filter(|n| !n.is_empty())
+        .collect();
+    for name in &names {
+        // A variable font's instance name ("Segoe UI Variable Display") is
+        // its family here with words dropped from the end.
+        let words: Vec<&str> = name.split(' ').collect();
+        for end in (1..=words.len()).rev() {
+            let family = words[..end].join(" ");
+            let query = Query {
+                families: &[Family::Name(&family)],
+                ..Query::default()
+            };
+            if let Some(id) = db.query(&query) {
+                if let Some(Some(m)) = db.with_face_data(id, font_metrics) {
+                    return m;
+                }
+            }
+        }
+    }
+    DEFAULT
+}
+
+/// Ascent and descent in ems from a font file (or one face of a collection).
+fn font_metrics(data: &[u8], index: u32) -> Option<(f64, f64)> {
+    let u16_at = |at: usize| {
+        data.get(at..at + 2)
+            .map(|b| u16::from_be_bytes([b[0], b[1]]))
+    };
+    let u32_at = |at: usize| {
+        data.get(at..at + 4)
+            .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let mut base = 0usize;
+    if data.get(0..4) == Some(b"ttcf") {
+        base = u32_at(12 + 4 * index as usize)? as usize;
+    }
+    let tables = u16_at(base + 4)? as usize;
+    let find = |tag: &[u8; 4]| {
+        (0..tables).find_map(|i| {
+            let rec = base + 12 + 16 * i;
+            (data.get(rec..rec + 4)? == tag).then(|| u32_at(rec + 8).map(|o| o as usize))?
+        })
+    };
+    let em = u16_at(find(b"head")? + 18)? as f64;
+    if em <= 0.0 {
+        return None;
+    }
+    if let Some(os2) = find(b"OS/2") {
+        let (asc, desc) = (u16_at(os2 + 74)? as f64, u16_at(os2 + 76)? as f64);
+        if asc > 0.0 {
+            return Some((asc / em, desc / em));
+        }
+    }
+    let hhea = find(b"hhea")?;
+    let asc = u16_at(hhea + 4)? as i16 as f64;
+    let desc = u16_at(hhea + 6)? as i16 as f64;
+    Some((asc / em, -desc / em))
+}
+
 /// A standalone svg drawn as a PNG `width` pixels wide, for viewers that
 /// don't read the SVG.
 pub fn svg_to_png(svg: &str, width: u32) -> Result<Vec<u8>, String> {
@@ -758,19 +978,18 @@ mod tests {
             ("0C0D12", "F4F1EC", "FF7A59")
         );
         assert_eq!(t.ink2, "F4F1EC");
-        assert_eq!(
-            (
-                t.font_display.as_str(),
-                t.font_body.as_str(),
-                t.font_mono.as_str()
-            ),
-            ("Calibri", "Georgia", "Consolas")
-        );
+        // Fonts are the first installed family of each stack, so they vary
+        // by machine; never empty.
+        assert!(!t.font_display.is_empty() && !t.font_body.is_empty() && !t.font_mono.is_empty());
         let paper = Theme::from_css(
             "--bg: #f7f4ec; --ink: #1b1c2b; --font-display: Georgia, \"Iowan Old Style\", serif;",
         );
         assert!(!paper.dark);
-        assert_eq!(paper.font_display, "Georgia");
+        assert!(
+            ["Georgia", "Times New Roman"].contains(&paper.font_display.as_str()),
+            "{}",
+            paper.font_display
+        );
     }
 
     #[test]
@@ -790,7 +1009,10 @@ mod tests {
         );
         assert!(svg.contains("fill:#4B4DED"), "{svg}");
         assert!(svg.contains("fill:#123456"), "{svg}");
-        assert!(svg.contains("font-family:'Calibri'"), "{svg}");
+        assert!(
+            svg.contains(&format!("font-family:'{}'", t.font_body)),
+            "{svg}"
+        );
         assert!(
             svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\""),
             "{svg}"

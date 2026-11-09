@@ -23,16 +23,23 @@ use crate::deck_pptx_parts::{
     self as parts, emu, esc, hundredths, ChartData, Theme, NS_A, NS_P, NS_R, REL, SLIDE_H, SLIDE_W,
     XML_DECL,
 };
+use crate::deck_pptx_scene::SlideScene;
 use crate::slide_charts;
 use crate::slide_html::{self, TokKind};
 use crate::slide_layouts::{self, Layout, SlideFields};
 
-/// The .pptx bytes for `deck`.
-pub fn build(deck: &DeckDetail) -> Result<Vec<u8>, String> {
+/// The .pptx bytes for `deck`. A slide with a scene (what the deck frame
+/// measured on the drawn slide, `deck_pptx_scene`) is placed exactly as
+/// drawn; a slide without one is rebuilt from its fields.
+pub fn build(deck: &DeckDetail, scenes: Option<&[SlideScene]>) -> Result<Vec<u8>, String> {
+    if let Some(scenes) = scenes {
+        crate::deck_pptx_scene::validate(scenes)?;
+    }
     let theme = Theme::from_css(&deck.theme_css);
     let mut package = Package::default();
     for (i, slide) in deck.slides.iter().enumerate() {
-        package.add_slide(i + 1, slide, &theme)?;
+        let scene = scenes.and_then(|list| list.iter().find(|s| s.id == slide.id));
+        package.add_slide(i + 1, slide, &theme, scene)?;
     }
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     package
@@ -303,7 +310,7 @@ struct TextBlock {
 
 /// The script a run is in, for its language tag: CJK text needs one so
 /// PowerPoint picks the theme's face for that script.
-fn run_lang(text: &str) -> Option<&'static str> {
+pub(crate) fn run_lang(text: &str) -> Option<&'static str> {
     let mut han = false;
     for c in text.chars() {
         match c as u32 {
@@ -492,7 +499,7 @@ fn bullets(items: &[String]) -> Vec<Para> {
 // ---------------------------------------------------------------------------
 
 /// What one slide refers to outside its own XML.
-enum Media {
+pub(crate) enum Media {
     Chart(ChartData),
     /// A standalone svg and its PNG fallback.
     Picture {
@@ -501,12 +508,14 @@ enum Media {
     },
 }
 
-struct Canvas<'t> {
-    theme: &'t Theme,
+pub(crate) struct Canvas<'t> {
+    pub(crate) theme: &'t Theme,
     shapes: String,
     next_id: u32,
     media: Vec<Media>,
     has_title: bool,
+    /// The slide's own `<p:bg>`, when it differs from the master's.
+    bg: Option<String>,
 }
 
 impl<'t> Canvas<'t> {
@@ -517,6 +526,7 @@ impl<'t> Canvas<'t> {
             next_id: 2,
             media: Vec::new(),
             has_title: false,
+            bg: None,
         }
     }
 
@@ -530,6 +540,23 @@ impl<'t> Canvas<'t> {
     /// placeholder (the slide's name in PowerPoint's outline and for screen
     /// readers).
     fn text(&mut self, name: &str, x: f64, y: f64, w: f64, block: &TextBlock, title: bool) {
+        // A little extra height: PowerPoint's line boxes run taller than CSS's.
+        let h = (block.height * 1.06).max(1.0);
+        self.text_box(name, x, y, w, h, &block.xml, title);
+    }
+
+    /// A text box holding `paras` (`<a:p>` elements) at an exact box.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn text_box(
+        &mut self,
+        name: &str,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        paras: &str,
+        title: bool,
+    ) {
         let id = self.id();
         let title = title && !self.has_title;
         self.has_title |= title;
@@ -543,14 +570,19 @@ impl<'t> Canvas<'t> {
                 esc(name)
             )
         };
-        // A little extra height: PowerPoint's line boxes run taller than CSS's.
-        let h = (block.height * 1.06).max(1.0);
         self.shapes.push_str(&format!(
             "<p:sp>{nv}<p:spPr>{}<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>\
              <p:txBody><a:bodyPr wrap=\"square\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" anchor=\"t\" rtlCol=\"0\"><a:noAutofit/></a:bodyPr><a:lstStyle/>{}</p:txBody></p:sp>",
             xfrm(x, y, w, h),
-            block.xml
+            paras
         ));
+    }
+
+    /// A shape's XML (`<p:sp>` and the like) as is; `id` gives it a number.
+    pub(crate) fn raw(&mut self, xml: impl FnOnce(u32) -> String) {
+        let id = self.id();
+        let xml = xml(id);
+        self.shapes.push_str(&xml);
     }
 
     /// A filled (optionally rounded) rectangle: an accent bar or a card.
@@ -571,7 +603,7 @@ impl<'t> Canvas<'t> {
     }
 
     /// A native chart filling the box.
-    fn chart(&mut self, data: ChartData, x: f64, y: f64, w: f64, h: f64) {
+    pub(crate) fn chart(&mut self, data: ChartData, x: f64, y: f64, w: f64, h: f64) {
         let id = self.id();
         self.media.push(Media::Chart(data));
         let rid = media_rid(self.media.len());
@@ -584,6 +616,44 @@ impl<'t> Canvas<'t> {
             emu(w),
             emu(h),
             c = parts::NS_C
+        ));
+    }
+
+    /// A standalone svg as a picture filling the box exactly. Returns false
+    /// when it can't be drawn.
+    pub(crate) fn picture_exact(&mut self, svg: &str, x: f64, y: f64, w: f64, h: f64) -> bool {
+        let svg = parts::standalone_svg(svg, self.theme);
+        let Ok(png) = parts::svg_to_png(&svg, w.round().clamp(1.0, 3840.0) as u32) else {
+            return false;
+        };
+        let id = self.id();
+        self.media.push(Media::Picture { svg, png });
+        self.shapes
+            .push_str(&picture_xml(id, self.media.len(), x, y, w, h));
+        true
+    }
+
+    /// A standalone svg as the slide's background picture.
+    pub(crate) fn background_picture(&mut self, svg: &str) -> bool {
+        let svg = parts::standalone_svg(svg, self.theme);
+        let Ok(png) = parts::svg_to_png(&svg, SLIDE_W as u32) else {
+            return false;
+        };
+        self.media.push(Media::Picture { svg, png });
+        let n = self.media.len();
+        self.bg = Some(format!(
+            "<p:bg><p:bgPr><a:blipFill dpi=\"0\" rotWithShape=\"1\"><a:blip r:embed=\"{}\">{}</a:blip><a:srcRect/>\
+             <a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst/></p:bgPr></p:bg>",
+            media_rid(n),
+            svg_ext(n)
+        ));
+        true
+    }
+
+    /// A solid slide background (`RRGGBB`).
+    pub(crate) fn background_color(&mut self, color: &str) {
+        self.bg = Some(format!(
+            "<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"{color}\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>"
         ));
     }
 
@@ -603,30 +673,49 @@ impl<'t> Canvas<'t> {
         let id = self.id();
         self.media.push(Media::Picture { svg, png });
         let n = self.media.len();
-        self.shapes.push_str(&format!(
-            "<p:pic><p:nvPicPr><p:cNvPr id=\"{id}\" name=\"Picture {id}\"/><p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>\
-             <p:blipFill><a:blip r:embed=\"{png}\"><a:extLst><a:ext uri=\"{{96DAC541-7B7A-43D3-8B79-37D633B846F1}}\">\
-             <asvg:svgBlip xmlns:asvg=\"http://schemas.microsoft.com/office/drawing/2016/SVG/main\" r:embed=\"{svg_rid}\"/></a:ext></a:extLst></a:blip>\
-             <a:stretch><a:fillRect/></a:stretch></p:blipFill>\
-             <p:spPr>{}<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>",
-            xfrm(x + (w - pw) / 2.0, y + (h - ph) / 2.0, pw, ph),
-            png = media_rid(n),
-            svg_rid = svg_rid(n),
+        self.shapes.push_str(&picture_xml(
+            id,
+            n,
+            x + (w - pw) / 2.0,
+            y + (h - ph) / 2.0,
+            pw,
+            ph,
         ));
         true
     }
 }
 
+/// The SVG part of picture `n`, as a blip extension.
+fn svg_ext(n: usize) -> String {
+    format!(
+        "<a:extLst><a:ext uri=\"{{96DAC541-7B7A-43D3-8B79-37D633B846F1}}\">\
+         <asvg:svgBlip xmlns:asvg=\"http://schemas.microsoft.com/office/drawing/2016/SVG/main\" r:embed=\"{}\"/></a:ext></a:extLst>",
+        svg_rid(n)
+    )
+}
+
+/// `<p:pic>` for picture `n` of the slide.
+fn picture_xml(id: u32, n: usize, x: f64, y: f64, w: f64, h: f64) -> String {
+    format!(
+        "<p:pic><p:nvPicPr><p:cNvPr id=\"{id}\" name=\"Picture {id}\"/><p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>\
+         <p:blipFill><a:blip r:embed=\"{}\">{}</a:blip><a:stretch><a:fillRect/></a:stretch></p:blipFill>\
+         <p:spPr>{}<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>",
+        media_rid(n),
+        svg_ext(n),
+        xfrm(x, y, w, h)
+    )
+}
+
 /// Relationship ids inside a slide: rId1 is the layout, rId2 the notes,
-/// media from rId10 (an svg picture's SVG part at rId110+).
+/// media from rId10 (an svg picture's SVG part at rId5001+).
 fn media_rid(n: usize) -> String {
     format!("rId{}", 9 + n)
 }
 fn svg_rid(n: usize) -> String {
-    format!("rId{}", 109 + n)
+    format!("rId{}", 5000 + n)
 }
 
-fn xfrm(x: f64, y: f64, w: f64, h: f64) -> String {
+pub(crate) fn xfrm(x: f64, y: f64, w: f64, h: f64) -> String {
     format!(
         "<a:xfrm><a:off x=\"{}\" y=\"{}\"/><a:ext cx=\"{}\" cy=\"{}\"/></a:xfrm>",
         emu(x),
@@ -1130,7 +1219,8 @@ fn draw_fallback(canvas: &mut Canvas<'_>, html: &str) {
 fn slide_xml(canvas: &Canvas<'_>) -> String {
     format!(
         "{XML_DECL}<p:sld xmlns:a=\"{NS_A}\" xmlns:r=\"{NS_R}\" xmlns:p=\"{NS_P}\">\
-         <p:cSld><p:spTree>{}{}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>",
+         <p:cSld>{}<p:spTree>{}{}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>",
+        canvas.bg.as_deref().unwrap_or(""),
         parts::group_props(),
         canvas.shapes
     )
@@ -1172,14 +1262,21 @@ impl Package {
         self.files.push((path.into(), body.into()));
     }
 
-    fn add_slide(&mut self, n: usize, slide: &DeckSlide, theme: &Theme) -> Result<(), String> {
+    fn add_slide(
+        &mut self,
+        n: usize,
+        slide: &DeckSlide,
+        theme: &Theme,
+        scene: Option<&SlideScene>,
+    ) -> Result<(), String> {
         let mut canvas = Canvas::new(theme);
         let typed = Layout::parse(&slide.layout)
             .filter(|l| *l != Layout::Custom)
             .and_then(|l| slide_layouts::reconstruct(&slide.layout, &slide.html).map(|f| (l, f)));
-        match typed {
-            Some((layout, fields)) => draw_typed(&mut canvas, layout, &fields),
-            None => draw_fallback(&mut canvas, &slide.html),
+        match (scene, typed) {
+            (Some(scene), _) => crate::deck_pptx_scene::draw(&mut canvas, scene, &slide.html),
+            (None, Some((layout, fields))) => draw_typed(&mut canvas, layout, &fields),
+            (None, None) => draw_fallback(&mut canvas, &slide.html),
         }
         self.slides = n;
 
@@ -1588,7 +1685,7 @@ mod tests {
                 notes: String::new(), slots: Vec::new(),
             },
         ];
-        let bytes = build(&deck(slides)).unwrap();
+        let bytes = build(&deck(slides), None).unwrap();
         let files = files(&bytes);
 
         // Every XML part parses.
@@ -1677,7 +1774,7 @@ mod tests {
             notes: String::new(),
             slots: Vec::new(),
         };
-        let files = files(&build(&deck(vec![s])).unwrap());
+        let files = files(&build(&deck(vec![s]), None).unwrap());
         let xml = &files["ppt/slides/slide1.xml"];
         assert!(xml.contains(">Hand edited</a:t>") && xml.contains("One"));
     }

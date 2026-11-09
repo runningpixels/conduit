@@ -209,7 +209,7 @@ describe('SettingsSheet', () => {
     renderSheet();
     const group = (name: string) =>
       Array.from(screen.getByRole('group', { name }).querySelectorAll('button')).map((b) => b.textContent);
-    expect(group('Models')).toEqual(['Providers & keys', 'Chat defaults', 'Web search', 'Usage & cost']);
+    expect(group('Models')).toEqual(['Providers & keys', 'Chat defaults', 'Web search', 'Voice', 'Usage & cost']);
     expect(group('Assistant')).toEqual(['Workspace', 'Computer', 'Connectors', 'Prompts', 'Skills', 'Memory', 'Knowledge']);
     expect(group('App')).toEqual(expect.arrayContaining(['Appearance', 'Privacy & data', 'Updates', 'About']));
   });

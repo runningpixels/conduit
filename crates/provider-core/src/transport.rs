@@ -264,3 +264,64 @@ pub async fn post_json(
 
     response.json().await.map_err(|e| fatal(e.to_string()))
 }
+
+/// One file sent in a multipart form.
+pub struct MultipartFile {
+    /// The form field the file goes in (`file` for OpenAI-style uploads).
+    pub field: &'static str,
+    pub file_name: String,
+    pub mime: &'static str,
+    pub bytes: Vec<u8>,
+}
+
+/// POSTs a `multipart/form-data` body (text fields plus one file) and decodes a
+/// JSON response. Retried like `post_json`. The JSON content type that the
+/// shared header helpers set is dropped so reqwest can write the multipart
+/// boundary. The timeout is longer than `post_json`'s because the upload is
+/// audio, and the provider works through all of it before answering.
+pub async fn post_multipart(
+    http: &HttpClient,
+    url: &str,
+    mut headers: HeaderMap,
+    fields: Vec<(&'static str, String)>,
+    file: MultipartFile,
+    cancel: CancellationToken,
+) -> Result<serde_json::Value, ProviderError> {
+    headers.remove(CONTENT_TYPE);
+    let url_owned = url.to_string();
+    let response = crate::retry::with_retry(cancel.clone(), || {
+        let client = http.client.clone();
+        let url = url_owned.clone();
+        let headers = headers.clone();
+        let fields = fields.clone();
+        let part = reqwest::multipart::Part::bytes(file.bytes.clone())
+            .file_name(file.file_name.clone())
+            .mime_str(file.mime);
+        let field = file.field;
+        async move {
+            let part = part.map_err(|e| fatal(e.to_string()))?;
+            let mut form = reqwest::multipart::Form::new();
+            for (name, value) in fields {
+                form = form.text(name, value);
+            }
+            form = form.part(field, part);
+            let resp = client
+                .post(&url)
+                .headers(headers)
+                .multipart(form)
+                .timeout(Duration::from_secs(90))
+                .send()
+                .await
+                .map_err(classify_send_error)?;
+            let status = resp.status().as_u16();
+            if status >= 400 {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(from_http_status(status, &body));
+            }
+            Ok(resp)
+        }
+    })
+    .await?;
+
+    response.json().await.map_err(|e| fatal(e.to_string()))
+}

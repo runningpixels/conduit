@@ -338,3 +338,43 @@ async fn an_invalid_quick_ask_shortcut_is_refused_and_not_saved() {
         Some("Alt+Q")
     );
 }
+
+#[tokio::test]
+async fn the_dictation_provider_starts_automatic_and_takes_only_transcribers() {
+    let (_dir, state) = fresh_state().await;
+    let settings = state.settings().unwrap();
+    assert_eq!(settings.dictation_provider, None);
+    assert_eq!(
+        settings.dictation_button, None,
+        "the microphone shows by default"
+    );
+
+    let saved = state
+        .update_settings(shortcut_patch(r#"{"dictationProvider":" Groq "}"#))
+        .unwrap();
+    assert_eq!(saved.dictation_provider.as_deref(), Some("groq"));
+
+    // Anthropic can't transcribe: refused, and the choice stays.
+    assert!(state
+        .update_settings(shortcut_patch(r#"{"dictationProvider":"anthropic"}"#))
+        .is_err());
+    assert_eq!(
+        state.settings().unwrap().dictation_provider.as_deref(),
+        Some("groq")
+    );
+
+    // A whole-settings save carries it; null returns to automatic.
+    let whole = serde_json::to_string(&state.settings().unwrap()).unwrap();
+    state.update_settings(shortcut_patch(&whole)).unwrap();
+    assert_eq!(
+        state.settings().unwrap().dictation_provider.as_deref(),
+        Some("groq")
+    );
+    let cleared = state
+        .update_settings(shortcut_patch(
+            r#"{"dictationProvider":null,"dictationButton":false}"#,
+        ))
+        .unwrap();
+    assert_eq!(cleared.dictation_provider, None);
+    assert_eq!(cleared.dictation_button, Some(false));
+}

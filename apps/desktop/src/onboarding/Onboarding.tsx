@@ -23,6 +23,7 @@ import { BrandMark } from '../icons';
 import { useFormatters } from '../i18n/formatters';
 import { useAutoSave } from '../workspace/settings/useAutoSave';
 import { AppearanceStep } from './AppearanceStep';
+import { TRANSCRIPTION_PROVIDER_IDS } from '../lib/dictation';
 import { PrivacyStep } from './PrivacyStep';
 import type { Idea } from '../ideas/catalog';
 import { resolveCapabilities } from '../ideas/capabilities';
@@ -237,6 +238,13 @@ export function Onboarding({
                 UI having already told the user it was handled. */}
             <ProviderPicker settings={settings} onSettingsChange={saveProviderStep} onStatus={onStatus} />
             <p className="onboarding-hint">{t('onboarding.provider.hint')}</p>
+            {/* Voice typing needs a provider that can transcribe. One line, not a
+                step: most first keys can't, and it can be set up later. */}
+            <p className="onboarding-hint" data-testid="onboarding-dictation-hint">
+              {TRANSCRIPTION_PROVIDER_IDS.includes(settings.activeProvider)
+                ? t('onboarding.provider.dictationIncluded')
+                : t('onboarding.provider.dictationLater')}
+            </p>
           </section>
         )}
 

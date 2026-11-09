@@ -41,7 +41,7 @@ jobs:
       - name: Install Tauri system dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y             libwebkit2gtk-4.1-dev             libgtk-3-dev             libayatana-appindicator3-dev             librsvg2-dev             patchelf             build-essential             libssl-dev
+          sudo apt-get install -y             libwebkit2gtk-4.1-dev             libgtk-3-dev             libayatana-appindicator3-dev             librsvg2-dev             patchelf             build-essential             libssl-dev             libasound2-dev
 
       - name: Install Rust toolchain
         run: |
@@ -161,7 +161,8 @@ jobs:
             librsvg2-dev \
             patchelf \
             build-essential \
-            libssl-dev
+            libssl-dev \
+            libasound2-dev
 
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile

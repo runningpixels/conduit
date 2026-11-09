@@ -495,7 +495,7 @@ export function WebSearchSection({ settings, onUpdate, onStatus }: WebSearchSect
 }
 
 /** A button that opens a page in the system browser (validated in Rust). */
-function ExternalLinkButton({
+export function ExternalLinkButton({
   url,
   onStatus,
   children,

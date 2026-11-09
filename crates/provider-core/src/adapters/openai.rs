@@ -1835,6 +1835,37 @@ impl ProviderAdapter for OpenAiAdapter {
         )
     }
 
+    /// `POST {base}/audio/transcriptions` as multipart: `file`, `model` and an
+    /// optional `language`. The presets that support it (OpenRouter, Groq)
+    /// delegate here, so they send their own headers and base URL.
+    async fn transcribe_audio(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+        ctx: &AdapterContext,
+    ) -> Result<String, ProviderError> {
+        let headers = self.request_headers(ctx)?;
+        let mut fields = vec![("model", request.model_id.clone())];
+        if let Some(language) = request.language.filter(|l| !l.trim().is_empty()) {
+            fields.push(("language", language));
+        }
+        let file = crate::transport::MultipartFile {
+            field: "file",
+            file_name: format!("dictation.{}", request.format),
+            mime: crate::transcription::audio_mime(request.format),
+            bytes: request.audio,
+        };
+        let response = crate::transport::post_multipart(
+            &ctx.http,
+            &format!("{}/audio/transcriptions", base_url(self, ctx)),
+            headers,
+            fields,
+            file,
+            CancellationToken::new(),
+        )
+        .await?;
+        crate::transcription::parse_transcription_response(self.provider_id, &response)
+    }
+
     async fn stream_chat(
         &self,
         mut request: ProviderRequest,

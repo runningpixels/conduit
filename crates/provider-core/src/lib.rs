@@ -16,6 +16,7 @@ pub mod output_limits;
 pub mod pricing;
 pub mod retry;
 pub mod schema;
+pub mod transcription;
 pub mod transport;
 pub mod vision;
 
@@ -28,6 +29,9 @@ pub use embeddings::{default_embedding_dimensions, default_embedding_model};
 pub use image_generation::{default_image_model, model_generates_images};
 pub use normalize::{validate, NormalizedRequest};
 pub use schema::*;
+pub use transcription::{
+    default_transcription_model, pick_transcription_provider, TranscriptionRequest,
+};
 pub use vision::{model_accepts_images, model_accepts_pdf};
 
 pub fn crate_name() -> &'static str {

@@ -1200,6 +1200,54 @@
 .composer-tool:focus-visible { border-radius: var(--r-pill); }
 .composer-tool[data-icon-only="true"] { width: 28px; padding: 0; justify-content: center; }
 
+/* Dictation: the mic beside the model picker. Recording, it widens to show
+ * Stop and the clock, and a ring grows with the input level so the user can
+ * see the microphone hears them. */
+.composer-dictation { position: relative; display: inline-flex; align-items: center; }
+.composer-dictation-button[data-phase="recording"] {
+  width: auto;
+  padding: 0 9px 0 7px;
+  gap: 5px;
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+  /* A level meter, not an elevation: grows up to 4px with the input level. */
+  --dictation-ring: calc(var(--dictation-level, 0) * 4px);
+  box-shadow: 0 0 0 var(--dictation-ring) var(--accent-line);
+  transition: box-shadow var(--duration-instant) linear;
+}
+.composer-dictation-button[data-phase="recording"] svg { width: 11px; height: 11px; }
+.composer-dictation-clock { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.composer-dictation-button[data-blocked="true"] { color: var(--ink-3); border-style: dashed; }
+.composer-dictation-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--r-round);
+  animation: dictation-spin .8s linear infinite;
+}
+@keyframes dictation-spin { to { transform: rotate(360deg); } }
+.composer-dictation-error {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: min(320px, 70vw);
+  padding: 6px 10px;
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r-sm);
+  background: var(--card-hi);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  white-space: normal;
+  z-index: 5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-dictation-spinner { animation-duration: 2.4s; }
+  .composer-dictation-button[data-phase="recording"] { transition: none; }
+}
+
 /* New chat only: a few ways in, centred under the composer. */
 .composer-starters {
   display: flex;

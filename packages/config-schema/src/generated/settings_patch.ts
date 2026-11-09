@@ -97,4 +97,9 @@ dailySpendAlertUsd?: number | null,
  * Set or clear the quick-ask shortcut. `Some(None)` — a JSON `null` —
  * turns it off; a value needs a modifier and one other key.
  */
-quickAskShortcut?: string | null, };
+quickAskShortcut?: string | null, 
+/**
+ * Set or clear the dictation provider. `Some(None)` — a JSON `null` —
+ * returns to automatic; a value must be a provider that can transcribe.
+ */
+dictationProvider?: string | null, dictationButton?: boolean, };

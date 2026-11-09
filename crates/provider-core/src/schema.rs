@@ -3457,6 +3457,19 @@ pub struct AppSettings {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub quick_ask_shortcut: Option<String>,
+    /// The provider dictation sends recordings to (`openai`, `openrouter` or
+    /// `groq`). `None` — the default, and what every settings file written
+    /// before this field reads as — means automatic: the active provider when
+    /// it can transcribe, else the first of those with a saved key.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub dictation_provider: Option<String>,
+    /// Whether the composer shows the microphone button. `None` — the
+    /// default, and what every settings file written before this field reads
+    /// as — is shown; `Some(false)` hides it and changes nothing else.
+    #[serde(default)]
+    #[ts(optional)]
+    pub dictation_button: Option<bool>,
 }
 
 /// The largest daily spend alert accepted, in US dollars. A typo guard (an
@@ -3540,6 +3553,8 @@ impl Default for AppSettings {
             accent: AccentOverride::default(),
             daily_spend_alert_usd: None,
             quick_ask_shortcut: None,
+            dictation_provider: None,
+            dictation_button: None,
         }
     }
 }
@@ -3676,6 +3691,13 @@ pub struct SettingsPatch {
     #[ts(optional)]
     #[serde(default, deserialize_with = "clearable")]
     pub quick_ask_shortcut: Option<Option<String>>,
+    /// Set or clear the dictation provider. `Some(None)` — a JSON `null` —
+    /// returns to automatic; a value must be a provider that can transcribe.
+    #[ts(optional)]
+    #[serde(default, deserialize_with = "clearable")]
+    pub dictation_provider: Option<Option<String>>,
+    #[ts(optional)]
+    pub dictation_button: Option<bool>,
 }
 
 /// A model offered by a provider. Returned by `list_models` over IPC.

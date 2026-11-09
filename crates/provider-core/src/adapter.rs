@@ -74,6 +74,20 @@ pub trait ProviderAdapter: Send + Sync {
             self.id()
         )))
     }
+
+    /// Dictation: one recording in, its text out. Defaults to "unsupported";
+    /// `openai` and the `openrouter` and `groq` presets override it (see
+    /// `transcription::TRANSCRIPTION_PROVIDERS`).
+    async fn transcribe_audio(
+        &self,
+        _request: crate::transcription::TranscriptionRequest,
+        _ctx: &AdapterContext,
+    ) -> Result<String, ProviderError> {
+        Err(crate::error::fatal(format!(
+            "{} does not support transcription",
+            self.id()
+        )))
+    }
 }
 
 pub fn registry() -> Vec<Box<dyn ProviderAdapter>> {

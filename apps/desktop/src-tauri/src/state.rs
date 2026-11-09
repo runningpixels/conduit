@@ -662,6 +662,14 @@ impl AppState {
                 .map(|raw| crate::quick_ask::validate_shortcut(&raw))
                 .transpose()?;
         }
+        if let Some(value) = patch.dictation_provider {
+            settings.dictation_provider = value
+                .map(|raw| normalize_dictation_provider(&raw))
+                .transpose()?;
+        }
+        if let Some(value) = patch.dictation_button {
+            settings.dictation_button = Some(value);
+        }
 
         write_settings(&self.paths, &settings)?;
         Ok(settings.clone())
@@ -696,6 +704,20 @@ impl AppState {
 /// Validate a daily spend alert from a settings patch. `None` turns it off; a
 /// value must pass `daily_spend_alert_is_valid` and is stored in whole cents,
 /// since the alert is compared with, and shown next to, a cost in cents.
+/// A dictation provider is one of the providers that can transcribe, stored
+/// lowercase.
+fn normalize_dictation_provider(raw: &str) -> Result<String, String> {
+    let id = raw.trim().to_ascii_lowercase();
+    if provider_core::transcription::TRANSCRIPTION_PROVIDERS.contains(&id.as_str()) {
+        Ok(id)
+    } else {
+        Err(format!(
+            "dictation_provider must be one of {}",
+            provider_core::transcription::TRANSCRIPTION_PROVIDERS.join(", ")
+        ))
+    }
+}
+
 fn normalize_daily_spend_alert(value: Option<f64>) -> Result<Option<f64>, String> {
     match value {
         None => Ok(None),

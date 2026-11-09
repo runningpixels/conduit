@@ -26,6 +26,8 @@ export const PREFIX_SECTIONS: readonly (readonly [string, SettingsSection])[] = 
   ['settings.generationControls.', 'chat'],
   ['shell.settingsSheet.webSearch.', 'web-search'],
   ['settings.webSearch.', 'web-search'],
+  ['shell.settingsSheet.voice.', 'voice'],
+  ['settings.voice.', 'voice'],
   ['shell.settingsSheet.workspace.', 'workspace'],
   ['settings.workspaceTools.', 'workspace'],
   ['shell.settingsSheet.computer.', 'computer'],

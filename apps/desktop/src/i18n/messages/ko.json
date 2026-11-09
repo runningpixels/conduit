@@ -2324,6 +2324,10 @@
   "slides.export.menuAria": "이 프레젠테이션 내보내기",
   "slides.export.pdf": "PDF",
   "slides.export.pdfDialogTitle": "프레젠테이션을 PDF로 내보내기",
+
+  "slides.export.pptx": "PowerPoint: 편집 가능한 슬라이드",
+
+  "slides.export.pptxDialogTitle": "프레젠테이션을 PowerPoint 파일로 내보내기",
   "slides.export.saved": "{name} 저장됨",
   "slides.export.working": "내보내는 중…",
   "slides.frame.title": "슬라이드 미리보기",

@@ -2324,6 +2324,10 @@
   "slides.export.menuAria": "Exportar esta apresentação",
   "slides.export.pdf": "PDF",
   "slides.export.pdfDialogTitle": "Exportar a apresentação como PDF",
+
+  "slides.export.pptx": "PowerPoint: slides editáveis",
+
+  "slides.export.pptxDialogTitle": "Exportar a apresentação como arquivo do PowerPoint",
   "slides.export.saved": "{name} salvo",
   "slides.export.working": "Exportando…",
   "slides.frame.title": "Pré-visualização do slide",

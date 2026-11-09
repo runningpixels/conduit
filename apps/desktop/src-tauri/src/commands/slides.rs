@@ -156,6 +156,45 @@ pub async fn export_deck_pdf(
     }
 }
 
+/// Save a deck as an editable PowerPoint file through the native save dialog.
+/// Built here from the stored deck (`deck_pptx`), so unlike PDF it works on
+/// every platform. `scenes` is what the deck frame measured on each drawn
+/// slide (`deck_pptx_scene`), so the file matches the app; a slide without
+/// one is rebuilt from its fields. The renderer never supplies a path.
+#[tauri::command]
+pub async fn export_deck_pptx(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    deck_id: String,
+    dialog_title: String,
+    filter_name: String,
+    scenes: Option<Vec<crate::deck_pptx_scene::SlideScene>>,
+) -> Result<Option<String>, String> {
+    if let Some(list) = &scenes {
+        crate::deck_pptx_scene::validate(list)?;
+    }
+    let deck = get_deck_detail(&state, &deck_id).await?;
+    let picked = pick_deck_save_path(
+        &app,
+        "pptx",
+        &dialog_title,
+        &filter_name,
+        &slides_export::suggested_file_name(&deck.title, "pptx"),
+    )
+    .await?;
+    let Some(path) = picked else {
+        return Ok(None);
+    };
+    // Pictures are drawn with the system fonts, loaded on first use.
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        crate::deck_pptx::build(&deck, scenes.as_deref())
+    })
+    .await
+    .map_err(|e| format!("The PowerPoint export stopped: {e}"))??;
+    std::fs::write(&path, bytes).map_err(|e| format!("Couldn't save the file: {e}"))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
 /// The native save dialog; `Ok(None)` when the user cancels.
 pub(super) async fn pick_deck_save_path(
     app: &tauri::AppHandle,

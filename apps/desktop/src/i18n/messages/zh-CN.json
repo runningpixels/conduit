@@ -2324,6 +2324,10 @@
   "slides.export.menuAria": "导出此演示文稿",
   "slides.export.pdf": "PDF",
   "slides.export.pdfDialogTitle": "将演示文稿导出为 PDF",
+
+  "slides.export.pptx": "PowerPoint：可编辑的幻灯片",
+
+  "slides.export.pptxDialogTitle": "将演示文稿导出为 PowerPoint 文件",
   "slides.export.saved": "已保存 {name}",
   "slides.export.working": "正在导出…",
   "slides.frame.title": "幻灯片预览",

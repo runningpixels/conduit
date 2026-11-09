@@ -2324,6 +2324,10 @@
   "slides.export.menuAria": "Diese Präsentation exportieren",
   "slides.export.pdf": "PDF",
   "slides.export.pdfDialogTitle": "Präsentation als PDF exportieren",
+
+  "slides.export.pptx": "PowerPoint – bearbeitbare Folien",
+
+  "slides.export.pptxDialogTitle": "Präsentation als PowerPoint-Datei exportieren",
   "slides.export.saved": "{name} gespeichert",
   "slides.export.working": "Wird exportiert…",
   "slides.frame.title": "Folienvorschau",

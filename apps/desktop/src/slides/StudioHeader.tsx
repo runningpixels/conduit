@@ -28,7 +28,7 @@ export interface StudioHeaderProps {
   exporting?: boolean;
 }
 
-export type DeckExportKind = 'html' | 'pdf';
+export type DeckExportKind = 'html' | 'pdf' | 'pptx';
 
 const STEPS: ReadonlyArray<{ step: StudioStep; labelId: string }> = [
   { step: 'story', labelId: 'slides.studio.step.story' },
@@ -160,6 +160,9 @@ export function StudioHeader({
               </button>
               <button type="button" role="menuitem" className="menu-item" onClick={() => pickExport('pdf')}>
                 {t('slides.export.pdf')}
+              </button>
+              <button type="button" role="menuitem" className="menu-item" onClick={() => pickExport('pptx')}>
+                {t('slides.export.pptx')}
               </button>
             </Menu>
           </span>

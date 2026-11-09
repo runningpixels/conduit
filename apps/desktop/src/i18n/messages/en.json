@@ -2324,6 +2324,10 @@
   "slides.export.menuAria": "Export this deck",
   "slides.export.pdf": "PDF",
   "slides.export.pdfDialogTitle": "Export deck as a PDF",
+
+  "slides.export.pptx": "PowerPoint — slides you can edit",
+
+  "slides.export.pptxDialogTitle": "Export deck as a PowerPoint file",
   "slides.export.saved": "Saved {name}",
   "slides.export.working": "Exporting…",
   "slides.frame.title": "Slide preview",

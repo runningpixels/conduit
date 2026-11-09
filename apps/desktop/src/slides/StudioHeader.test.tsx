@@ -71,7 +71,7 @@ describe('StudioHeader', () => {
     expect(screen.getByText('Present', { selector: '.studio-step' }).getAttribute('data-disabled')).toBe('true');
   });
 
-  it('exports as HTML or PDF from the Export menu, and disables it with no slides', () => {
+  it('exports as HTML, PDF or PowerPoint from the Export menu, and disables it with no slides', () => {
     const onExport = vi.fn();
     const { rerender } = render(<StudioHeader {...props({ onExport })} />);
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
@@ -80,6 +80,9 @@ describe('StudioHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'PDF' }));
     expect(onExport).toHaveBeenLastCalledWith('pdf');
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /PowerPoint/ }));
+    expect(onExport).toHaveBeenLastCalledWith('pptx');
     rerender(<StudioHeader {...props({ deck: makeDeck({ slides: [], stage: 'storyline' }), onExport })} />);
     expect((screen.getByRole('button', { name: 'Export' }) as HTMLButtonElement).disabled).toBe(true);
   });

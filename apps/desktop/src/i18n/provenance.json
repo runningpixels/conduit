@@ -3764,7 +3764,9 @@
     "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
     "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
     "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
-    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb",
+    "slides.export.pptx": "21830642fef690dd1eea2ea759a76045cf822024",
+    "slides.export.pptxDialogTitle": "ea8349cc2fb8686ca394106dc73c80aaa1a7197d"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7531,7 +7533,9 @@
     "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
     "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
     "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
-    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb",
+    "slides.export.pptx": "21830642fef690dd1eea2ea759a76045cf822024",
+    "slides.export.pptxDialogTitle": "ea8349cc2fb8686ca394106dc73c80aaa1a7197d"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11298,7 +11302,9 @@
     "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
     "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
     "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
-    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb",
+    "slides.export.pptx": "21830642fef690dd1eea2ea759a76045cf822024",
+    "slides.export.pptxDialogTitle": "ea8349cc2fb8686ca394106dc73c80aaa1a7197d"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -15065,7 +15071,9 @@
     "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
     "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
     "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
-    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb",
+    "slides.export.pptx": "21830642fef690dd1eea2ea759a76045cf822024",
+    "slides.export.pptxDialogTitle": "ea8349cc2fb8686ca394106dc73c80aaa1a7197d"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -18832,7 +18840,9 @@
     "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
     "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
     "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
-    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb",
+    "slides.export.pptx": "21830642fef690dd1eea2ea759a76045cf822024",
+    "slides.export.pptxDialogTitle": "ea8349cc2fb8686ca394106dc73c80aaa1a7197d"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -22599,7 +22609,9 @@
     "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
     "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
     "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
-    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb",
+    "slides.export.pptx": "21830642fef690dd1eea2ea759a76045cf822024",
+    "slides.export.pptxDialogTitle": "ea8349cc2fb8686ca394106dc73c80aaa1a7197d"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -26366,6 +26378,8 @@
     "chat.assistant.actions.readAloudLabel": "b5c99382eb07cb73abe1d640a4075115fec6929e",
     "chat.assistant.actions.stopReading": "9e253470c876ee6d5c720eb777aeb82d4c26e28f",
     "chat.assistant.actions.stopReadingLabel": "183c8d6bcc8b720da50f3f1a773cfb3cda4e4391",
-    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb"
+    "chat.assistant.actions.noVoice": "c8649394d0c7f6bcb3e2686d3f3a07242853f2fb",
+    "slides.export.pptx": "21830642fef690dd1eea2ea759a76045cf822024",
+    "slides.export.pptxDialogTitle": "ea8349cc2fb8686ca394106dc73c80aaa1a7197d"
   }
 }

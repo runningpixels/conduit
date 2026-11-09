@@ -9,7 +9,8 @@ import { useT } from '../i18n';
 import { assembleArtifactDoc, type ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
 import { useArtifactFrameSource } from '../artifacts/artifactFrameSource';
 import type { DeckDetail } from '../ipc/contracts';
-import { DECK_FRAME_HTML, cleanInlineHtml, deckMessage, parseDeckEvent } from './deckDocument';
+import { DECK_FRAME_HTML, DECK_SCENE_REQUEST, cleanInlineHtml, deckMessage, parseDeckEvent } from './deckDocument';
+import { registerDeckScene, type DeckSceneSlide } from './deckSceneBus';
 import type { SlideLayout } from './layoutReport';
 
 export interface DeckFrameProps {
@@ -47,6 +48,8 @@ export function DeckFrame({
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [readyCount, setReadyCount] = useState(0);
   const handlers = useRef({ onSelect, onSlotSelect, onSlotEdit, onKey, onLayout });
+  // Scene requests waiting for the frame's answer, by request id.
+  const pendingScenes = useRef(new Map<string, (slides: DeckSceneSlide[]) => void>());
   handlers.current = { onSelect, onSlotSelect, onSlotEdit, onKey, onLayout };
 
   const doc = useMemo(() => assembleArtifactDoc(DECK_FRAME_HTML, [], false, colorScheme), [colorScheme]);
@@ -98,11 +101,42 @@ export function DeckFrame({
         case 'layout':
           h.onLayout?.(parsed.slides);
           break;
+        case 'scene': {
+          const resolve = pendingScenes.current.get(parsed.requestId);
+          pendingScenes.current.delete(parsed.requestId);
+          resolve?.(parsed.slides);
+          break;
+        }
       }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
+
+  // The studio stage answers the PowerPoint export's request for this deck's
+  // scenes (deckSceneBus). Presenting views and thumbnails don't.
+  const sceneSource = mode === 'stage' && !present && readyCount > 0;
+  const deckId = deck.id;
+  useEffect(() => {
+    if (!sceneSource) return;
+    const pending = pendingScenes.current;
+    return registerDeckScene(deckId, (timeoutMs) => {
+      const win = frameRef.current?.contentWindow;
+      if (!win) return Promise.resolve(null);
+      const requestId = `scene-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      return new Promise<DeckSceneSlide[] | null>((resolve) => {
+        const timer = window.setTimeout(() => {
+          pending.delete(requestId);
+          resolve(null);
+        }, timeoutMs);
+        pending.set(requestId, (slides) => {
+          window.clearTimeout(timer);
+          resolve(slides);
+        });
+        win.postMessage({ type: DECK_SCENE_REQUEST, requestId }, '*');
+      });
+    });
+  }, [sceneSource, deckId]);
 
   useEffect(() => {
     if (readyCount === 0) return;

@@ -10,7 +10,9 @@
 /// {slideId,index,name}`, `slot-edit {slideId,index,name,html}` (commit of an
 /// in-place edit), `key {key}` for navigation keys, and `layout {slides}`: one
 /// `SlideLayout` per slide (`layoutReport.ts`; stage only, whenever a slide or
-/// its measurement changed). Every posted slide carries `sig`
+/// its measurement changed), and `scene {requestId, slides}` in answer to a
+/// `{type:'conduit-deck-scene', requestId}` request (stage only: every slide's
+/// scene for the PowerPoint export, `deckScene.ts`). Every posted slide carries `sig`
 /// (`slideSignature`), which the report echoes.
 /// Parent to frame: `deckMessage(...)`. The frame validates the shape, strips
 /// scripts and inline handlers again (the sandbox is the boundary, this is
@@ -23,10 +25,13 @@ import { withoutScripts } from '../artifacts/LiveDocumentPreview';
 import type { DeckDetail } from '../ipc/contracts';
 import { DECK_FIT_SCRIPT } from './deckFit';
 import { DECK_LAYOUT_SCRIPT } from './deckLayoutCheck';
+import { DECK_SCENE_SCRIPT } from './deckScene';
+import type { DeckSceneSlide } from './deckSceneBus';
 import { parseSlideLayout, slideSignature, type SlideLayout } from './layoutReport';
 
 export const DECK_MESSAGE_TYPE = 'conduit-deck';
 export const DECK_EVENT_TYPE = 'conduit-deck-event';
+export const DECK_SCENE_REQUEST = 'conduit-deck-scene';
 
 export type DeckViewMode = 'stage' | 'thumb';
 
@@ -52,7 +57,8 @@ export type DeckFrameEvent =
   | { event: 'slot-select'; slideId: string; index: number; name: string }
   | { event: 'slot-edit'; slideId: string; index: number; name: string; html: string }
   | { event: 'key'; key: string }
-  | { event: 'layout'; slides: SlideLayout[] };
+  | { event: 'layout'; slides: SlideLayout[] }
+  | { event: 'scene'; requestId: string; slides: DeckSceneSlide[] };
 
 export function deckMessage(deck: Pick<DeckDetail, 'themeCss' | 'slides'>, view: DeckView): DeckMessage {
   return {
@@ -90,6 +96,14 @@ export function parseDeckEvent(data: unknown): DeckFrameEvent | null {
     return { event: 'slot-edit', slideId: d.slideId, index: d.index, name: d.name, html: d.html };
   }
   if (d.event === 'key' && typeof d.key === 'string') return { event: 'key', key: d.key };
+  if (d.event === 'scene' && typeof d.requestId === 'string' && Array.isArray(d.slides)) {
+    // Only the shape is checked here; the backend validates every value.
+    const ok = d.slides.every(
+      (s: unknown) =>
+        !!s && typeof s === 'object' && typeof (s as DeckSceneSlide).id === 'string' && Array.isArray((s as DeckSceneSlide).items),
+    );
+    return ok ? { event: 'scene', requestId: d.requestId, slides: d.slides as DeckSceneSlide[] } : null;
+  }
   if (d.event === 'layout' && Array.isArray(d.slides)) {
     const slides: SlideLayout[] = [];
     for (const s of d.slides) {
@@ -437,10 +451,29 @@ const FRAME_SCRIPT = `
     reportLayout();
   }
 
+  // The PowerPoint export: every slide's scene, each measured on its fitted
+  // slide (laid out hidden, like the layout check).
+  function sendScenes(requestId) {
+    var list = [];
+    for (var i = 0; i < order.length; i++) {
+      var node = nodes[order[i]];
+      fitNode(node);
+      var scene = null;
+      try { scene = laidOut(node, conduitScene.capture); } catch (e) { scene = null; }
+      if (scene) { scene.id = order[i]; list.push(scene); }
+    }
+    post({ event: 'scene', requestId: requestId, slides: list });
+  }
+
   window.addEventListener('message', function (event) {
     if (event.source !== parent) return;
-    if (!valid(event.data)) return;
-    apply(event.data);
+    var d = event.data;
+    if (d && d.type === 'conduit-deck-scene' && typeof d.requestId === 'string') {
+      if (mode === 'stage' && !editing) sendScenes(d.requestId);
+      return;
+    }
+    if (!valid(d)) return;
+    apply(d);
   });
   window.addEventListener('resize', function () {
     fit();
@@ -503,4 +536,4 @@ const FRAME_SCRIPT = `
 export const DECK_FRAME_HTML =
   `<style>${FRAME_STYLE}</style>` +
   `<div class="deck-viewport"><div class="deck" id="deck"></div></div>` +
-  `<script>${DECK_FIT_SCRIPT}${DECK_LAYOUT_SCRIPT}${FRAME_SCRIPT}</script>`;
+  `<script>${DECK_FIT_SCRIPT}${DECK_LAYOUT_SCRIPT}${DECK_SCENE_SCRIPT}${FRAME_SCRIPT}</script>`;

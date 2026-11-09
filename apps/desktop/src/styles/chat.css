@@ -1218,6 +1218,7 @@
 }
 .composer-dictation-button[data-phase="recording"] svg { width: 11px; height: 11px; }
 .composer-dictation-clock { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.composer-dictation-button[data-blocked="true"] { color: var(--ink-3); border-style: dashed; }
 .composer-dictation-spinner {
   width: 12px;
   height: 12px;

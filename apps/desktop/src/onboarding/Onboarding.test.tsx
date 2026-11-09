@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AppSettings } from '../ipc/contracts';
 import { Onboarding } from './Onboarding';
 
@@ -277,6 +277,19 @@ describe('Onboarding (Phase 6 M6.4)', () => {
   });
 
   describe('the provider step', () => {
+    it('says whether this key also gives voice typing', () => {
+      renderOnboarding();
+      goToStep(/· Provider/i);
+      expect(screen.getByTestId('onboarding-dictation-hint')).toHaveTextContent(
+        'Voice typing needs an OpenAI, OpenRouter or Groq key. You can add one later in Settings → Voice.',
+      );
+      cleanup();
+
+      renderOnboarding({ settings: { ...baseSettings, activeProvider: 'groq' } });
+      goToStep(/· Provider/i);
+      expect(screen.getByTestId('onboarding-dictation-hint')).toHaveTextContent('Voice typing works with this key too');
+    });
+
     it('clears local-only mode when a cloud provider is chosen', async () => {
       /* `local_only` defaults to true and `active_provider` to `anthropic`, and
        * `stream_manager.rs` rejects every adapter that is not local while the

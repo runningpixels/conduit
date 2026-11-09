@@ -5,8 +5,9 @@
 //! transcription provider with the user's own key and return the text for the
 //! composer.
 //!
-//! The provider is the active one when it can transcribe, otherwise the first
-//! of OpenAI, OpenRouter and Groq with a saved key. Local-only mode refuses,
+//! The provider is the one chosen in Settings → Voice. Left on automatic, it
+//! is the active provider when that can transcribe, otherwise the first of
+//! OpenAI, OpenRouter and Groq with a saved key. Local-only mode refuses,
 //! since the recording would leave the machine.
 
 use std::sync::Mutex;
@@ -31,6 +32,18 @@ fn err(code: &str, fallback: impl Into<String>) -> AppError {
     AppError::new(code, fallback)
 }
 
+/// A provider dictation can use, for the choice in Settings → Voice.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DictationProviderOption {
+    pub id: String,
+    pub name: String,
+    /// Whether a key for it is saved.
+    pub has_key: bool,
+    /// The transcription model it is sent to.
+    pub model: String,
+}
+
 /// Whether dictation can be used now, and through whom.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -39,35 +52,69 @@ pub struct DictationStatus {
     pub provider: Option<String>,
     /// Its display name, for "Your voice is sent to …".
     pub provider_name: Option<String>,
-    /// Why dictation is unavailable: `localOnly` or `noProvider`.
+    /// Why dictation is unavailable: `localOnly`, `noProvider` (automatic,
+    /// and no provider that can transcribe has a key) or `noKey` (the chosen
+    /// provider has no key).
     pub blocked: Option<String>,
     /// The longest recording kept, in seconds.
     pub max_seconds: u32,
+    /// The provider chosen in Settings; None is automatic.
+    pub chosen: Option<String>,
+    /// Every provider that can transcribe, in fallback order.
+    pub options: Vec<DictationProviderOption>,
 }
 
-fn status_for(local_only: bool, provider: Option<&'static str>) -> DictationStatus {
-    let max_seconds = dictation::MAX_SECONDS;
-    if local_only {
-        return DictationStatus {
-            provider: None,
-            provider_name: None,
-            blocked: Some("localOnly".into()),
-            max_seconds,
-        };
-    }
-    match provider {
-        Some(id) => DictationStatus {
-            provider: Some(id.to_string()),
-            provider_name: provider_core::descriptor(id).map(|d| d.display_name.to_string()),
-            blocked: None,
-            max_seconds,
-        },
-        None => DictationStatus {
-            provider: None,
-            provider_name: None,
-            blocked: Some("noProvider".into()),
-            max_seconds,
-        },
+fn display_name(id: &str) -> String {
+    provider_core::descriptor(id)
+        .map(|d| d.display_name.to_string())
+        .unwrap_or_else(|| id.to_string())
+}
+
+fn status_for(
+    local_only: bool,
+    chosen: Option<&str>,
+    active_provider: &str,
+    has_key: impl Fn(&str) -> bool,
+) -> DictationStatus {
+    let options = provider_core::transcription::TRANSCRIPTION_PROVIDERS
+        .iter()
+        .map(|id| DictationProviderOption {
+            id: id.to_string(),
+            name: display_name(id),
+            has_key: has_key(id),
+            model: provider_core::default_transcription_model(id)
+                .unwrap_or_default()
+                .to_string(),
+        })
+        .collect();
+    // A choice that is no longer a transcribing provider reads as automatic.
+    let chosen = chosen.and_then(|id| {
+        provider_core::transcription::TRANSCRIPTION_PROVIDERS
+            .iter()
+            .copied()
+            .find(|p| *p == id)
+    });
+    let (provider, blocked) = if local_only {
+        (None, Some("localOnly"))
+    } else if let Some(id) = chosen {
+        if has_key(id) {
+            (Some(id), None)
+        } else {
+            (None, Some("noKey"))
+        }
+    } else {
+        match provider_core::pick_transcription_provider(active_provider, &has_key) {
+            Some(id) => (Some(id), None),
+            None => (None, Some("noProvider")),
+        }
+    };
+    DictationStatus {
+        provider: provider.map(str::to_string),
+        provider_name: provider.map(display_name),
+        blocked: blocked.map(str::to_string),
+        max_seconds: dictation::MAX_SECONDS,
+        chosen: chosen.map(str::to_string),
+        options,
     }
 }
 
@@ -76,10 +123,12 @@ fn current_status(state: &AppState) -> Result<DictationStatus, AppError> {
         .settings()
         .map_err(|e| err("error.dictation.failed", e))?;
     let store = state.credential_store();
-    let provider = provider_core::pick_transcription_provider(&settings.active_provider, |id| {
-        store.has_provider_secret(id)
-    });
-    Ok(status_for(settings.local_only, provider))
+    Ok(status_for(
+        settings.local_only,
+        settings.dictation_provider.as_deref(),
+        &settings.active_provider,
+        |id| store.has_provider_secret(id),
+    ))
 }
 
 #[tauri::command]
@@ -137,16 +186,27 @@ pub async fn dictation_start(app: AppHandle, state: State<'_, AppState>) -> Resu
 }
 
 fn blocked_err(status: &DictationStatus) -> AppError {
-    if status.blocked.as_deref() == Some("localOnly") {
-        err(
+    match status.blocked.as_deref() {
+        Some("localOnly") => err(
             "error.dictation.localOnly",
             "Local-only mode is on, so your voice can’t be sent to be turned into text.",
-        )
-    } else {
-        err(
+        ),
+        Some("noKey") => {
+            let provider = status
+                .chosen
+                .as_deref()
+                .map(display_name)
+                .unwrap_or_default();
+            err(
+                "error.dictation.noKey",
+                format!("Dictation is set to use {provider}, which has no saved API key."),
+            )
+            .with("provider", provider)
+        }
+        _ => err(
             "error.dictation.noProvider",
             "Dictation needs an OpenAI, OpenRouter or Groq API key.",
-        )
+        ),
     }
 }
 
@@ -295,30 +355,51 @@ mod tests {
         assert!(readable(&"x".repeat(400)).ends_with('…'));
     }
 
-    #[test]
-    fn local_only_blocks_even_with_a_provider() {
-        let s = status_for(true, Some("openai"));
-        assert_eq!(s.blocked.as_deref(), Some("localOnly"));
-        assert_eq!(s.provider, None);
+    fn keys(ids: &'static [&'static str]) -> impl Fn(&str) -> bool {
+        move |id| ids.contains(&id)
     }
 
     #[test]
-    fn names_the_provider_or_says_none_can() {
-        let s = status_for(false, Some("openrouter"));
+    fn local_only_blocks_even_with_a_provider() {
+        let s = status_for(true, Some("openai"), "openai", keys(&["openai"]));
+        assert_eq!(s.blocked.as_deref(), Some("localOnly"));
+        assert_eq!(s.provider, None);
+        assert_eq!(blocked_err(&s).code, "error.dictation.localOnly");
+    }
+
+    #[test]
+    fn automatic_names_the_provider_or_says_none_can() {
+        let s = status_for(false, None, "anthropic", keys(&["openrouter"]));
         assert_eq!(s.provider.as_deref(), Some("openrouter"));
         assert_eq!(s.provider_name.as_deref(), Some("OpenRouter"));
         assert_eq!(s.blocked, None);
-        assert_eq!(
-            status_for(false, None).blocked.as_deref(),
-            Some("noProvider")
-        );
-        assert_eq!(
-            blocked_err(&status_for(false, None)).code,
-            "error.dictation.noProvider"
-        );
-        assert_eq!(
-            blocked_err(&status_for(true, None)).code,
-            "error.dictation.localOnly"
-        );
+        assert_eq!(s.chosen, None);
+        let none = status_for(false, None, "anthropic", keys(&[]));
+        assert_eq!(none.blocked.as_deref(), Some("noProvider"));
+        assert_eq!(blocked_err(&none).code, "error.dictation.noProvider");
+    }
+
+    #[test]
+    fn a_chosen_provider_is_used_and_never_swapped_for_another() {
+        let s = status_for(false, Some("groq"), "openai", keys(&["openai", "groq"]));
+        assert_eq!(s.provider.as_deref(), Some("groq"));
+        assert_eq!(s.chosen.as_deref(), Some("groq"));
+        // Chosen without a key: blocked, not quietly sent to OpenAI instead.
+        let s = status_for(false, Some("groq"), "openai", keys(&["openai"]));
+        assert_eq!(s.provider, None);
+        assert_eq!(s.blocked.as_deref(), Some("noKey"));
+        let e = blocked_err(&s);
+        assert_eq!(e.code, "error.dictation.noKey");
+        assert!(e.fallback.contains("Groq"), "{}", e.fallback);
+    }
+
+    #[test]
+    fn lists_every_option_with_its_key_and_model() {
+        let s = status_for(false, None, "anthropic", keys(&["groq"]));
+        let ids: Vec<_> = s.options.iter().map(|o| o.id.as_str()).collect();
+        assert_eq!(ids, ["openai", "openrouter", "groq"]);
+        assert!(s.options[2].has_key);
+        assert_eq!(s.options[2].model, "whisper-large-v3-turbo");
+        assert!(!s.options[0].has_key);
     }
 }

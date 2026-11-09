@@ -4,6 +4,11 @@
  * decides where the text lands.
  */
 
+/** Providers that can turn speech into text, as `TRANSCRIPTION_PROVIDERS` in
+ *  provider-core lists them. Used where the status call is not worth making
+ *  (onboarding's hint). */
+export const TRANSCRIPTION_PROVIDER_IDS: readonly string[] = ['openai', 'openrouter', 'groq'];
+
 /** Scripts written without spaces between words. Hangul uses spaces. */
 const NO_SPACES = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}　-〿＀-￯]/u;
 

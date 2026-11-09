@@ -208,6 +208,8 @@ async fn settings_and_db_survive_in_place_reopen() {
         accent: None,
         daily_spend_alert_usd: None,
         quick_ask_shortcut: None,
+        dictation_provider: None,
+        dictation_button: None,
     };
     let updated = state.update_settings(patch).expect("update settings");
     assert_eq!(updated.active_model, "claude-opus-4");

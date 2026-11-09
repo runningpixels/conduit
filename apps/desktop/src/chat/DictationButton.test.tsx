@@ -19,7 +19,14 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 import { DictationButton } from './DictationButton';
 
-const ready = { provider: 'openrouter', providerName: 'OpenRouter', blocked: null, maxSeconds: 300 };
+const ready = {
+  provider: 'openrouter',
+  providerName: 'OpenRouter',
+  blocked: null,
+  maxSeconds: 300,
+  chosen: null,
+  options: [],
+};
 
 describe('DictationButton', () => {
   beforeEach(() => {
@@ -55,15 +62,41 @@ describe('DictationButton', () => {
     expect(await screen.findByRole('button', { name: /sent to OpenRouter/ })).toBeEnabled();
   });
 
-  it('is disabled, with the reason, when no key can transcribe or local-only is on', async () => {
+  it('stays clickable when it can’t be used yet, and opens Settings → Voice', async () => {
     ipc.dictationStatus.mockResolvedValue({ ...ready, provider: null, providerName: null, blocked: 'noProvider' });
-    const { unmount } = render(<DictationButton onText={vi.fn()} />);
-    expect(await screen.findByRole('button', { name: /needs an OpenAI, OpenRouter or Groq API key/ })).toBeDisabled();
+    const onSetUp = vi.fn();
+    const { unmount } = render(<DictationButton onText={vi.fn()} onSetUp={onSetUp} />);
+    const mic = await screen.findByRole('button', { name: /needs an OpenAI, OpenRouter or Groq API key. Click to set it up/ });
+    expect(mic).toBeEnabled();
+    expect(mic).toHaveAttribute('data-blocked', 'true');
+    await act(async () => {
+      fireEvent.click(mic);
+    });
+    expect(onSetUp).toHaveBeenCalledTimes(1);
+    expect(ipc.dictationStart).not.toHaveBeenCalled();
     unmount();
 
+    ipc.dictationStatus.mockResolvedValue({
+      ...ready,
+      provider: null,
+      providerName: null,
+      blocked: 'noKey',
+      chosen: 'groq',
+      options: [{ id: 'groq', name: 'Groq', hasKey: false, model: 'whisper-large-v3-turbo' }],
+    });
+    render(<DictationButton onText={vi.fn()} onSetUp={onSetUp} />);
+    expect(await screen.findByRole('button', { name: /set to use Groq, which has no API key yet/ })).toBeEnabled();
+  });
+
+  it('says why in place when there is no way to open Settings', async () => {
     ipc.dictationStatus.mockResolvedValue({ ...ready, provider: null, providerName: null, blocked: 'localOnly' });
     render(<DictationButton onText={vi.fn()} />);
-    expect(await screen.findByRole('button', { name: /off in local-only mode/ })).toBeDisabled();
+    const mic = await screen.findByRole('button', { name: /off in local-only mode/ });
+    await act(async () => {
+      fireEvent.click(mic);
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent('off in local-only mode');
+    expect(ipc.dictationStart).not.toHaveBeenCalled();
   });
 
   it('Escape discards the recording without sending it', async () => {

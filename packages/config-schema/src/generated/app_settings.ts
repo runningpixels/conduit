@@ -229,4 +229,17 @@ dailySpendAlertUsd?: number | null,
  * default, and what every settings file written before this field reads
  * as — means off: nothing is registered with the OS.
  */
-quickAskShortcut?: string | null, };
+quickAskShortcut?: string | null, 
+/**
+ * The provider dictation sends recordings to (`openai`, `openrouter` or
+ * `groq`). `None` — the default, and what every settings file written
+ * before this field reads as — means automatic: the active provider when
+ * it can transcribe, else the first of those with a saved key.
+ */
+dictationProvider?: string | null, 
+/**
+ * Whether the composer shows the microphone button. `None` — the
+ * default, and what every settings file written before this field reads
+ * as — is shown; `Some(false)` hides it and changes nothing else.
+ */
+dictationButton?: boolean, };

@@ -1639,10 +1639,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onSelectModel={onSelectModel}
             disabled={streaming}
           />
-          <DictationButton
-            onText={insertDictated}
-            refreshKey={`${settings.activeProvider}|${settings.localOnly}|${credentialRef ?? ''}`}
-          />
+          {settings.dictationButton !== false ? (
+            <DictationButton
+              onText={insertDictated}
+              onSetUp={onOpenSettings ? () => onOpenSettings('voice') : undefined}
+              refreshKey={`${settings.activeProvider}|${settings.localOnly}|${settings.dictationProvider ?? ''}|${credentialRef ?? ''}`}
+            />
+          ) : null}
           {streaming && !sendOverride ? (
             <>
               {canSend && (

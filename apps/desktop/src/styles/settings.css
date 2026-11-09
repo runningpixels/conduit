@@ -162,6 +162,10 @@
 .srow-text { flex: 1 1 auto; min-width: 0; }
 .srow-text b { display: block; font-size: var(--fs-3xl); font-weight: 500; }
 .srow-text small { display: block; font-size: var(--fs-lg); color: var(--ink-2); font-weight: var(--muted-weight); }
+.voice-settings-note { margin: var(--sp-2) 0 0; font-size: var(--fs-lg); color: var(--ink-2); }
+.voice-settings-note[data-ready="false"] { color: var(--warn); }
+.voice-settings-key { margin-top: var(--sp-3); }
+.voice-settings-hint { margin: 0; font-size: var(--fs-lg); color: var(--ink-3); }
 .toggle {
   width: 34px;
   height: 20px;

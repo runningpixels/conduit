@@ -19,15 +19,19 @@ type Phase = 'idle' | 'starting' | 'recording' | 'transcribing';
  * recording goes to the user's own transcription provider and the text comes
  * back through `onText`. Escape while recording discards it.
  *
- * Disabled, with the reason as its title, when no saved key can transcribe or
- * local-only mode is on. `refreshKey` changes when settings that decide that
- * change (active provider, keys, local-only), so the status is asked again.
+ * When dictation can't be used yet (no provider with a key, or local-only
+ * mode) the button stays visible and opens Settings → Voice through
+ * `onSetUp`; without that it says why. `refreshKey` changes when settings that
+ * decide this change, so the status is asked again.
  */
 export function DictationButton({
   onText,
+  onSetUp,
   refreshKey,
 }: {
   onText: (text: string) => void;
+  /** Opens Settings → Voice. */
+  onSetUp?: () => void;
   refreshKey?: string;
 }) {
   const t = useT();
@@ -147,12 +151,28 @@ export function DictationButton({
   if (!status) return null;
 
   const blocked = status.blocked;
-  const idleTitle =
+  const chosenName = status.options?.find((o) => o.id === status.chosen)?.name ?? status.chosen ?? '';
+  const blockedReason =
     blocked === 'localOnly'
       ? t('chat.composer.dictation.localOnly')
-      : blocked === 'noProvider'
-        ? t('chat.composer.dictation.noProvider')
-        : t('chat.composer.dictation.start', { provider: status.providerName ?? '' });
+      : blocked === 'noKey'
+        ? t('chat.composer.dictation.noKey', { provider: chosenName })
+        : t('chat.composer.dictation.noProvider');
+  const idleTitle = blocked
+    ? onSetUp
+      ? `${blockedReason} ${t('chat.composer.dictation.openSettings')}`
+      : blockedReason
+    : t('chat.composer.dictation.start', { provider: status.providerName ?? '' });
+
+  const onClick = () => {
+    if (phase === 'recording') return void stop();
+    if (blocked) {
+      if (onSetUp) onSetUp();
+      else setError(blockedReason);
+      return;
+    }
+    void start();
+  };
 
   let label: string;
   let content: ReactNode;
@@ -190,11 +210,12 @@ export function DictationButton({
         type="button"
         data-icon-only="true"
         data-phase={phase}
+        data-blocked={blocked ? 'true' : undefined}
         aria-pressed={phase === 'recording'}
         aria-label={label}
         title={phase === 'recording' ? `${label} · ${t('chat.composer.dictation.escToDiscard')}` : label}
-        disabled={blocked !== null || phase === 'starting' || phase === 'transcribing'}
-        onClick={() => void (phase === 'recording' ? stop() : start())}
+        disabled={phase === 'starting' || phase === 'transcribing'}
+        onClick={onClick}
       >
         {content}
       </button>

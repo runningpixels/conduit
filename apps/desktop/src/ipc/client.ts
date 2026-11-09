@@ -656,10 +656,23 @@ export interface DictationStatus {
   /** Provider id the recording would go to. */
   provider: string | null;
   providerName: string | null;
-  /** Why it can't be used: local-only mode, or no provider that transcribes. */
-  blocked: 'localOnly' | 'noProvider' | null;
+  /** Why it can't be used: local-only mode, no provider that transcribes has
+   *  a key (automatic), or the provider chosen in Settings has no key. */
+  blocked: 'localOnly' | 'noProvider' | 'noKey' | null;
   /** Longest recording kept, in seconds. */
   maxSeconds: number;
+  /** The provider chosen in Settings → Voice; null is automatic. */
+  chosen: string | null;
+  /** Every provider that can transcribe, in fallback order. */
+  options: DictationProviderOption[];
+}
+
+export interface DictationProviderOption {
+  id: string;
+  name: string;
+  hasKey: boolean;
+  /** The transcription model it is sent to. */
+  model: string;
 }
 
 export async function dictationStatus(): Promise<DictationStatus> {

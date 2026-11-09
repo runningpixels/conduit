@@ -37,6 +37,7 @@ import { SkillsSection } from '../workspace/settings/SkillsSection';
 import { MemorySection } from '../workspace/settings/MemorySection';
 import { UsageSection } from '../workspace/settings/UsageSection';
 import { QuickAskSetting } from '../quickAsk/QuickAskSetting';
+import { VoiceSection } from '../workspace/settings/VoiceSection';
 import {
   readReduceMotion,
   writeReduceMotion,
@@ -61,6 +62,7 @@ import {
   FolderIcon,
   InfoIcon,
   LockIcon,
+  MicIcon,
   SearchIcon,
   SettingsIcon,
 } from '../icons';
@@ -76,6 +78,7 @@ export type SettingsSection =
   | 'providers'
   | 'chat'
   | 'web-search'
+  | 'voice'
   | 'usage'
   | 'workspace'
   | 'computer'
@@ -138,6 +141,7 @@ const NAV_ITEMS: { id: SettingsSection; labelId: string; icon: ReactNode; group:
   { id: 'providers', labelId: 'shell.settingsSheet.nav.providers', icon: <KeyNavIcon />, group: 'models' },
   { id: 'chat', labelId: 'shell.settingsSheet.nav.chat', icon: <ChatIcon />, group: 'models' },
   { id: 'web-search', labelId: 'shell.settingsSheet.nav.web-search', icon: <SearchIcon />, group: 'models' },
+  { id: 'voice', labelId: 'shell.settingsSheet.nav.voice', icon: <MicIcon />, group: 'models' },
   { id: 'usage', labelId: 'shell.settingsSheet.nav.usage', icon: <UsageNavIcon />, group: 'models' },
   { id: 'workspace', labelId: 'shell.settingsSheet.nav.workspace', icon: <FolderIcon />, group: 'assistant' },
   { id: 'computer', labelId: 'shell.settingsSheet.nav.computer', icon: <ComputerNavIcon />, group: 'assistant' },
@@ -607,6 +611,25 @@ export function SettingsSheet({
                 {t('shell.settingsSheet.webSearch.intro')}
               </p>
               <WebSearchSection settings={settings} onUpdate={save} onStatus={onStatus} />
+            </>
+          )}
+
+          {section === 'voice' && (
+            <>
+              <h2 className="sheet-h">{t('shell.settingsSheet.voice.heading')}</h2>
+              <p className="sheet-sub">{t('shell.settingsSheet.voice.intro')}</p>
+              <VoiceSection settings={settings} onSettingsChange={onSettingsChange} onStatus={onStatus} />
+              <div className="srow">
+                <span className="srow-text">
+                  <b>{t('shell.settingsSheet.voice.showButton.label')}</b>
+                  <small>{t('shell.settingsSheet.voice.showButton.help')}</small>
+                </span>
+                <Toggle
+                  label={t('shell.settingsSheet.voice.showButton.label')}
+                  pressed={settings.dictationButton !== false}
+                  onChange={() => save({ ...settings, dictationButton: settings.dictationButton === false })}
+                />
+              </div>
             </>
           )}
 

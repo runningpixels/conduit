@@ -290,6 +290,7 @@ export function CommandPalette({
       { id: 'cmd-providers', group, kind: 'cmd', label: t('workspace.commandPalette.command.manageProviders'), run: () => { onOpenSettings('providers'); close(); } },
       { id: 'cmd-chat-defaults', group, kind: 'cmd', label: t('workspace.commandPalette.command.chatDefaults'), run: () => { onOpenSettings('chat'); close(); } },
       { id: 'cmd-web-search', group, kind: 'cmd', label: t('workspace.commandPalette.command.webSearchSettings'), run: () => { onOpenSettings('web-search'); close(); } },
+      { id: 'cmd-voice', group, kind: 'cmd', label: t('workspace.commandPalette.command.voiceSettings'), run: () => { onOpenSettings('voice'); close(); } },
       { id: 'cmd-workspace', group, kind: 'cmd', label: t('workspace.commandPalette.command.workspaceDefaults'), run: () => { onOpenSettings('workspace'); close(); } },
       { id: 'cmd-computer', group, kind: 'cmd', label: t('workspace.commandPalette.command.computerSettings'), run: () => { onOpenSettings('computer'); close(); } },
       { id: 'cmd-connectors', group, kind: 'cmd', label: t('workspace.commandPalette.command.connectService'), run: () => { onOpenSettings('connectors'); close(); } },

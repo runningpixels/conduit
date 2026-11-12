@@ -5,7 +5,7 @@ import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import { WorkflowEditor, type WorkflowDraft } from './WorkflowEditor';
 import { describeStep, computerText } from './describeStep';
 import { permissionText, reviewText, agentToolsText } from './permissionText';
-import { usesComputer, withComputer, withComputerTool, withFolder } from './editorModel';
+import { usesComputer, withBrowserTool, withComputer, withComputerTool, withFolder } from './editorModel';
 import { EN_MESSAGES } from '../i18n';
 
 const ipc = vi.hoisted(() => ({
@@ -44,11 +44,21 @@ const t = (key: string, params?: Record<string, unknown>) =>
   (EN_MESSAGES[key] ?? key).replace(/\{(\w+)\}/g, (_, k: string) => String(params?.[k] ?? ''));
 
 const COMPUTER_LABEL = /Use the computer/;
+const BROWSER_LABEL = /Use the browser/;
 
 describe('model helpers', () => {
   it('keeps computer in tools without treating it as a connector tool', () => {
     expect(withComputerTool(['web_search', 'gh/list'], true)).toEqual(['web_search', 'computer', 'gh/list']);
     expect(withComputerTool(['web_search', 'computer'], false)).toEqual(['web_search']);
+  });
+
+  it('keeps the browser marker after the computer and out of the built-ins', () => {
+    expect(withBrowserTool(['web_search', 'gh/list'], true)).toEqual(['web_search', 'browser', 'gh/list']);
+    expect(withBrowserTool(['web_search', 'computer', 'gh/list'], true)).toEqual(['web_search', 'computer', 'browser', 'gh/list']);
+    expect(withBrowserTool(['web_search', 'computer', 'browser'], false)).toEqual(['web_search', 'computer']);
+    expect(withComputerTool(['web_search', 'browser'], true)).toEqual(['web_search', 'computer', 'browser']);
+    expect(usesComputer({ steps: [{ id: 'a', type: 'agent', prompt: '', tools: ['browser'] }] })).toBe(false);
+    expect(agentToolsText(['browser'], t)).toBe('read web pages in a browser');
   });
 
   it('finds the computer in steps, loops and helpers', () => {
@@ -99,6 +109,17 @@ describe('the editor', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: COMPUTER_LABEL }));
     expect(latest.draft.definition.steps[0]).toMatchObject({ tools: ['web_search'] });
     expect(screen.queryByRole('heading', { name: 'Computer' })).toBeNull();
+  });
+
+  it('ticks the browser on an agent step without needing a folder or the Computer section', () => {
+    const latest = renderEditor({ steps: [{ id: 'agent', type: 'agent', prompt: 'Do it', tools: ['web_search'] }] });
+    fireEvent.click(screen.getByRole('checkbox', { name: BROWSER_LABEL }));
+    expect(latest.draft.definition.steps[0]).toMatchObject({ tools: ['web_search', 'browser'] });
+    expect(screen.getByText(/real browser window/)).toBeInTheDocument();
+    expect(screen.queryByText(/The agent works only inside that folder/)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Computer' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: BROWSER_LABEL }));
+    expect(latest.draft.definition.steps[0]).toMatchObject({ tools: ['web_search'] });
   });
 
   it('edits the Computer section and round-trips it', () => {

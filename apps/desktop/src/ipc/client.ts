@@ -675,6 +675,23 @@ export interface DictationProviderOption {
   model: string;
 }
 
+/** A browser found on this machine that workflow agents can use. */
+export interface BrowserInfo {
+  /** `edge`, `chrome`, `brave` or `chromium`. */
+  id: string;
+  name: string;
+}
+
+/** The installed browsers, in preference order. */
+export async function listBrowsers(): Promise<BrowserInfo[]> {
+  return invokeCommand<BrowserInfo[]>('list_browsers');
+}
+
+/** Deletes the agents' browser profile. Rejects with `error.browser.inUse` while a run is using it. */
+export async function resetBrowserProfile(): Promise<void> {
+  return invokeCommand<void>('reset_browser_profile');
+}
+
 export async function dictationStatus(): Promise<DictationStatus> {
   return invokeCommand<DictationStatus>('dictation_status');
 }

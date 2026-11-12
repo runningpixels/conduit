@@ -1601,6 +1601,7 @@ fn check_agent_tools(who: &str, tools: &[String], problems: &mut Vec<String>) {
     for tool in tools {
         if !AGENT_TOOLS.contains(&tool.as_str())
             && tool != super::computer::COMPUTER_TOOL
+            && tool != crate::browser::BROWSER_TOOL
             && connector_tool_entry(tool).is_none()
         {
             problems.push(format!("{who} can't use the tool \"{tool}\"."));
@@ -2213,6 +2214,18 @@ mod tests {
             "agents": helpers,
             "steps": [{ "id": "lead", "type": "agent", "prompt": "Go", "agents": step_agents }]
         })
+    }
+
+    #[test]
+    fn the_browser_marker_is_valid_without_a_folder_but_computer_still_needs_one() {
+        let browsing = json!({
+            "steps": [{ "id": "a", "type": "agent", "prompt": "Go", "tools": ["browser"] }]
+        });
+        assert_eq!(validate(&def(browsing)), Ok(()));
+        let computing = json!({
+            "steps": [{ "id": "a", "type": "agent", "prompt": "Go", "tools": ["computer"] }]
+        });
+        assert!(validate(&def(computing)).is_err());
     }
 
     #[test]

@@ -3810,5 +3810,22 @@
   "chat.composer.dictation.openSettings": "点击进行设置。",
   "error.dictation.noKey": "语音输入设置为使用 {provider}，但没有已保存的 API 密钥。",
   "onboarding.provider.dictationIncluded": "这个密钥也可以用于语音输入：点击“发送”旁边的麦克风即可。",
-  "onboarding.provider.dictationLater": "语音输入需要 OpenAI、OpenRouter 或 Groq 的密钥。你可以稍后在“设置 → 语音”中添加。"
+  "onboarding.provider.dictationLater": "语音输入需要 OpenAI、OpenRouter 或 Groq 的密钥。你可以稍后在“设置 → 语音”中添加。",
+  "settings.computer.browser.label": "浏览器",
+  "settings.computer.browser.help": "智能体使用这个浏览器，并配有独立的配置文件，与你平时的浏览互不相通，也不登录任何账号。选择“自动”时，如果安装了多个浏览器，首次使用会询问。",
+  "settings.computer.browser.automatic": "自动",
+  "settings.computer.browser.none": "未找到浏览器。智能体需要 Microsoft Edge、Google Chrome、Brave 或 Chromium 才能读取需要脚本的网页。",
+  "settings.computer.browser.reset": "重置浏览器配置文件",
+  "settings.computer.browser.resetHelp": "删除智能体的浏览器保存的所有内容：Cookie、登录信息和网站数据。",
+  "settings.computer.browser.resetDone": "浏览器配置文件已重置。",
+  "workspace.workflows.editor.agent.browser": "使用浏览器",
+  "workspace.workflows.editor.agent.browserHint": "在真实的浏览器窗口中读取网页，适用于需要脚本的网页。目前仅可读取。",
+  "workspace.workflows.agentTool.browser": "在浏览器中读取网页",
+  "chat.toolCall.browser.opened": "已打开页面",
+  "chat.toolCall.browser.read": "已读取页面",
+  "error.browser.notInstalled": "未找到浏览器。请安装 Microsoft Edge、Google Chrome、Brave 或 Chromium，然后重试。",
+  "error.browser.inUse": "工作流正在使用浏览器。请在它结束后重试。",
+  "error.browser.launchFailed": "无法启动浏览器。请检查是否已安装，然后重试。",
+  "error.browser.blocked": "无法打开 {url}：智能体只能读取公开网页。",
+  "error.browser.timeout": "页面加载时间过长。"
 }

@@ -245,7 +245,7 @@ fn looks_like_bot_wall(bytes: &[u8]) -> bool {
 }
 
 /// The first `max_chars` characters of `text`, and whether anything was cut.
-fn clip(text: &str, max_chars: usize) -> (String, bool) {
+pub(crate) fn clip(text: &str, max_chars: usize) -> (String, bool) {
     match text.char_indices().nth(max_chars) {
         Some((at, _)) => (text[..at].to_string(), true),
         None => (text.to_string(), false),

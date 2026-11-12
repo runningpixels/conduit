@@ -498,6 +498,20 @@ impl AppState {
                 crate::workflows::computer::parse_rule(rule)
                     .map_err(|e| format!("\u{201c}{rule}\u{201d}: {e}"))?;
             }
+            value.browser = match value.browser.take().map(|b| b.trim().to_ascii_lowercase()) {
+                None => None,
+                Some(id) if id.is_empty() => None,
+                Some(id) => Some(
+                    crate::browser::detect::Browser::from_id(&id)
+                        .ok_or_else(|| {
+                            format!(
+                                "browser must be one of edge, chrome, brave or chromium (got {id})"
+                            )
+                        })?
+                        .id()
+                        .to_string(),
+                ),
+            };
             settings.workflow_computer = Some(value);
         }
         if let Some(value) = patch.close_to_tray {

@@ -17,6 +17,7 @@ pub mod attachment_documents;
 pub mod boot_check;
 pub mod brand;
 pub mod branding;
+pub mod browser;
 pub mod commands;
 pub mod connector_runtime;
 pub mod context_compact;

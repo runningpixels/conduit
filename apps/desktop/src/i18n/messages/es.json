@@ -3810,5 +3810,22 @@
   "chat.composer.dictation.openSettings": "Haz clic para configurarlo.",
   "error.dictation.noKey": "El dictado está configurado para usar {provider}, que no tiene una clave de API guardada.",
   "onboarding.provider.dictationIncluded": "El dictado por voz también funciona con esta clave: haz clic en el micrófono junto a Enviar.",
-  "onboarding.provider.dictationLater": "El dictado por voz necesita una clave de OpenAI, OpenRouter o Groq. Puedes añadirla más tarde en Configuración → Voz."
+  "onboarding.provider.dictationLater": "El dictado por voz necesita una clave de OpenAI, OpenRouter o Groq. Puedes añadirla más tarde en Configuración → Voz.",
+  "settings.computer.browser.label": "Navegador",
+  "settings.computer.browser.help": "Los agentes usan este navegador con su propio perfil, separado de tu navegación habitual y sin ninguna sesión iniciada. Automático pregunta la primera vez si hay más de uno instalado.",
+  "settings.computer.browser.automatic": "Automático",
+  "settings.computer.browser.none": "No se encontró ningún navegador. Los agentes necesitan Microsoft Edge, Google Chrome, Brave o Chromium para leer páginas que requieren scripts.",
+  "settings.computer.browser.reset": "Restablecer el perfil del navegador",
+  "settings.computer.browser.resetHelp": "Borra todo lo que guardó el navegador de los agentes: cookies, inicios de sesión y datos de sitios.",
+  "settings.computer.browser.resetDone": "Perfil del navegador restablecido.",
+  "workspace.workflows.editor.agent.browser": "Usar el navegador",
+  "workspace.workflows.editor.agent.browserHint": "Lee páginas web en una ventana de navegador real, para páginas que requieren scripts. Solo lectura por ahora.",
+  "workspace.workflows.agentTool.browser": "leer páginas web en un navegador",
+  "chat.toolCall.browser.opened": "Página abierta",
+  "chat.toolCall.browser.read": "Página leída",
+  "error.browser.notInstalled": "No se encontró ningún navegador. Instala Microsoft Edge, Google Chrome, Brave o Chromium e inténtalo de nuevo.",
+  "error.browser.inUse": "Un flujo de trabajo está usando el navegador ahora mismo. Inténtalo de nuevo cuando termine.",
+  "error.browser.launchFailed": "No se pudo iniciar el navegador. Comprueba que esté instalado e inténtalo de nuevo.",
+  "error.browser.blocked": "No se puede abrir {url}: los agentes solo pueden leer páginas web públicas.",
+  "error.browser.timeout": "La página tardó demasiado en cargar."
 }

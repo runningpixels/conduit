@@ -9,7 +9,7 @@ import { useT } from '../i18n';
 import { pickWorkspaceFolder } from '../ipc/client';
 import type { WorkflowComputer } from '../ipc/contracts';
 import { useEditorNav } from './EditorNav';
-import { COMPUTER_TOOL, withComputerTool } from './editorModel';
+import { BROWSER_TOOL, COMPUTER_TOOL, withBrowserTool, withComputerTool } from './editorModel';
 import { folderName } from './WorkflowViewParts';
 
 export function ComputerToolOption({
@@ -32,6 +32,7 @@ export function ComputerToolOption({
   const onFolder = nav.setFolder;
   const [pickError, setPickError] = useState<string | null>(null);
   const on = tools.includes(COMPUTER_TOOL);
+  const browserOn = tools.includes(BROWSER_TOOL);
   const name = folderName(folder);
   const pick = async () => {
     setPickError(null);
@@ -71,6 +72,11 @@ export function ComputerToolOption({
           </button>
         </p>
       ) : null}
+      <label className="wf-check">
+        <input type="checkbox" checked={browserOn} onChange={(e) => onChange(withBrowserTool(tools, e.target.checked))} />
+        {t('workspace.workflows.editor.agent.browser')}
+      </label>
+      {browserOn ? <p className="wf-muted">{t('workspace.workflows.editor.agent.browserHint')}</p> : null}
     </div>
   );
 }

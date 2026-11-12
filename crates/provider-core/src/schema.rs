@@ -528,6 +528,12 @@ pub struct WorkflowComputerSettings {
     /// Deny rules (`git push *`) every workflow's commands are checked against.
     #[serde(default)]
     pub deny: Vec<String>,
+    /// The browser workflow agents use: `edge`, `chrome`, `brave` or
+    /// `chromium`. Absent means Automatic (asked on first use when more than
+    /// one is installed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub browser: Option<String>,
 }
 
 /// Agent loop guardrails stored on `AppSettings`. Enforced by

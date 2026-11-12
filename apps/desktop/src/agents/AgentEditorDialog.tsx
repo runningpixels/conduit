@@ -14,6 +14,7 @@ import { AgentKnowledge, AgentMemory } from './AgentMemory';
 import { AgentConnectorTools } from '../workflows/AgentConnectorTools';
 import {
   AGENT_TOOLS,
+  BROWSER_TOOL,
   COMPUTER_TOOL,
   DEFAULT_HELPER_TOKENS,
   MAX_HELPER_LINKS,
@@ -21,6 +22,7 @@ import {
   MIN_HELPER_TOKENS,
   uniqueId,
   withBuiltinTool,
+  withBrowserTool,
   withComputerTool,
   withConnectorTool,
   withHelperLink,
@@ -227,6 +229,15 @@ export function AgentEditorDialog({
                 {t('workspace.workflows.editor.agent.computer')}
               </label>
               {tools.includes(COMPUTER_TOOL) ? <p className="wf-muted">{t('shell.agents.editor.computerHint')}</p> : null}
+              <label className="wf-check">
+                <input
+                  type="checkbox"
+                  checked={tools.includes(BROWSER_TOOL)}
+                  onChange={({ target: { checked } }) => set((d) => ({ ...d, tools: withBrowserTool(d.tools ?? [], checked) }))}
+                />
+                {t('workspace.workflows.editor.agent.browser')}
+              </label>
+              {tools.includes(BROWSER_TOOL) ? <p className="wf-muted">{t('workspace.workflows.editor.agent.browserHint')}</p> : null}
             </fieldset>
             <div className="agent-editor-group">
               <AgentConnectorTools

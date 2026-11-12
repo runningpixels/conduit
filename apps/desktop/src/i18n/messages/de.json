@@ -3810,5 +3810,22 @@
   "chat.composer.dictation.openSettings": "Zum Einrichten klicken.",
   "error.dictation.noKey": "Diktieren ist auf {provider} eingestellt, wofür kein API-Schlüssel gespeichert ist.",
   "onboarding.provider.dictationIncluded": "Spracheingabe funktioniert auch mit diesem Schlüssel: Klicke auf das Mikrofon neben „Senden“.",
-  "onboarding.provider.dictationLater": "Für die Spracheingabe brauchst du einen Schlüssel von OpenAI, OpenRouter oder Groq. Du kannst ihn später unter Einstellungen → Sprache hinzufügen."
+  "onboarding.provider.dictationLater": "Für die Spracheingabe brauchst du einen Schlüssel von OpenAI, OpenRouter oder Groq. Du kannst ihn später unter Einstellungen → Sprache hinzufügen.",
+  "settings.computer.browser.label": "Browser",
+  "settings.computer.browser.help": "Agenten nutzen diesen Browser mit einem eigenen Profil, getrennt von deinem normalen Surfen und bei nichts angemeldet. „Automatisch“ fragt beim ersten Mal nach, wenn mehr als einer installiert ist.",
+  "settings.computer.browser.automatic": "Automatisch",
+  "settings.computer.browser.none": "Kein Browser gefunden. Agenten brauchen Microsoft Edge, Google Chrome, Brave oder Chromium, um Seiten zu lesen, die Skripte brauchen.",
+  "settings.computer.browser.reset": "Browserprofil zurücksetzen",
+  "settings.computer.browser.resetHelp": "Löscht alles, was der Browser der Agenten gespeichert hat: Cookies, Anmeldungen und Websitedaten.",
+  "settings.computer.browser.resetDone": "Browserprofil zurückgesetzt.",
+  "workspace.workflows.editor.agent.browser": "Den Browser nutzen",
+  "workspace.workflows.editor.agent.browserHint": "Liest Webseiten in einem echten Browserfenster, für Seiten, die Skripte brauchen. Vorerst nur lesend.",
+  "workspace.workflows.agentTool.browser": "Webseiten in einem Browser lesen",
+  "chat.toolCall.browser.opened": "Seite geöffnet",
+  "chat.toolCall.browser.read": "Seite gelesen",
+  "error.browser.notInstalled": "Es wurde kein Browser gefunden. Installiere Microsoft Edge, Google Chrome, Brave oder Chromium und versuche es dann erneut.",
+  "error.browser.inUse": "Der Browser wird gerade von einem Workflow genutzt. Versuche es erneut, wenn er fertig ist.",
+  "error.browser.launchFailed": "Der Browser konnte nicht gestartet werden. Prüfe, ob er installiert ist, und versuche es erneut.",
+  "error.browser.blocked": "{url} kann nicht geöffnet werden: Agenten dürfen nur öffentliche Webseiten lesen.",
+  "error.browser.timeout": "Das Laden der Seite hat zu lange gedauert."
 }

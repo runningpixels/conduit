@@ -7,7 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [1.0.0-rc.27] - 2026-11-09
+## [1.0.0-rc.28] - 2026-11-11
+
+Dictation: talk to the composer instead of typing.
+
+### Added
+
+- **Dictation** (#327). A microphone beside Send records you; click it again
+  (or wait for the five-minute limit) and the text lands in the composer.
+  Escape discards the recording. Your voice goes to the transcription
+  provider you choose in the new **Settings → Voice**: OpenAI, OpenRouter or
+  Groq, with your own key. Automatic picks one you already have a key for.
+  Dictation is off in local-only mode.
+- When dictation isn't set up yet, the microphone shows a dashed outline and
+  opens Settings → Voice. Setup also mentions dictation, and a setting hides
+  the button if you don't want it.
 
 PowerPoint in and out, and replies read aloud.
 

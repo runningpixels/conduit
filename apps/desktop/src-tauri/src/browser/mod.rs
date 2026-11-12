@@ -5,6 +5,7 @@
 //! Chromium browser, started with its own profile and driven over the
 //! DevTools protocol. Read only for now (`open_page`, `read_page`).
 
+pub mod act;
 pub mod cdp;
 pub mod detect;
 pub mod elements;

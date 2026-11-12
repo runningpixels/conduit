@@ -207,8 +207,14 @@ pub fn clear_script(reference: &str) -> String {
     const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
     return 'ok';
   }}
-  if (!('value' in el)) return 'not-a-field';
-  if (typeof el.select === 'function') el.select();
+  if (!('value' in el) || el.tagName === 'SELECT' || el.tagName === 'BUTTON') return 'not-a-field';
+  if (el.tagName === 'INPUT' && ['checkbox', 'radio', 'submit', 'button', 'reset', 'image', 'file', 'range', 'color'].includes((el.type || '').toLowerCase())) return 'not-a-field';
+  if (el.value !== '') {{
+    // The prototype's setter, so frameworks that watch the value see it.
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
+    if (setter && setter.set) setter.set.call(el, ''); else el.value = '';
+    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+  }}
   return 'ok';
 }})()"#
     )

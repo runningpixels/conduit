@@ -1333,7 +1333,16 @@ export type BrowserRemember = 'site' | 'all';
  *  `askUserRequested`). Declared here until the generated `ProviderEvent` carries them. */
 export type BrowserStreamEvent =
   | { kind: 'browserApprovalRequested'; requestId: string; toolCallId: string; request: BrowserRequest }
-  | { kind: 'browserQuestionRequested'; requestId: string; toolCallId: string; question: string; decline: string }
+  | {
+      kind: 'browserQuestionRequested';
+      requestId: string;
+      toolCallId: string;
+      /** The English; `code` and `params` say it in the reader's language. */
+      question: string;
+      code?: string;
+      params?: Record<string, string>;
+      decline: string;
+    }
   | { kind: 'browserPromptResolved'; requestId: string; toolCallId: string };
 
 /** The answer to a `WorkflowAction`. */

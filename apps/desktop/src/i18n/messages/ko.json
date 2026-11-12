@@ -3887,5 +3887,8 @@
   "chat.browser.soFar": "지금까지: {items}",
   "chat.browser.saveFailed": "브라우저 설정을 저장하지 못했습니다.",
   "chat.browser.decline.skipPage": "이 페이지 건너뛰기",
-  "chat.browser.decline.dontSignIn": "로그인하지 않음"
+  "chat.browser.decline.dontSignIn": "로그인하지 않음",
+  "chat.browser.question.humanCheck": "{host}에서 사람인지 확인하려고 합니다({what}). 브라우저 창에서 확인을 마친 다음 계속을 선택하세요.",
+  "chat.browser.question.signIn": "에이전트의 브라우저 창에서 {site}에 로그인한 다음 계속을 선택하세요. 입력한 내용은 에이전트에게 보이지 않습니다.",
+  "chat.browser.question.signInWhy": "에이전트의 브라우저 창에서 {site}에 로그인한 다음 계속을 선택하세요. 입력한 내용은 에이전트에게 보이지 않습니다. 이유: {why}"
 }

@@ -992,13 +992,13 @@ impl ConnectorTools<'_, '_> {
             // A human check is handed to the person running, when someone can
             // be asked: Continue, or Skip (also what nobody answering takes).
             let step_id = self.step_id;
-            let ask = move |question: String,
+            let ask = move |question: crate::browser::tools::BrowserAsk,
                             decline: &'static str|
                   -> crate::browser::tools::AskFuture<'_> {
                 Box::pin(async move {
                     let choices = ["Continue".to_string(), decline.to_string()];
                     matches!(
-                        exec.ask(step_id, &question, &choices, Some(decline))
+                        exec.ask(step_id, &question.text, &choices, Some(decline))
                             .await
                             .as_deref(),
                         Ok("Continue")

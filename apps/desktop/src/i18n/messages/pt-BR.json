@@ -3887,5 +3887,8 @@
   "chat.browser.soFar": "Até agora: {items}",
   "chat.browser.saveFailed": "Não foi possível salvar a configuração do navegador.",
   "chat.browser.decline.skipPage": "Pular esta página",
-  "chat.browser.decline.dontSignIn": "Não entrar"
+  "chat.browser.decline.dontSignIn": "Não entrar",
+  "chat.browser.question.humanCheck": "{host} quer verificar se você é uma pessoa ({what}). Conclua a verificação na janela do navegador e escolha Continuar.",
+  "chat.browser.question.signIn": "Entre em {site} na janela do navegador do agente e escolha Continuar. O agente não vê o que você digita.",
+  "chat.browser.question.signInWhy": "Entre em {site} na janela do navegador do agente e escolha Continuar. O agente não vê o que você digita. Ele diz: {why}"
 }

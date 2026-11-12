@@ -141,6 +141,7 @@ import type {
   AgentCallRow,
   AgentCallChange,
   DocumentReview,
+  BrowserStreamEvent,
   ConversationBrowser,
   BrowserRemember,
 } from './contracts';
@@ -417,6 +418,16 @@ export interface PendingAskUser {
 export interface ActiveTurn {
   requestId: string;
   pendingAskUser: PendingAskUser | null;
+  /** The browser card or question the reply waits on, with its call. */
+  pendingBrowser?: PendingBrowserPrompt | null;
+}
+
+/** A chat browser call's waiting card or question, as the backend keeps it. */
+export interface PendingBrowserPrompt {
+  toolCallId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  event: BrowserStreamEvent;
 }
 
 /**

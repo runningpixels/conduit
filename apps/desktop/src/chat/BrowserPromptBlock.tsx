@@ -79,14 +79,25 @@ const DECLINE_KEYS: Record<string, string> = {
   "Don't sign in": 'chat.browser.decline.dontSignIn',
 };
 
+/// The questions the backend sends a code for; anything else shows its English.
+const QUESTION_KEYS = new Set([
+  'chat.browser.question.humanCheck',
+  'chat.browser.question.signIn',
+  'chat.browser.question.signInWhy',
+]);
+
 export function BrowserQuestionGate({
   toolCallId,
   question,
   decline,
+  code,
+  params,
 }: {
   toolCallId: string;
   question: string;
   decline: string;
+  code?: string;
+  params?: Record<string, string>;
 }) {
   const t = useT();
   const headingId = useId();
@@ -109,7 +120,7 @@ export function BrowserQuestionGate({
   return (
     <div className="consent browser-question" role="group" aria-labelledby={headingId}>
       <p id={headingId} className="approval-sentence">
-        {question}
+        {code && QUESTION_KEYS.has(code) ? t(code, params ?? {}) : question}
       </p>
       <div className="row">
         <button type="button" className="btn primary" disabled={sending} onClick={() => void answer(true)}>

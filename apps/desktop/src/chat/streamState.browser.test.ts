@@ -4,6 +4,7 @@ import {
   allToolCalls,
   applyProviderEvent,
   createAssistantStreamState,
+  createReattachedStreamState,
   markInterrupted,
   toolCallAwaitsReader,
   type AssistantStreamState,
@@ -118,5 +119,44 @@ describe('streamState browser events', () => {
 
     const stopped = markInterrupted(waiting);
     expect(call(stopped).browserApproval).toBeUndefined();
+  });
+});
+
+describe('a reattached reply waiting on the browser', () => {
+  it('draws the call and its card again after a reload', () => {
+    const state = createReattachedStreamState('req-b', null, {
+      toolCallId: 'call-1',
+      toolName: 'click',
+      arguments: { ref: 'e4' },
+      event: { kind: 'browserApprovalRequested', requestId: 'req-b', toolCallId: 'call-1', request },
+    });
+    expect(state.segments).toEqual([{ kind: 'tool', toolCallId: 'call-1' }]);
+    expect(call(state).name).toBe('click');
+    expect(call(state).arguments).toEqual({ ref: 'e4' });
+    expect(call(state).browserApproval).toEqual(request);
+    expect(toolCallAwaitsReader(call(state))).toBe(true);
+  });
+
+  it('keeps a question with its code and values', () => {
+    const state = createReattachedStreamState('req-b', null, {
+      toolCallId: 'call-1',
+      toolName: 'ask_to_sign_in',
+      arguments: {},
+      event: {
+        kind: 'browserQuestionRequested',
+        requestId: 'req-b',
+        toolCallId: 'call-1',
+        question: 'Sign in to github.com…',
+        code: 'chat.browser.question.signIn',
+        params: { site: 'github.com' },
+        decline: 'Don’t sign in',
+      },
+    });
+    expect(call(state).browserQuestion).toEqual({
+      question: 'Sign in to github.com…',
+      code: 'chat.browser.question.signIn',
+      params: { site: 'github.com' },
+      decline: 'Don’t sign in',
+    });
   });
 });

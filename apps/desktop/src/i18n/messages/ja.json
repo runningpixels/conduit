@@ -3887,5 +3887,8 @@
   "chat.browser.soFar": "ここまで: {items}",
   "chat.browser.saveFailed": "ブラウザーの設定を保存できませんでした。",
   "chat.browser.decline.skipPage": "このページをスキップ",
-  "chat.browser.decline.dontSignIn": "サインインしない"
+  "chat.browser.decline.dontSignIn": "サインインしない",
+  "chat.browser.question.humanCheck": "{host} が人間かどうかの確認を求めています（{what}）。ブラウザーのウィンドウで確認を済ませてから「続行」を選んでください。",
+  "chat.browser.question.signIn": "エージェントのブラウザーのウィンドウで {site} にサインインしてから「続行」を選んでください。入力内容はエージェントには見えません。",
+  "chat.browser.question.signInWhy": "エージェントのブラウザーのウィンドウで {site} にサインインしてから「続行」を選んでください。入力内容はエージェントには見えません。理由：{why}"
 }

@@ -207,6 +207,19 @@ struct Pending {
     request_id: String,
     kind: PromptKind,
     tx: tokio::sync::oneshot::Sender<PromptAnswer>,
+    shown: Option<ShownPrompt>,
+}
+
+/// A card or question on show, as a window that reloaded needs it to draw
+/// the call's row and the prompt on it again.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShownPrompt {
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub arguments: serde_json::Value,
+    /// The `browserApprovalRequested` or `browserQuestionRequested` event.
+    pub event: provider_core::schema::ProviderEvent,
 }
 
 /// The browser prompts chat turns wait on, by tool call id (a call waits on
@@ -236,12 +249,35 @@ impl BrowserPrompts {
                     request_id: request_id.to_string(),
                     kind,
                     tx,
+                    shown: None,
                 },
             );
         if let Some(old) = replaced {
             let _ = old.tx.send(PromptAnswer::Declined);
         }
         rx
+    }
+
+    /// Keep what the prompt on `tool_call_id` shows, for a window that reloads.
+    pub fn show(&self, tool_call_id: &str, shown: ShownPrompt) {
+        if let Some(p) = self
+            .pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(tool_call_id)
+        {
+            p.shown = Some(shown);
+        }
+    }
+
+    /// The prompt the turn `request_id` waits on, as shown.
+    pub fn shown_for(&self, request_id: &str) -> Option<ShownPrompt> {
+        self.pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .find(|p| p.request_id == request_id)
+            .and_then(|p| p.shown.clone())
     }
 
     /// Forget the prompt on `tool_call_id` (its call ended without an answer).
@@ -318,6 +354,19 @@ mod tests {
         let prompts = BrowserPrompts::default();
         let rx = prompts.open("call-1", "req-1", PromptKind::Action);
         assert!(prompts.is_waiting("call-1"));
+        assert_eq!(prompts.shown_for("req-1"), None);
+        let shown = ShownPrompt {
+            tool_call_id: "call-1".into(),
+            tool_name: "click".into(),
+            arguments: serde_json::json!({ "ref": "e1" }),
+            event: provider_core::schema::ProviderEvent::BrowserPromptResolved {
+                request_id: "req-1".into(),
+                tool_call_id: "call-1".into(),
+            },
+        };
+        prompts.show("call-1", shown.clone());
+        assert_eq!(prompts.shown_for("req-1"), Some(shown));
+        assert_eq!(prompts.shown_for("req-2"), None);
         // The wrong kind, or an unknown id, isn't an answer.
         assert!(!prompts.answer("call-1", PromptAnswer::Question { go_on: true }));
         assert!(!prompts.answer(

@@ -92,7 +92,7 @@ export interface ToolCallState {
   browserApproval?: BrowserRequest;
   /** A human check or sign-in in a chat's browser waiting on Continue or the
    *  decline choice (`browserQuestionRequested`); cleared the same way. */
-  browserQuestion?: { question: string; decline: string };
+  browserQuestion?: { question: string; decline: string; code?: string; params?: Record<string, string> };
 }
 
 /** Whether a tool call waits on the reader: a connector consent, or a browser
@@ -274,8 +274,32 @@ export function createReattachedStreamState(
     title: string;
     fields: NonNullable<AssistantStreamState['askUser']>['fields'];
   } | null,
+  pendingBrowser?: {
+    toolCallId: string;
+    toolName: string;
+    arguments: Record<string, unknown>;
+    event: BrowserStreamEvent;
+  } | null,
 ): AssistantStreamState {
   const base = createAssistantStreamState(requestId);
+  if (pendingBrowser) {
+    // The browser call's row, with its card or question on it.
+    const withCall: AssistantStreamState = {
+      ...base,
+      toolCalls: [
+        {
+          toolCallId: pendingBrowser.toolCallId,
+          toolId: pendingBrowser.toolName,
+          name: pendingBrowser.toolName,
+          argumentsText: JSON.stringify(pendingBrowser.arguments ?? {}),
+          arguments: pendingBrowser.arguments ?? {},
+          complete: true,
+        },
+      ],
+      segments: [{ kind: 'tool', toolCallId: pendingBrowser.toolCallId }],
+    };
+    return reduceBrowserEvent(withCall, pendingBrowser.event);
+  }
   if (!pendingAskUser) return base;
   return {
     ...base,
@@ -894,7 +918,12 @@ function reduceBrowserEvent(state: AssistantStreamState, event: BrowserStreamEve
         return {
           ...tc,
           browserApproval: undefined,
-          browserQuestion: { question: event.question, decline: event.decline },
+          browserQuestion: {
+            question: event.question,
+            decline: event.decline,
+            code: event.code,
+            params: event.params,
+          },
         };
       case 'browserPromptResolved':
         return { ...tc, browserApproval: undefined, browserQuestion: undefined };

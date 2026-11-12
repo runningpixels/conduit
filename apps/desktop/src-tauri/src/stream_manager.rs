@@ -1273,6 +1273,9 @@ struct BrowserPromptCtx<'a> {
     prompts: &'a crate::browser::chat::BrowserPrompts,
     request_id: &'a str,
     tool_call_id: &'a str,
+    /// The call's tool and arguments, kept with the prompt so a window that
+    /// reloads can draw the row again.
+    call: Option<(&'a str, &'a serde_json::Value)>,
     channel: Option<&'a EventSink<ProviderEvent>>,
     cancel: &'a CancellationToken,
     user_wait_ms: &'a std::sync::atomic::AtomicU64,
@@ -1294,6 +1297,17 @@ impl BrowserPromptCtx<'_> {
             return PromptAnswer::Declined;
         }
         let rx = self.prompts.open(self.tool_call_id, self.request_id, kind);
+        if let Some((tool_name, arguments)) = self.call {
+            self.prompts.show(
+                self.tool_call_id,
+                crate::browser::chat::ShownPrompt {
+                    tool_call_id: self.tool_call_id.to_string(),
+                    tool_name: tool_name.to_string(),
+                    arguments: arguments.clone(),
+                    event: event.clone(),
+                },
+            );
+        }
         // Resolved however the wait ends: answered, declined, or the call
         // dropped (a steer during the tool round drops it).
         let _shown = BrowserPromptShown {
@@ -1359,6 +1373,9 @@ pub struct ActiveTurn {
     pub request_id: String,
     /// The form the turn is paused on, if it is waiting for an answer.
     pub pending_ask_user: Option<AskUserForm>,
+    /// The browser card or question the turn is paused on.
+    #[serde(default)]
+    pub pending_browser: Option<crate::browser::chat::ShownPrompt>,
 }
 
 /// Resolves a provider id to the adapter that streams its responses.
@@ -1863,9 +1880,11 @@ impl StreamManager {
             .values()
             .find(|p| p.form.request_id == request_id)
             .map(|p| p.form.clone());
+        let pending_browser = self.browser_prompts.shown_for(&request_id);
         Some(ActiveTurn {
             request_id,
             pending_ask_user,
+            pending_browser,
         })
     }
 
@@ -3554,17 +3573,20 @@ impl StreamManager {
             prompts: &self.browser_prompts,
             request_id,
             tool_call_id,
+            call: Some((name, arguments)),
             channel: provider_channel,
             cancel,
             user_wait_ms,
         };
-        let ask = |question: String, decline: &'static str| -> tools::AskFuture<'_> {
+        let ask = |question: tools::BrowserAsk, decline: &'static str| -> tools::AskFuture<'_> {
             let prompt = &prompt;
             Box::pin(async move {
                 let event = ProviderEvent::BrowserQuestionRequested {
                     request_id: request_id.to_string(),
                     tool_call_id: tool_call_id.to_string(),
-                    question,
+                    question: question.text,
+                    code: Some(question.code.to_string()),
+                    params: question.params,
                     decline: decline.to_string(),
                 };
                 matches!(
@@ -5622,6 +5644,8 @@ mod browser_prompt_tests {
             request_id: "req-1".into(),
             tool_call_id: "call-1".into(),
             question: "Finish the check in the browser window.".into(),
+            code: None,
+            params: Default::default(),
             decline: crate::browser::tools::SKIP_PAGE.into(),
         }
     }
@@ -5653,21 +5677,29 @@ mod browser_prompt_tests {
         let (sink, events) = crate::event_sink::collector::<ProviderEvent>();
         let cancel = CancellationToken::new();
         let waited = AtomicU64::new(0);
+        let args = serde_json::json!({ "url": "https://example.com/" });
         let ctx = BrowserPromptCtx {
             prompts: &manager.browser_prompts,
             request_id: "req-1",
             tool_call_id: "call-1",
+            call: Some(("open_page", &args)),
             channel: Some(&sink),
             cancel: &cancel,
             user_wait_ms: &waited,
         };
         let (got, ()) = tokio::join!(ctx.wait(PromptKind::Question, question()), async {
             shown(&manager).await;
+            // A window that reloads finds the call and its question again.
+            let kept = manager.browser_prompts.shown_for("req-1").expect("kept");
+            assert_eq!(kept.tool_name, "open_page");
+            assert_eq!(kept.arguments, args);
+            assert_eq!(kept.event, question());
             // The wrong kind of answer doesn't count.
             assert!(!manager.answer_browser_action("call-1", true, None));
             assert!(manager.answer_browser_question("call-1", true));
         });
         assert_eq!(got, PromptAnswer::Question { go_on: true });
+        assert_eq!(manager.browser_prompts.shown_for("req-1"), None);
         assert_eq!(kinds(&events.lock().unwrap()), vec!["question", "resolved"]);
         // Answered once: there's nothing left to answer.
         assert!(!manager.answer_browser_question("call-1", true));
@@ -5683,6 +5715,7 @@ mod browser_prompt_tests {
             prompts: &manager.browser_prompts,
             request_id: "req-1",
             tool_call_id: "call-1",
+            call: None,
             channel: Some(&sink),
             cancel: &cancel,
             user_wait_ms: &waited,
@@ -5713,6 +5746,7 @@ mod browser_prompt_tests {
             prompts: &manager.browser_prompts,
             request_id: "req-1",
             tool_call_id: "call-1",
+            call: None,
             channel: Some(&sink),
             cancel: &cancel,
             user_wait_ms: &waited,
@@ -5738,6 +5772,7 @@ mod browser_prompt_tests {
             prompts: &manager.browser_prompts,
             request_id: "req-1",
             tool_call_id: "call-1",
+            call: None,
             channel: Some(&sink),
             cancel: &cancel,
             user_wait_ms: &waited,
@@ -5776,6 +5811,7 @@ mod browser_prompt_tests {
             prompts: &manager.browser_prompts,
             request_id: "req-1",
             tool_call_id: "call-1",
+            call: None,
             channel: None,
             cancel: &cancel,
             user_wait_ms: &waited,

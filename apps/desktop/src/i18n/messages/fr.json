@@ -3887,5 +3887,8 @@
   "chat.browser.soFar": "Jusqu’ici : {items}",
   "chat.browser.saveFailed": "Impossible d’enregistrer le réglage du navigateur.",
   "chat.browser.decline.skipPage": "Ignorer cette page",
-  "chat.browser.decline.dontSignIn": "Ne pas se connecter"
+  "chat.browser.decline.dontSignIn": "Ne pas se connecter",
+  "chat.browser.question.humanCheck": "{host} veut vérifier que vous êtes une personne ({what}). Terminez la vérification dans la fenêtre du navigateur, puis choisissez Continuer.",
+  "chat.browser.question.signIn": "Connectez-vous à {site} dans la fenêtre du navigateur de l’agent, puis choisissez Continuer. L’agent ne voit pas ce que vous tapez.",
+  "chat.browser.question.signInWhy": "Connectez-vous à {site} dans la fenêtre du navigateur de l’agent, puis choisissez Continuer. L’agent ne voit pas ce que vous tapez. Il indique : {why}"
 }

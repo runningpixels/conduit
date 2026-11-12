@@ -87,6 +87,12 @@ usage: HandoffTokens, } | { "kind": "handoffUsage", requestId: string, toolCallI
  */
 request: BrowserRequest, } | { "kind": "browserQuestionRequested", requestId: string, toolCallId: string, question: string, 
 /**
+ * The question as a message code (`chat.browser.question.*`) and its
+ * values, for the UI to show in the reader's language; `question`
+ * is the English.
+ */
+code?: string, params: Record<string, string>, 
+/**
  * The declining choice ("Skip this page", "Don't sign in").
  */
 decline: string, } | { "kind": "browserPromptResolved", requestId: string, toolCallId: string, };

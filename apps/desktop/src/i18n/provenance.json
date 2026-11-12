@@ -3885,7 +3885,10 @@
     "chat.browser.saveFailed": "3d75a19691f36279f2f4ac84c204fdd131651381",
     "error.browser.badSite": "87e162774cd74f3372dad76c3746311149edf5f9",
     "chat.browser.decline.skipPage": "841befb8bfcd313c7a05acb425af6a03763fe53e",
-    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78"
+    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
+    "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
+    "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7773,7 +7776,10 @@
     "chat.browser.saveFailed": "3d75a19691f36279f2f4ac84c204fdd131651381",
     "error.browser.badSite": "87e162774cd74f3372dad76c3746311149edf5f9",
     "chat.browser.decline.skipPage": "841befb8bfcd313c7a05acb425af6a03763fe53e",
-    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78"
+    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
+    "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
+    "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11661,7 +11667,10 @@
     "chat.browser.saveFailed": "3d75a19691f36279f2f4ac84c204fdd131651381",
     "error.browser.badSite": "87e162774cd74f3372dad76c3746311149edf5f9",
     "chat.browser.decline.skipPage": "841befb8bfcd313c7a05acb425af6a03763fe53e",
-    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78"
+    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
+    "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
+    "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -15549,7 +15558,10 @@
     "chat.browser.saveFailed": "3d75a19691f36279f2f4ac84c204fdd131651381",
     "error.browser.badSite": "87e162774cd74f3372dad76c3746311149edf5f9",
     "chat.browser.decline.skipPage": "841befb8bfcd313c7a05acb425af6a03763fe53e",
-    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78"
+    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
+    "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
+    "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -19437,7 +19449,10 @@
     "chat.browser.saveFailed": "3d75a19691f36279f2f4ac84c204fdd131651381",
     "error.browser.badSite": "87e162774cd74f3372dad76c3746311149edf5f9",
     "chat.browser.decline.skipPage": "841befb8bfcd313c7a05acb425af6a03763fe53e",
-    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78"
+    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
+    "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
+    "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -23325,7 +23340,10 @@
     "chat.browser.saveFailed": "3d75a19691f36279f2f4ac84c204fdd131651381",
     "error.browser.badSite": "87e162774cd74f3372dad76c3746311149edf5f9",
     "chat.browser.decline.skipPage": "841befb8bfcd313c7a05acb425af6a03763fe53e",
-    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78"
+    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
+    "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
+    "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -27213,6 +27231,9 @@
     "chat.browser.saveFailed": "3d75a19691f36279f2f4ac84c204fdd131651381",
     "error.browser.badSite": "87e162774cd74f3372dad76c3746311149edf5f9",
     "chat.browser.decline.skipPage": "841befb8bfcd313c7a05acb425af6a03763fe53e",
-    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78"
+    "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
+    "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
+    "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
   }
 }

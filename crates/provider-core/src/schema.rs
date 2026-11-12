@@ -1105,6 +1105,15 @@ pub enum ProviderEvent {
         request_id: String,
         tool_call_id: String,
         question: String,
+        /// The question as a message code (`chat.browser.question.*`) and its
+        /// values, for the UI to show in the reader's language; `question`
+        /// is the English.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        code: Option<String>,
+        #[serde(default)]
+        #[ts(type = "Record<string, string>")]
+        params: std::collections::BTreeMap<String, String>,
         /// The declining choice ("Skip this page", "Don't sign in").
         decline: String,
     },

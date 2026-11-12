@@ -3887,5 +3887,8 @@
   "chat.browser.soFar": "Bisher: {items}",
   "chat.browser.saveFailed": "Die Browser-Einstellung konnte nicht gespeichert werden.",
   "chat.browser.decline.skipPage": "Diese Seite überspringen",
-  "chat.browser.decline.dontSignIn": "Nicht anmelden"
+  "chat.browser.decline.dontSignIn": "Nicht anmelden",
+  "chat.browser.question.humanCheck": "{host} möchte prüfen, ob du ein Mensch bist ({what}). Schließe die Prüfung im Browserfenster ab und wähle dann „Weiter“.",
+  "chat.browser.question.signIn": "Melde dich im Browserfenster des Agenten bei {site} an und wähle dann „Weiter“. Der Agent sieht nicht, was du eingibst.",
+  "chat.browser.question.signInWhy": "Melde dich im Browserfenster des Agenten bei {site} an und wähle dann „Weiter“. Der Agent sieht nicht, was du eingibst. Er schreibt: {why}"
 }

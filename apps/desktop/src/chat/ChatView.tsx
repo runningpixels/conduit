@@ -829,6 +829,13 @@ async function readKnowledgeContext(
   }
 }
 
+/** Which browser card or question a reattached reply shows, as `<call>:<event kind>`. */
+function browserPromptShown(state: AssistantStreamState | null): string | null {
+  const call = state?.toolCalls.find((tc) => tc.browserApproval || tc.browserQuestion);
+  if (!call) return null;
+  return `${call.toolCallId}:${call.browserApproval ? 'browserApprovalRequested' : 'browserQuestionRequested'}`;
+}
+
 /** The reply the backend is running in a conversation, or null (also when it can't be asked). */
 async function findRunningTurn(conversationId: string): Promise<ActiveTurn | null> {
   try {
@@ -1561,6 +1568,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             streamStateRef.current = createReattachedStreamState(
               reattach.requestId,
               reattach.pendingAskUser,
+              reattach.pendingBrowser,
             );
             reportRunStatus();
             setActiveRequestId(reattach.requestId);
@@ -1616,11 +1624,20 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         const live = await findRunningTurn(conversationId);
         if (stopped || activeRequestRef.current?.requestId !== reattachedRequestId) return;
         if (live?.requestId === reattachedRequestId) {
-          const shown = streamStateRef.current?.askUser?.toolCallId ?? null;
-          if ((live.pendingAskUser?.toolCallId ?? null) !== shown) {
+          const held = streamStateRef.current;
+          const shown = [
+            held?.askUser?.toolCallId ?? null,
+            browserPromptShown(held),
+          ].join('|');
+          const now = [
+            live.pendingAskUser?.toolCallId ?? null,
+            live.pendingBrowser ? `${live.pendingBrowser.toolCallId}:${live.pendingBrowser.event.kind}` : null,
+          ].join('|');
+          if (now !== shown) {
             streamStateRef.current = createReattachedStreamState(
               reattachedRequestId,
               live.pendingAskUser,
+              live.pendingBrowser,
             );
             if (currentConversationIdRef.current === conversationId) renderStreamNow();
           }

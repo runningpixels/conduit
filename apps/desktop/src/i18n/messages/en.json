@@ -3887,5 +3887,8 @@
   "chat.browser.soFar": "So far: {items}",
   "chat.browser.saveFailed": "Couldn’t save the browser setting.",
   "chat.browser.decline.skipPage": "Skip this page",
-  "chat.browser.decline.dontSignIn": "Don’t sign in"
+  "chat.browser.decline.dontSignIn": "Don’t sign in",
+  "chat.browser.question.humanCheck": "{host} wants to check you’re a person ({what}). Finish the check in the browser window, then choose Continue.",
+  "chat.browser.question.signIn": "Sign in to {site} in the agent’s browser window, then choose Continue. The agent doesn’t see what you type.",
+  "chat.browser.question.signInWhy": "Sign in to {site} in the agent’s browser window, then choose Continue. The agent doesn’t see what you type. It says: {why}"
 }

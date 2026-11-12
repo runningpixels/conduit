@@ -462,6 +462,8 @@ export function ToolCallBlock({
                 toolCallId={toolCall.toolCallId}
                 question={toolCall.browserQuestion.question}
                 decline={toolCall.browserQuestion.decline}
+                code={toolCall.browserQuestion.code}
+                params={toolCall.browserQuestion.params}
               />
             ) : null}
             {toolCall.sideEffecting && consent === 'denied' && (

@@ -616,6 +616,9 @@ const WEAK_TEXT_LIMIT: i64 = 1500;
 pub struct ChallengeSample {
     pub strong: Vec<String>,
     pub weak: Vec<String>,
+    /// Signs the site refuses the browser outright: `datadome` (block page),
+    /// `text` (block wording).
+    pub blocked: Vec<String>,
     pub text_chars: i64,
     pub title: String,
 }
@@ -623,7 +626,7 @@ pub struct ChallengeSample {
 /// One script, always a string: JSON of what looks like a check, or '' if it threw.
 /// Nothing here clicks or alters the page.
 const CHALLENGE_SCRIPT: &str = r#"(function(){try{
-var strong=[],weak=[];
+var strong=[],weak=[],blocked=[];
 function add(a,v){if(a.indexOf(v)<0)a.push(v)}
 var title=document.title||'';
 if(/just a moment|attention required! ?\| ?cloudflare/i.test(title))add(strong,'cloudflare');
@@ -639,13 +642,14 @@ if(document.querySelector('.h-captcha,iframe[src*="hcaptcha"]'))add(weak,'hcaptc
 var els=document.querySelectorAll('iframe[src],script[src]');
 for(var i=0;i<els.length;i++){
 var s=(els[i].getAttribute('src')||'').toLowerCase();
-if(s.indexOf('captcha-delivery.com')>=0)add(strong,'datadome');
+if(s.indexOf('captcha-delivery.com')>=0){add(strong,'datadome');if(/[?&]t=bv(&|$)/.test(s))add(blocked,'datadome')}
 else if(s.indexOf('challenges.cloudflare.com')>=0)add(weak,'turnstile');
 else if(s.indexOf('perimeterx')>=0||s.indexOf('px-cloud')>=0)add(weak,'perimeterx');
 else if(s.indexOf('arkoselabs.com')>=0||s.indexOf('funcaptcha')>=0)add(weak,'arkose');
 }
 if(/verify you are human|are you a robot|i'?m not a robot|press and hold|unusual traffic|complete the security check/i.test(text))add(weak,'text');
-return JSON.stringify({strong:strong,weak:weak,textChars:chars,title:title});
+if(/you have been blocked|you've been blocked|access to this page has been denied|access denied|request blocked/i.test(title+' '+text))add(blocked,'text');
+return JSON.stringify({strong:strong,weak:weak,blocked:blocked,textChars:chars,title:title});
 }catch(e){return ''}})()"#;
 
 fn challenge_label(id: &str) -> &'static str {
@@ -680,11 +684,40 @@ pub fn judge_challenge(sample: &ChallengeSample) -> Option<String> {
     None
 }
 
-async fn detect_challenge(tab: &Tab) -> Result<Option<String>, BrowserError> {
+/// A page that refuses the browser outright, with nothing a person could
+/// solve: DataDome's block page (its frame says `t=bv`), or a short "you have
+/// been blocked" / "access denied" page with no CAPTCHA on it.
+pub fn judge_block(sample: &ChallengeSample) -> Option<String> {
+    let label = sample.blocked.first()?;
+    let solvable =
+        sample.strong.iter().any(|s| s == "perimeterx") || sample.weak.iter().any(|w| w != "text");
+    if label == "datadome" {
+        return Some("DataDome".to_string());
+    }
+    (!solvable && sample.text_chars < WEAK_TEXT_LIMIT).then(|| "an access block".to_string())
+}
+
+enum Check {
+    Clear,
+    Blocked(String),
+    Challenge(String),
+}
+
+async fn detect_challenge(tab: &Tab) -> Result<Check, BrowserError> {
     let raw = evaluate(tab, CHALLENGE_SCRIPT).await?;
-    Ok(serde_json::from_str::<ChallengeSample>(&raw)
-        .ok()
-        .and_then(|s| judge_challenge(&s)))
+    let Ok(sample) = serde_json::from_str::<ChallengeSample>(&raw) else {
+        return Ok(Check::Clear);
+    };
+    if let Some(what) = judge_block(&sample) {
+        return Ok(Check::Blocked(what));
+    }
+    Ok(judge_challenge(&sample).map_or(Check::Clear, Check::Challenge))
+}
+
+fn blocked_error(host: &str, what: &str) -> BrowserError {
+    BrowserError::Other(format!(
+        "{host} blocks automated browsers ({what}), so this page can't be read. Don't retry it; use other sources."
+    ))
 }
 
 async fn bring_to_front(tab: &Tab) {
@@ -710,12 +743,19 @@ async fn read_checked<'a>(
     ask: Option<&'a AskFn<'a>>,
     max_chars: usize,
 ) -> Result<Value, BrowserError> {
-    if let Some(what) = detect_challenge(tab).await? {
+    let check = detect_challenge(tab).await?;
+    if !matches!(check, Check::Clear) {
         let host = evaluate(tab, "location.hostname").await.unwrap_or_default();
         let host = if host.is_empty() {
             "the site".to_string()
         } else {
             host
+        };
+        // Nothing for a person to solve: don't pull them in.
+        let what = match check {
+            Check::Blocked(what) => return Err(blocked_error(&host, &what)),
+            Check::Challenge(what) => what,
+            Check::Clear => unreachable!(),
         };
         let Some(ask) = ask else {
             return Err(BrowserError::Other(format!(
@@ -732,10 +772,15 @@ async fn read_checked<'a>(
             )));
         }
         settle(tab).await?;
-        if detect_challenge(tab).await?.is_some() {
-            return Err(BrowserError::Other(format!(
-                "{host} is still showing a check, so the page couldn't be read."
-            )));
+        match detect_challenge(tab).await? {
+            Check::Clear => {}
+            // Passing the check isn't always enough: the site may still refuse.
+            Check::Blocked(what) => return Err(blocked_error(&host, &what)),
+            Check::Challenge(_) => {
+                return Err(BrowserError::Other(format!(
+                    "{host} is still showing a check, so the page couldn't be read."
+                )))
+            }
         }
     }
     read(tab, max_chars).await
@@ -881,8 +926,68 @@ mod tests {
         ChallengeSample {
             strong: strong.iter().map(|s| s.to_string()).collect(),
             weak: weak.iter().map(|s| s.to_string()).collect(),
+            blocked: Vec::new(),
             text_chars,
             title: title.to_string(),
+        }
+    }
+
+    #[test]
+    fn hard_blocks_are_told_apart_from_checks_a_person_can_pass() {
+        let with = |blocked: &[&str], mut s: ChallengeSample| {
+            s.blocked = blocked.iter().map(|b| b.to_string()).collect();
+            s
+        };
+        let cases: Vec<(&str, ChallengeSample, Option<&str>)> = vec![
+            (
+                "datadome block page",
+                with(&["datadome"], sample(&["datadome"], &[], 20, "wsj.com")),
+                Some("DataDome"),
+            ),
+            (
+                "datadome captcha (t=fe) is a check, not a block",
+                sample(&["datadome"], &[], 20, "wsj.com"),
+                None,
+            ),
+            (
+                "cloudflare 1020",
+                with(
+                    &["text"],
+                    sample(
+                        &["cloudflare"],
+                        &[],
+                        300,
+                        "Attention Required! | Cloudflare",
+                    ),
+                ),
+                Some("an access block"),
+            ),
+            (
+                "perimeterx press-and-hold is solvable",
+                with(
+                    &["text"],
+                    sample(
+                        &["perimeterx"],
+                        &["text"],
+                        80,
+                        "Access to this page has been denied",
+                    ),
+                ),
+                None,
+            ),
+            (
+                "access denied with a reCAPTCHA is solvable",
+                with(&["text"], sample(&[], &["recaptcha"], 80, "Access denied")),
+                None,
+            ),
+            (
+                "an article that mentions access denied",
+                with(&["text"], sample(&[], &[], 9000, "News")),
+                None,
+            ),
+        ];
+        for (name, s, want) in cases {
+            assert_eq!(judge_block(&s).as_deref(), want, "{name}");
         }
     }
 

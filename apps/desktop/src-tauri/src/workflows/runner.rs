@@ -987,8 +987,29 @@ impl ConnectorTools<'_, '_> {
         let work = async {
             let chosen = exec.browser_choice(self.step_id).await?;
             let profile = crate::browser::launch::profile_dir(&exec.runner.state.paths.root);
+            // A human check is handed to the person running, when someone can
+            // be asked: Continue, or Skip (also what nobody answering takes).
+            let step_id = self.step_id;
+            let ask = move |question: String| -> crate::browser::tools::AskFuture<'_> {
+                Box::pin(async move {
+                    let choices = ["Continue".to_string(), "Skip this page".to_string()];
+                    matches!(
+                        exec.ask(step_id, &question, &choices, Some("Skip this page"))
+                            .await
+                            .as_deref(),
+                        Ok("Continue")
+                    )
+                })
+            };
+            let askable = exec.runner.unattended.is_none() && exec.runner.questions.is_some();
             exec.browser
-                .run(name, arguments, chosen, &profile)
+                .run(
+                    name,
+                    arguments,
+                    chosen,
+                    &profile,
+                    askable.then_some(&ask as &crate::browser::tools::AskFn<'_>),
+                )
                 .await
                 .map_err(|e| e.for_model())
         };

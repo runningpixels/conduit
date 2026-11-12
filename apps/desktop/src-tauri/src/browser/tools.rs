@@ -58,7 +58,7 @@ pub fn tool_definitions() -> Vec<provider_core::schema::ToolDefinition> {
     vec![
         tool(
             OPEN_PAGE_TOOL,
-            format!("Open a public web page in a real browser and read it, including pages that build their content with JavaScript. Provide a `url`. Returns the page `title`, its readable `content`, `truncated` (true when the text was cut), `links` (up to 150 `{{text, url}}` pairs) and the `browser` used; open those URLs to read the pages they point to. This only reads: it can't click, type or sign in. Only public http(s) sites can be opened; local and private-network addresses are refused. {untrusted}"),
+            format!("Open a public web page in a real browser and read it, including pages that build their content with JavaScript. Provide a `url`. Returns the page `title`, its readable `content`, `truncated` (true when the text was cut), `links` (up to 150 `{{text, url}}` pairs) and the `browser` used; open those URLs to read the pages they point to. This only reads: it can't click, type or sign in. Only public http(s) sites can be opened; local and private-network addresses are refused. If the site shows a human check (CAPTCHA), the person running the workflow is asked to complete it. {untrusted}"),
             json!({
                 "type": "object",
                 "properties": {
@@ -70,7 +70,7 @@ pub fn tool_definitions() -> Vec<provider_core::schema::ToolDefinition> {
         ),
         tool(
             READ_PAGE_TOOL,
-            format!("Read the page that is open again, for when it changed on its own (for example a feed that loaded more). Optional `max_chars` (default 20,000, at most 50,000). Returns the same as open_page. {untrusted}"),
+            format!("Read the page that is open again, for when it changed on its own (for example a feed that loaded more). Optional `max_chars` (default 20,000, at most 50,000). Returns the same as open_page. If the site shows a human check (CAPTCHA), the person running the workflow is asked to complete it. {untrusted}"),
             json!({
                 "type": "object",
                 "properties": {
@@ -197,12 +197,18 @@ pub struct RunBrowser {
 
 impl RunBrowser {
     /// Run `open_page` or `read_page`.
-    pub async fn run(
+    ///
+    /// `ask` hands a human check to the person running (`None`: nobody is
+    /// there, so a page that is a check is skipped). The tab lock is held for
+    /// the whole call, the wait for the person included, so a run's browser
+    /// calls (its helpers' too) never overlap.
+    pub async fn run<'a>(
         &self,
         name: &str,
         arguments: &Value,
         chosen: &Chosen,
         profile: &Path,
+        ask: Option<&'a AskFn<'a>>,
     ) -> Result<Value, BrowserError> {
         let mut slot = self.tab.lock().await;
         let result = match name {
@@ -210,7 +216,7 @@ impl RunBrowser {
                 let input: OpenInput = serde_json::from_value(arguments.clone())
                     .map_err(|e| BrowserError::Other(format!("the arguments don't fit: {e}")))?;
                 let max_chars = crate::agent_tools::web_fetch_max_chars(input.max_chars.as_ref());
-                self.open(&mut slot, chosen, profile, input.url.trim(), max_chars)
+                self.open(&mut slot, chosen, profile, input.url.trim(), max_chars, ask)
                     .await
             }
             READ_PAGE_TOOL => {
@@ -218,7 +224,7 @@ impl RunBrowser {
                     serde_json::from_value(arguments.clone()).unwrap_or_default();
                 let max_chars = crate::agent_tools::web_fetch_max_chars(input.max_chars.as_ref());
                 match slot.as_ref() {
-                    Some(tab) => read(tab, max_chars).await,
+                    Some(tab) => read_checked(tab, ask, max_chars).await,
                     None => Err(BrowserError::Other(
                         "no page is open; call open_page first".to_string(),
                     )),
@@ -237,13 +243,14 @@ impl RunBrowser {
         result
     }
 
-    async fn open(
+    async fn open<'a>(
         &self,
         slot: &mut Option<Tab>,
         chosen: &Chosen,
         profile: &Path,
         url: &str,
         max_chars: usize,
+        ask: Option<&'a AskFn<'a>>,
     ) -> Result<Value, BrowserError> {
         // Refuse before the browser is even started.
         if !(url.starts_with("http://") || url.starts_with("https://")) {
@@ -263,7 +270,7 @@ impl RunBrowser {
         }
         let tab = slot.as_ref().expect("tab was just made");
         navigate(tab, url).await?;
-        read(tab, max_chars).await
+        read_checked(tab, ask, max_chars).await
     }
 
     /// End the run's use of the browser: close its tab.
@@ -572,6 +579,11 @@ async fn navigate(tab: &Tab, url: &str) -> Result<(), BrowserError> {
             break;
         }
     }
+    settle(tab).await
+}
+
+/// Wait until the page that is showing stops changing (or [`SETTLE_CAP`]).
+async fn settle(tab: &Tab) -> Result<(), BrowserError> {
     let loaded = Instant::now();
     let mut settle = Settle::default();
     loop {
@@ -582,6 +594,151 @@ async fn navigate(tab: &Tab, url: &str) -> Result<(), BrowserError> {
             return Ok(());
         }
     }
+}
+
+/// How the person is asked to finish a human check: the question goes in, and
+/// `true` comes back when they chose Continue (`false` for Skip, or nobody
+/// answering, or nowhere to ask).
+pub type AskFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>>;
+pub type AskFn<'a> = dyn Fn(String) -> AskFuture<'a> + Send + Sync + 'a;
+
+/// Longest readable text (non-whitespace characters) a page with only weak
+/// check markers can have and still count as a check.
+const WEAK_TEXT_LIMIT: i64 = 1500;
+
+/// What the page shows of a human check, as the injected script reports it.
+/// Strong entries (block pages): `cloudflare`, `datadome`, `perimeterx`
+/// (`#px-captcha`), `generic`. Weak entries (widgets and scripts that also load
+/// on ordinary pages): `turnstile`, `perimeterx`, `arkose`, `recaptcha`,
+/// `hcaptcha`, `text`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ChallengeSample {
+    pub strong: Vec<String>,
+    pub weak: Vec<String>,
+    pub text_chars: i64,
+    pub title: String,
+}
+
+/// One script, always a string: JSON of what looks like a check, or '' if it threw.
+/// Nothing here clicks or alters the page.
+const CHALLENGE_SCRIPT: &str = r#"(function(){try{
+var strong=[],weak=[];
+function add(a,v){if(a.indexOf(v)<0)a.push(v)}
+var title=document.title||'';
+if(/just a moment|attention required! ?\| ?cloudflare/i.test(title))add(strong,'cloudflare');
+if(/verifying you are human/i.test(title))add(strong,'generic');
+var body=document.body;
+var text=body?body.innerText:'';
+var chars=text.replace(/\s+/g,'').length;
+if(document.querySelector('#challenge-form,#challenge-running'))add(strong,'cloudflare');
+if(document.querySelector('#px-captcha'))add(strong,'perimeterx');
+if(document.querySelector('.cf-turnstile'))add(weak,'turnstile');
+if(document.querySelector('.g-recaptcha,iframe[src*="recaptcha"]'))add(weak,'recaptcha');
+if(document.querySelector('.h-captcha,iframe[src*="hcaptcha"]'))add(weak,'hcaptcha');
+var els=document.querySelectorAll('iframe[src],script[src]');
+for(var i=0;i<els.length;i++){
+var s=(els[i].getAttribute('src')||'').toLowerCase();
+if(s.indexOf('captcha-delivery.com')>=0)add(strong,'datadome');
+else if(s.indexOf('challenges.cloudflare.com')>=0)add(weak,'turnstile');
+else if(s.indexOf('perimeterx')>=0||s.indexOf('px-cloud')>=0)add(weak,'perimeterx');
+else if(s.indexOf('arkoselabs.com')>=0||s.indexOf('funcaptcha')>=0)add(weak,'arkose');
+}
+if(/verify you are human|are you a robot|i'?m not a robot|press and hold|unusual traffic|complete the security check/i.test(text))add(weak,'text');
+return JSON.stringify({strong:strong,weak:weak,textChars:chars,title:title});
+}catch(e){return ''}})()"#;
+
+fn challenge_label(id: &str) -> &'static str {
+    match id {
+        "cloudflare" | "turnstile" => "Cloudflare check",
+        "datadome" => "DataDome check",
+        "perimeterx" => "PerimeterX check",
+        "arkose" => "Arkose check",
+        "recaptcha" => "reCAPTCHA",
+        "hcaptcha" => "hCaptcha",
+        _ => "security check",
+    }
+}
+
+/// Whether the sample is a human-verification page rather than content, and
+/// if so what was seen. A strong marker is enough; weak ones (a CAPTCHA widget,
+/// check wording) only on a page with little text, so a long article or a
+/// contact form with a reCAPTCHA is not a check.
+pub fn judge_challenge(sample: &ChallengeSample) -> Option<String> {
+    if let Some(id) = sample.strong.first() {
+        return Some(challenge_label(id).to_string());
+    }
+    if sample.text_chars < WEAK_TEXT_LIMIT {
+        // A named widget says more than check wording does.
+        let id = sample
+            .weak
+            .iter()
+            .find(|w| w.as_str() != "text")
+            .or_else(|| sample.weak.first())?;
+        return Some(challenge_label(id).to_string());
+    }
+    None
+}
+
+async fn detect_challenge(tab: &Tab) -> Result<Option<String>, BrowserError> {
+    let raw = evaluate(tab, CHALLENGE_SCRIPT).await?;
+    Ok(serde_json::from_str::<ChallengeSample>(&raw)
+        .ok()
+        .and_then(|s| judge_challenge(&s)))
+}
+
+async fn bring_to_front(tab: &Tab) {
+    let _ = tab
+        .cdp
+        .call(
+            "Target.activateTarget",
+            json!({ "targetId": tab.target_id }),
+            None,
+        )
+        .await;
+    let _ = tab
+        .cdp
+        .call("Page.bringToFront", json!({}), Some(&tab.session))
+        .await;
+}
+
+/// Read the settled page, unless it is a human check: then hand the check to
+/// the person (when `ask` is given), and read only once they finish it. Nothing
+/// the page shows meanwhile reaches the model.
+async fn read_checked<'a>(
+    tab: &Tab,
+    ask: Option<&'a AskFn<'a>>,
+    max_chars: usize,
+) -> Result<Value, BrowserError> {
+    if let Some(what) = detect_challenge(tab).await? {
+        let host = evaluate(tab, "location.hostname").await.unwrap_or_default();
+        let host = if host.is_empty() {
+            "the site".to_string()
+        } else {
+            host
+        };
+        let Some(ask) = ask else {
+            return Err(BrowserError::Other(format!(
+                "{host} asked for a human check ({what}). Nobody is watching this run, so the page was skipped."
+            )));
+        };
+        bring_to_front(tab).await;
+        let question = format!(
+            "{host} wants to check you're a person ({what}). Finish the check in the browser window, then choose Continue."
+        );
+        if !ask(question).await {
+            return Err(BrowserError::Other(format!(
+                "{host} asked for a human check ({what}) and it wasn't completed, so the page wasn't read."
+            )));
+        }
+        settle(tab).await?;
+        if detect_challenge(tab).await?.is_some() {
+            return Err(BrowserError::Other(format!(
+                "{host} is still showing a check, so the page couldn't be read."
+            )));
+        }
+    }
+    read(tab, max_chars).await
 }
 
 const SAMPLE_SCRIPT: &str = "(function(){try{return JSON.stringify([document.body?document.body.innerText.length:0,document.getElementsByTagName('*').length])}catch(e){return '[0,0]'}})()";
@@ -720,6 +877,104 @@ mod tests {
         assert!(offered(&marked, false).unwrap_err().contains("turned off"));
     }
 
+    fn sample(strong: &[&str], weak: &[&str], text_chars: i64, title: &str) -> ChallengeSample {
+        ChallengeSample {
+            strong: strong.iter().map(|s| s.to_string()).collect(),
+            weak: weak.iter().map(|s| s.to_string()).collect(),
+            text_chars,
+            title: title.to_string(),
+        }
+    }
+
+    #[test]
+    fn judge_challenge_table() {
+        let cases: Vec<(&str, ChallengeSample, Option<&str>)> = vec![
+            (
+                "cloudflare interstitial",
+                sample(&["cloudflare"], &[], 60, "Just a moment..."),
+                Some("Cloudflare check"),
+            ),
+            (
+                "datadome",
+                sample(&["datadome"], &[], 20, "example.com"),
+                Some("DataDome check"),
+            ),
+            (
+                "perimeterx",
+                sample(&["perimeterx"], &["text"], 80, "Access denied"),
+                Some("PerimeterX check"),
+            ),
+            (
+                "arkose",
+                sample(&["arkose"], &[], 10, "Sign in"),
+                Some("Arkose check"),
+            ),
+            (
+                "verifying title",
+                sample(&["generic"], &[], 10, "Verifying you are human"),
+                Some("security check"),
+            ),
+            (
+                "turnstile on an empty page",
+                sample(&[], &["turnstile"], 0, ""),
+                Some("Cloudflare check"),
+            ),
+            (
+                // Bot-defence and login-widget scripts load on ordinary pages too.
+                "perimeterx and arkose scripts on a long shop page",
+                sample(&[], &["perimeterx", "arkose"], 6000, "Shop"),
+                None,
+            ),
+            (
+                "arkose widget on a short sign-in page",
+                sample(&[], &["arkose"], 40, "Sign in"),
+                Some("Arkose check"),
+            ),
+            (
+                "recaptcha on a long article",
+                sample(&[], &["recaptcha"], 9000, "Article"),
+                None,
+            ),
+            (
+                "turnstile on a long page",
+                sample(&[], &["turnstile", "text"], 4000, "Login"),
+                None,
+            ),
+            (
+                "hcaptcha on a short page",
+                sample(&[], &["hcaptcha"], 200, "Are you human?"),
+                Some("hCaptcha"),
+            ),
+            (
+                "unusual traffic text on a short page",
+                sample(&[], &["text"], 300, "Sorry"),
+                Some("security check"),
+            ),
+            (
+                "unusual traffic wording in a long page",
+                sample(&[], &["text"], 5000, "Blog"),
+                None,
+            ),
+            ("normal page", sample(&[], &[], 5000, "News"), None),
+            ("empty page", ChallengeSample::default(), None),
+        ];
+        for (name, sample, want) in cases {
+            assert_eq!(judge_challenge(&sample).as_deref(), want, "{name}");
+        }
+    }
+
+    #[test]
+    fn challenge_samples_parse_from_the_script_json() {
+        let raw =
+            r#"{"strong":["cloudflare"],"weak":[],"textChars":12,"title":"Just a moment..."}"#;
+        let parsed: ChallengeSample = serde_json::from_str(raw).unwrap();
+        assert_eq!(
+            judge_challenge(&parsed).as_deref(),
+            Some("Cloudflare check")
+        );
+        assert!(serde_json::from_str::<ChallengeSample>("").is_err());
+    }
+
     #[tokio::test]
     async fn read_page_before_open_page_says_so() {
         let run = RunBrowser::default();
@@ -728,7 +983,13 @@ mod tests {
             exe: PathBuf::from("unused"),
         };
         let error = run
-            .run(READ_PAGE_TOOL, &json!({}), &chosen, Path::new("unused"))
+            .run(
+                READ_PAGE_TOOL,
+                &json!({}),
+                &chosen,
+                Path::new("unused"),
+                None,
+            )
             .await
             .unwrap_err();
         assert!(error.to_string().contains("open_page"));
@@ -754,6 +1015,7 @@ mod tests {
                     &json!({ "url": url }),
                     &chosen,
                     Path::new("unused"),
+                    None,
                 )
                 .await
                 .unwrap_err();
@@ -784,9 +1046,22 @@ mod tests {
                             "200 OK",
                             "<!doctype html><html><head><title>JS only</title></head><body><main id=\"app\"></main><script>setTimeout(function(){document.getElementById('app').innerHTML='<h1>Rendered by script</h1><p>Hello from the browser.</p><a href=\"/next\">Next page</a>'},500)</script><noscript>needs script</noscript></body></html>",
                         )
+                    } else if first.starts_with("GET /check ") {
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Just a moment...</title></head><body><div id=\"challenge-form\">Checking your browser</div></body></html>",
+                        )
+                    } else if first.starts_with("GET /contact ") {
+                        // A long page with a reCAPTCHA on a form: content, not a check.
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Contact</title></head><body><main><p>LONGTEXT</p><form><div class=\"g-recaptcha\"></div></form></main></body></html>",
+                        )
                     } else {
                         ("404 Not Found", "nothing")
                     };
+                    let long = "word ".repeat(600);
+                    let body = body.replace("LONGTEXT", &long);
                     let reply = format!(
                         "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                         body.len()
@@ -820,7 +1095,13 @@ mod tests {
 
         let run = RunBrowser::default();
         let opened = run
-            .run(OPEN_PAGE_TOOL, &json!({ "url": url }), &chosen, &profile)
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": url }),
+                &chosen,
+                &profile,
+                None,
+            )
             .await
             .expect("page opens");
         let pid = launch::host().pid().await;
@@ -838,13 +1119,63 @@ mod tests {
 
         // The same page read again.
         let again = run
-            .run(READ_PAGE_TOOL, &json!({}), &chosen, &profile)
+            .run(READ_PAGE_TOOL, &json!({}), &chosen, &profile, None)
             .await
             .expect("page reads");
         assert!(again["content"]
             .as_str()
             .unwrap()
             .contains("Rendered by script"));
+
+        // A human check with nobody to ask: skipped, and its text not returned.
+        let check_url = format!("http://127.0.0.1:{port}/check");
+        let skipped = run
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": check_url }),
+                &chosen,
+                &profile,
+                None,
+            )
+            .await
+            .unwrap_err()
+            .for_model();
+        println!("check page: {skipped}");
+        assert!(skipped.contains("Cloudflare check"), "{skipped}");
+        assert!(skipped.contains("Nobody is watching"), "{skipped}");
+        // Asked, and told to skip: not completed.
+        let skip: &AskFn<'_> = &|q: String| -> AskFuture<'_> {
+            Box::pin(async move {
+                assert!(q.contains("wants to check you're a person"), "{q}");
+                false
+            })
+        };
+        let declined = run
+            .run(READ_PAGE_TOOL, &json!({}), &chosen, &profile, Some(skip))
+            .await
+            .unwrap_err()
+            .for_model();
+        assert!(declined.contains("wasn't completed"), "{declined}");
+        // Continue without finishing it: still a check.
+        let cont: &AskFn<'_> = &|_q: String| -> AskFuture<'_> { Box::pin(async { true }) };
+        let still = run
+            .run(READ_PAGE_TOOL, &json!({}), &chosen, &profile, Some(cont))
+            .await
+            .unwrap_err()
+            .for_model();
+        assert!(still.contains("is still showing a check"), "{still}");
+        // A long page with a reCAPTCHA widget is read normally.
+        let contact = run
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": format!("http://127.0.0.1:{port}/contact") }),
+                &chosen,
+                &profile,
+                None,
+            )
+            .await
+            .expect("a form with a reCAPTCHA is content");
+        assert_eq!(contact["title"], "Contact");
 
         // Another private address is still refused (loopback is only the test's).
         let refused = run
@@ -853,6 +1184,7 @@ mod tests {
                 &json!({ "url": "http://10.255.255.1/" }),
                 &chosen,
                 &profile,
+                None,
             )
             .await
             .unwrap_err();

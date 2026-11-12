@@ -142,12 +142,26 @@ pub const ELEMENTS_SCRIPT: &str = r#"(() => {
     const b = form.querySelector('button:not([type]), button[type=submit], input[type=submit], input[type=image]');
     return b ? clip(nameOf(b), 80) : null;
   };
-  const selector = 'a[href], button, input:not([type=hidden]), textarea, select, summary, [contenteditable=""], [contenteditable=true], [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=option], [role=switch], [role=combobox], [role=textbox], [role=searchbox]';
+  // Also what pages make clickable by script: links without an address, inline
+  // click handlers, focusable elements and the usual button classes.
+  const selector = 'a[href], button, input:not([type=hidden]), textarea, select, summary, [contenteditable=""], [contenteditable=true], [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=option], [role=switch], [role=combobox], [role=textbox], [role=searchbox], a:not([href]), [onclick], [tabindex]:not([tabindex="-1"]), [data-toggle], [data-bs-toggle], .btn, [class*="button" i]';
   const out = [];
   let n = 0;
+  const taken = new Set();
   for (const el of document.querySelectorAll(selector)) {
     if (out.length >= MAX) break;
     if (el.disabled || el.getAttribute('aria-disabled') === 'true' || !visible(el)) continue;
+    // A clickable inside one already listed (an icon in a button) is the same thing.
+    let inside = false;
+    for (let p = el.parentElement; p; p = p.parentElement) if (taken.has(p)) { inside = true; break; }
+    if (inside) continue;
+    // A wrapper with no text of its own and nothing to name it isn't worth a ref.
+    const native = ['A', 'BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'SUMMARY'].includes(el.tagName) || el.getAttribute('role') || el.isContentEditable;
+    if (!native && !clip(nameOf(el), 80)) continue;
+    // A wrapper holding real controls (a "button-group", a focusable panel) is
+    // skipped so the controls inside it are listed instead.
+    if (!native && el.querySelector('a[href], button, input, select, textarea, [role=button], [role=link]')) continue;
+    taken.add(el);
     const role = roleOf(el);
     const form = el.form || el.closest('form');
     const item = { ref: 'e' + (++n), role, name: clip(nameOf(el), 80) };

@@ -1451,6 +1451,8 @@ mod tests {
                              <label>Country <select id=\"c\"><option>Spain</option><option>France</option></select></label>\
                              <label><input type=\"checkbox\" id=\"news\"> Newsletter</label>\
                              <button id=\"buy\" onclick=\"document.title='bought'\">Buy now</button>\
+                             <a class=\"btn check_out\" onclick=\"document.title='checked out'\">Proceed To Checkout</a>\
+                             <div class=\"button-group\" tabindex=\"0\"><button onclick=\"this.textContent='Pressed'\">Inner</button></div>\
                              <form action=\"/login\" method=\"post\"><input name=\"user\" aria-label=\"Email\"><input type=\"password\" name=\"pw\" aria-label=\"Password\"><button>Continue</button></form>\
                              <p>LONGTEXT</p></main></body></html>",
                         )
@@ -1987,6 +1989,40 @@ mod tests {
         );
         let page = call(READ_PAGE_TOOL, json!({})).await.expect("reads");
         assert_eq!(page["title"], "Shop", "the risky click went ahead");
+
+        // A link made clickable only by script is listed, and its money word asks.
+        let checkout = ref_of(&page, "Proceed To Checkout");
+        let error = call(
+            crate::browser::act::CLICK_TOOL,
+            json!({ "ref": checkout, "why": "checkout" }),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("didn't allow"), "{error}");
+        // A button inside a focusable group is listed itself; the group isn't.
+        let inner = ref_of(&page, "Inner");
+        assert!(
+            !page["elements"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["name"]
+                    .as_str()
+                    .is_some_and(|n| n.contains("Inner") && n != "Inner")),
+            "{}",
+            page["elements"]
+        );
+        let page = call(
+            crate::browser::act::CLICK_TOOL,
+            json!({ "ref": inner, "why": "press" }),
+        )
+        .await
+        .expect("presses");
+        assert!(
+            page["elements"].to_string().contains("Pressed"),
+            "{}",
+            page["elements"]
+        );
 
         // Passwords and keys are refused without asking.
         let before = asked.lock().unwrap().len();

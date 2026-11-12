@@ -632,10 +632,10 @@ async fn continuation_with_multiple_parallel_tools_in_one_round() {
         3,
         "all 3 tool results in one tool message"
     );
-    for i in 0..3 {
+    for (i, part) in tool.parts.iter().enumerate() {
         let expected_id = format!("call-par-{i}");
         assert_eq!(
-            tool.parts[i].tool_call_id.as_deref(),
+            part.tool_call_id.as_deref(),
             Some(expected_id.as_str()),
             "part {} has tool_call_id {}",
             i,

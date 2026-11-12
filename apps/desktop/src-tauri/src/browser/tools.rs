@@ -1323,6 +1323,8 @@ mod tests {
 
     #[tokio::test]
     async fn open_page_refuses_private_addresses_before_any_launch() {
+        // Never the source tree, even if a refusal is missed and it launches.
+        let scratch = tempfile::tempdir().unwrap();
         let run = RunBrowser::default();
         let chosen = Chosen {
             browser: Browser::Edge,
@@ -1340,7 +1342,7 @@ mod tests {
                     OPEN_PAGE_TOOL,
                     &json!({ "url": url }),
                     &chosen,
-                    Path::new("unused"),
+                    &scratch.path().join("browser-profile"),
                     None,
                     None,
                 )

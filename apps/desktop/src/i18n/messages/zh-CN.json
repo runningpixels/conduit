@@ -3837,6 +3837,8 @@
   "workspace.workflows.perm.browser.label": "每行一个网站，例如 example.com 或 *.example.com",
   "workspace.workflows.perm.browser.invalid": "不是网站：{sites}。只写主机名，例如 example.com 或 *.example.com，不要带 https:// 或路径。",
   "workspace.workflows.perm.browser.save": "保存网站",
+  "workspace.workflows.perm.browser.anySite": "任何网站",
+  "workspace.workflows.perm.browser.anySiteHint": "此工作流中的智能体会在任何网站上点击和输入，无需事先询问。在任何花钱或更改账户的操作之前，以及提交登录表单之前，它们仍会询问。",
   "chat.toolCall.browser.clicked": "已点击",
   "chat.toolCall.browser.typed": "已输入",
   "chat.toolCall.browser.chose": "已选择",
@@ -3865,5 +3867,6 @@
   "workspace.workflows.browser.deadline": "等到 {when}，之后视为“不执行”。",
   "workspace.workflows.browser.doIt": "执行",
   "workspace.workflows.browser.dont": "不执行",
-  "workspace.workflows.browser.always": "在 {site} 上始终允许"
+  "workspace.workflows.browser.always": "在 {site} 上始终允许",
+  "workspace.workflows.browser.allowAll": "在所有网站上允许"
 }

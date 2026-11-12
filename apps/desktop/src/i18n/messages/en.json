@@ -3837,6 +3837,8 @@
   "workspace.workflows.perm.browser.label": "One site per line, like example.com or *.example.com",
   "workspace.workflows.perm.browser.invalid": "Not a site: {sites}. Write just the host, like example.com or *.example.com, without https:// or a path.",
   "workspace.workflows.perm.browser.save": "Save sites",
+  "workspace.workflows.perm.browser.anySite": "Any site",
+  "workspace.workflows.perm.browser.anySiteHint": "Agents in this workflow click and type on any site without asking first. They still ask before anything that spends money or changes an account, and before submitting a sign-in form.",
   "chat.toolCall.browser.clicked": "Clicked",
   "chat.toolCall.browser.typed": "Typed",
   "chat.toolCall.browser.chose": "Chose",
@@ -3865,5 +3867,6 @@
   "workspace.workflows.browser.deadline": "Waits until {when}, then counts as Don’t.",
   "workspace.workflows.browser.doIt": "Do it",
   "workspace.workflows.browser.dont": "Don’t",
-  "workspace.workflows.browser.always": "Always on {site}"
+  "workspace.workflows.browser.always": "Always on {site}",
+  "workspace.workflows.browser.allowAll": "Allow on all sites"
 }

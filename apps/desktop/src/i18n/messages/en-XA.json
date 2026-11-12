@@ -3830,6 +3830,8 @@
   "workspace.workflows.perm.browser.label": "[Öñé šîťé ṕéŕ ļîñé, ļîķé éẍàḿṕļé.çöḿ öŕ *.éẍàḿṕļé.çöḿ —————— —————— —————— ———]",
   "workspace.workflows.perm.browser.invalid": "[Ñöť à šîťé: {sites}. Ŵŕîťé ĵüšť ťĥé ĥöšť, ļîķé éẍàḿṕļé.çöḿ öŕ *.éẍàḿṕļé.çöḿ, ŵîťĥöüť ĥťťṕš:// öŕ à ṕàťĥ. —————— —————— —————— —————— —————— —————— ———]",
   "workspace.workflows.perm.browser.save": "[Šàṽé šîťéš ————]",
+  "workspace.workflows.perm.browser.anySite": "[Àñý šîťé ————]",
+  "workspace.workflows.perm.browser.anySiteHint": "[Àĝéñťš îñ ťĥîš ŵöŕķḟļöŵ çļîçķ àñḍ ťýṕé öñ àñý šîťé ŵîťĥöüť àšķîñĝ ḟîŕšť. Ťĥéý šťîļļ àšķ ḅéḟöŕé àñýťĥîñĝ ťĥàť šṕéñḍš ḿöñéý öŕ çĥàñĝéš àñ àççöüñť, àñḍ ḅéḟöŕé šüḅḿîťťîñĝ à šîĝñ-îñ ḟöŕḿ. —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —————— —]",
   "chat.toolCall.browser.clicked": "[Çļîçķéḍ ———]",
   "chat.toolCall.browser.typed": "[Ťýṕéḍ ——]",
   "chat.toolCall.browser.chose": "[Çĥöšé ——]",
@@ -3858,5 +3860,6 @@
   "workspace.workflows.browser.deadline": "[Ŵàîťš üñťîļ {when}, ťĥéñ çöüñťš àš Ḍöñ’ť. —————— —————— ——]",
   "workspace.workflows.browser.doIt": "[Ḍö îť ——]",
   "workspace.workflows.browser.dont": "[Ḍöñ’ť ——]",
-  "workspace.workflows.browser.always": "[Àļŵàýš öñ {site} ————]"
+  "workspace.workflows.browser.always": "[Àļŵàýš öñ {site} ————]",
+  "workspace.workflows.browser.allowAll": "[Àļļöŵ öñ àļļ šîťéš —————— ——]"
 }

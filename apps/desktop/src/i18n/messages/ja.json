@@ -3837,6 +3837,8 @@
   "workspace.workflows.perm.browser.label": "1 行に 1 サイト（例: example.com、*.example.com）",
   "workspace.workflows.perm.browser.invalid": "サイトではありません: {sites}。https:// やパスを付けずに、example.com や *.example.com のようにホストだけを書いてください。",
   "workspace.workflows.perm.browser.save": "サイトを保存",
+  "workspace.workflows.perm.browser.anySite": "すべてのサイト",
+  "workspace.workflows.perm.browser.anySiteHint": "このワークフローのエージェントは、事前に確認せずにどのサイトでもクリックや入力を行います。お金がかかる操作やアカウントを変更する操作、サインインフォームの送信の前には引き続き確認します。",
   "chat.toolCall.browser.clicked": "クリックしました",
   "chat.toolCall.browser.typed": "入力しました",
   "chat.toolCall.browser.chose": "選択しました",
@@ -3865,5 +3867,6 @@
   "workspace.workflows.browser.deadline": "{when} まで待ち、その後は「しない」として扱います。",
   "workspace.workflows.browser.doIt": "実行する",
   "workspace.workflows.browser.dont": "しない",
-  "workspace.workflows.browser.always": "{site} では常に許可"
+  "workspace.workflows.browser.always": "{site} では常に許可",
+  "workspace.workflows.browser.allowAll": "すべてのサイトで許可"
 }

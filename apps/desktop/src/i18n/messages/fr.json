@@ -3837,6 +3837,8 @@
   "workspace.workflows.perm.browser.label": "Un site par ligne, par exemple example.com ou *.example.com",
   "workspace.workflows.perm.browser.invalid": "Ce n’est pas un site : {sites}. Indiquez seulement l’hôte, par exemple example.com ou *.example.com, sans https:// ni chemin.",
   "workspace.workflows.perm.browser.save": "Enregistrer les sites",
+  "workspace.workflows.perm.browser.anySite": "N’importe quel site",
+  "workspace.workflows.perm.browser.anySiteHint": "Les agents de ce workflow cliquent et saisissent sur n’importe quel site sans demander d’abord. Ils demandent toujours avant tout ce qui dépense de l’argent ou modifie un compte, et avant d’envoyer un formulaire de connexion.",
   "chat.toolCall.browser.clicked": "Clic effectué",
   "chat.toolCall.browser.typed": "Texte saisi",
   "chat.toolCall.browser.chose": "Option choisie",
@@ -3865,5 +3867,6 @@
   "workspace.workflows.browser.deadline": "Attend jusqu’à {when}, puis compte comme « Ne pas le faire ».",
   "workspace.workflows.browser.doIt": "Le faire",
   "workspace.workflows.browser.dont": "Ne pas le faire",
-  "workspace.workflows.browser.always": "Toujours sur {site}"
+  "workspace.workflows.browser.always": "Toujours sur {site}",
+  "workspace.workflows.browser.allowAll": "Autoriser sur tous les sites"
 }

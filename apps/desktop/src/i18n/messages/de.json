@@ -3837,6 +3837,8 @@
   "workspace.workflows.perm.browser.label": "Eine Website pro Zeile, z. B. example.com oder *.example.com",
   "workspace.workflows.perm.browser.invalid": "Keine Website: {sites}. Gib nur den Host an, z. B. example.com oder *.example.com, ohne https:// und ohne Pfad.",
   "workspace.workflows.perm.browser.save": "Websites speichern",
+  "workspace.workflows.perm.browser.anySite": "Jede Website",
+  "workspace.workflows.perm.browser.anySiteHint": "Agenten in diesem Workflow klicken und tippen auf jeder Website, ohne vorher zu fragen. Sie fragen weiterhin vor allem, was Geld kostet oder ein Konto ändert, und bevor sie ein Anmeldeformular absenden.",
   "chat.toolCall.browser.clicked": "Geklickt",
   "chat.toolCall.browser.typed": "Eingegeben",
   "chat.toolCall.browser.chose": "Ausgewählt",
@@ -3865,5 +3867,6 @@
   "workspace.workflows.browser.deadline": "Wartet bis {when} und gilt dann als „Nicht ausführen“.",
   "workspace.workflows.browser.doIt": "Ausführen",
   "workspace.workflows.browser.dont": "Nicht ausführen",
-  "workspace.workflows.browser.always": "Immer auf {site}"
+  "workspace.workflows.browser.always": "Immer auf {site}",
+  "workspace.workflows.browser.allowAll": "Auf allen Websites erlauben"
 }

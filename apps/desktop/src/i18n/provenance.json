@@ -3860,7 +3860,10 @@
     "workspace.workflows.browser.deadline": "37423750006c0a269a380c60c11dd608300ccc56",
     "workspace.workflows.browser.doIt": "9cab72d8372615dc78c63347788f3f8c510bf406",
     "workspace.workflows.browser.dont": "9c51b3360109b01134d65b6d1938b0c7d1f761ab",
-    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72"
+    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72",
+    "workspace.workflows.perm.browser.anySite": "0cb34e72402b49a106455c33f90bb07dc950b2a5",
+    "workspace.workflows.perm.browser.anySiteHint": "ce91f5813b8792957b3868583ca768bbd1b9b65a",
+    "workspace.workflows.browser.allowAll": "5c5cf8910dbb2f1f7b6d9d8c314f1cbb3f7a93ef"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7723,7 +7726,10 @@
     "workspace.workflows.browser.deadline": "37423750006c0a269a380c60c11dd608300ccc56",
     "workspace.workflows.browser.doIt": "9cab72d8372615dc78c63347788f3f8c510bf406",
     "workspace.workflows.browser.dont": "9c51b3360109b01134d65b6d1938b0c7d1f761ab",
-    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72"
+    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72",
+    "workspace.workflows.perm.browser.anySite": "0cb34e72402b49a106455c33f90bb07dc950b2a5",
+    "workspace.workflows.perm.browser.anySiteHint": "ce91f5813b8792957b3868583ca768bbd1b9b65a",
+    "workspace.workflows.browser.allowAll": "5c5cf8910dbb2f1f7b6d9d8c314f1cbb3f7a93ef"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11586,7 +11592,10 @@
     "workspace.workflows.browser.deadline": "37423750006c0a269a380c60c11dd608300ccc56",
     "workspace.workflows.browser.doIt": "9cab72d8372615dc78c63347788f3f8c510bf406",
     "workspace.workflows.browser.dont": "9c51b3360109b01134d65b6d1938b0c7d1f761ab",
-    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72"
+    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72",
+    "workspace.workflows.perm.browser.anySite": "0cb34e72402b49a106455c33f90bb07dc950b2a5",
+    "workspace.workflows.perm.browser.anySiteHint": "ce91f5813b8792957b3868583ca768bbd1b9b65a",
+    "workspace.workflows.browser.allowAll": "5c5cf8910dbb2f1f7b6d9d8c314f1cbb3f7a93ef"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -15449,7 +15458,10 @@
     "workspace.workflows.browser.deadline": "37423750006c0a269a380c60c11dd608300ccc56",
     "workspace.workflows.browser.doIt": "9cab72d8372615dc78c63347788f3f8c510bf406",
     "workspace.workflows.browser.dont": "9c51b3360109b01134d65b6d1938b0c7d1f761ab",
-    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72"
+    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72",
+    "workspace.workflows.perm.browser.anySite": "0cb34e72402b49a106455c33f90bb07dc950b2a5",
+    "workspace.workflows.perm.browser.anySiteHint": "ce91f5813b8792957b3868583ca768bbd1b9b65a",
+    "workspace.workflows.browser.allowAll": "5c5cf8910dbb2f1f7b6d9d8c314f1cbb3f7a93ef"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -19312,7 +19324,10 @@
     "workspace.workflows.browser.deadline": "37423750006c0a269a380c60c11dd608300ccc56",
     "workspace.workflows.browser.doIt": "9cab72d8372615dc78c63347788f3f8c510bf406",
     "workspace.workflows.browser.dont": "9c51b3360109b01134d65b6d1938b0c7d1f761ab",
-    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72"
+    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72",
+    "workspace.workflows.perm.browser.anySite": "0cb34e72402b49a106455c33f90bb07dc950b2a5",
+    "workspace.workflows.perm.browser.anySiteHint": "ce91f5813b8792957b3868583ca768bbd1b9b65a",
+    "workspace.workflows.browser.allowAll": "5c5cf8910dbb2f1f7b6d9d8c314f1cbb3f7a93ef"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -23175,7 +23190,10 @@
     "workspace.workflows.browser.deadline": "37423750006c0a269a380c60c11dd608300ccc56",
     "workspace.workflows.browser.doIt": "9cab72d8372615dc78c63347788f3f8c510bf406",
     "workspace.workflows.browser.dont": "9c51b3360109b01134d65b6d1938b0c7d1f761ab",
-    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72"
+    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72",
+    "workspace.workflows.perm.browser.anySite": "0cb34e72402b49a106455c33f90bb07dc950b2a5",
+    "workspace.workflows.perm.browser.anySiteHint": "ce91f5813b8792957b3868583ca768bbd1b9b65a",
+    "workspace.workflows.browser.allowAll": "5c5cf8910dbb2f1f7b6d9d8c314f1cbb3f7a93ef"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -27038,6 +27056,9 @@
     "workspace.workflows.browser.deadline": "37423750006c0a269a380c60c11dd608300ccc56",
     "workspace.workflows.browser.doIt": "9cab72d8372615dc78c63347788f3f8c510bf406",
     "workspace.workflows.browser.dont": "9c51b3360109b01134d65b6d1938b0c7d1f761ab",
-    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72"
+    "workspace.workflows.browser.always": "6700a815e06ccaecc47c5a30d4e9a9cdb5268b72",
+    "workspace.workflows.perm.browser.anySite": "0cb34e72402b49a106455c33f90bb07dc950b2a5",
+    "workspace.workflows.perm.browser.anySiteHint": "ce91f5813b8792957b3868583ca768bbd1b9b65a",
+    "workspace.workflows.browser.allowAll": "5c5cf8910dbb2f1f7b6d9d8c314f1cbb3f7a93ef"
   }
 }

@@ -1143,6 +1143,13 @@ impl ConnectorTools<'_, '_> {
             );
         }
         let remember = answer.remember && offer.is_some();
+        // "Allow on all sites" remembers the any-site entry instead of this host.
+        let offer = match answer.rule.as_deref().map(str::trim) {
+            Some(crate::browser::rules::ANY_SITE) => {
+                Some(crate::browser::rules::ANY_SITE.to_string())
+            }
+            _ => offer,
+        };
         if let (true, Some(site)) = (remember, offer) {
             match repo::get_action_rules(&state.db, &state.encryption, exec.workflow_id).await {
                 Ok(mut rules) => {

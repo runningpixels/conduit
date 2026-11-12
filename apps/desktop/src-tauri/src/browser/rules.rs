@@ -144,10 +144,17 @@ pub fn contains_secret(text: &str, secrets: &[String]) -> bool {
         .any(|s| text.contains(s))
 }
 
+/// The site-list entry that covers every site ("Allow on all sites"): actions
+/// go ahead anywhere, except the ones that always ask.
+pub const ANY_SITE: &str = "*";
+
 /// A site-list entry, cleaned: a lower-case host, or `*.host`. Refuses
 /// schemes, paths, ports and anything that isn't a host.
 pub fn normalize_site(entry: &str) -> Result<String, String> {
     let entry = entry.trim().trim_end_matches('.').to_lowercase();
+    if entry == ANY_SITE {
+        return Ok(entry);
+    }
     let (wild, host) = match entry.strip_prefix("*.") {
         Some(rest) => (true, rest),
         None => (false, entry.as_str()),
@@ -180,6 +187,9 @@ pub fn site_listed(host: &str, sites: &[String]) -> bool {
         let Ok(entry) = normalize_site(entry) else {
             return false;
         };
+        if entry == ANY_SITE {
+            return true;
+        }
         match entry.strip_prefix("*.") {
             Some(base) => host == base || host.ends_with(&format!(".{base}")),
             None => host == entry || host == format!("www.{entry}"),
@@ -566,6 +576,44 @@ mod tests {
     }
 
     #[test]
+    fn any_site_covers_everything_but_risky_and_login_asks() {
+        let any = vec![ANY_SITE.to_string()];
+        assert!(site_listed("shop.example", &any));
+        assert_eq!(normalize_site(" * ").unwrap(), "*");
+        let site = if site_listed("shop.example", &any) {
+            Site::Listed
+        } else {
+            Site::New
+        };
+        let link = ElementFacts {
+            role: "link".into(),
+            name: "Cart".into(),
+            ..Default::default()
+        };
+        assert_eq!(judge(Act::Click, Some(&link), site, &[]), Decision::Go);
+        assert!(matches!(
+            judge(Act::Click, Some(&button("Proceed to checkout")), site, &[]),
+            Decision::Ask {
+                reason: BrowserAskReason::Risky,
+                ..
+            }
+        ));
+        let login = ElementFacts {
+            submits: true,
+            in_form: true,
+            form_has_password: true,
+            ..button("Continue")
+        };
+        assert!(matches!(
+            judge(Act::Click, Some(&login), site, &[]),
+            Decision::Ask {
+                reason: BrowserAskReason::Submit,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn site_entries_are_checked() {
         assert_eq!(normalize_site(" Example.COM ").unwrap(), "example.com");
         assert_eq!(normalize_site("*.example.com").unwrap(), "*.example.com");
@@ -574,7 +622,8 @@ mod tests {
             "example.com/path",
             "example.com:443",
             "localhost",
-            "*",
+            "**",
+            "*.com",
             "",
             "-a.com",
         ] {

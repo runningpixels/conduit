@@ -201,6 +201,8 @@
 .wf-permission-list { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: var(--fs-5xl); display: grid; gap: 2px; }
 .wf-allowed { overflow-wrap: anywhere; }
 .wf-review { border-color: var(--warn); }
+.wf-review .wf-offer-actions { margin-top: var(--sp-1); }
+.wf-review .wf-deadline { font-size: var(--fs-lg); color: var(--ink-3); }
 .wf-tools { margin: 0; padding: 0; border: 0; display: grid; gap: var(--sp-1); }
 .wf-tools legend { padding: 0; margin-bottom: var(--sp-1); color: var(--ink-2); font-size: var(--fs-5xl); }
 .wf-question-form { display: grid; gap: var(--sp-2); justify-items: start; }

@@ -3837,6 +3837,8 @@
   "workspace.workflows.perm.browser.label": "Um site por linha, como example.com ou *.example.com",
   "workspace.workflows.perm.browser.invalid": "Não é um site: {sites}. Escreva só o host, como example.com ou *.example.com, sem https:// nem caminho.",
   "workspace.workflows.perm.browser.save": "Salvar sites",
+  "workspace.workflows.perm.browser.anySite": "Qualquer site",
+  "workspace.workflows.perm.browser.anySiteHint": "Os agentes deste fluxo de trabalho clicam e digitam em qualquer site sem perguntar antes. Eles ainda perguntam antes de qualquer coisa que gaste dinheiro ou altere uma conta, e antes de enviar um formulário de login.",
   "chat.toolCall.browser.clicked": "Clicou",
   "chat.toolCall.browser.typed": "Digitou",
   "chat.toolCall.browser.chose": "Escolheu",
@@ -3865,5 +3867,6 @@
   "workspace.workflows.browser.deadline": "Espera até {when}; depois conta como “Não fazer”.",
   "workspace.workflows.browser.doIt": "Fazer",
   "workspace.workflows.browser.dont": "Não fazer",
-  "workspace.workflows.browser.always": "Sempre em {site}"
+  "workspace.workflows.browser.always": "Sempre em {site}",
+  "workspace.workflows.browser.allowAll": "Permitir em todos os sites"
 }

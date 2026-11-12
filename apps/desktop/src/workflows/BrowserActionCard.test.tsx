@@ -86,8 +86,16 @@ describe('ActionCard for a browser action', () => {
     expect(screen.getByRole('note')).toHaveTextContent('First action on github.com in this workflow');
     // Not careful: Do it leads.
     const buttons = screen.getAllByRole('button').map((b) => b.textContent);
-    expect(buttons).toEqual(['Do it', 'Always on github.com', 'Don’t']);
+    expect(buttons).toEqual(['Do it', 'Always on github.com', 'Allow on all sites', 'Don’t']);
     expect(screen.getByRole('button', { name: 'Do it' })).toHaveClass('primary');
+  });
+
+  it('“Allow on all sites” remembers the any-site entry', async () => {
+    setup(newSite);
+    fireEvent.click(screen.getByRole('button', { name: 'Allow on all sites' }));
+    await waitFor(() =>
+      expect(ipc.answerWorkflowAction).toHaveBeenCalledWith('r1', 's1', { send: true, remember: true, rule: '*' }),
+    );
   });
 
   it('“Always on” answers with remember', async () => {

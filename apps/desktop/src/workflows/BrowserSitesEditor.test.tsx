@@ -83,6 +83,21 @@ describe('ActionRulesSection: browser sites', () => {
     expect(screen.getByRole('button', { name: 'Save sites' })).toBeDisabled();
   });
 
+  it('“Any site” saves the any-site entry and hides the list; off brings it back', async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Any site' }));
+    await waitFor(() =>
+      expect(ipc.setWorkflowActionRules).toHaveBeenCalledWith('w1', { ...rules, browserSites: ['*', 'github.com'] }),
+    );
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: BOX })).toBeNull());
+    expect(screen.getByText(/without asking first/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Any site' }));
+    await waitFor(() =>
+      expect(ipc.setWorkflowActionRules).toHaveBeenLastCalledWith('w1', { ...rules, browserSites: ['github.com'] }),
+    );
+    expect(await screen.findByRole('textbox', { name: BOX })).toHaveValue('github.com');
+  });
+
   it('saves the list with the other rules kept', async () => {
     render(<Harness />);
     fireEvent.change(screen.getByRole('textbox', { name: BOX }), { target: { value: 'github.com\n*.Example.org\n' } });

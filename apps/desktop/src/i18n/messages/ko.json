@@ -3837,6 +3837,8 @@
   "workspace.workflows.perm.browser.label": "한 줄에 사이트 하나(예: example.com 또는 *.example.com)",
   "workspace.workflows.perm.browser.invalid": "사이트가 아닙니다: {sites}. https://나 경로 없이 example.com 또는 *.example.com처럼 호스트만 쓰세요.",
   "workspace.workflows.perm.browser.save": "사이트 저장",
+  "workspace.workflows.perm.browser.anySite": "모든 사이트",
+  "workspace.workflows.perm.browser.anySiteHint": "이 워크플로의 에이전트는 먼저 묻지 않고 모든 사이트에서 클릭하고 입력합니다. 돈이 드는 작업이나 계정을 바꾸는 작업, 로그인 양식 제출 전에는 계속 묻습니다.",
   "chat.toolCall.browser.clicked": "클릭함",
   "chat.toolCall.browser.typed": "입력함",
   "chat.toolCall.browser.chose": "선택함",
@@ -3865,5 +3867,6 @@
   "workspace.workflows.browser.deadline": "{when}까지 기다린 뒤 “하지 않기”로 처리합니다.",
   "workspace.workflows.browser.doIt": "실행",
   "workspace.workflows.browser.dont": "하지 않기",
-  "workspace.workflows.browser.always": "{site}에서 항상 허용"
+  "workspace.workflows.browser.always": "{site}에서 항상 허용",
+  "workspace.workflows.browser.allowAll": "모든 사이트에서 허용"
 }

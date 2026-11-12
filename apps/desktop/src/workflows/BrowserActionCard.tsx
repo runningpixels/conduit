@@ -3,7 +3,8 @@
 /// the action in plain words, the full text it would type, the page it is on,
 /// and one chip saying why it asks. A form submit or a money-and-accounts word
 /// makes "Don’t" the main button; "Always on <site>" is offered only for the
-/// first action on a site (`request.offerSite`).
+/// first action on a site (`request.offerSite`), next to "Allow on all sites",
+/// which lets the workflow act anywhere (risky words and sign-in forms still ask).
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useT, type Translate } from '../i18n';
@@ -12,6 +13,7 @@ import { answerWorkflowAction } from '../ipc/client';
 import type { BrowserRequest, WorkflowAction } from '../ipc/contracts';
 import { rejectionText } from './CommandRuleList';
 import { formatNextRun } from './ScheduleSection';
+import { ANY_SITE } from './BrowserSitesEditor';
 import '../styles/computer-card.css';
 
 /// Most earlier actions shown in "So far in this run".
@@ -112,13 +114,15 @@ export function BrowserActionCard({
     };
   }, []);
 
-  async function answer(send: boolean, remember = false) {
+  /// `remember`: "this site" adds `offerSite` to the list, "all" allows every site.
+  async function answer(send: boolean, remember: false | 'site' | 'all' = false) {
     setSending(true);
     setRefused(null);
     try {
       const taken = await answerWorkflowAction(action.runId, action.stepId, {
         send,
         ...(send && remember && offerSite ? { remember: true } : {}),
+        ...(send && remember === 'all' && offerSite ? { rule: ANY_SITE } : {}),
       });
       onAnswered(action, taken);
     } catch (e) {
@@ -187,9 +191,14 @@ export function BrowserActionCard({
               {doIt}
             </button>
             {offerSite ? (
-              <button type="button" className="btn" disabled={sending} onClick={() => void answer(true, true)}>
-                {t('workspace.workflows.browser.always', { site: offerSite })}
-              </button>
+              <>
+                <button type="button" className="btn" disabled={sending} onClick={() => void answer(true, 'site')}>
+                  {t('workspace.workflows.browser.always', { site: offerSite })}
+                </button>
+                <button type="button" className="btn" disabled={sending} onClick={() => void answer(true, 'all')}>
+                  {t('workspace.workflows.browser.allowAll')}
+                </button>
+              </>
             ) : null}
           </>
         ) : (
@@ -198,9 +207,14 @@ export function BrowserActionCard({
               {doIt}
             </button>
             {offerSite ? (
-              <button type="button" className="btn" disabled={sending} onClick={() => void answer(true, true)}>
-                {t('workspace.workflows.browser.always', { site: offerSite })}
-              </button>
+              <>
+                <button type="button" className="btn" disabled={sending} onClick={() => void answer(true, 'site')}>
+                  {t('workspace.workflows.browser.always', { site: offerSite })}
+                </button>
+                <button type="button" className="btn" disabled={sending} onClick={() => void answer(true, 'all')}>
+                  {t('workspace.workflows.browser.allowAll')}
+                </button>
+              </>
             ) : null}
             <button type="button" className="btn ghost" disabled={sending} onClick={() => void answer(false)}>
               {dont}

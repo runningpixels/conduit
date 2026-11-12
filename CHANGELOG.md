@@ -7,6 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.29] - 2026-11-12
+
+Browser use: agents read, click and type in a real browser, in workflows and in chat.
+
+### Added
+
+- **Agents read web pages in a real browser** (#329). Workflow agents and
+  helpers with "Use the browser" open pages in your installed Edge, Chrome,
+  Brave or Chromium, with its own separate profile, so pages that build
+  themselves with JavaScript can be read. Local and private-network addresses
+  are refused. Pick the browser, or reset its profile, in Settings →
+  Computer. If a site shows a human check, you're asked to finish it in the
+  browser window; Conduit never solves checks itself.
+- **Agents click, type and choose on websites** (#330). Workflows can let
+  their agents act on pages. They ask before anything that spends money,
+  changes an account or signs in, and the first time on each new site.
+  "Always on this site" and "Allow on all sites" remember your answer for the
+  workflow. Typing passwords and your saved API keys is refused. When a site
+  needs you signed in, you sign in yourself in the browser window; the agent
+  never sees what you type.
+- **Browse from a chat** (#331). A **Browser** button beside Web and Research
+  lets the assistant use the browser in that chat, one message at a time, in
+  the same tab. Approvals and questions appear right in the chat, and come
+  back if the window reloads.
+
+### Fixed
+
+- Links in replies, sources and search results now open in your browser;
+  before, clicking them did nothing.
+- Links with brackets in them (Wikipedia titles) are no longer cut short.
+
 ## [1.0.0-rc.28] - 2026-11-11
 
 Dictation: talk to the composer instead of typing.

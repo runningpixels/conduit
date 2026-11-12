@@ -756,7 +756,12 @@ pub(super) async fn settle(tab: &Tab) -> Result<(), BrowserError> {
 /// `true` comes back when they chose Continue (`false` for Skip, or nobody
 /// answering, or nowhere to ask).
 pub type AskFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>>;
-pub type AskFn<'a> = dyn Fn(String) -> AskFuture<'a> + Send + Sync + 'a;
+/// The second argument is the label of the choice that declines ("Skip this
+/// page", "Don't sign in"); the other choice is always Continue.
+pub type AskFn<'a> = dyn Fn(String, &'static str) -> AskFuture<'a> + Send + Sync + 'a;
+
+/// The declining choice of a human-check question.
+pub const SKIP_PAGE: &str = "Skip this page";
 
 /// After this many human checks on one site that weren't got past, a run
 /// stops putting that site's checks to the person.
@@ -943,7 +948,7 @@ pub(super) async fn read_checked<'a>(
         let question = format!(
             "{host} wants to check you're a person ({what}). Finish the check in the browser window, then choose Continue."
         );
-        if !ask(question).await {
+        if !ask(question, SKIP_PAGE).await {
             failed(tab);
             return Err(BrowserError::Other(format!(
                 "{host} asked for a human check ({what}) and it wasn't completed, so the page wasn't read."
@@ -1594,7 +1599,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        let skip: &AskFn<'_> = &|q: String| -> AskFuture<'_> {
+        let skip: &AskFn<'_> = &|q: String, _decline: &'static str| -> AskFuture<'_> {
             Box::pin(async move {
                 assert!(q.contains("wants to check you're a person"), "{q}");
                 false
@@ -1614,7 +1619,8 @@ mod tests {
             .for_model();
         assert!(declined.contains("wasn't completed"), "{declined}");
         // Continue without finishing it: still a check.
-        let cont: &AskFn<'_> = &|_q: String| -> AskFuture<'_> { Box::pin(async { true }) };
+        let cont: &AskFn<'_> =
+            &|_q: String, _decline: &'static str| -> AskFuture<'_> { Box::pin(async { true }) };
         let still = run2
             .run(
                 READ_PAGE_TOOL,

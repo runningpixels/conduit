@@ -36,6 +36,9 @@ pub const SIGN_IN_TOOL: &str = "ask_to_sign_in";
 /// How much text an action's read returns.
 const ACTION_READ_CHARS: usize = 4000;
 
+/// The declining choice of the sign-in question.
+pub const DONT_SIGN_IN: &str = "Don't sign in";
+
 pub const PAGE_CHANGED: &str =
     "That element is no longer on the page; the page changed. Call read_page and use a ref from its new elements list.";
 
@@ -494,7 +497,7 @@ async fn sign_in<'a>(
     if let Some(why) = why {
         question.push_str(&format!(" It says: {why}"));
     }
-    if !ask(question).await {
+    if !ask(question, DONT_SIGN_IN).await {
         return Err(BrowserError::Other(
             "The person didn't sign in. Carry on without it, or stop.".to_string(),
         ));

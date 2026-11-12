@@ -325,5 +325,8 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         ProviderEvent::HandoffUsage { .. } => "handoffUsage",
         ProviderEvent::UserNote { .. } => "userNote",
         ProviderEvent::ReplyContinued { .. } => "replyContinued",
+        ProviderEvent::BrowserApprovalRequested { .. } => "browserApprovalRequested",
+        ProviderEvent::BrowserQuestionRequested { .. } => "browserQuestionRequested",
+        ProviderEvent::BrowserPromptResolved { .. } => "browserPromptResolved",
     }
 }

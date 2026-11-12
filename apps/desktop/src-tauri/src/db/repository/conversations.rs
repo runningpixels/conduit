@@ -377,10 +377,108 @@ pub async fn set_workspace_disabled(
     Ok(())
 }
 
-/// The `metadata` a fork starts with: only the folder-access switch carries
-/// over, like the workspace root itself.
+/// Key in `conversations.metadata` holding the chat's browser switches.
+pub const BROWSER_KEY: &str = "browser";
+
+/// A chat's browser: whether its turns get the browser tools (`use`), whether
+/// they may click and type (`act`, only with `use`), and the sites where
+/// actions go ahead without asking (`sites`, `*` for every site).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ChatBrowser {
+    #[serde(rename = "use")]
+    pub use_browser: bool,
+    pub act: bool,
+    pub sites: Vec<String>,
+}
+
+/// The chat's browser switches; all off and no sites when never set.
+pub fn chat_browser(conversation: &Conversation) -> ChatBrowser {
+    let Some(value) = conversation
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get(BROWSER_KEY))
+    else {
+        return ChatBrowser::default();
+    };
+    let mut browser: ChatBrowser = serde_json::from_value(value.clone()).unwrap_or_default();
+    browser.act &= browser.use_browser;
+    browser
+}
+
+/// Set the chat's two browser switches, keeping its site list and the rest
+/// of its metadata. `act` is stored off when `use_browser` is off.
+pub async fn set_chat_browser(
+    pool: &SqlitePool,
+    id: &str,
+    use_browser: bool,
+    act: bool,
+) -> Result<(), DbError> {
+    let act = act && use_browser;
+    sqlx::query(
+        "UPDATE conversations SET metadata = json_set(COALESCE(metadata, '{}'), \
+         '$.browser', json_set(COALESCE(json_extract(COALESCE(metadata, '{}'), '$.browser'), '{}'), \
+         '$.use', json(?), '$.act', json(?))), updated_at = ? WHERE id = ?",
+    )
+    .bind(if use_browser { "true" } else { "false" })
+    .bind(if act { "true" } else { "false" })
+    .bind(now_iso8601())
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Replace the chat's browser site list (already normalized), keeping its
+/// switches and the rest of its metadata.
+pub async fn set_chat_browser_sites(
+    pool: &SqlitePool,
+    id: &str,
+    sites: &[String],
+) -> Result<(), DbError> {
+    let sites = serde_json::to_string(sites).unwrap_or_else(|_| "[]".to_string());
+    sqlx::query(
+        "UPDATE conversations SET metadata = json_set(COALESCE(metadata, '{}'), \
+         '$.browser', json_set(COALESCE(json_extract(COALESCE(metadata, '{}'), '$.browser'), '{}'), \
+         '$.sites', json(?))), updated_at = ? WHERE id = ?",
+    )
+    .bind(sites)
+    .bind(now_iso8601())
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Add one site to the chat's browser site list, unless it is there already.
+pub async fn add_chat_browser_site(pool: &SqlitePool, id: &str, site: &str) -> Result<(), DbError> {
+    let Some(conversation) = get(pool, id).await? else {
+        return Ok(());
+    };
+    let mut sites = chat_browser(&conversation).sites;
+    if sites.iter().any(|s| s == site) {
+        return Ok(());
+    }
+    sites.push(site.to_string());
+    set_chat_browser_sites(pool, id, &sites).await
+}
+
+/// The `metadata` a fork starts with: the folder-access switch carries over,
+/// like the workspace root itself, and the browser switches (not the site
+/// list, which the user grants per chat).
 fn fork_metadata(source: &Conversation) -> Option<String> {
-    workspace_disabled(source).then(|| format!("{{\"{WORKSPACE_DISABLED_KEY}\":true}}"))
+    let mut metadata = serde_json::Map::new();
+    if workspace_disabled(source) {
+        metadata.insert(WORKSPACE_DISABLED_KEY.to_string(), serde_json::json!(true));
+    }
+    let browser = chat_browser(source);
+    if browser.use_browser {
+        metadata.insert(
+            BROWSER_KEY.to_string(),
+            serde_json::json!({ "use": true, "act": browser.act }),
+        );
+    }
+    (!metadata.is_empty()).then(|| serde_json::Value::Object(metadata).to_string())
 }
 
 /// Set or clear per-conversation generation controls and user instructions.
@@ -1077,6 +1175,94 @@ mod tests {
         assert!(!workspace_disabled(&on));
         assert_eq!(on.metadata.as_ref().unwrap()["other"], 1);
         assert_eq!(fork_metadata(&on), None);
+    }
+
+    #[tokio::test]
+    async fn chat_browser_round_trips_and_keeps_other_metadata() {
+        let pool = memory_pool().await;
+        let conv = create(&pool, None).await.unwrap();
+        assert_eq!(chat_browser(&conv), ChatBrowser::default());
+
+        set_workspace_disabled(&pool, &conv.id, true).await.unwrap();
+        set_chat_browser(&pool, &conv.id, true, true).await.unwrap();
+        set_chat_browser_sites(&pool, &conv.id, &["github.com".to_string()])
+            .await
+            .unwrap();
+        let row = get(&pool, &conv.id).await.unwrap().unwrap();
+        assert_eq!(
+            chat_browser(&row),
+            ChatBrowser {
+                use_browser: true,
+                act: true,
+                sites: vec!["github.com".into()],
+            }
+        );
+        assert!(workspace_disabled(&row));
+        assert_eq!(
+            row.metadata.as_ref().unwrap()["browser"],
+            serde_json::json!({ "use": true, "act": true, "sites": ["github.com"] })
+        );
+
+        // The switches keep the sites; act can't be on without use.
+        set_chat_browser(&pool, &conv.id, false, true)
+            .await
+            .unwrap();
+        let off = get(&pool, &conv.id).await.unwrap().unwrap();
+        assert_eq!(
+            chat_browser(&off),
+            ChatBrowser {
+                use_browser: false,
+                act: false,
+                sites: vec!["github.com".into()],
+            }
+        );
+
+        // Adding a site once, however often it's added.
+        add_chat_browser_site(&pool, &conv.id, "*").await.unwrap();
+        add_chat_browser_site(&pool, &conv.id, "*").await.unwrap();
+        let more = get(&pool, &conv.id).await.unwrap().unwrap();
+        assert_eq!(chat_browser(&more).sites, vec!["github.com", "*"]);
+    }
+
+    #[tokio::test]
+    async fn a_fork_keeps_the_browser_switches_but_not_the_sites() {
+        let pool = memory_pool().await;
+        let conv = create(&pool, None).await.unwrap();
+        assert_eq!(fork_metadata(&conv), None);
+
+        set_chat_browser(&pool, &conv.id, true, true).await.unwrap();
+        set_chat_browser_sites(&pool, &conv.id, &["*".to_string()])
+            .await
+            .unwrap();
+        let row = get(&pool, &conv.id).await.unwrap().unwrap();
+        let forked: serde_json::Value =
+            serde_json::from_str(&fork_metadata(&row).unwrap()).unwrap();
+        assert_eq!(
+            forked,
+            serde_json::json!({ "browser": { "use": true, "act": true } })
+        );
+
+        set_workspace_disabled(&pool, &conv.id, true).await.unwrap();
+        set_chat_browser(&pool, &conv.id, true, false)
+            .await
+            .unwrap();
+        let row = get(&pool, &conv.id).await.unwrap().unwrap();
+        let forked: serde_json::Value =
+            serde_json::from_str(&fork_metadata(&row).unwrap()).unwrap();
+        assert_eq!(
+            forked,
+            serde_json::json!({ "workspaceDisabled": true, "browser": { "use": true, "act": false } })
+        );
+
+        // Off: nothing of the browser carries over.
+        set_chat_browser(&pool, &conv.id, false, false)
+            .await
+            .unwrap();
+        let row = get(&pool, &conv.id).await.unwrap().unwrap();
+        assert_eq!(
+            fork_metadata(&row).as_deref(),
+            Some("{\"workspaceDisabled\":true}")
+        );
     }
 
     #[tokio::test]

@@ -752,13 +752,35 @@ pub(super) async fn settle(tab: &Tab) -> Result<(), BrowserError> {
     }
 }
 
+/// A question for the person: the English text, and a message code with its
+/// values for a UI that shows it in the reader's language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrowserAsk {
+    pub text: String,
+    pub code: &'static str,
+    pub params: std::collections::BTreeMap<String, String>,
+}
+
+impl BrowserAsk {
+    pub fn new(text: String, code: &'static str, params: &[(&str, &str)]) -> Self {
+        Self {
+            text,
+            code,
+            params: params
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+}
+
 /// How the person is asked to finish a human check: the question goes in, and
 /// `true` comes back when they chose Continue (`false` for Skip, or nobody
 /// answering, or nowhere to ask).
 pub type AskFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>>;
 /// The second argument is the label of the choice that declines ("Skip this
 /// page", "Don't sign in"); the other choice is always Continue.
-pub type AskFn<'a> = dyn Fn(String, &'static str) -> AskFuture<'a> + Send + Sync + 'a;
+pub type AskFn<'a> = dyn Fn(BrowserAsk, &'static str) -> AskFuture<'a> + Send + Sync + 'a;
 
 /// The declining choice of a human-check question.
 pub const SKIP_PAGE: &str = "Skip this page";
@@ -945,8 +967,12 @@ pub(super) async fn read_checked<'a>(
             )));
         };
         bring_to_front(tab).await;
-        let question = format!(
-            "{host} wants to check you're a person ({what}). Finish the check in the browser window, then choose Continue."
+        let question = BrowserAsk::new(
+            format!(
+                "{host} wants to check you're a person ({what}). Finish the check in the browser window, then choose Continue."
+            ),
+            "chat.browser.question.humanCheck",
+            &[("host", &host), ("what", &what)],
         );
         if !ask(question, SKIP_PAGE).await {
             failed(tab);
@@ -1599,9 +1625,15 @@ mod tests {
         )
         .await
         .unwrap_err();
-        let skip: &AskFn<'_> = &|q: String, _decline: &'static str| -> AskFuture<'_> {
+        let skip: &AskFn<'_> = &|q: BrowserAsk, _decline: &'static str| -> AskFuture<'_> {
             Box::pin(async move {
-                assert!(q.contains("wants to check you're a person"), "{q}");
+                assert!(
+                    q.text.contains("wants to check you're a person"),
+                    "{}",
+                    q.text
+                );
+                assert_eq!(q.code, "chat.browser.question.humanCheck");
+                assert!(q.params.contains_key("host"));
                 false
             })
         };
@@ -1620,7 +1652,7 @@ mod tests {
         assert!(declined.contains("wasn't completed"), "{declined}");
         // Continue without finishing it: still a check.
         let cont: &AskFn<'_> =
-            &|_q: String, _decline: &'static str| -> AskFuture<'_> { Box::pin(async { true }) };
+            &|_q: BrowserAsk, _decline: &'static str| -> AskFuture<'_> { Box::pin(async { true }) };
         let still = run2
             .run(
                 READ_PAGE_TOOL,

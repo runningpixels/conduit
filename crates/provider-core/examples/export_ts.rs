@@ -17,18 +17,19 @@ use provider_core::schema::{
     AppNetwork, AppOrigin, AppSettings, AppSettingsView, AppStorage, AppSummary, AppUsageDay,
     Artifact, ArtifactKind, AskUserField, Attachment, BlockOwner, BrandBundle, BrandConfig,
     BrandFonts, BrandIdentity, BrandLogo, BrandPalette, BrandRuntime, BrandThemes, BrandUpdater,
-    ConnectorDefinition, ConnectorGrant, ConnectorPromptArgument, ConnectorPromptInfo,
-    ConnectorResourceInfo, ConnectorRuntimeEvent, ConnectorVersion, ConsentDecision, ConsentPrompt,
-    ContentAnnotation, Conversation, ConversationSummary, CredentialRequest, CredentialSummary,
-    DeckDetail, DeckReplaceResult, DeckSlide, DeckSnapshotCause, DeckSnapshotSummary, DeckStage,
-    DeckSummary, DraftBlock, DraftDetail, DraftExportFormat, DraftSnapshotCause,
-    DraftSnapshotSummary, DraftSources, DraftStage, DraftSummary, GenerationControls, GrantScope,
-    GrantStatus, HandoffTokens, KeychainMode, LanguageSetting, LicenseClaims, LocalSearchBackend,
-    Message, MessagePart, MessagePartKind, MessageRole, ModelInfo, ModelPolicy, ModelPrice,
-    ModelPriceOverride, OutlineSection, PageLlmGrant, PageLlmProviderGrant, PageLlmReply,
-    PageLlmRequest, PageLlmState, PageStorageEntry, PageStorageUsage, PermissionLevel, PriceSource,
-    PromptArguments, ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest,
-    ProviderUsage, ReasoningEffort, ResearchBrief, ResearchBudget, ResearchDepth, ResearchMaterial,
+    BrowserAskReason, BrowserRequest, ConnectorDefinition, ConnectorGrant, ConnectorPromptArgument,
+    ConnectorPromptInfo, ConnectorResourceInfo, ConnectorRuntimeEvent, ConnectorVersion,
+    ConsentDecision, ConsentPrompt, ContentAnnotation, Conversation, ConversationSummary,
+    CredentialRequest, CredentialSummary, DeckDetail, DeckReplaceResult, DeckSlide,
+    DeckSnapshotCause, DeckSnapshotSummary, DeckStage, DeckSummary, DraftBlock, DraftDetail,
+    DraftExportFormat, DraftSnapshotCause, DraftSnapshotSummary, DraftSources, DraftStage,
+    DraftSummary, GenerationControls, GrantScope, GrantStatus, HandoffTokens, KeychainMode,
+    LanguageSetting, LicenseClaims, LocalSearchBackend, Message, MessagePart, MessagePartKind,
+    MessageRole, ModelInfo, ModelPolicy, ModelPrice, ModelPriceOverride, OutlineSection,
+    PageLlmGrant, PageLlmProviderGrant, PageLlmReply, PageLlmRequest, PageLlmState,
+    PageStorageEntry, PageStorageUsage, PermissionLevel, PriceSource, PromptArguments,
+    ProviderEndpointConfig, ProviderError, ProviderEvent, ProviderRequest, ProviderUsage,
+    ReasoningEffort, ResearchBrief, ResearchBudget, ResearchDepth, ResearchMaterial,
     ResearchMaterialClaim, ResearchProgress, ResearchReportSummary, ResearchRun,
     ResearchRunUpdated, ResearchSource, ResearchSourceStatus, ResearchStatus, ResolvedModelPrice,
     ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState, ReturnTokenBudget,
@@ -59,6 +60,8 @@ fn main() {
     HandoffTokens::export().expect("export HandoffTokens");
     ProviderError::export().expect("export ProviderError");
     AskUserField::export().expect("export AskUserField");
+    BrowserAskReason::export().expect("export BrowserAskReason");
+    BrowserRequest::export().expect("export BrowserRequest");
     ProviderEvent::export().expect("export ProviderEvent");
 
     // Image generation (t0-8).

@@ -1086,6 +1086,113 @@ pub enum ProviderEvent {
     ReplyContinued {
         request_id: String,
     },
+    // ---------------------------------------------------------------------
+    // The browser in chat (`browser::chat`). `tool_call_id` is the browser
+    // tool call that is waiting. Adapters never produce these.
+    // ---------------------------------------------------------------------
+    /// A click, typing or choice in the chat's browser must be allowed
+    /// first: the card on the tool row. Answered with `answer_browser_action`.
+    BrowserApprovalRequested {
+        request_id: String,
+        tool_call_id: String,
+        /// Boxed: it is far larger than the other events.
+        request: Box<BrowserRequest>,
+    },
+    /// A human check or a sign-in for the person to finish in the browser
+    /// window. The choices are always "Continue" and `decline`. Answered with
+    /// `answer_browser_question`.
+    BrowserQuestionRequested {
+        request_id: String,
+        tool_call_id: String,
+        question: String,
+        /// The question as a message code (`chat.browser.question.*`) and its
+        /// values, for the UI to show in the reader's language; `question`
+        /// is the English.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        code: Option<String>,
+        #[serde(default)]
+        #[ts(type = "Record<string, string>")]
+        params: std::collections::BTreeMap<String, String>,
+        /// The declining choice ("Skip this page", "Don't sign in").
+        decline: String,
+    },
+    /// The approval or question on `tool_call_id` was answered, or resolved
+    /// as declined (a steer or Stop): the UI removes it.
+    BrowserPromptResolved {
+        request_id: String,
+        tool_call_id: String,
+    },
+}
+
+/// Why a browser action asks rather than going ahead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/browser_ask_reason.ts"
+)]
+pub enum BrowserAskReason {
+    /// It submits a form (always asks on a site not in the list, and for any
+    /// form with a password field).
+    Submit,
+    /// The element's name matches the money-and-accounts word list.
+    Risky,
+    /// The first action on a site that isn't in the site list.
+    NewSite,
+}
+
+/// A click, typing or choice in the agent's browser waiting for the user, as
+/// the card shows it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/browser_request.ts"
+)]
+pub struct BrowserRequest {
+    /// `click`, `type_text`, `choose_option`, `scroll` or `go_back`.
+    pub action: String,
+    pub host: String,
+    pub page_url: String,
+    pub page_title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub element_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub element_name: Option<String>,
+    /// The text to type, in full.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub text: Option<String>,
+    /// The option to choose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub option: Option<String>,
+    /// What the agent said it's for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub why: Option<String>,
+    pub reason: BrowserAskReason,
+    /// The word that made it risky, as found in the element's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub risky_word: Option<String>,
+    /// What the agent read from outside before this, when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub read_before: Option<String>,
+    /// What was already done in the browser, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// (Missing when empty; the TS type says so through `?? []` at use sites.)
+    #[ts(type = "Array<Record<string, unknown>>")]
+    pub so_far: Vec<serde_json::Value>,
+    /// The host "Always on this site" adds to the site list; `None` when it
+    /// isn't offered (submits and risky words always ask).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub offer_site: Option<String>,
 }
 
 /// A helper's model tokens by kind, as the price of each is set.

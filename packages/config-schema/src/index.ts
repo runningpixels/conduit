@@ -32,6 +32,8 @@ export type { ProviderUsage } from './generated/provider_usage';
 export type { ProviderError } from './generated/provider_error';
 export type { ProviderEvent } from './generated/provider_event';
 export type { AskUserField } from './generated/ask_user_field';
+export type { BrowserAskReason } from './generated/browser_ask_reason';
+export type { BrowserRequest } from './generated/browser_request';
 
 // Image generation (t0-8).
 

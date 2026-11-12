@@ -7,6 +7,7 @@ import type {
   ProviderUsage,
   ToolCallStatus,
 } from '@conduit/config-schema';
+import type { BrowserRequest, BrowserStreamEvent } from '../ipc/contracts';
 import { mergeProviderUsage } from '../lib/contextWindows';
 import {
   advanceDocumentWriteScan,
@@ -86,6 +87,20 @@ export interface ToolCallState {
   error?: string;
   /** Set on an `ask_<agent>` call once the agent starts: the helper's own turn. */
   handoff?: HandoffState;
+  /** A browser action in a chat waiting on the reader's Do it / Don't
+   *  (`browserApprovalRequested`); cleared by `browserPromptResolved`. */
+  browserApproval?: BrowserRequest;
+  /** A human check or sign-in in a chat's browser waiting on Continue or the
+   *  decline choice (`browserQuestionRequested`); cleared the same way. */
+  browserQuestion?: { question: string; decline: string; code?: string; params?: Record<string, string> };
+}
+
+/** Whether a tool call waits on the reader: a connector consent, or a browser
+ *  approval or question shown on its row. */
+export function toolCallAwaitsReader(tc: ToolCallState): boolean {
+  return Boolean(
+    (tc.sideEffecting && tc.consent === 'pending') || tc.browserApproval || tc.browserQuestion,
+  );
 }
 
 /** One piece of work the assistant handed to a library agent, with that agent's
@@ -259,8 +274,32 @@ export function createReattachedStreamState(
     title: string;
     fields: NonNullable<AssistantStreamState['askUser']>['fields'];
   } | null,
+  pendingBrowser?: {
+    toolCallId: string;
+    toolName: string;
+    arguments: Record<string, unknown>;
+    event: BrowserStreamEvent;
+  } | null,
 ): AssistantStreamState {
   const base = createAssistantStreamState(requestId);
+  if (pendingBrowser) {
+    // The browser call's row, with its card or question on it.
+    const withCall: AssistantStreamState = {
+      ...base,
+      toolCalls: [
+        {
+          toolCallId: pendingBrowser.toolCallId,
+          toolId: pendingBrowser.toolName,
+          name: pendingBrowser.toolName,
+          argumentsText: JSON.stringify(pendingBrowser.arguments ?? {}),
+          arguments: pendingBrowser.arguments ?? {},
+          complete: true,
+        },
+      ],
+      segments: [{ kind: 'tool', toolCallId: pendingBrowser.toolCallId }],
+    };
+    return reduceBrowserEvent(withCall, pendingBrowser.event);
+  }
   if (!pendingAskUser) return base;
   return {
     ...base,
@@ -324,7 +363,15 @@ function settleUnfinishedToolCalls(
 ): ToolCallState[] {
   return calls.map((tc) =>
     tc.endedAt === undefined && !SETTLED_STATUSES.includes(tc.status as ToolCallStatus)
-      ? { ...tc, status: status as ToolCallStatus, endedAt: now, error: tc.error ?? reason }
+      ? {
+          ...tc,
+          status: status as ToolCallStatus,
+          endedAt: now,
+          error: tc.error ?? reason,
+          // A turn that ended no longer waits on a browser card or question.
+          browserApproval: undefined,
+          browserQuestion: undefined,
+        }
       : tc,
   );
 }
@@ -438,7 +485,7 @@ function withoutEmptyTextSegments(state: AssistantStreamState): TurnSegment[] {
 
 export function applyProviderEvent(
   state: AssistantStreamState,
-  event: ProviderEvent,
+  event: ProviderEvent | BrowserStreamEvent,
 ): AssistantStreamState {
   const next = reduceProviderEvent(state, event);
   // A ping proves the connection is open, not that the model is producing
@@ -451,9 +498,10 @@ export function applyProviderEvent(
  *  was saved for one replayed from the log. */
 function reduceProviderEvent(
   state: AssistantStreamState,
-  event: ProviderEvent,
+  event: ProviderEvent | BrowserStreamEvent,
   now = Date.now(),
 ): AssistantStreamState {
+  if (isBrowserStreamEvent(event)) return reduceBrowserEvent(state, event);
   if (
     event.kind === 'handoffStarted' ||
     event.kind === 'handoff' ||
@@ -837,6 +885,8 @@ function reduceProviderEvent(
                 status: event.isError ? 'failed' as ToolCallStatus : 'completed' as ToolCallStatus,
                 error: event.error ?? tc.error,
                 endedAt: now,
+                browserApproval: undefined,
+                browserQuestion: undefined,
               }
             : tc,
         ),
@@ -844,6 +894,41 @@ function reduceProviderEvent(
     default:
       return state;
   }
+}
+
+function isBrowserStreamEvent(event: { kind: string }): event is BrowserStreamEvent {
+  return (
+    event.kind === 'browserApprovalRequested' ||
+    event.kind === 'browserQuestionRequested' ||
+    event.kind === 'browserPromptResolved'
+  );
+}
+
+/** A chat's browser approval or question lands on its tool call's row; the
+ *  resolved event (an answer, Stop, steering) takes it off again. */
+function reduceBrowserEvent(state: AssistantStreamState, event: BrowserStreamEvent): AssistantStreamState {
+  const id = event.toolCallId;
+  if (!allToolCalls(state).some((tc) => tc.toolCallId === id)) return state;
+  return mapToolCallsDeep(state, (tc) => {
+    if (tc.toolCallId !== id) return tc;
+    switch (event.kind) {
+      case 'browserApprovalRequested':
+        return { ...tc, browserApproval: event.request, browserQuestion: undefined };
+      case 'browserQuestionRequested':
+        return {
+          ...tc,
+          browserApproval: undefined,
+          browserQuestion: {
+            question: event.question,
+            decline: event.decline,
+            code: event.code,
+            params: event.params,
+          },
+        };
+      case 'browserPromptResolved':
+        return { ...tc, browserApproval: undefined, browserQuestion: undefined };
+    }
+  });
 }
 
 function reduceHandoffEvent(

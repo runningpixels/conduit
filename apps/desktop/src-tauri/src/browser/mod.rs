@@ -7,11 +7,13 @@
 
 pub mod act;
 pub mod cdp;
+pub mod chat;
 pub mod detect;
 pub mod elements;
 pub mod guard;
 pub mod launch;
 pub mod rules;
+pub mod secrets;
 #[cfg(windows)]
 mod spawn_windows;
 pub mod tools;

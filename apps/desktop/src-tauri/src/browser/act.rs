@@ -21,7 +21,8 @@ use tokio::time::Instant;
 use super::elements::{self, Element};
 use super::rules::{self, Act, Decision, Site};
 use super::tools::{
-    bring_to_front, cdp_error, evaluate, read_checked, settle, AskFn, ReadOpts, Tab, LOAD_WAIT,
+    bring_to_front, cdp_error, evaluate, read_checked, settle, AskFn, BrowserAsk, ReadOpts, Tab,
+    LOAD_WAIT,
 };
 use super::BrowserError;
 use crate::workflows::actions::BrowserRequest;
@@ -491,12 +492,20 @@ async fn sign_in<'a>(
         rules::site_to_offer(&host)
     };
     bring_to_front(tab).await;
-    let mut question = format!(
+    let mut text = format!(
         "Sign in to {site} in the agent's browser window, then choose Continue. The agent doesn't see what you type."
     );
     if let Some(why) = why {
-        question.push_str(&format!(" It says: {why}"));
+        text.push_str(&format!(" It says: {why}"));
     }
+    let question = match why {
+        Some(why) => BrowserAsk::new(
+            text,
+            "chat.browser.question.signInWhy",
+            &[("site", &site), ("why", why)],
+        ),
+        None => BrowserAsk::new(text, "chat.browser.question.signIn", &[("site", &site)]),
+    };
     if !ask(question, DONT_SIGN_IN).await {
         return Err(BrowserError::Other(
             "The person didn't sign in. Carry on without it, or stop.".to_string(),

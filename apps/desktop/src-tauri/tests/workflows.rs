@@ -5531,10 +5531,16 @@ async fn a_scheduled_documents_step_is_reviewed_by_collection_title() {
 fn echo_bin() -> &'static Path {
     static BIN: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     BIN.get_or_init(|| {
-        // Build next to the test binary (target/<dir>/debug/deps/x.exe), so a
-        // custom --target-dir is honoured and no second tree appears.
+        // Build next to the test binary, so a custom --target-dir is honoured
+        // and no second tree appears. The binary sits under the profile's
+        // folder: `target/debug/deps/x` before Cargo's new build-dir layout,
+        // `target/debug/build/<pkg>/<hash>/x` with it (Rust 1.100).
         let exe = std::env::current_exe().unwrap();
-        let debug = exe.parent().unwrap().parent().unwrap().to_path_buf();
+        let debug = exe
+            .ancestors()
+            .find(|dir| dir.file_name().is_some_and(|name| name == "debug"))
+            .unwrap_or_else(|| panic!("no debug folder above {exe:?}"))
+            .to_path_buf();
         let target = debug.parent().unwrap().to_path_buf();
         let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let status = std::process::Command::new("cargo")

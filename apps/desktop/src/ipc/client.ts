@@ -141,7 +141,11 @@ import type {
   AgentCallRow,
   AgentCallChange,
   DocumentReview,
+  BrowserStreamEvent,
+  ConversationBrowser,
+  BrowserRemember,
 } from './contracts';
+import type { ToolDefinition } from '@conduit/config-schema';
 
 export async function getAppPaths(): Promise<AppPaths> {
   return invokeCommand<AppPaths>('get_app_paths');
@@ -414,6 +418,16 @@ export interface PendingAskUser {
 export interface ActiveTurn {
   requestId: string;
   pendingAskUser: PendingAskUser | null;
+  /** The browser card or question the reply waits on, with its call. */
+  pendingBrowser?: PendingBrowserPrompt | null;
+}
+
+/** A chat browser call's waiting card or question, as the backend keeps it. */
+export interface PendingBrowserPrompt {
+  toolCallId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  event: BrowserStreamEvent;
 }
 
 /**
@@ -2509,6 +2523,44 @@ export async function listWorkflowActions(): Promise<WorkflowAction[]> {
 /** Send (or don't) an outside action a run waits on; resolves `false` if it was no longer waiting. */
 export async function answerWorkflowAction(runId: string, stepId: string, answer: WorkflowActionAnswer): Promise<boolean> {
   return invokeCommand<boolean>('answer_workflow_action', { runId, stepId, answer });
+}
+
+/** The browser tools a chat turn declares; `act` adds clicking and typing. */
+export async function browserToolDefinitions(act: boolean): Promise<ToolDefinition[]> {
+  return invokeCommand<ToolDefinition[]>('browser_tool_definitions', { act });
+}
+
+/** A chat's browser ticks and the sites it may act on. */
+export async function getConversationBrowser(conversationId: string): Promise<ConversationBrowser> {
+  return invokeCommand<ConversationBrowser>('get_conversation_browser', { conversationId });
+}
+
+/** Turn a chat's browser ticks on or off. */
+export async function setConversationBrowser(conversationId: string, use: boolean, act: boolean): Promise<void> {
+  await invokeCommand('set_conversation_browser', { conversationId, use, act });
+}
+
+/** Replace the sites a chat may act on without asking (`[]` clears them). */
+export async function setConversationBrowserSites(conversationId: string, sites: string[]): Promise<void> {
+  await invokeCommand('set_conversation_browser_sites', { conversationId, sites });
+}
+
+/** Answer a chat's browser approval card; false when it was no longer waiting. */
+export async function answerBrowserAction(
+  toolCallId: string,
+  send: boolean,
+  remember?: BrowserRemember,
+): Promise<boolean> {
+  return invokeCommand<boolean>('answer_browser_action', {
+    toolCallId,
+    send,
+    ...(remember ? { remember } : {}),
+  });
+}
+
+/** Answer a chat's browser question (a human check or sign-in): go on, or decline. */
+export async function answerBrowserQuestion(toolCallId: string, goOn: boolean): Promise<boolean> {
+  return invokeCommand<boolean>('answer_browser_question', { toolCallId, goOn });
 }
 
 /** Which outside actions a workflow takes without asking. */

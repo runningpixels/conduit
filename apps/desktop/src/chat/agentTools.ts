@@ -1105,6 +1105,15 @@ export function selectTurnWebTools(
     : [];
 }
 
+/** Whether a chat's turns get the browser tools: the chat's "Use the browser"
+ *  tick is on, Settings → Computer is on, and the app is not local-only. */
+export function chatBrowserAllowed(
+  browser: { use: boolean } | null | undefined,
+  settings: { localOnly?: boolean; workflowComputer?: { enabled: boolean } | null },
+): boolean {
+  return browser?.use === true && settings.workflowComputer?.enabled === true && !settings.localOnly;
+}
+
 /** Drop later tools whose name an earlier one already took: a provider
  *  rejects a request that declares one name twice. */
 export function dedupeToolsByName<T extends { name: string }>(tools: T[]): T[] {

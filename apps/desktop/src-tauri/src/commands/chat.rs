@@ -371,8 +371,11 @@ pub async fn get_conversation(
 #[tauri::command]
 pub async fn delete_conversation(
     state: State<'_, AppState>,
+    stream_manager: State<'_, StreamManager>,
     conversation_id: String,
 ) -> Result<(), String> {
+    // Its browser tab goes with it.
+    stream_manager.chat_browsers().close(&conversation_id);
     conversations::delete_with_files(
         &state.db,
         &state.paths.artifacts,
@@ -551,7 +554,11 @@ pub async fn set_conversation_chat_settings(
 }
 
 #[tauri::command]
-pub async fn delete_all_conversations(state: State<'_, AppState>) -> Result<Conversation, String> {
+pub async fn delete_all_conversations(
+    state: State<'_, AppState>,
+    stream_manager: State<'_, StreamManager>,
+) -> Result<Conversation, String> {
+    stream_manager.chat_browsers().close_all();
     conversations::delete_all_with_files(
         &state.db,
         &state.paths.artifacts,

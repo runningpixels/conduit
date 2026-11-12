@@ -351,6 +351,58 @@ describe('AssistantMessage chronological timeline', () => {
     expect(indicator?.textContent).not.toMatch(/still working|Running/);
   });
 
+  it('says it is waiting for approval while a browser card waits, and shows the card inline', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          toolCalls: [
+            {
+              ...toolCall('c1', 'click'),
+              browserApproval: {
+                action: 'click',
+                host: 'github.com',
+                pageUrl: 'https://github.com/notifications',
+                pageTitle: 'Notifications',
+                elementName: 'Mark as read',
+                elementRole: 'button',
+                reason: 'newSite',
+              },
+            },
+          ],
+          segments: [{ kind: 'tool', toolCallId: 'c1' }],
+          agentPhase: inAgentLoop,
+          lastEventAt: Date.now() - 120_000,
+        })}
+        provider="openai"
+      />,
+    );
+    const indicator = document.querySelector('.thinking-indicator');
+    expect(indicator?.textContent).toContain('Waiting for your approval above');
+    expect(screen.getByRole('button', { name: 'Do it' })).toBeInTheDocument();
+  });
+
+  it('says it is waiting for an answer while a browser question waits', () => {
+    render(
+      <AssistantMessage
+        state={streaming({
+          toolCalls: [
+            {
+              ...toolCall('c1', 'open_page'),
+              browserQuestion: { question: 'Solve the check in the browser window.', decline: 'Skip this page' },
+            },
+          ],
+          segments: [{ kind: 'tool', toolCallId: 'c1' }],
+          agentPhase: inAgentLoop,
+          lastEventAt: Date.now() - 120_000,
+        })}
+        provider="openai"
+      />,
+    );
+    const indicator = document.querySelector('.thinking-indicator');
+    expect(indicator?.textContent).toContain('Waiting for your answer above');
+    expect(screen.getByText('Solve the check in the browser window.')).toBeInTheDocument();
+  });
+
   it('places the live tail after the timeline end, not above later cards', () => {
     render(
       <AssistantMessage

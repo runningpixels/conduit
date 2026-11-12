@@ -1199,6 +1199,21 @@
 /* The global ring squares its corners to --r-xs; a pill keeps its shape. */
 .composer-tool:focus-visible { border-radius: var(--r-pill); }
 .composer-tool[data-icon-only="true"] { width: 28px; padding: 0; justify-content: center; }
+/* Browser: the toggle and its options chevron, one pill split in two. */
+.composer-tool-split { display: inline-flex; }
+.composer-tool-split > .composer-tool:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 8px; }
+.composer-tool-split > .composer-tool:first-child[data-icon-only="true"] { padding: 0; }
+.composer-tool-split > .composer-tool-more {
+  width: 22px;
+  padding: 0;
+  justify-content: center;
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.composer-tool-split > .composer-tool-more svg { width: 12px; height: 12px; }
+.composer-tool-split > .composer-tool-more[aria-expanded="true"] { background: var(--card-hi); color: var(--ink); }
+.composer-tool-split > .composer-tool:focus-visible { border-radius: inherit; }
 
 /* Dictation: the mic beside the model picker. Recording, it widens to show
  * Stop and the clock, and a ring grows with the input level so the user can
@@ -2418,6 +2433,23 @@ html[data-reduce-motion="on"] .turn-doc-line.live .live-dot { animation: none; }
   color: var(--ink-2);
   font-weight: var(--muted-weight);
   font-size: var(--fs-md);
+}
+
+/* The chat's browser ticks: "Let it click and type" sits under "Use the browser". */
+.composer-browser-list .composer-browser-nested { padding-left: 22px; }
+.composer-browser-off { color: var(--ink-2); }
+.composer-browser-sites { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.composer-browser-sites .chat-settings-pop-lead { margin: 0; flex: 1 1 auto; }
+
+/* A chat's browser approval and question on the tool row (the workflow card's content). */
+.consent.browser-consent { display: grid; gap: 6px; }
+.consent.browser-consent p,
+.consent.browser-consent .cc-headline { margin: 0; }
+.consent.browser-consent .wf-muted { font-size: var(--fs-5xl); color: var(--ink-2); }
+.consent.browser-consent .row { margin-top: 4px; }
+.consent.browser-consent.cc-risky {
+  border-left: 4px solid var(--err);
+  background: color-mix(in srgb, var(--err) 6%, var(--card));
 }
 
 /* t1-8 M2: an attached collection's row expands into its documents. The list

@@ -10,7 +10,7 @@ import {
   saveAttachment,
   saveDroppedAttachment,
 } from '../ipc/client';
-import { AgentsIcon, AttachIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ProjectIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { AgentsIcon, AttachIcon, BrowserIcon, ChevronDown, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ProjectIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
 import { researchUnavailableReasonId, webSearchUnavailableReasonId } from './researchAvailability';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
 import { ComposerMcpResources } from './ComposerMcpResources';
@@ -37,12 +37,13 @@ import { workspaceFolderLabel } from './agentTools';
 import { localSearchBackendLabel, resolveSearchBackend } from './webSearchIntent';
 import { ComposerChatSettings } from './ComposerChatSettings';
 import { ComposerSkills } from './ComposerSkills';
+import { ComposerBrowser } from './ComposerBrowser';
 import { ComposerCollections } from './ComposerCollections';
 import { ComposerDocumentPicker, documentOptionId, type DocumentPickerOption } from './ComposerDocumentPicker';
 import { findHashTrigger, type HashTrigger } from './hashTrigger';
 import { findAtTrigger, type AtTrigger } from './atTrigger';
 import { ComposerAgentPicker, agentOptionId, type AgentPickerOption } from './ComposerAgentPicker';
-import type { ConversationProject, KnowledgeCollection, SkillSummary } from '../ipc/contracts';
+import type { ConversationBrowser, ConversationProject, KnowledgeCollection, SkillSummary } from '../ipc/contracts';
 import { projectHasSettings } from './projectSummary';
 import { previewText, type QueuedMessage } from './messageQueue';
 import { useT } from '../i18n';
@@ -69,7 +70,8 @@ type ComposerPopover =
   | 'skills'
   | 'collections'
   | 'mcpPrompts'
-  | 'mcpResources';
+  | 'mcpResources'
+  | 'browser';
 
 export interface ComposerHandle {
   focusPrompt: () => void;
@@ -158,6 +160,11 @@ export interface ComposerProps {
   onRefreshMcpCapabilities?: () => void;
   /// Open a settings section ('providers' | 'privacy' …) from the strip.
   onOpenSettings?: (tab?: string) => void;
+  /** This chat's browser ticks. With `onBrowserChange`, the "+" menu offers "Browser". */
+  browser?: ConversationBrowser;
+  onBrowserChange?: (use: boolean, act: boolean) => void;
+  /** Forget the sites this chat may act on without asking. */
+  onBrowserClearSites?: () => void;
   /// Accumulated usage for spend (turns + live stream).
   usage?: ProviderUsage | null;
   /// Estimated tokens for the next request (prompt fill).
@@ -243,6 +250,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onToggleMcpResource,
   onRefreshMcpCapabilities,
   onOpenSettings,
+  browser,
+  onBrowserChange,
+  onBrowserClearSites,
   usage,
   contextTokens = 0,
   compactThresholdPercent,
@@ -1032,6 +1042,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       onSelect: () => togglePop('mcpResources'),
     });
   }
+  // The browser: per chat, needs Settings → Computer (the popover says so when it is off).
+  const browserAvailable = Boolean(browser && onBrowserChange);
+  const computerOn = settings.workflowComputer?.enabled === true;
+  const browserActive = browserAvailable && browser!.use && computerOn && !settings.localOnly;
+  const browserCanRun = computerOn && !settings.localOnly;
+  const browserToggleDisabled = streaming || !conversationId;
+  const browserToggleTitle = !browserCanRun
+    ? t(settings.localOnly ? 'chat.browser.localOnly' : 'chat.browser.computerOff')
+    : browserActive
+      ? t(browser!.act ? 'chat.browser.chipAct' : 'chat.browser.chip')
+      : t('chat.browser.intro');
+  /** The bar's Browser toggle: on (it may click and type, asking as the rules
+   *  say) or off. When Computer or the web is off it opens the options, which
+   *  say why. */
+  function toggleBrowser() {
+    if (!browserCanRun) {
+      togglePop('browser');
+      return;
+    }
+    if (browserActive) onBrowserChange!(false, false);
+    else onBrowserChange!(true, true);
+  }
   if (onSaveChatSettings) {
     plusItems.push({
       id: 'chatSettings',
@@ -1172,6 +1204,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       removeLabel: '',
     });
   }
+  // The browser has no chip either: its toggle in the bar shows it.
   if (onSaveChatSettings && (generationControls || userInstructions)) {
     chips.push({
       id: 'chatSettings',
@@ -1542,6 +1575,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 }
               />
             ) : null}
+            {browserAvailable && !streaming ? (
+              <ComposerBrowser
+                open={openPop === 'browser'}
+                browser={browser!}
+                computerOn={computerOn}
+                localOnly={settings.localOnly}
+                onClose={closePop}
+                onChange={onBrowserChange!}
+                onClearSites={onBrowserClearSites}
+                onOpenComputerSettings={onOpenSettings ? () => onOpenSettings('computer') : undefined}
+              />
+            ) : null}
             {onToggleSkill && !streaming ? (
               <ComposerSkills
                 open={openPop === 'skills'}
@@ -1629,6 +1674,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <ResearchIcon />
               {narrow ? null : <span>{t('chat.composer.tools.research')}</span>}
             </button>
+          ) : null}
+          {browserAvailable ? (
+            <span className="composer-tool-split">
+              <button
+                className="composer-tool"
+                type="button"
+                aria-pressed={browserActive}
+                aria-label={narrow ? t('chat.browser.chip') : undefined}
+                title={browserToggleTitle}
+                disabled={browserToggleDisabled}
+                data-icon-only={narrow ? 'true' : undefined}
+                onClick={toggleBrowser}
+              >
+                <BrowserIcon />
+                {narrow ? null : <span>{t('chat.browser.chip')}</span>}
+              </button>
+              <button
+                className="composer-tool composer-tool-more"
+                type="button"
+                aria-label={t('chat.browser.ariaLabel')}
+                aria-haspopup="dialog"
+                aria-expanded={openPop === 'browser'}
+                title={t('chat.browser.ariaLabel')}
+                disabled={browserToggleDisabled}
+                onClick={() => togglePop('browser')}
+              >
+                <ChevronDown />
+              </button>
+            </span>
           ) : null}
           {/* Everything before the spacer acts on the message; everything after
               it says who will answer, then dictates and sends. */}

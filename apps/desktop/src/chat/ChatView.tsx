@@ -43,6 +43,10 @@ import {
   removeLastTurn,
   setConversationWorkspace,
   setConversationChatSettings,
+  browserToolDefinitions,
+  getConversationBrowser,
+  setConversationBrowser,
+  setConversationBrowserSites,
   startConnector,
   startChatStream,
   updateSettings,
@@ -199,10 +203,11 @@ import {
   selectBuiltinTurnTools,
   selectBuiltinWebTools,
   selectTurnWebTools,
+  chatBrowserAllowed,
   dedupeToolsByName,
   type DocumentToolActivity,
 } from './agentTools';
-import type { DeckDetail, DraftDetail, ResearchMaterial } from '../ipc/contracts';
+import type { ConversationBrowser, DeckDetail, DraftDetail, ResearchMaterial } from '../ipc/contracts';
 import { appPromptBody, appPromptLabel } from './appPrompt';
 import { AppNote } from './AppNote';
 import { deckDeveloperPrompt, deckSystemAppendix } from '../slides/deckPrompt';
@@ -1168,6 +1173,30 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   /** Folder access turned off for this chat (the folder chip's ×): not even
    *  the Settings default applies. Persisted in the conversation's metadata. */
   const [workspaceOffForChat, setWorkspaceOffForChat] = useState(false);
+  /** This chat's browser ticks and site list (`metadata.browser`); null until loaded. */
+  const [chatBrowser, setChatBrowser] = useState<ConversationBrowser | null>(null);
+  const chatBrowserRef = useRef<ConversationBrowser | null>(null);
+  chatBrowserRef.current = chatBrowser;
+  /** The browser tools, fetched once per "Let it click and type" value. */
+  const browserToolsCacheRef = useRef(new Map<boolean, Promise<ToolDefinition[]>>());
+  useEffect(() => {
+    setChatBrowser(null);
+    if (!conversationId) return;
+    let cancelled = false;
+    // Through a resolved promise, so a command that throws (or a backend
+    // without it) leaves the chat with the browser off instead of breaking it.
+    Promise.resolve()
+      .then(() => getConversationBrowser(conversationId))
+      .then((browser) => {
+        if (!cancelled) setChatBrowser(browser ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setChatBrowser(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
   /** The folder this chat's workspace tools use: its own, else the Settings default. */
   const activeWorkspaceRoot = resolveActiveWorkspaceRoot(conversationWorkspaceRoot, {
     ...settings,
@@ -2123,10 +2152,35 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             ? selectBuiltinWebTools(searchBackend)
             : []
           : selectTurnWebTools(searchBackend, turnSettings);
+    const browserTools = await loadBrowserTools(turnSettings);
     // Many connector tools: offer `search_tools` instead of all of them, but
     // the tools of a connector the prompt names directly. The bindings above
     // keep the full catalog, so a found tool still runs.
-    return applyToolSearch(dedupeToolsByName([...builtinTools, ...webTools]), connectorTools, prompt).offered;
+    return applyToolSearch(
+      dedupeToolsByName([...builtinTools, ...webTools, ...browserTools]),
+      connectorTools,
+      prompt,
+    ).offered;
+  }
+
+  /** The browser tools when this chat's "Use the browser" is on (and Computer is
+   *  on, and not local-only); clicking and typing only with "Let it click and type". */
+  async function loadBrowserTools(turnSettings: AppSettings): Promise<ToolDefinition[]> {
+    const browser = chatBrowserRef.current;
+    // A deck or draft chat has no browser tick.
+    if (deck || draft || !browser || !chatBrowserAllowed(browser, turnSettings)) return [];
+    const cache = browserToolsCacheRef.current;
+    let tools = cache.get(browser.act);
+    if (!tools) {
+      tools = browserToolDefinitions(browser.act);
+      cache.set(browser.act, tools);
+    }
+    try {
+      return await tools;
+    } catch {
+      cache.delete(browser.act);
+      return [];
+    }
   }
 
   function applyRuntimeEventToActiveStream(
@@ -3140,6 +3194,33 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       onStatus(t('chat.view.status.workspaceFolderCleared'));
     } catch (error) {
       onStatus(error instanceof Error ? error.message : t('chat.view.status.couldNotClearWorkspaceFolder'));
+    }
+  }
+
+  /** Save this chat's browser ticks; "Let it click and type" needs "Use the browser". */
+  async function handleBrowserChange(use: boolean, act: boolean) {
+    if (!conversationId) return;
+    const nextAct = use && act;
+    const previous = chatBrowser;
+    setChatBrowser({ use, act: nextAct, sites: previous?.sites ?? [] });
+    try {
+      await setConversationBrowser(conversationId, use, nextAct);
+    } catch (error) {
+      setChatBrowser(previous);
+      onStatus(error instanceof Error ? error.message : t('chat.browser.saveFailed'));
+    }
+  }
+
+  /** Forget the sites this chat may act on without asking. */
+  async function handleBrowserClearSites() {
+    if (!conversationId || !chatBrowser) return;
+    const previous = chatBrowser;
+    setChatBrowser({ ...previous, sites: [] });
+    try {
+      await setConversationBrowserSites(conversationId, []);
+    } catch (error) {
+      setChatBrowser(previous);
+      onStatus(error instanceof Error ? error.message : t('chat.browser.saveFailed'));
     }
   }
 
@@ -4453,6 +4534,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onToggleMcpResource={handleToggleMcpResource}
         onRefreshMcpCapabilities={() => setMcpReloadToken((n) => n + 1)}
         onOpenSettings={onOpenSettings}
+        browser={deck || draft ? undefined : chatBrowser ?? { use: false, act: false, sites: [] }}
+        onBrowserChange={deck || draft ? undefined : (use, act) => void handleBrowserChange(use, act)}
+        onBrowserClearSites={deck || draft ? undefined : () => void handleBrowserClearSites()}
         usage={accumulatedUsage}
         contextTokens={contextTokens}
         compactThresholdPercent={compactThresholdPercent}

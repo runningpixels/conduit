@@ -1405,3 +1405,114 @@ describe('Composer document attachments', () => {
     expect(document.querySelector('.composer')).toHaveClass('drop-active');
   });
 });
+
+describe('Composer browser ticks', () => {
+  const computerOn: AppSettings = {
+    ...baseSettings,
+    localOnly: false,
+    workflowComputer: { enabled: true, deny: [] },
+  };
+  const off = { use: false, act: false, sites: [] as string[] };
+
+  function openBrowser() {
+    openPlusMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Browser…' }));
+    return screen.getByRole('dialog', { name: 'Browser for this chat' });
+  }
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('offers no Browser item without the handler', () => {
+    renderComposer({ settings: computerOn });
+    openPlusMenu();
+    expect(screen.queryByRole('menuitem', { name: 'Browser…' })).toBeNull();
+  });
+
+  it('turns "Use the browser" on, then "Let it click and type"', () => {
+    const onBrowserChange = vi.fn();
+    renderComposer({ settings: computerOn, browser: off, onBrowserChange });
+    openBrowser();
+    const act = screen.getByRole('switch', { name: 'Let it click and type' });
+    expect(act).toBeDisabled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Use the browser' }));
+    expect(onBrowserChange).toHaveBeenLastCalledWith(true, false);
+  });
+
+  it('turns clicking and typing on and off while the browser is on', () => {
+    const onBrowserChange = vi.fn();
+    renderComposer({ settings: computerOn, browser: { use: true, act: false, sites: [] }, onBrowserChange });
+    openBrowser();
+    const act = screen.getByRole('switch', { name: 'Let it click and type' });
+    expect(act).toBeEnabled();
+    expect(act).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(act);
+    expect(onBrowserChange).toHaveBeenLastCalledWith(true, true);
+  });
+
+  it('turning the browser off turns clicking off too', () => {
+    const onBrowserChange = vi.fn();
+    renderComposer({ settings: computerOn, browser: { use: true, act: true, sites: [] }, onBrowserChange });
+    openBrowser();
+    fireEvent.click(screen.getByRole('switch', { name: 'Use the browser' }));
+    expect(onBrowserChange).toHaveBeenLastCalledWith(false, false);
+  });
+
+  it('is disabled with a note and a link to Settings → Computer when Computer is off', () => {
+    const onBrowserChange = vi.fn();
+    const onOpenSettings = vi.fn();
+    renderComposer({
+      settings: { ...baseSettings, localOnly: false },
+      browser: off,
+      onBrowserChange,
+      onOpenSettings,
+    });
+    openBrowser();
+    expect(screen.getByRole('switch', { name: 'Use the browser' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Let it click and type' })).toBeDisabled();
+    expect(screen.getByText('The browser needs Computer turned on in Settings.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Computer settings' }));
+    expect(onOpenSettings).toHaveBeenCalledWith('computer');
+  });
+
+  it('is disabled in local-only mode', () => {
+    renderComposer({
+      settings: { ...computerOn, localOnly: true },
+      browser: off,
+      onBrowserChange: vi.fn(),
+    });
+    openBrowser();
+    expect(screen.getByRole('switch', { name: 'Use the browser' })).toBeDisabled();
+    expect(screen.getByText('The browser is not available in local-only mode.')).toBeInTheDocument();
+  });
+
+  it('shows an active chip that turns the browser off', () => {
+    const onBrowserChange = vi.fn();
+    renderComposer({ settings: computerOn, browser: { use: true, act: true, sites: [] }, onBrowserChange });
+    expect(screen.getByText('Browser · clicks and types')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off the browser for this chat' }));
+    expect(onBrowserChange).toHaveBeenCalledWith(false, false);
+  });
+
+  it('shows no chip while Computer is off', () => {
+    renderComposer({
+      settings: { ...baseSettings, localOnly: false },
+      browser: { use: true, act: false, sites: [] },
+      onBrowserChange: vi.fn(),
+    });
+    expect(screen.queryByRole('button', { name: 'Turn off the browser for this chat' })).toBeNull();
+  });
+
+  it('says when every site is allowed and clears the list', () => {
+    const onBrowserClearSites = vi.fn();
+    renderComposer({
+      settings: computerOn,
+      browser: { use: true, act: true, sites: ['*'] },
+      onBrowserChange: vi.fn(),
+      onBrowserClearSites,
+    });
+    openBrowser();
+    expect(screen.getByText('Clicks and types on any site without asking first.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again' }));
+    expect(onBrowserClearSites).toHaveBeenCalled();
+  });
+});

@@ -2578,3 +2578,107 @@ async fn a_reply_is_not_continued_while_a_turn_runs() {
     assert_eq!(chat.logged_events("turn-1").await, logged);
     assert_eq!(chat.script.rounds_started(), 1);
 }
+
+// The browser in chat. These never start a browser: the calls stop at the
+// switches (Settings → Computer, then the chat's own).
+
+fn tool_errors(turn: &Turn) -> Vec<(String, Option<String>)> {
+    turn.events
+        .iter()
+        .filter_map(|e| match e {
+            ProviderEvent::ToolExecutionFinished {
+                tool_name, error, ..
+            } => Some((tool_name.clone(), error.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_browser_tool_the_turn_did_not_declare_is_not_run() {
+    let turn = run_turn(
+        vec![tool_round(
+            vec![("open_page", json!({ "url": "https://example.com" }))],
+            Duration::ZERO,
+        )],
+        guardrails(25, 300),
+    )
+    .await;
+    assert!(turn.tool_executions().is_empty());
+    assert!(matches!(turn.terminal(), ProviderEvent::Error { .. }));
+    // Nothing declared: no browser note either.
+    assert!(!turn.requests[0]
+        .system_prompt
+        .as_deref()
+        .unwrap_or_default()
+        .contains("real browser"));
+}
+
+#[tokio::test]
+async fn a_declared_browser_tool_needs_the_computer_switch() {
+    let turn = run_turn_with(
+        vec![
+            tool_round(
+                vec![("open_page", json!({ "url": "https://example.com" }))],
+                Duration::ZERO,
+            ),
+            text_round("I couldn't open it."),
+        ],
+        guardrails(25, 300),
+        None,
+        &["open_page", "read_page"],
+    )
+    .await;
+    let errors = tool_errors(&turn);
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].0, "open_page");
+    assert!(
+        errors[0]
+            .1
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Settings, under Computer"),
+        "got {errors:?}"
+    );
+    // The turn was told how to use the browser, read only.
+    let system = turn.requests[0].system_prompt.clone().unwrap_or_default();
+    assert!(system.contains("real browser"), "got {system}");
+    assert!(system.contains("only reads"), "got {system}");
+}
+
+#[tokio::test]
+async fn a_declared_browser_tool_needs_the_chats_switch() {
+    let (result, turn) = run_turn_with_settings(
+        vec![
+            tool_round(
+                vec![("open_page", json!({ "url": "https://example.com" }))],
+                Duration::ZERO,
+            ),
+            text_round("I couldn't open it."),
+        ],
+        guardrails(25, 300),
+        None,
+        &["open_page"],
+        Provider::Local,
+        true,
+        Sink::Webview,
+        |settings| {
+            settings.workflow_computer = Some(provider_core::schema::WorkflowComputerSettings {
+                enabled: true,
+                ..Default::default()
+            });
+        },
+    )
+    .await;
+    result.expect("turn runs");
+    let errors = tool_errors(&turn);
+    assert_eq!(errors.len(), 1);
+    assert!(
+        errors[0]
+            .1
+            .as_deref()
+            .unwrap_or_default()
+            .contains("turned off for this chat"),
+        "got {errors:?}"
+    );
+}

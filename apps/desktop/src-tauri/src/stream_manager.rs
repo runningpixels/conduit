@@ -182,6 +182,32 @@ pub fn round_produced_nothing(
     !produced_text && runnable.is_empty() && !undeclared.is_empty()
 }
 
+/// Add the browser's note (`browser::tools::system_note`) to the system
+/// prompt of a request that declares browser tools: the read-only note, or
+/// the acting one when it declares an action tool. Added once.
+pub fn add_browser_system_note(request: &mut ProviderRequest) {
+    use crate::browser::{act, tools};
+    let names = || request.tool_definitions.iter().map(|d| d.name.as_str());
+    if !names().any(tools::is_browser_tool) {
+        return;
+    }
+    let mut markers = vec![crate::browser::BROWSER_TOOL.to_string()];
+    if names().any(act::is_action_tool) {
+        markers.push(crate::browser::BROWSER_ACT_TOOL.to_string());
+    }
+    let Some(note) = tools::system_note(&markers) else {
+        return;
+    };
+    let mut system = request.system_prompt.take().unwrap_or_default();
+    if !system.contains(tools::BROWSER_SYSTEM) {
+        if !system.trim().is_empty() {
+            system.push_str("\n\n");
+        }
+        system.push_str(&note);
+    }
+    request.system_prompt = Some(system);
+}
+
 /// Reads of one document per turn before further reads are answered instead
 /// of run (see the loop in `run_agent_turn`).
 const REPEAT_READ_LIMIT: usize = 3;
@@ -1242,6 +1268,74 @@ pub(crate) struct ActiveStream {
     pub(crate) conversation_id: Option<String>,
 }
 
+/// What a chat browser call needs to put a card or question to the user.
+struct BrowserPromptCtx<'a> {
+    prompts: &'a crate::browser::chat::BrowserPrompts,
+    request_id: &'a str,
+    tool_call_id: &'a str,
+    channel: Option<&'a EventSink<ProviderEvent>>,
+    cancel: &'a CancellationToken,
+    user_wait_ms: &'a std::sync::atomic::AtomicU64,
+}
+
+impl BrowserPromptCtx<'_> {
+    /// Show `event` and wait for the answer. Nowhere to show it, a steer or
+    /// Stop: [`crate::browser::chat::PromptAnswer::Declined`].
+    async fn wait(
+        &self,
+        kind: crate::browser::chat::PromptKind,
+        event: ProviderEvent,
+    ) -> crate::browser::chat::PromptAnswer {
+        use crate::browser::chat::PromptAnswer;
+        let Some(channel) = self.channel else {
+            return PromptAnswer::Declined;
+        };
+        if self.cancel.is_cancelled() {
+            return PromptAnswer::Declined;
+        }
+        let rx = self.prompts.open(self.tool_call_id, self.request_id, kind);
+        // Resolved however the wait ends: answered, declined, or the call
+        // dropped (a steer during the tool round drops it).
+        let _shown = BrowserPromptShown {
+            prompts: self.prompts,
+            request_id: self.request_id,
+            tool_call_id: self.tool_call_id,
+            channel,
+        };
+        let _ = channel.send(event);
+        let since = std::time::Instant::now();
+        let answer = tokio::select! {
+            biased;
+            _ = self.cancel.cancelled() => PromptAnswer::Declined,
+            answer = rx => answer.unwrap_or(PromptAnswer::Declined),
+        };
+        self.user_wait_ms.fetch_add(
+            since.elapsed().as_millis() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        answer
+    }
+}
+
+/// A browser card or question on show: when dropped, it is forgotten and the
+/// UI is told to remove it.
+struct BrowserPromptShown<'a> {
+    prompts: &'a crate::browser::chat::BrowserPrompts,
+    request_id: &'a str,
+    tool_call_id: &'a str,
+    channel: &'a EventSink<ProviderEvent>,
+}
+
+impl Drop for BrowserPromptShown<'_> {
+    fn drop(&mut self) {
+        self.prompts.forget(self.tool_call_id);
+        let _ = self.channel.send(ProviderEvent::BrowserPromptResolved {
+            request_id: self.request_id.to_string(),
+            tool_call_id: self.tool_call_id.to_string(),
+        });
+    }
+}
+
 /// An `ask_user` form the turn is waiting on.
 struct PendingAskUser {
     tx: tokio::sync::oneshot::Sender<serde_json::Value>,
@@ -1309,6 +1403,10 @@ pub struct StreamManager {
     /// Helpers at work, by their `agent_calls` row: what Stop and Redirect
     /// reach.
     helpers: Arc<Mutex<HashMap<String, HelperControl>>>,
+    /// The chats' browser tabs, one per conversation.
+    browsers: crate::browser::chat::ChatBrowsers,
+    /// Browser approvals and questions chat turns wait on, by tool call id.
+    browser_prompts: crate::browser::chat::BrowserPrompts,
 }
 
 /// A helper at work, as Stop and Redirect reach it.
@@ -1529,7 +1627,39 @@ impl StreamManager {
             turns: Arc::new(Mutex::new(HashMap::new())),
             provider_slots: Mutex::new(HashMap::new()),
             helpers: Arc::new(Mutex::new(HashMap::new())),
+            browsers: crate::browser::chat::ChatBrowsers::default(),
+            browser_prompts: crate::browser::chat::BrowserPrompts::default(),
         }
+    }
+
+    /// The chats' browser tabs (closed when a chat turns the browser off or
+    /// is deleted).
+    pub fn chat_browsers(&self) -> &crate::browser::chat::ChatBrowsers {
+        &self.browsers
+    }
+
+    /// Answer the browser approval card on `tool_call_id`: Do it (`send`)
+    /// or Don't; `remember` is `"site"` or `"all"`. `false` when no card
+    /// waits there.
+    pub fn answer_browser_action(
+        &self,
+        tool_call_id: &str,
+        send: bool,
+        remember: Option<String>,
+    ) -> bool {
+        self.browser_prompts.answer(
+            tool_call_id,
+            crate::browser::chat::PromptAnswer::Action { send, remember },
+        )
+    }
+
+    /// Answer the browser question on `tool_call_id`: Continue (`go_on`) or
+    /// its declining choice. `false` when no question waits there.
+    pub fn answer_browser_question(&self, tool_call_id: &str, go_on: bool) -> bool {
+        self.browser_prompts.answer(
+            tool_call_id,
+            crate::browser::chat::PromptAnswer::Question { go_on },
+        )
     }
 
     /// Note a helper at work as agent call `call_id`, its turn `request_id`,
@@ -2001,6 +2131,7 @@ impl StreamManager {
             let pool = state.db.clone();
             let _ = messages::mark_interrupted_by_request(&pool, request_id).await;
             self.cancel_all_ask_user();
+            self.browser_prompts.decline_request(request_id);
         }
 
         Ok(cancelled)
@@ -2040,6 +2171,8 @@ impl StreamManager {
         self.steer_helper_stream(request_id, text)?;
         // Drop any in-flight ask_user forms when steering.
         self.cancel_all_ask_user();
+        // A browser card or question still waiting counts as Don't.
+        self.browser_prompts.decline_request(request_id);
         Ok(())
     }
 
@@ -2894,6 +3027,74 @@ impl StreamManager {
                 }
             }
 
+            // The chat's browser. Only declared tools get this far (see
+            // `partition_declared_tool_calls`); a workflow step's browser is
+            // its own (`step_tools`).
+            if step_tools.is_none() && crate::browser::tools::is_browser_tool(&tool_name) {
+                let result = self
+                    .execute_browser_tool(
+                        state,
+                        conversation_id,
+                        request_id,
+                        &call.tool_call_id,
+                        &tool_name,
+                        &call.arguments,
+                        provider_channel,
+                        cancel,
+                        user_wait_ms,
+                    )
+                    .await;
+                let (output, is_error) = match result {
+                    Ok(output) => (output, false),
+                    Err(error) => (serde_json::json!({ "ok": false, "error": error }), true),
+                };
+                let size = serde_json::to_vec(&output)
+                    .map(|bytes| bytes.len() as u64)
+                    .unwrap_or(0);
+                let recorded = agent_tools::finalize_tool_call(
+                    &ctx,
+                    &call.tool_call_id,
+                    request_id,
+                    &tool_name,
+                    &call.arguments,
+                    output,
+                    is_error,
+                )
+                .await;
+                if let Err(error) = &recorded {
+                    warn!(
+                        request_id = %request_id,
+                        tool_call_id = %call.tool_call_id,
+                        error = %error,
+                        "failed to record a browser tool's result"
+                    );
+                }
+                let (status, error) = match &recorded {
+                    Ok(exec) => (exec.record.status, exec.record.error.clone()),
+                    Err(error) => (ToolCallStatus::Failed, Some(error.clone())),
+                };
+                if let Some(channel) = runtime_channel {
+                    let _ = channel.send(ConnectorRuntimeEvent::ToolCallFinished {
+                        tool_call_id: call.tool_call_id.clone(),
+                        status,
+                        is_error: Some(is_error),
+                        size_bytes: if is_error { 0 } else { size },
+                        mime_hints: Vec::new(),
+                        error: error.clone(),
+                    });
+                }
+                if let Some(ch) = provider_channel {
+                    let _ = ch.send(ProviderEvent::ToolExecutionFinished {
+                        request_id: request_id.to_string(),
+                        tool_call_id: call.tool_call_id.clone(),
+                        tool_name: tool_name.clone(),
+                        is_error,
+                        error,
+                    });
+                }
+                continue;
+            }
+
             if agent_tools::is_builtin_tool_name(&tool_name) {
                 if tool_name == agent_tools::ASK_USER_TOOL {
                     let outcome = self
@@ -3301,6 +3502,136 @@ impl StreamManager {
             output: result_value,
             is_error: false,
         })
+    }
+
+    /// Run a browser tool (`open_page`, `read_page`, and with the chat's
+    /// "click and type" switch the action tools) in the chat's own tab.
+    ///
+    /// Needs Settings → Computer on and the chat's browser switch on; the
+    /// result (or the error, as `Err`) is for the model. Actions that must
+    /// ask show a card in the chat ([`ProviderEvent::BrowserApprovalRequested`]),
+    /// and human checks and sign-ins a question
+    /// ([`ProviderEvent::BrowserQuestionRequested`]); the time spent waiting
+    /// is added to `user_wait_ms`. Stop (`cancel`) ends the call; the tab stays.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn execute_browser_tool(
+        &self,
+        state: &AppState,
+        conversation_id: &str,
+        request_id: &str,
+        tool_call_id: &str,
+        name: &str,
+        arguments: &serde_json::Value,
+        provider_channel: Option<&EventSink<ProviderEvent>>,
+        cancel: &CancellationToken,
+        user_wait_ms: &std::sync::atomic::AtomicU64,
+    ) -> Result<serde_json::Value, String> {
+        use crate::browser::{act, chat, tools};
+
+        let settings = state.settings()?;
+        let computer = settings.workflow_computer.clone().unwrap_or_default();
+        if !computer.enabled {
+            return Err(
+                "The browser is turned off. The user can turn it on in Settings, under Computer."
+                    .to_string(),
+            );
+        }
+        if !arguments.is_object() {
+            return Err("The arguments should be a set of named values.".to_string());
+        }
+        let chat_browser = conversations::get(&state.db, conversation_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|c| conversations::chat_browser(&c))
+            .unwrap_or_default();
+        if !chat_browser.use_browser {
+            return Err("The browser is turned off for this chat.".to_string());
+        }
+        let chosen = chat::chat_browser_choice(computer.browser.as_deref())?;
+        let profile = crate::browser::launch::profile_dir(&state.paths.root);
+
+        let prompt = BrowserPromptCtx {
+            prompts: &self.browser_prompts,
+            request_id,
+            tool_call_id,
+            channel: provider_channel,
+            cancel,
+            user_wait_ms,
+        };
+        let ask = |question: String, decline: &'static str| -> tools::AskFuture<'_> {
+            let prompt = &prompt;
+            Box::pin(async move {
+                let event = ProviderEvent::BrowserQuestionRequested {
+                    request_id: request_id.to_string(),
+                    tool_call_id: tool_call_id.to_string(),
+                    question,
+                    decline: decline.to_string(),
+                };
+                matches!(
+                    prompt.wait(chat::PromptKind::Question, event).await,
+                    chat::PromptAnswer::Question { go_on: true }
+                )
+            })
+        };
+        let approve = |request: provider_core::schema::BrowserRequest| -> act::ApproveFuture<'_> {
+            let prompt = &prompt;
+            Box::pin(async move {
+                let offer = request.offer_site.clone();
+                let event = ProviderEvent::BrowserApprovalRequested {
+                    request_id: request_id.to_string(),
+                    tool_call_id: tool_call_id.to_string(),
+                    request: Box::new(request),
+                };
+                match prompt.wait(chat::PromptKind::Action, event).await {
+                    chat::PromptAnswer::Action {
+                        send: true,
+                        remember,
+                    } => {
+                        let site = chat::remembered_site(remember.as_deref(), offer.as_deref());
+                        if let Some(site) = &site {
+                            if let Err(e) = conversations::add_chat_browser_site(
+                                &state.db,
+                                conversation_id,
+                                site,
+                            )
+                            .await
+                            {
+                                warn!(error = %e, "could not add a site to the chat's browser list");
+                            }
+                        }
+                        act::Approval::Go {
+                            remember: site.is_some(),
+                        }
+                    }
+                    _ => act::Approval::No(chat::NOT_ALLOWED.to_string()),
+                }
+            })
+        };
+        let secrets = || crate::browser::secrets::saved_secrets(state);
+        let act_ctx = chat_browser.act.then(|| act::ActContext {
+            approve: &approve,
+            sites: chat_browser.sites.clone(),
+            secrets: &secrets,
+            read_before: None,
+        });
+
+        self.browsers.start_sweeper();
+        let browser = self.browsers.checkout(conversation_id);
+        let result = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => Err("Stopped: the user stopped this browser call.".to_string()),
+            result = browser.run(
+                name,
+                arguments,
+                &chosen,
+                &profile,
+                Some(&ask as &tools::AskFn<'_>),
+                act_ctx.as_ref(),
+            ) => result.map_err(|e| e.for_model()),
+        };
+        drop(browser);
+        self.browsers.touch(conversation_id);
+        result
     }
 
     /// Build a continuation `ProviderRequest` for the next provider round.
@@ -3921,6 +4252,11 @@ impl StreamManager {
         let continuation = self
             .start_continuation(state, &mut initial_request, &channel)
             .await?;
+        // A chat turn with the browser is told how to use it (a workflow
+        // step's own browser note comes from its runner).
+        if options.step_tools.is_none() {
+            add_browser_system_note(&mut initial_request);
+        }
         let request_id = if initial_request.request_id.trim().is_empty() {
             uuid::Uuid::new_v4().to_string()
         } else {
@@ -5272,5 +5608,233 @@ mod draft_continuation_tests {
         // No reply text: only the request is added.
         push_draft_continuation(&mut request, "  ", "Next");
         assert_eq!(request.messages.len(), 3);
+    }
+}
+
+#[cfg(test)]
+mod browser_prompt_tests {
+    use super::*;
+    use crate::browser::chat::{PromptAnswer, PromptKind};
+    use std::sync::atomic::AtomicU64;
+
+    fn question() -> ProviderEvent {
+        ProviderEvent::BrowserQuestionRequested {
+            request_id: "req-1".into(),
+            tool_call_id: "call-1".into(),
+            question: "Finish the check in the browser window.".into(),
+            decline: crate::browser::tools::SKIP_PAGE.into(),
+        }
+    }
+
+    async fn shown(manager: &StreamManager) {
+        while !manager.browser_prompts.is_waiting("call-1") {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    fn kinds(events: &[ProviderEvent]) -> Vec<&'static str> {
+        events
+            .iter()
+            .map(|e| match e {
+                ProviderEvent::BrowserQuestionRequested { .. } => "question",
+                ProviderEvent::BrowserApprovalRequested { .. } => "approval",
+                ProviderEvent::BrowserPromptResolved { tool_call_id, .. } => {
+                    assert_eq!(tool_call_id, "call-1");
+                    "resolved"
+                }
+                _ => "other",
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn an_answer_reaches_the_call_and_the_prompt_is_resolved() {
+        let manager = StreamManager::new();
+        let (sink, events) = crate::event_sink::collector::<ProviderEvent>();
+        let cancel = CancellationToken::new();
+        let waited = AtomicU64::new(0);
+        let ctx = BrowserPromptCtx {
+            prompts: &manager.browser_prompts,
+            request_id: "req-1",
+            tool_call_id: "call-1",
+            channel: Some(&sink),
+            cancel: &cancel,
+            user_wait_ms: &waited,
+        };
+        let (got, ()) = tokio::join!(ctx.wait(PromptKind::Question, question()), async {
+            shown(&manager).await;
+            // The wrong kind of answer doesn't count.
+            assert!(!manager.answer_browser_action("call-1", true, None));
+            assert!(manager.answer_browser_question("call-1", true));
+        });
+        assert_eq!(got, PromptAnswer::Question { go_on: true });
+        assert_eq!(kinds(&events.lock().unwrap()), vec!["question", "resolved"]);
+        // Answered once: there's nothing left to answer.
+        assert!(!manager.answer_browser_question("call-1", true));
+    }
+
+    #[tokio::test]
+    async fn an_approval_answer_carries_remember() {
+        let manager = StreamManager::new();
+        let (sink, _events) = crate::event_sink::collector::<ProviderEvent>();
+        let cancel = CancellationToken::new();
+        let waited = AtomicU64::new(0);
+        let ctx = BrowserPromptCtx {
+            prompts: &manager.browser_prompts,
+            request_id: "req-1",
+            tool_call_id: "call-1",
+            channel: Some(&sink),
+            cancel: &cancel,
+            user_wait_ms: &waited,
+        };
+        let (got, ()) = tokio::join!(ctx.wait(PromptKind::Action, question()), async {
+            shown(&manager).await;
+            assert!(manager.answer_browser_action("call-1", true, Some("all".into())));
+        });
+        assert_eq!(
+            got,
+            PromptAnswer::Action {
+                send: true,
+                remember: Some("all".into())
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_steer_declines_the_waiting_prompt() {
+        let manager = StreamManager::new();
+        let (_cancel, _steer_rx) = manager
+            .register_stream_with_steer("req-1", Some("conv-1"))
+            .unwrap();
+        let (sink, events) = crate::event_sink::collector::<ProviderEvent>();
+        let cancel = CancellationToken::new();
+        let waited = AtomicU64::new(0);
+        let ctx = BrowserPromptCtx {
+            prompts: &manager.browser_prompts,
+            request_id: "req-1",
+            tool_call_id: "call-1",
+            channel: Some(&sink),
+            cancel: &cancel,
+            user_wait_ms: &waited,
+        };
+        let (got, ()) = tokio::join!(ctx.wait(PromptKind::Action, question()), async {
+            shown(&manager).await;
+            manager
+                .steer_stream("req-1", "Do something else".into())
+                .unwrap();
+        });
+        assert_eq!(got, PromptAnswer::Declined);
+        assert_eq!(kinds(&events.lock().unwrap()), vec!["question", "resolved"]);
+        assert!(!manager.answer_browser_action("call-1", true, None));
+    }
+
+    #[tokio::test]
+    async fn stop_declines_and_a_dropped_call_still_resolves() {
+        let manager = StreamManager::new();
+        let (sink, events) = crate::event_sink::collector::<ProviderEvent>();
+        let cancel = CancellationToken::new();
+        let waited = AtomicU64::new(0);
+        let ctx = BrowserPromptCtx {
+            prompts: &manager.browser_prompts,
+            request_id: "req-1",
+            tool_call_id: "call-1",
+            channel: Some(&sink),
+            cancel: &cancel,
+            user_wait_ms: &waited,
+        };
+        let (got, ()) = tokio::join!(ctx.wait(PromptKind::Question, question()), async {
+            shown(&manager).await;
+            cancel.cancel();
+        });
+        assert_eq!(got, PromptAnswer::Declined);
+
+        // A call dropped mid-wait (a steer drops the whole tool round).
+        let fresh = CancellationToken::new();
+        let ctx = BrowserPromptCtx {
+            cancel: &fresh,
+            ..ctx
+        };
+        let mut wait = Box::pin(ctx.wait(PromptKind::Question, question()));
+        tokio::select! {
+            _ = &mut wait => panic!("nobody answered"),
+            () = shown(&manager) => {}
+        }
+        drop(wait);
+        assert!(!manager.browser_prompts.is_waiting("call-1"));
+        assert_eq!(
+            kinds(&events.lock().unwrap()),
+            vec!["question", "resolved", "question", "resolved"]
+        );
+    }
+
+    #[tokio::test]
+    async fn nowhere_to_ask_declines_at_once() {
+        let manager = StreamManager::new();
+        let cancel = CancellationToken::new();
+        let waited = AtomicU64::new(0);
+        let ctx = BrowserPromptCtx {
+            prompts: &manager.browser_prompts,
+            request_id: "req-1",
+            tool_call_id: "call-1",
+            channel: None,
+            cancel: &cancel,
+            user_wait_ms: &waited,
+        };
+        assert_eq!(
+            ctx.wait(PromptKind::Question, question()).await,
+            PromptAnswer::Declined
+        );
+    }
+
+    #[test]
+    fn the_browser_note_is_added_once_and_says_what_it_may_do() {
+        let tool = |name: &str| provider_core::schema::ToolDefinition {
+            tool_id: name.into(),
+            name: name.into(),
+            description: String::new(),
+            input_schema: serde_json::json!({}),
+            kind: None,
+            host_config: None,
+            permission_level: None,
+            display_group: None,
+            tenant_scope: None,
+        };
+        let mut request = ProviderRequest {
+            request_id: "r1".into(),
+            conversation_id: "c1".into(),
+            model_id: "m".into(),
+            messages: vec![],
+            system_prompt: Some("Base.".into()),
+            developer_prompt: None,
+            attachments: None,
+            tool_definitions: vec![tool("current_time")],
+            generation_controls: None,
+            response_format: None,
+            web_search: None,
+            continue_message_id: None,
+        };
+        add_browser_system_note(&mut request);
+        assert_eq!(request.system_prompt.as_deref(), Some("Base."));
+
+        request.tool_definitions.push(tool("open_page"));
+        add_browser_system_note(&mut request);
+        add_browser_system_note(&mut request);
+        let system = request.system_prompt.clone().unwrap();
+        assert!(system.starts_with("Base.\n\n"));
+        assert_eq!(
+            system
+                .matches(crate::browser::tools::BROWSER_SYSTEM)
+                .count(),
+            1
+        );
+        assert!(system.contains(crate::browser::tools::READ_ONLY_SYSTEM));
+
+        request.system_prompt = None;
+        request.tool_definitions.push(tool("click"));
+        add_browser_system_note(&mut request);
+        assert!(request
+            .system_prompt
+            .unwrap()
+            .contains(crate::browser::act::ACT_SYSTEM));
     }
 }

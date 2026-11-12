@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { TurnModelLine } from './TurnModelLine';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { streamStalled } from './documentWriteScan';
-import { allToolCalls, type AssistantStreamState } from './streamState';
+import { allToolCalls, toolCallAwaitsReader, type AssistantStreamState } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import { detectArtifactCandidates, type ArtifactCandidate } from './artifactCandidates';
 import { inlineArtifactIds } from './inlineArtifact';
@@ -238,8 +238,11 @@ export function AssistantMessage({
   const tokenCount = Math.round((text.length + argumentChars + reasoningChars) / 4);
   // `elapsed` ticks every second while streaming, so this re-evaluates on its own.
   const stalled = state.streaming && streamStalled(state.lastEventAt, Date.now());
-  const awaitingApproval = allToolCalls(state).some((tc) => tc.sideEffecting && tc.consent === 'pending');
-  const waitingOnReader = Boolean(state.askUser) || awaitingApproval;
+  // A connector consent, or a browser approval or question on a tool row.
+  const awaitingApproval = allToolCalls(state).some(toolCallAwaitsReader);
+  // A browser question (a human check, a sign-in) is answered, not approved.
+  const awaitingAnswer = Boolean(state.askUser) || allToolCalls(state).some((tc) => tc.browserQuestion);
+  const waitingOnReader = awaitingAnswer || awaitingApproval;
 
   const producingText = state.blocks.some(
     (b) =>
@@ -342,7 +345,7 @@ export function AssistantMessage({
             // answered.
             // The same goes for a tool waiting on its approval card.
             message={
-              state.askUser
+              awaitingAnswer
                 ? t('chat.askUser.waiting')
                 : awaitingApproval
                   ? t('chat.toolCall.consent.waiting')

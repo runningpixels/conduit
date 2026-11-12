@@ -2420,6 +2420,23 @@ html[data-reduce-motion="on"] .turn-doc-line.live .live-dot { animation: none; }
   font-size: var(--fs-md);
 }
 
+/* The chat's browser ticks: "Let it click and type" sits under "Use the browser". */
+.composer-browser-list .composer-browser-nested { padding-left: 22px; }
+.composer-browser-off { color: var(--ink-2); }
+.composer-browser-sites { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.composer-browser-sites .chat-settings-pop-lead { margin: 0; flex: 1 1 auto; }
+
+/* A chat's browser approval and question on the tool row (the workflow card's content). */
+.consent.browser-consent { display: grid; gap: 6px; }
+.consent.browser-consent p,
+.consent.browser-consent .cc-headline { margin: 0; }
+.consent.browser-consent .wf-muted { font-size: var(--fs-5xl); color: var(--ink-2); }
+.consent.browser-consent .row { margin-top: 4px; }
+.consent.browser-consent.cc-risky {
+  border-left: 4px solid var(--err);
+  background: color-mix(in srgb, var(--err) 6%, var(--card));
+}
+
 /* t1-8 M2: an attached collection's row expands into its documents. The list
  * item stacks the row and (when expanded) the document list, so it opts out
  * of the plain skill list's side-by-side grid above. */

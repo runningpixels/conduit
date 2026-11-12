@@ -769,45 +769,6 @@ struct ConnectorTools<'e, 'a> {
     stop: Option<CancellationToken>,
 }
 
-/// Provider ids whose saved keys are checked before an agent types text.
-/// The keychain can't list what it holds, so these plus the active provider
-/// and any with a custom endpoint are looked up.
-const KEYED_PROVIDERS: &[&str] = &[
-    "anthropic",
-    "openai",
-    "openrouter",
-    "groq",
-    "google",
-    "gemini",
-    "mistral",
-    "deepseek",
-    "xai",
-    "together",
-    "fireworks",
-    "cohere",
-    "perplexity",
-    "cerebras",
-    "moonshot",
-    "zai",
-];
-
-/// The person's saved API keys, to refuse typing them into a page. Read from
-/// the keychain each time; never logged or sent.
-fn saved_secrets(state: &AppState) -> Vec<String> {
-    let mut ids: Vec<String> = KEYED_PROVIDERS.iter().map(|s| s.to_string()).collect();
-    if let Ok(settings) = state.settings() {
-        ids.push(settings.active_provider.clone());
-        ids.extend(settings.provider_endpoints.keys().cloned());
-    }
-    ids.sort();
-    ids.dedup();
-    let store = state.credential_store();
-    ids.iter()
-        .filter_map(|id| store.get_secret(id).ok())
-        .filter(|s| !s.trim().is_empty())
-        .collect()
-}
-
 /// Done once `stop` is cancelled; never without one.
 async fn stopped(stop: Option<&CancellationToken>) {
     match stop {
@@ -1050,7 +1011,7 @@ impl ConnectorTools<'_, '_> {
                   -> crate::browser::act::ApproveFuture<'_> {
                 Box::pin(self.approve_browser(request))
             };
-            let secrets = || saved_secrets(exec.runner.state);
+            let secrets = || crate::browser::secrets::saved_secrets(exec.runner.state);
             let act = if self.browser_act {
                 let state = exec.runner.state;
                 let sites = repo::get_action_rules(&state.db, &state.encryption, exec.workflow_id)

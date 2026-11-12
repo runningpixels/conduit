@@ -85,7 +85,7 @@ export function isHttpUrl(url: string | undefined): url is string {
 }
 
 function stepStatus(tc: ToolCallState, state: AssistantStreamState): ActivityStepStatus {
-  if (tc.consent === 'pending') return 'waiting';
+  if (tc.consent === 'pending' || tc.browserApproval || tc.browserQuestion) return 'waiting';
   if (tc.consent === 'denied') return 'denied';
   if (state.askUser && state.askUser.toolCallId === tc.toolCallId) return 'waiting';
   if (tc.status === 'failed' || tc.status === 'cancelled') return 'failed';

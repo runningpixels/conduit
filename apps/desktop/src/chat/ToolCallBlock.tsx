@@ -14,6 +14,7 @@ import { useRichT, useT } from '../i18n';
 import { documentKindLabel } from '../lib/documentKind';
 import { useFormatters } from '../i18n/formatters';
 import { describeApproval } from '../lib/approvalSentence';
+import { BrowserApprovalGate, BrowserQuestionGate } from './BrowserPromptBlock';
 import { documentWriteDetail } from './documentWriteScan';
 import type { Translate } from '../i18n';
 
@@ -141,7 +142,10 @@ export function ToolCallBlock({
   // Running calls (or a pending consent gate) start expanded; completed calls
   // start collapsed per `defaultCollapsed`.
   const isRunning = toolCall.status === 'running' || (!toolCall.complete && !toolCall.consent);
-  const hasConsentGate = toolCall.sideEffecting && toolCall.consent === 'pending';
+  // A connector consent, or a chat browser approval or question, waits on this row.
+  const hasConsentGate =
+    (toolCall.sideEffecting && toolCall.consent === 'pending') ||
+    Boolean(toolCall.browserApproval || toolCall.browserQuestion);
   const [open, setOpen] = useState(isRunning || hasConsentGate ? true : !defaultCollapsed);
 
   useEffect(() => {
@@ -450,6 +454,16 @@ export function ToolCallBlock({
                 </div>
               </div>
             )}
+            {!group && toolCall.browserApproval ? (
+              <BrowserApprovalGate toolCallId={toolCall.toolCallId} request={toolCall.browserApproval} />
+            ) : null}
+            {!group && toolCall.browserQuestion ? (
+              <BrowserQuestionGate
+                toolCallId={toolCall.toolCallId}
+                question={toolCall.browserQuestion.question}
+                decline={toolCall.browserQuestion.decline}
+              />
+            ) : null}
             {toolCall.sideEffecting && consent === 'denied' && (
               <div className="tool-out">
                 {tr('chat.toolCall.deniedNotice')}

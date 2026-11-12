@@ -227,6 +227,15 @@ export const GlobeIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** A browser window: the chat's "Use the browser" tick. */
+export const BrowserIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 9h18" />
+    <path d="M6.5 6.5h.01M9 6.5h.01" />
+  </Svg>
+);
+
 export const ExternalIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />

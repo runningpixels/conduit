@@ -1318,6 +1318,24 @@ export interface BrowserRequest {
   offerSite?: string;
 }
 
+/** A chat's browser ticks (`conversations.metadata.browser`): "Use the browser",
+ *  "Let it click and type", and the sites it may act on without asking (`*` = any). */
+export interface ConversationBrowser {
+  use: boolean;
+  act: boolean;
+  sites: string[];
+}
+
+/** What "Always on <site>" / "Allow on all sites" saves to the chat's site list. */
+export type BrowserRemember = 'site' | 'all';
+
+/** Chat stream events for the browser (Rust `ProviderEvent` variants, same envelope as
+ *  `askUserRequested`). Declared here until the generated `ProviderEvent` carries them. */
+export type BrowserStreamEvent =
+  | { kind: 'browserApprovalRequested'; requestId: string; toolCallId: string; request: BrowserRequest }
+  | { kind: 'browserQuestionRequested'; requestId: string; toolCallId: string; question: string; decline: string }
+  | { kind: 'browserPromptResolved'; requestId: string; toolCallId: string };
+
 /** The answer to a `WorkflowAction`. */
 export interface WorkflowActionAnswer {
   send: boolean;

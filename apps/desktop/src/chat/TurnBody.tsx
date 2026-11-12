@@ -7,6 +7,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ChatProse } from './ChatProse';
 import type { AssistantStreamState, ContentBlockState, ToolCallState, TurnSegment, UserNote } from './streamState';
+import { toolCallAwaitsReader } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import type { ArtifactCandidate } from './artifactCandidates';
 import { ChevronRight } from '../icons';
@@ -37,7 +38,7 @@ const NO_SLIDE_IDS: readonly string[] = [];
  *  other call folds into the turn's compact step line. */
 export function toolCallStaysInline(tc: ToolCallState, streaming: boolean): boolean {
   if (tc.handoff) return true;
-  if (tc.sideEffecting && tc.consent === 'pending') return true;
+  if (toolCallAwaitsReader(tc)) return true;
   return (
     streaming &&
     tc.documentWrite !== undefined &&

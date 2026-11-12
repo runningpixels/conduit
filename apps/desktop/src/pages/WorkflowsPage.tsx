@@ -88,7 +88,7 @@ import type {
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, stepLabels, type InputLabels } from '../workflows/describeStep';
 import { LibraryAgentsProvider, useLibraryAgents } from '../agents/useLibraryAgents';
-import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, stepAgentName, triggerNeedsFolder, usesComputer } from '../workflows/editorModel';
+import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, stepAgentName, triggerNeedsFolder, usesBrowserAct, usesComputer } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { ResultView } from '../workflows/ResultView';
 import { runsAfterLine } from '../workflows/runsAfter';
@@ -1243,7 +1243,11 @@ function WorkflowsPageBody({
     const waitingStepIds = openRun
       ? [...reviews, ...questions, ...actions].filter((w) => w.runId === openRun.run.id).map((w) => w.stepId)
       : [];
-    const showPermissions = hasPermissions(record.definition.steps, usesComputer(record.definition), rules);
+    const showPermissions = hasPermissions(
+      record.definition.steps,
+      usesComputer(record.definition) || usesBrowserAct(record.definition),
+      rules,
+    );
     const notConfined = usesComputer(record.definition) && record.definition.computer?.allowOutside === true;
     // Steps of this workflow waiting on a command or file change on this computer.
     const computerWaitingStepIds = actions
@@ -1609,6 +1613,7 @@ function WorkflowsPageBody({
                 workflowId={record.id}
                 steps={record.definition.steps}
                 usesComputer={usesComputer(record.definition)}
+                usesBrowserAct={usesBrowserAct(record.definition)}
                 computer={record.definition.computer}
                 rules={rules}
                 onRules={setRules}
@@ -1939,7 +1944,13 @@ export function QuestionPanel({
       {question.choices.length > 0 ? (
         <div className="wf-offer-actions">
           {question.choices.map((choice) => (
-            <button key={choice} type="button" className="btn" disabled={sending} onClick={() => void send(choice)}>
+            <button
+              key={choice}
+              type="button"
+              className={`btn ${choiceStyle(question, choice)}`.trim()}
+              disabled={sending}
+              onClick={() => void send(choice)}
+            >
               {choice}
             </button>
           ))}
@@ -1977,13 +1988,23 @@ export function QuestionPanel({
           {refused}
         </p>
       ) : null}
-      <p className="wf-muted">
+      <p className="wf-muted wf-deadline">
         {question.default != null
           ? t('workspace.workflows.question.expiresDefault', { when: expires, answer: question.default })
           : t('workspace.workflows.review.expires', { when: expires })}
       </p>
     </section>
   );
+}
+
+/// How a choice button looks. With two choices where one is what nobody
+/// answering picks (Continue / Skip this page), the other is the main action
+/// and the fallback is quiet; otherwise the choices look alike, so none is
+/// pushed on the person.
+export function choiceStyle(question: WorkflowQuestion, choice: string): '' | 'primary' | 'ghost' {
+  const { choices, default: fallback } = question;
+  if (choices.length !== 2 || fallback == null || !choices.includes(fallback)) return '';
+  return choice === fallback ? 'ghost' : 'primary';
 }
 
 function RunDetail({

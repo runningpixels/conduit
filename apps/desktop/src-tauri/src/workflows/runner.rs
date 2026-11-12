@@ -760,11 +760,52 @@ struct ConnectorTools<'e, 'a> {
     computer: Option<ComputerAccess>,
     /// Whether this agent has the browser tools.
     browser: bool,
+    /// Whether it may also click and type in the browser.
+    browser_act: bool,
     /// The outside content this agent has read so far.
     taint: &'e computer::Taint,
     /// A helper's Stop: its waits for the user end with it, and the helpers
     /// it hands work to stop with it.
     stop: Option<CancellationToken>,
+}
+
+/// Provider ids whose saved keys are checked before an agent types text.
+/// The keychain can't list what it holds, so these plus the active provider
+/// and any with a custom endpoint are looked up.
+const KEYED_PROVIDERS: &[&str] = &[
+    "anthropic",
+    "openai",
+    "openrouter",
+    "groq",
+    "google",
+    "gemini",
+    "mistral",
+    "deepseek",
+    "xai",
+    "together",
+    "fireworks",
+    "cohere",
+    "perplexity",
+    "cerebras",
+    "moonshot",
+    "zai",
+];
+
+/// The person's saved API keys, to refuse typing them into a page. Read from
+/// the keychain each time; never logged or sent.
+fn saved_secrets(state: &AppState) -> Vec<String> {
+    let mut ids: Vec<String> = KEYED_PROVIDERS.iter().map(|s| s.to_string()).collect();
+    if let Ok(settings) = state.settings() {
+        ids.push(settings.active_provider.clone());
+        ids.extend(settings.provider_endpoints.keys().cloned());
+    }
+    ids.sort();
+    ids.dedup();
+    let store = state.credential_store();
+    ids.iter()
+        .filter_map(|id| store.get_secret(id).ok())
+        .filter(|s| !s.trim().is_empty())
+        .collect()
 }
 
 /// Done once `stop` is cancelled; never without one.
@@ -990,11 +1031,13 @@ impl ConnectorTools<'_, '_> {
             // A human check is handed to the person running, when someone can
             // be asked: Continue, or Skip (also what nobody answering takes).
             let step_id = self.step_id;
-            let ask = move |question: String| -> crate::browser::tools::AskFuture<'_> {
+            let ask = move |question: String,
+                            decline: &'static str|
+                  -> crate::browser::tools::AskFuture<'_> {
                 Box::pin(async move {
-                    let choices = ["Continue".to_string(), "Skip this page".to_string()];
+                    let choices = ["Continue".to_string(), decline.to_string()];
                     matches!(
-                        exec.ask(step_id, &question, &choices, Some("Skip this page"))
+                        exec.ask(step_id, &question, &choices, Some(decline))
                             .await
                             .as_deref(),
                         Ok("Continue")
@@ -1002,6 +1045,27 @@ impl ConnectorTools<'_, '_> {
                 })
             };
             let askable = exec.runner.unattended.is_none() && exec.runner.questions.is_some();
+            // Clicking and typing: actions that must ask go to the browser card.
+            let approve = move |request: crate::workflows::actions::BrowserRequest|
+                  -> crate::browser::act::ApproveFuture<'_> {
+                Box::pin(self.approve_browser(request))
+            };
+            let secrets = || saved_secrets(exec.runner.state);
+            let act = if self.browser_act {
+                let state = exec.runner.state;
+                let sites = repo::get_action_rules(&state.db, &state.encryption, exec.workflow_id)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .browser_sites;
+                Some(crate::browser::act::ActContext {
+                    approve: &approve,
+                    sites,
+                    secrets: &secrets,
+                    read_before: self.taint.describe(),
+                })
+            } else {
+                None
+            };
             exec.browser
                 .run(
                     name,
@@ -1009,6 +1073,7 @@ impl ConnectorTools<'_, '_> {
                     chosen,
                     &profile,
                     askable.then_some(&ask as &crate::browser::tools::AskFn<'_>),
+                    act.as_ref(),
                 )
                 .await
                 .map_err(|e| e.for_model())
@@ -1018,6 +1083,96 @@ impl ConnectorTools<'_, '_> {
             () = stopped(self.stop.as_ref()) => Err(handoff::STOPPED_BY_YOU.to_string()),
         };
         (result, Duration::ZERO)
+    }
+
+    /// Ask the person about a browser action (the browser card) and wait. A
+    /// run that skips questions when nobody is watching refuses at once.
+    /// "Always on this site" adds the site to the workflow's list.
+    async fn approve_browser(
+        &self,
+        request: crate::workflows::actions::BrowserRequest,
+    ) -> crate::browser::act::Approval {
+        use crate::browser::act::Approval;
+        let exec = self.exec;
+        let state = exec.runner.state;
+        let skips = exec
+            .computer
+            .is_some_and(|c| c.when_nobody_answers == computer::WhenNobodyAnswers::Skip);
+        if skips && exec.runner.unattended.is_some() {
+            return Approval::No(
+                "Not done: it needed the user's OK, and this workflow skips those when it runs by itself. Don't try it again.".to_string(),
+            );
+        }
+        let offer = request.offer_site.clone();
+        let tool = request.action.clone();
+        let description = request.why.clone();
+        let arguments = json!({
+            "host": request.host,
+            "element": request.element_name,
+            "text": request.text,
+            "option": request.option,
+        });
+        let asked = exec
+            .ask_user(self.step_id, self.stop.as_ref(), |window| PendingAction {
+                run_id: exec.run_id.to_string(),
+                workflow_id: exec.workflow_id.to_string(),
+                workflow_name: exec.workflow_name.to_string(),
+                step_id: self.step_id.to_string(),
+                connector_id: "browser".to_string(),
+                connector_name: "Browser".to_string(),
+                tool,
+                description,
+                arguments,
+                input_schema: json!({}),
+                sensitive: offer.is_none(),
+                requested_at: window.since.clone(),
+                expires_at: window.until.clone(),
+                computer: None,
+                browser: Some(request),
+            })
+            .await;
+        let answer = match asked {
+            Err(e) => return Approval::No(e),
+            Ok(Asked::Nobody(why)) => {
+                return Approval::No(format!("Not done: {why} Don't try it again."))
+            }
+            Ok(Asked::Answer(answer)) => answer,
+        };
+        if !answer.send {
+            return Approval::No(
+                "Not done: the user didn't allow it. Don't try it again; find another way or stop."
+                    .to_string(),
+            );
+        }
+        let remember = answer.remember && offer.is_some();
+        // "Allow on all sites" remembers the any-site entry instead of this host.
+        let offer = match answer.rule.as_deref().map(str::trim) {
+            Some(crate::browser::rules::ANY_SITE) => {
+                Some(crate::browser::rules::ANY_SITE.to_string())
+            }
+            _ => offer,
+        };
+        if let (true, Some(site)) = (remember, offer) {
+            match repo::get_action_rules(&state.db, &state.encryption, exec.workflow_id).await {
+                Ok(mut rules) => {
+                    if !rules.browser_sites.iter().any(|s| s == &site) {
+                        rules.browser_sites.push(site);
+                        if let Err(e) = repo::set_action_rules(
+                            &state.db,
+                            &state.encryption,
+                            exec.workflow_id,
+                            &rules,
+                        )
+                        .await
+                        {
+                            tracing::warn!(error = %e, "could not add a site to the browser list");
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "could not read the browser site list"),
+            }
+        }
+        Approval::Go { remember }
     }
 
     /// The folder a command runs in: the workflow's folder, or a subfolder.
@@ -1189,6 +1344,7 @@ impl ConnectorTools<'_, '_> {
                         requested_at: window.since.clone(),
                         expires_at: window.until.clone(),
                         computer: Some(request),
+                        browser: None,
                     })
                     .await;
                 waited = started.elapsed();
@@ -1429,6 +1585,7 @@ impl ConnectorTools<'_, '_> {
                 requested_at: window.since.clone(),
                 expires_at: window.until.clone(),
                 computer: Some(request),
+                browser: None,
             })
             .await?;
         let waited = started.elapsed();
@@ -1625,6 +1782,7 @@ impl ConnectorTools<'_, '_> {
                     requested_at: window.since.clone(),
                     expires_at: window.until.clone(),
                     computer: Some(request),
+                    browser: None,
                 })
                 .await;
             waited = started.elapsed();
@@ -2829,6 +2987,7 @@ impl Exec<'_> {
                 requested_at: window.since.clone(),
                 expires_at: window.until.clone(),
                 computer: None,
+                browser: None,
             })
             .await?;
         let answer = match asked {
@@ -3619,9 +3778,9 @@ impl Exec<'_> {
             system.push_str("\n\n");
             system.push_str(COMPUTER_SYSTEM);
         }
-        if tools.iter().any(|t| t == crate::browser::BROWSER_TOOL) {
+        if let Some(note) = crate::browser::tools::system_note(tools) {
             system.push_str("\n\n");
-            system.push_str(crate::browser::tools::BROWSER_SYSTEM);
+            system.push_str(&note);
         }
         if let Some(kit) = &kit {
             kit.add_to_system(&mut system);
@@ -3729,6 +3888,7 @@ impl Exec<'_> {
         let row = self
             .record_agent(step_id, "helper", &helper.id, parent, task, &model)
             .await;
+        let browser_note = crate::browser::tools::system_note(&helper.tools);
         let mut system = format!(
             "{HELPER_SYSTEM}\n\nYou are {}. {}{}",
             helper.name.trim(),
@@ -3740,11 +3900,7 @@ impl Exec<'_> {
                     .iter()
                     .any(|t| t == computer::COMPUTER_TOOL)
                     .then_some(COMPUTER_SYSTEM),
-                helper
-                    .tools
-                    .iter()
-                    .any(|t| t == crate::browser::BROWSER_TOOL)
-                    .then_some(crate::browser::tools::BROWSER_SYSTEM),
+                browser_note.as_deref(),
             ]
             .into_iter()
             .flatten()
@@ -3849,6 +4005,7 @@ impl Exec<'_> {
                 None
             },
             browser: !browser_tools.is_empty(),
+            browser_act: !browser_tools.is_empty() && crate::browser::tools::may_act(turn.tools),
             taint: turn.taint,
             stop: turn.helper_stop.cloned(),
         };

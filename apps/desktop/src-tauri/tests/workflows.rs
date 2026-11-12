@@ -5920,6 +5920,7 @@ async fn allow_all_acts_without_asking_even_unattended() {
             allow_all: true,
             allowed: vec![],
             commands: Default::default(),
+            browser_sites: vec![],
         },
     )
     .await

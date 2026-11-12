@@ -6,24 +6,30 @@
 //! and closed when the last run using it ends (and when the app quits).
 //!
 //! The launch is deliberately an ordinary one: the user's browser with a
-//! separate profile, plus a debugging port on loopback. No automation
-//! switches, no headless mode, no changed user agent.
+//! separate profile, plus the DevTools protocol on an inherited pipe (fd 3 in,
+//! fd 4 out). There is no listening port, so no other program can attach. No
+//! automation switches, no headless mode, no changed user agent.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use serde_json::{json, Map, Value};
+use tokio::sync::broadcast::error::RecvError;
 
-use super::cdp::Cdp;
+use super::cdp::{Cdp, CdpError, Event};
 use super::detect::Browser;
-use super::guard::Guard;
+use super::guard::{Decision, Guard};
 
 /// The profile folder's name inside the app's data folder.
 pub const PROFILE_FOLDER: &str = "browser-profile";
 
-/// How long a starting browser has to write its debugging port.
-const PORT_WAIT: Duration = Duration::from_secs(10);
+/// How long a starting browser has to answer its first call on the pipe.
+const START_WAIT: Duration = Duration::from_secs(10);
+
+/// How long a browser that stopped answering has to show it exited.
+const EXIT_CHECK: Duration = Duration::from_secs(2);
 
 /// How long a closing browser has to exit before it is killed.
 const EXIT_WAIT: Duration = Duration::from_secs(5);
@@ -48,12 +54,12 @@ impl std::fmt::Display for LaunchError {
     }
 }
 
-/// The command line: the profile, a debugging port the browser picks, and
-/// the quiet-start switches. Nothing that marks it as automated.
+/// The command line: the profile, the debugging pipe, and the quiet-start
+/// switches. Nothing that marks it as automated.
 pub fn launch_args(profile: &Path) -> Vec<String> {
     vec![
         format!("--user-data-dir={}", profile.display()),
-        "--remote-debugging-port=0".to_string(),
+        "--remote-debugging-pipe".to_string(),
         "--no-first-run".to_string(),
         "--no-default-browser-check".to_string(),
         "--disable-sync".to_string(),
@@ -111,24 +117,123 @@ pub fn prepare_profile(profile: &Path) -> std::io::Result<()> {
     std::fs::write(&file, merge_preferences(existing.as_deref()))
 }
 
-/// The port and websocket path in a `DevToolsActivePort` file: the port on
-/// the first line, the browser's path on the second.
-pub fn parse_active_port(contents: &str) -> Option<(u16, String)> {
-    let mut lines = contents.lines();
-    let port: u16 = lines.next()?.trim().parse().ok()?;
-    let path = lines.next()?.trim().to_string();
-    (port != 0 && path.starts_with('/')).then_some((port, path))
+/// The browser process. Dropping it ends the browser: on Windows its job
+/// closes (KILL_ON_JOB_CLOSE), elsewhere `kill_on_drop`.
+struct Child {
+    #[cfg(windows)]
+    process: super::spawn_windows::Process,
+    #[cfg(unix)]
+    process: tokio::process::Child,
 }
 
-pub fn websocket_url(port: u16, path: &str) -> String {
-    format!("ws://127.0.0.1:{port}{path}")
+impl Child {
+    fn id(&self) -> Option<u32> {
+        #[cfg(windows)]
+        return Some(self.process.id());
+        #[cfg(unix)]
+        return self.process.id();
+    }
+
+    /// How it exited, once it has.
+    fn exited(&mut self) -> Option<String> {
+        #[cfg(windows)]
+        return self.process.exit_code().map(|c| format!("exit code: {c}"));
+        #[cfg(unix)]
+        return match self.process.try_wait() {
+            Ok(Some(status)) => Some(status.to_string()),
+            _ => None,
+        };
+    }
+
+    /// Start ending it (with everything it started, on Windows).
+    fn start_kill(&mut self) {
+        #[cfg(windows)]
+        self.process.kill();
+        #[cfg(unix)]
+        let _ = self.process.start_kill();
+    }
+
+    /// Whether it exits within `timeout`.
+    async fn wait_exit(&mut self, timeout: Duration) -> bool {
+        let began = tokio::time::Instant::now();
+        loop {
+            if self.exited().is_some() {
+                return true;
+            }
+            if began.elapsed() >= timeout {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+}
+
+/// Start `exe args` with the DevTools pipe on its fds 3 and 4.
+#[cfg(windows)]
+fn spawn(exe: &Path, args: &[String]) -> std::io::Result<(Child, Arc<Cdp>)> {
+    let spawned = super::spawn_windows::spawn(exe, args)?;
+    let cdp = Cdp::start((spawned.from_browser, spawned.to_browser));
+    Ok((
+        Child {
+            process: spawned.process,
+        },
+        cdp,
+    ))
+}
+
+/// Start `exe args` with the DevTools pipe on its fds 3 and 4.
+#[cfg(unix)]
+fn spawn(exe: &Path, args: &[String]) -> std::io::Result<(Child, Arc<Cdp>)> {
+    use std::os::fd::AsRawFd;
+    // Pipe A: we write, the browser reads (fd 3). Pipe B: the browser writes
+    // (fd 4), we read. All four ends are close-on-exec.
+    let (child_in, to_browser) = std::io::pipe()?;
+    let (from_browser, child_out) = std::io::pipe()?;
+    let (read_fd, write_fd) = (child_in.as_raw_fd(), child_out.as_raw_fd());
+    let mut command = tokio::process::Command::new(exe);
+    command
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    // SAFETY: the closure runs in the forked child before exec and calls only
+    // async-signal-safe functions (fcntl, dup2). Both ends are first copied
+    // above 9 so that neither dup2 overwrites the other; those copies are
+    // close-on-exec, while dup2's 3 and 4 are not, so only 3 and 4 reach the
+    // browser.
+    unsafe {
+        command.pre_exec(move || {
+            let read = libc::fcntl(read_fd, libc::F_DUPFD_CLOEXEC, 10);
+            let write = libc::fcntl(write_fd, libc::F_DUPFD_CLOEXEC, 10);
+            if read < 0 || write < 0 || libc::dup2(read, 3) < 0 || libc::dup2(write, 4) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let process = command.spawn()?;
+    // The child has its own copies; ours must go, or reading would never see
+    // the browser's end close.
+    drop(child_in);
+    drop(child_out);
+    let cdp = Cdp::start((from_browser, to_browser));
+    Ok((Child { process }, cdp))
 }
 
 struct Running {
-    child: tokio::process::Child,
+    child: Child,
     cdp: Arc<Cdp>,
     guard: Arc<Guard>,
     browser: Browser,
+    /// Guards the browser's service workers for as long as it runs.
+    workers: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        self.workers.abort();
+    }
 }
 
 #[derive(Default)]
@@ -173,7 +278,7 @@ impl BrowserHost {
         let mut guard = self.state.lock().await;
         let state = &mut *guard;
         if let Some(running) = &mut state.running {
-            let alive = matches!(running.child.try_wait(), Ok(None)) && !running.cdp.is_closed();
+            let alive = running.child.exited().is_none() && !running.cdp.is_closed();
             if alive {
                 state.users += 1;
                 return Ok(Lease {
@@ -182,7 +287,7 @@ impl BrowserHost {
                     browser: running.browser,
                 });
             }
-            let _ = running.child.start_kill();
+            running.child.start_kill();
             state.running = None;
         }
         let running = start(browser, exe, profile).await?;
@@ -242,7 +347,7 @@ impl BrowserHost {
     fn kill_now(&self) {
         if let Ok(mut state) = self.state.try_lock() {
             if let Some(running) = &mut state.running {
-                let _ = running.child.start_kill();
+                running.child.start_kill();
             }
             state.running = None;
             state.users = 0;
@@ -252,64 +357,166 @@ impl BrowserHost {
 
 async fn start(browser: Browser, exe: &Path, profile: &Path) -> Result<Running, LaunchError> {
     let profile_dir = profile.to_path_buf();
-    tokio::task::spawn_blocking(move || {
-        prepare_profile(&profile_dir)?;
-        // A file left by an earlier run would be read as this launch's port.
-        let _ = std::fs::remove_file(profile_dir.join("DevToolsActivePort"));
-        Ok::<_, std::io::Error>(())
-    })
-    .await
-    .map_err(|e| LaunchError::LaunchFailed(e.to_string()))?
-    .map_err(|e| LaunchError::LaunchFailed(e.to_string()))?;
-
-    let mut command = tokio::process::Command::new(exe);
-    command
-        .args(launch_args(profile))
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .kill_on_drop(true);
-    let mut child = command
-        .spawn()
+    tokio::task::spawn_blocking(move || prepare_profile(&profile_dir))
+        .await
+        .map_err(|e| LaunchError::LaunchFailed(e.to_string()))?
         .map_err(|e| LaunchError::LaunchFailed(e.to_string()))?;
 
-    let port_file = profile.join("DevToolsActivePort");
-    let waited = tokio::time::Instant::now();
-    let ws_url = loop {
-        if let Some((port, path)) = std::fs::read_to_string(&port_file)
-            .ok()
-            .and_then(|c| parse_active_port(&c))
-        {
-            break websocket_url(port, &path);
-        }
-        if let Ok(Some(status)) = child.try_wait() {
-            // Another process already runs on this profile and took over.
+    let (mut child, cdp) =
+        spawn(exe, &launch_args(profile)).map_err(|e| LaunchError::LaunchFailed(e.to_string()))?;
+
+    // The first answer on the pipe says the browser is ours and running.
+    if let Err(error) = cdp
+        .call_within("Browser.getVersion", json!({}), None, START_WAIT)
+        .await
+    {
+        if child.wait_exit(EXIT_CHECK).await {
+            // Another process already runs on this profile and took over (or
+            // the browser is too old for the pipe).
+            let status = child.exited().unwrap_or_default();
             return Err(LaunchError::LaunchFailed(format!(
                 "it exited at once ({status}); close any browser window using {}'s browser profile",
                 crate::brand::app_name()
             )));
         }
-        if waited.elapsed() > PORT_WAIT {
-            let _ = child.start_kill();
-            return Err(LaunchError::LaunchFailed(
-                "it did not open its debugging port in time".to_string(),
-            ));
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    };
-    let cdp = match Cdp::connect(&ws_url).await {
-        Ok(cdp) => cdp,
-        Err(e) => {
-            let _ = child.start_kill();
-            return Err(LaunchError::LaunchFailed(e.to_string()));
+        child.start_kill();
+        return Err(LaunchError::LaunchFailed(match error {
+            CdpError::Timeout => "it did not answer on its debugging pipe in time".to_string(),
+            other => other.to_string(),
+        }));
+    }
+
+    let guard = Arc::new(Guard::default());
+    let workers = match guard_service_workers(&cdp, guard.clone()).await {
+        Ok(task) => task,
+        Err(error) => {
+            child.start_kill();
+            return Err(LaunchError::LaunchFailed(format!(
+                "its service workers could not be guarded ({error})"
+            )));
         }
     };
     Ok(Running {
         child,
         cdp,
-        guard: Arc::new(Guard::default()),
+        guard,
         browser,
+        workers,
     })
+}
+
+/// Service workers are targets of their own, not children of a page, so the
+/// tab's guard never sees them. Attach to every one as it starts (it waits,
+/// paused, until we let it run), hold its requests for the same guard, then
+/// let it run.
+async fn guard_service_workers(
+    cdp: &Arc<Cdp>,
+    guard: Arc<Guard>,
+) -> Result<tokio::task::JoinHandle<()>, CdpError> {
+    // Listen before anything can attach.
+    let events = cdp.subscribe();
+    let task = tokio::spawn(guard_worker_events(Arc::downgrade(cdp), guard, events));
+    let attached = cdp
+        .call(
+            "Target.setAutoAttach",
+            json!({
+                "autoAttach": true,
+                "waitForDebuggerOnStart": true,
+                "flatten": true,
+                "filter": [{ "type": "service_worker", "exclude": false }],
+            }),
+            None,
+        )
+        .await;
+    if let Err(error) = attached {
+        task.abort();
+        return Err(error);
+    }
+    Ok(task)
+}
+
+/// The service workers' guard loop. Holds the browser only weakly, so it
+/// ends with the connection.
+async fn guard_worker_events(
+    cdp: Weak<Cdp>,
+    guard: Arc<Guard>,
+    mut events: tokio::sync::broadcast::Receiver<Event>,
+) {
+    let mut workers: HashSet<String> = HashSet::new();
+    loop {
+        let event = match events.recv().await {
+            Ok(event) => event,
+            Err(RecvError::Lagged(_)) => continue,
+            Err(RecvError::Closed) => return,
+        };
+        let Some(cdp) = cdp.upgrade() else {
+            return;
+        };
+        match (event.method.as_str(), event.session_id.as_deref()) {
+            // Browser-level attaches have no session of their own.
+            ("Target.attachedToTarget", None)
+                if event.params["targetInfo"]["type"] == "service_worker" =>
+            {
+                let Some(child) = event.params["sessionId"].as_str().map(str::to_string) else {
+                    continue;
+                };
+                workers.insert(child.clone());
+                tokio::spawn(async move {
+                    let fetch = cdp
+                        .call(
+                            "Fetch.enable",
+                            json!({ "patterns": [{ "urlPattern": "*" }] }),
+                            Some(&child),
+                        )
+                        .await;
+                    match fetch {
+                        // Guarded: it may run now.
+                        Ok(_) => {
+                            let _ = cdp
+                                .call("Runtime.runIfWaitingForDebugger", json!({}), Some(&child))
+                                .await;
+                        }
+                        // Not guarded: it stays paused.
+                        Err(error) => tracing::warn!(
+                            %error,
+                            "a service worker could not be guarded; it stays paused"
+                        ),
+                    }
+                });
+            }
+            ("Target.detachedFromTarget", None) => {
+                if let Some(gone) = event.params["sessionId"].as_str() {
+                    workers.remove(gone);
+                }
+            }
+            ("Fetch.requestPaused", Some(session)) if workers.contains(session) => {
+                let (guard, session) = (guard.clone(), session.to_string());
+                tokio::spawn(async move {
+                    decide_paused(&cdp, &guard, &session, &event.params).await;
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Let a paused worker request go on, or fail it, as the guard says.
+async fn decide_paused(cdp: &Cdp, guard: &Guard, session: &str, params: &Value) {
+    let Some(request_id) = params["requestId"].as_str() else {
+        return;
+    };
+    let url = params["request"]["url"].as_str().unwrap_or_default();
+    let (method, params) = match guard.check(url).await {
+        Decision::Allow => ("Fetch.continueRequest", json!({ "requestId": request_id })),
+        Decision::Block(why) => {
+            tracing::info!(%url, %why, "a service worker request was refused");
+            (
+                "Fetch.failRequest",
+                json!({ "requestId": request_id, "errorReason": "BlockedByClient" }),
+            )
+        }
+    };
+    let _ = cdp.call(method, params, Some(session)).await;
 }
 
 /// Ask the browser to close, then make sure it did: this child, by its handle.
@@ -318,11 +525,9 @@ async fn close(running: &mut Running) {
         .cdp
         .call_within("Browser.close", json!({}), None, Duration::from_secs(3))
         .await;
-    if tokio::time::timeout(EXIT_WAIT, running.child.wait())
-        .await
-        .is_err()
-    {
-        let _ = running.child.kill().await;
+    if !running.child.wait_exit(EXIT_WAIT).await {
+        running.child.start_kill();
+        let _ = running.child.wait_exit(EXIT_WAIT).await;
     }
 }
 
@@ -340,7 +545,7 @@ mod tests {
         let args = launch_args(Path::new("C:/data/browser-profile"));
         assert_eq!(args[0], "--user-data-dir=C:/data/browser-profile");
         for expected in [
-            "--remote-debugging-port=0",
+            "--remote-debugging-pipe",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-sync",
@@ -352,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn args_carry_no_automation_switches() {
+    fn args_carry_no_automation_switches_and_no_port() {
         let args = launch_args(Path::new("/p")).join(" ");
         for banned in [
             "--enable-automation",
@@ -360,7 +565,8 @@ mod tests {
             "--disable-blink-features",
             "--disable-extensions",
             "--user-agent",
-            "--remote-debugging-pipe",
+            "--remote-debugging-port",
+            "--remote-debugging-address",
             "--no-sandbox",
         ] {
             assert!(!args.contains(banned), "{banned}");
@@ -412,26 +618,6 @@ mod tests {
         prepare_profile(dir.path()).unwrap();
         let again: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(again["homepage"], "https://kept.test");
-    }
-
-    #[test]
-    fn the_active_port_file_is_read() {
-        assert_eq!(
-            parse_active_port("51234\n/devtools/browser/abc-def\n"),
-            Some((51234, "/devtools/browser/abc-def".to_string()))
-        );
-        assert_eq!(
-            parse_active_port("51234\r\n/devtools/browser/abc\r\n"),
-            Some((51234, "/devtools/browser/abc".to_string()))
-        );
-        assert_eq!(parse_active_port("51234\n"), None);
-        assert_eq!(parse_active_port(""), None);
-        assert_eq!(parse_active_port("abc\n/x\n"), None);
-        assert_eq!(parse_active_port("0\n/devtools/browser/x\n"), None);
-        assert_eq!(
-            websocket_url(51234, "/devtools/browser/abc"),
-            "ws://127.0.0.1:51234/devtools/browser/abc"
-        );
     }
 
     #[tokio::test]

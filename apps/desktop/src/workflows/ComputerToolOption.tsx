@@ -9,7 +9,14 @@ import { useT } from '../i18n';
 import { pickWorkspaceFolder } from '../ipc/client';
 import type { WorkflowComputer } from '../ipc/contracts';
 import { useEditorNav } from './EditorNav';
-import { BROWSER_TOOL, COMPUTER_TOOL, withBrowserTool, withComputerTool } from './editorModel';
+import {
+  BROWSER_ACT_TOOL,
+  BROWSER_TOOL,
+  COMPUTER_TOOL,
+  withBrowserActTool,
+  withBrowserTool,
+  withComputerTool,
+} from './editorModel';
 import { folderName } from './WorkflowViewParts';
 
 export function ComputerToolOption({
@@ -33,6 +40,7 @@ export function ComputerToolOption({
   const [pickError, setPickError] = useState<string | null>(null);
   const on = tools.includes(COMPUTER_TOOL);
   const browserOn = tools.includes(BROWSER_TOOL);
+  const actOn = tools.includes(BROWSER_ACT_TOOL);
   const name = folderName(folder);
   const pick = async () => {
     setPickError(null);
@@ -77,6 +85,16 @@ export function ComputerToolOption({
         {t('workspace.workflows.editor.agent.browser')}
       </label>
       {browserOn ? <p className="wf-muted">{t('workspace.workflows.editor.agent.browserHint')}</p> : null}
+      <label className="wf-check wf-check-sub">
+        <input
+          type="checkbox"
+          checked={browserOn && actOn}
+          disabled={!browserOn}
+          onChange={(e) => onChange(withBrowserActTool(tools, e.target.checked))}
+        />
+        {t('workspace.workflows.editor.agent.browserAct')}
+      </label>
+      {browserOn && actOn ? <p className="wf-muted">{t('workspace.workflows.editor.agent.browserActHint')}</p> : null}
     </div>
   );
 }

@@ -51,7 +51,8 @@ pub fn check_syntax(raw: &str, allow_loopback: bool) -> Syntax {
     match url.scheme() {
         // Not network: nothing to reach.
         "data" | "blob" => return Syntax::Allow,
-        "http" | "https" => {}
+        // Websockets (`Network.webSocketCreated`) follow the same rule.
+        "http" | "https" | "ws" | "wss" => {}
         other => return Syntax::Block(format!("{other}: addresses are not allowed")),
     }
     if !url.username().is_empty() || url.password().is_some() {
@@ -207,6 +208,27 @@ mod tests {
         assert!(blocked("chrome://settings"));
         assert!(blocked("about:blank"));
         assert!(blocked("not a url"));
+    }
+
+    #[test]
+    fn websockets_follow_the_http_rule() {
+        assert_eq!(
+            check_syntax("wss://stream.example.com/feed", false),
+            Syntax::Resolve("stream.example.com".into())
+        );
+        assert_eq!(check_syntax("ws://8.8.8.8:80/", false), Syntax::Allow);
+        for raw in [
+            "ws://10.255.255.1/",
+            "wss://192.168.0.10:8443/socket",
+            "ws://127.0.0.1:9222/devtools/browser/x",
+            "ws://localhost:3000/",
+            "wss://router.local/",
+            "ws://[::1]/",
+            "wss://user:pw@example.com/",
+        ] {
+            assert!(blocked(raw), "{raw}");
+        }
+        assert_eq!(check_syntax("ws://127.0.0.1:9/", true), Syntax::Allow);
     }
 
     #[test]

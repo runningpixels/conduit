@@ -5,10 +5,15 @@
 //! Chromium browser, started with its own profile and driven over the
 //! DevTools protocol. Read only for now (`open_page`, `read_page`).
 
+pub mod act;
 pub mod cdp;
 pub mod detect;
+pub mod elements;
 pub mod guard;
 pub mod launch;
+pub mod rules;
+#[cfg(windows)]
+mod spawn_windows;
 pub mod tools;
 
 use provider_core::schema::AppError;
@@ -17,6 +22,10 @@ pub use detect::BrowserInfo;
 
 /// The marker in an agent's `tools` that gives it the browser tools.
 pub const BROWSER_TOOL: &str = "browser";
+
+/// The marker, next to [`BROWSER_TOOL`], that also lets the agent click,
+/// type and choose (design B2).
+pub const BROWSER_ACT_TOOL: &str = "browser_act";
 
 /// Why a browser call failed.
 #[derive(Debug, Clone, PartialEq, Eq)]

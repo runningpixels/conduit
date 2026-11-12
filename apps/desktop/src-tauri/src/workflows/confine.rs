@@ -336,7 +336,7 @@ fn restricted_token(conduit: &Sid, restricted: &Sid, everyone: &Sid) -> Result<O
 }
 
 /// Quote one argument the way Windows programs split their command line.
-fn quote(arg: &str) -> String {
+pub(crate) fn quote(arg: &str) -> String {
     if !arg.is_empty() && !arg.contains([' ', '\t', '"']) {
         return arg.to_string();
     }

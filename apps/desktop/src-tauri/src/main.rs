@@ -270,6 +270,7 @@ fn main() {
             export_deck_pptx,
             list_browsers,
             reset_browser_profile,
+            browser_remembered_sites,
             dictation_status,
             dictation_start,
             dictation_stop,

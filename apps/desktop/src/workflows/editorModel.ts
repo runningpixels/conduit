@@ -125,14 +125,38 @@ export function withComputerTool(tools: readonly string[], on: boolean): string[
 /// The `tools` entry that lets an agent read web pages in a real browser window.
 export const BROWSER_TOOL = 'browser';
 
+/// The `tools` entry that lets an agent with the browser also click, type and choose in it.
+export const BROWSER_ACT_TOOL = 'browser_act';
+
 /// `tools` with the browser turned on or off; it sits right after the computer entry when there is one.
+/// Turning it off also takes away clicking and typing, which means nothing without it.
 export function withBrowserTool(tools: readonly string[], on: boolean): string[] {
-  const others = tools.filter((x) => x !== BROWSER_TOOL);
+  const act = on && tools.includes(BROWSER_ACT_TOOL) ? [BROWSER_ACT_TOOL] : [];
+  const others = tools.filter((x) => x !== BROWSER_TOOL && x !== BROWSER_ACT_TOOL);
   if (!on) return others;
   const builtins = others.filter((x) => (AGENT_TOOLS as readonly string[]).includes(x));
   const computer = others.includes(COMPUTER_TOOL) ? [COMPUTER_TOOL] : [];
   const rest = others.filter((x) => !builtins.includes(x) && x !== COMPUTER_TOOL);
-  return [...builtins, ...computer, BROWSER_TOOL, ...rest];
+  return [...builtins, ...computer, BROWSER_TOOL, ...act, ...rest];
+}
+
+/// `tools` with clicking and typing in the browser turned on or off; it sits right after the
+/// browser entry, and is only added when the browser is on.
+export function withBrowserActTool(tools: readonly string[], on: boolean): string[] {
+  const others = tools.filter((x) => x !== BROWSER_ACT_TOOL);
+  if (!on) return others;
+  const at = others.indexOf(BROWSER_TOOL);
+  if (at < 0) return others;
+  return [...others.slice(0, at + 1), BROWSER_ACT_TOOL, ...others.slice(at + 1)];
+}
+
+/// Whether an agent step or a helper may click and type in the browser (inside loops too).
+export function usesBrowserAct(def: Pick<WorkflowDefinition, 'steps' | 'agents'>): boolean {
+  const acts = (tools: readonly string[] | undefined): boolean =>
+    (tools ?? []).includes(BROWSER_TOOL) && (tools ?? []).includes(BROWSER_ACT_TOOL);
+  const inSteps = (steps: readonly WorkflowStep[]): boolean =>
+    steps.some((s) => (s.type === 'agent' && acts(s.tools)) || (s.type === 'for_each' && inSteps(s.steps)));
+  return inSteps(def.steps) || (def.agents ?? []).some((a) => acts(a.tools));
 }
 
 /// `def` with its computer settings replaced; `null` or settings with nothing set remove the key.

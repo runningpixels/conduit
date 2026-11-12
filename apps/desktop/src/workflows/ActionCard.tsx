@@ -8,6 +8,7 @@ import { useFormatters } from '../i18n/formatters';
 import { answerWorkflowAction } from '../ipc/client';
 import { describeApproval } from '../lib/approvalSentence';
 import type { WorkflowAction } from '../ipc/contracts';
+import { BrowserActionCard } from './BrowserActionCard';
 import { ComputerActionCard } from './ComputerActionCard';
 import { formatNextRun } from './ScheduleSection';
 
@@ -64,7 +65,8 @@ export function ActionCard({
   /// The backend took the answer (`taken`), or the run was no longer waiting.
   onAnswered: (action: WorkflowAction, taken: boolean) => void;
 }) {
-  // A command or file change on this computer has its own card.
+  // A command or file change on this computer, and an action in the agent's browser, have their own cards.
+  if (action.browser) return <BrowserActionCard action={action} request={action.browser} onAnswered={onAnswered} />;
   return action.computer ? (
     <ComputerActionCard action={action} request={action.computer} onAnswered={onAnswered} />
   ) : (

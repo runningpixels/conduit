@@ -3029,10 +3029,10 @@ async fn read_spreadsheet(
     let mut cells = Vec::new();
     let mut next_row = None;
     if calc.row_count > 0 && r0 <= last_row {
-        for r in r0..=last_row {
+        for (r, row) in calc.rows.iter().enumerate().take(last_row + 1).skip(r0) {
             let row_cells: Vec<Value> = (c0..=last_col)
                 .filter_map(|c| {
-                    let cell = calc.rows[r].get(c)?.as_ref()?;
+                    let cell = row.get(c)?.as_ref()?;
                     let spec_cell = sheet.cell(r, c);
                     let mut entry = serde_json::json!({
                         "cell": a1(r, c),

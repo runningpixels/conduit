@@ -97,6 +97,14 @@ describe('safeMarkdown security', () => {
 });
 
 describe('safeMarkdown structure', () => {
+  it('keeps balanced parentheses in a link URL', () => {
+    const md = 'See [Tauri](https://en.wikipedia.org/wiki/Tauri_(software_framework)) and [x](https://e.com/a).';
+    const { container } = render(<>{renderMarkdown(md)}</>);
+    const links = [...container.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(links).toEqual(['https://en.wikipedia.org/wiki/Tauri_(software_framework)', 'https://e.com/a']);
+    expect(container.textContent).toBe('See Tauri and x.');
+  });
+
   it('renders headings, bold, italic, code, list, quote, rule, paragraph', () => {
     const md = `# Title\n\n**bold** and *italic* and \`code\`.\n\n- a\n- b\n\n> quoted\n\n---\n\npara text`;
     const { container } = render(<>{renderMarkdown(md)}</>);

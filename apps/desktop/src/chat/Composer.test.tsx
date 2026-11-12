@@ -1415,17 +1415,32 @@ describe('Composer browser ticks', () => {
   const off = { use: false, act: false, sites: [] as string[] };
 
   function openBrowser() {
-    openPlusMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Browser…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Browser for this chat' }));
     return screen.getByRole('dialog', { name: 'Browser for this chat' });
   }
 
   beforeEach(() => vi.clearAllMocks());
 
-  it('offers no Browser item without the handler', () => {
+  it('offers no Browser toggle without the handler', () => {
     renderComposer({ settings: computerOn });
-    openPlusMenu();
-    expect(screen.queryByRole('menuitem', { name: 'Browser…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Browser' })).toBeNull();
+  });
+
+  it('the bar toggle turns the browser on with clicking, and off', () => {
+    const onBrowserChange = vi.fn();
+    renderComposer({ settings: computerOn, browser: off, onBrowserChange });
+    const toggle = screen.getByRole('button', { name: 'Browser' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(onBrowserChange).toHaveBeenLastCalledWith(true, true);
+  });
+
+  it('the bar toggle opens the options when Computer is off', () => {
+    const onBrowserChange = vi.fn();
+    renderComposer({ settings: { ...baseSettings, localOnly: false }, browser: off, onBrowserChange });
+    fireEvent.click(screen.getByRole('button', { name: 'Browser' }));
+    expect(onBrowserChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Browser for this chat' })).toBeInTheDocument();
   });
 
   it('turns "Use the browser" on, then "Let it click and type"', () => {
@@ -1485,21 +1500,22 @@ describe('Composer browser ticks', () => {
     expect(screen.getByText('The browser is not available in local-only mode.')).toBeInTheDocument();
   });
 
-  it('shows an active chip that turns the browser off', () => {
+  it('shows the toggle pressed while on, and pressing it turns the browser off', () => {
     const onBrowserChange = vi.fn();
     renderComposer({ settings: computerOn, browser: { use: true, act: true, sites: [] }, onBrowserChange });
-    expect(screen.getByText('Browser · clicks and types')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off the browser for this chat' }));
+    const toggle = screen.getByRole('button', { name: 'Browser' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(toggle);
     expect(onBrowserChange).toHaveBeenCalledWith(false, false);
   });
 
-  it('shows no chip while Computer is off', () => {
+  it('shows the toggle unpressed while Computer is off', () => {
     renderComposer({
       settings: { ...baseSettings, localOnly: false },
       browser: { use: true, act: false, sites: [] },
       onBrowserChange: vi.fn(),
     });
-    expect(screen.queryByRole('button', { name: 'Turn off the browser for this chat' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Browser' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('says when every site is allowed and clears the list', () => {

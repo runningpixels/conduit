@@ -400,7 +400,9 @@ function renderInline(
 
     // Link: [text](url). Only allowlisted URLs become anchors. The text may
     // hold one level of brackets, as titles do ("Math 2.0 [pdf]").
-    const linkMatch = /^\[((?:[^[\]]|\[[^[\]]*\])+)\]\(([^)\s]+)\)/.exec(rest);
+    // The URL may hold balanced parentheses, as Wikipedia's do
+    // (`Tauri_(software_framework)`), the way CommonMark allows.
+    const linkMatch = /^\[((?:[^[\]]|\[[^[\]]*\])+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/.exec(rest);
     if (linkMatch) {
       const label = linkMatch[1];
       const url = linkMatch[2];

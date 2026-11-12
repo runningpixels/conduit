@@ -10,7 +10,7 @@ import {
   saveAttachment,
   saveDroppedAttachment,
 } from '../ipc/client';
-import { AgentsIcon, AttachIcon, BrowserIcon, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ProjectIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
+import { AgentsIcon, AttachIcon, BrowserIcon, ChevronDown, ConnectorsIcon, FilePlainIcon, FilesIcon, FolderIcon, GlobeIcon, KnowledgeIcon, ProjectIcon, ResearchIcon, SearchIcon, SendIcon, SkillIcon, SlidersIcon, StopIcon } from '../icons';
 import { researchUnavailableReasonId, webSearchUnavailableReasonId } from './researchAvailability';
 import { ComposerMcpPrompts } from './ComposerMcpPrompts';
 import { ComposerMcpResources } from './ComposerMcpResources';
@@ -1046,15 +1046,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const browserAvailable = Boolean(browser && onBrowserChange);
   const computerOn = settings.workflowComputer?.enabled === true;
   const browserActive = browserAvailable && browser!.use && computerOn && !settings.localOnly;
-  if (browserAvailable) {
-    plusItems.push({
-      id: 'browser',
-      label: t('chat.composer.plus.browser'),
-      icon: <BrowserIcon />,
-      title: t('chat.browser.intro'),
-      disabled: !conversationId,
-      onSelect: () => togglePop('browser'),
-    });
+  const browserCanRun = computerOn && !settings.localOnly;
+  const browserToggleDisabled = streaming || !conversationId;
+  const browserToggleTitle = !browserCanRun
+    ? t(settings.localOnly ? 'chat.browser.localOnly' : 'chat.browser.computerOff')
+    : browserActive
+      ? t(browser!.act ? 'chat.browser.chipAct' : 'chat.browser.chip')
+      : t('chat.browser.intro');
+  /** The bar's Browser toggle: on (it may click and type, asking as the rules
+   *  say) or off. When Computer or the web is off it opens the options, which
+   *  say why. */
+  function toggleBrowser() {
+    if (!browserCanRun) {
+      togglePop('browser');
+      return;
+    }
+    if (browserActive) onBrowserChange!(false, false);
+    else onBrowserChange!(true, true);
   }
   if (onSaveChatSettings) {
     plusItems.push({
@@ -1196,18 +1204,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       removeLabel: '',
     });
   }
-  if (browserActive) {
-    const label = browser!.act ? t('chat.browser.chipAct') : t('chat.browser.chip');
-    chips.push({
-      id: 'browser',
-      label,
-      icon: <BrowserIcon />,
-      title: t('chat.browser.chipTitle'),
-      onOpen: conversationId ? () => togglePop('browser') : undefined,
-      onRemove: () => onBrowserChange!(false, false),
-      removeLabel: t('chat.browser.chipRemove'),
-    });
-  }
+  // The browser has no chip either: its toggle in the bar shows it.
   if (onSaveChatSettings && (generationControls || userInstructions)) {
     chips.push({
       id: 'chatSettings',
@@ -1677,6 +1674,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <ResearchIcon />
               {narrow ? null : <span>{t('chat.composer.tools.research')}</span>}
             </button>
+          ) : null}
+          {browserAvailable ? (
+            <span className="composer-tool-split">
+              <button
+                className="composer-tool"
+                type="button"
+                aria-pressed={browserActive}
+                aria-label={narrow ? t('chat.browser.chip') : undefined}
+                title={browserToggleTitle}
+                disabled={browserToggleDisabled}
+                data-icon-only={narrow ? 'true' : undefined}
+                onClick={toggleBrowser}
+              >
+                <BrowserIcon />
+                {narrow ? null : <span>{t('chat.browser.chip')}</span>}
+              </button>
+              <button
+                className="composer-tool composer-tool-more"
+                type="button"
+                aria-label={t('chat.browser.ariaLabel')}
+                aria-haspopup="dialog"
+                aria-expanded={openPop === 'browser'}
+                title={t('chat.browser.ariaLabel')}
+                disabled={browserToggleDisabled}
+                onClick={() => togglePop('browser')}
+              >
+                <ChevronDown />
+              </button>
+            </span>
           ) : null}
           {/* Everything before the spacer acts on the message; everything after
               it says who will answer, then dictates and sends. */}

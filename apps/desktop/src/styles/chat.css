@@ -1199,6 +1199,21 @@
 /* The global ring squares its corners to --r-xs; a pill keeps its shape. */
 .composer-tool:focus-visible { border-radius: var(--r-pill); }
 .composer-tool[data-icon-only="true"] { width: 28px; padding: 0; justify-content: center; }
+/* Browser: the toggle and its options chevron, one pill split in two. */
+.composer-tool-split { display: inline-flex; }
+.composer-tool-split > .composer-tool:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 8px; }
+.composer-tool-split > .composer-tool:first-child[data-icon-only="true"] { padding: 0; }
+.composer-tool-split > .composer-tool-more {
+  width: 22px;
+  padding: 0;
+  justify-content: center;
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.composer-tool-split > .composer-tool-more svg { width: 12px; height: 12px; }
+.composer-tool-split > .composer-tool-more[aria-expanded="true"] { background: var(--card-hi); color: var(--ink); }
+.composer-tool-split > .composer-tool:focus-visible { border-radius: inherit; }
 
 /* Dictation: the mic beside the model picker. Recording, it widens to show
  * Stop and the clock, and a ring grows with the input level so the user can

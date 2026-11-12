@@ -10,6 +10,7 @@ import { isQuickAskRoute } from './quickAsk/route';
 import { applyUiReadability, readUiDensity, readUiFontSize } from './workspace/readability';
 import { applyCachedBrand } from './brand/applyBrand';
 import { installWindowResizeFlag } from './workspace/windowResizing';
+import { installExternalLinkHandler } from './shell/externalLinks';
 import { applyCachedAccent } from './themes/accent';
 import { resolveTheme } from './theme';
 import { I18nProvider, bootstrapI18n } from './i18n';
@@ -66,7 +67,12 @@ installDevLocaleSwitch();
 const devLocale = readDevLocalePreference();
 
 void bootstrapI18n(devLocale ?? undefined).then(({ preference, messages }) => {
-  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+  const rootElement = document.getElementById('root') as HTMLElement;
+  const root = ReactDOM.createRoot(rootElement);
+  /* Web links open in the system browser. On the root, after React's own
+   * listener there, so a component that handled the click still wins. */
+  if ('__TAURI_INTERNALS__' in window) installExternalLinkHandler(rootElement);
+  root.render(
     <React.StrictMode>
       <I18nProvider
         initialPreference={preference}

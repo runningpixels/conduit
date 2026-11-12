@@ -238,6 +238,8 @@ pub(super) struct Tab {
     /// A websocket the guard refused, until a tool call reports it.
     socket: Blocked,
     guard_task: tokio::task::JoinHandle<()>,
+    /// Human checks not got past in this run, by host.
+    checks_failed: Mutex<std::collections::HashMap<String, u32>>,
 }
 
 impl Tab {
@@ -429,6 +431,7 @@ async fn new_tab(chosen: &Chosen, profile: &Path) -> Result<Tab, BrowserError> {
             blocked,
             socket,
             guard_task,
+            checks_failed: Mutex::default(),
         }),
         Err(e) => {
             launch::host().release().await;
@@ -755,6 +758,10 @@ pub(super) async fn settle(tab: &Tab) -> Result<(), BrowserError> {
 pub type AskFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>>;
 pub type AskFn<'a> = dyn Fn(String) -> AskFuture<'a> + Send + Sync + 'a;
 
+/// After this many human checks on one site that weren't got past, a run
+/// stops putting that site's checks to the person.
+const MAX_FAILED_CHECKS: u32 = 3;
+
 /// Longest readable text (non-whitespace characters) a page with only weak
 /// check markers can have and still count as a check.
 const WEAK_TEXT_LIMIT: i64 = 1500;
@@ -789,14 +796,14 @@ var text=body?body.innerText:'';
 var chars=text.replace(/\s+/g,'').length;
 if(document.querySelector('#challenge-form,#challenge-running'))add(strong,'cloudflare');
 if(document.querySelector('#px-captcha'))add(strong,'perimeterx');
-if(document.querySelector('.cf-turnstile'))add(weak,'turnstile');
-if(document.querySelector('.g-recaptcha,iframe[src*="recaptcha"]'))add(weak,'recaptcha');
-if(document.querySelector('.h-captcha,iframe[src*="hcaptcha"]'))add(weak,'hcaptcha');
+function seen(sel){var l=document.querySelectorAll(sel);for(var j=0;j<l.length;j++){var r=l[j].getBoundingClientRect(),st=getComputedStyle(l[j]);if(r.width>=30&&r.height>=30&&st.visibility!=='hidden'&&st.display!=='none'&&st.opacity!=='0')return true}return false}
+if(seen('.cf-turnstile,iframe[src*="challenges.cloudflare.com"]'))add(weak,'turnstile');
+if(seen('.g-recaptcha,iframe[src*="recaptcha/api2/anchor"],iframe[src*="recaptcha/api2/bframe"],iframe[src*="recaptcha/enterprise/anchor"],iframe[src*="recaptcha/enterprise/bframe"]'))add(weak,'recaptcha');
+if(seen('.h-captcha,iframe[src*="hcaptcha"]'))add(weak,'hcaptcha');
 var els=document.querySelectorAll('iframe[src],script[src]');
 for(var i=0;i<els.length;i++){
 var s=(els[i].getAttribute('src')||'').toLowerCase();
 if(s.indexOf('captcha-delivery.com')>=0){add(strong,'datadome');if(/[?&]t=bv(&|$)/.test(s))add(blocked,'datadome')}
-else if(s.indexOf('challenges.cloudflare.com')>=0)add(weak,'turnstile');
 else if(s.indexOf('perimeterx')>=0||s.indexOf('px-cloud')>=0)add(weak,'perimeterx');
 else if(s.indexOf('arkoselabs.com')>=0||s.indexOf('funcaptcha')>=0)add(weak,'arkose');
 }
@@ -910,7 +917,24 @@ pub(super) async fn read_checked<'a>(
             Check::Challenge(what) => what,
             Check::Clear => unreachable!(),
         };
+        // A site whose checks keep failing isn't put to the person again.
+        let failed = |tab: &Tab| {
+            if let Ok(mut counts) = tab.checks_failed.lock() {
+                *counts.entry(host.clone()).or_insert(0) += 1;
+            }
+        };
+        let failures = tab
+            .checks_failed
+            .lock()
+            .map(|c| c.get(&host).copied().unwrap_or(0))
+            .unwrap_or(0);
+        if failures >= MAX_FAILED_CHECKS {
+            return Err(BrowserError::Other(format!(
+                "{host} keeps asking for a human check ({what}), so this run won't read it again. Don't retry {host}; use other sources."
+            )));
+        }
         let Some(ask) = ask else {
+            failed(tab);
             return Err(BrowserError::Other(format!(
                 "{host} asked for a human check ({what}). Nobody is watching this run, so the page was skipped."
             )));
@@ -920,6 +944,7 @@ pub(super) async fn read_checked<'a>(
             "{host} wants to check you're a person ({what}). Finish the check in the browser window, then choose Continue."
         );
         if !ask(question).await {
+            failed(tab);
             return Err(BrowserError::Other(format!(
                 "{host} asked for a human check ({what}) and it wasn't completed, so the page wasn't read."
             )));
@@ -930,9 +955,10 @@ pub(super) async fn read_checked<'a>(
             // Passing the check isn't always enough: the site may still refuse.
             Check::Blocked(what) => return Err(blocked_error(&host, &what)),
             Check::Challenge(_) => {
+                failed(tab);
                 return Err(BrowserError::Other(format!(
                     "{host} is still showing a check, so the page couldn't be read."
-                )))
+                )));
             }
         }
     }
@@ -1386,6 +1412,17 @@ mod tests {
                             "200 OK",
                             "<!doctype html><html><head><title>Contact</title></head><body><main><p>LONGTEXT</p><form><div class=\"g-recaptcha\"></div></form></main></body></html>",
                         )
+                    } else if first.starts_with("GET /cart ") {
+                        // Little text, plus the invisible frame Google's ad code adds.
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Cart</title></head><body><main><h1>Cart</h1><p>Your cart is empty.</p></main><div class=\"g-recaptcha\"></div><iframe src=\"/recaptcha/api2/aframe\" width=\"0\" height=\"0\" style=\"display:none\"></iframe></body></html>",
+                        )
+                    } else if first.starts_with("GET /captcha ") {
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>One more step</title></head><body><p>Please confirm.</p><div class=\"g-recaptcha\" style=\"width:304px;height:78px;border:1px solid #ccc\"></div></body></html>",
+                        )
                     } else if first.starts_with("GET /socket ") {
                         // Opens a websocket to a private address once loaded.
                         (
@@ -1542,14 +1579,26 @@ mod tests {
         println!("check page: {skipped}");
         assert!(skipped.contains("Cloudflare check"), "{skipped}");
         assert!(skipped.contains("Nobody is watching"), "{skipped}");
-        // Asked, and told to skip: not completed.
+        // Asked, and told to skip: not completed. Its own run, so these checks
+        // don't count against the first one's.
+        let run2 = RunBrowser::default();
+        run2.run(
+            OPEN_PAGE_TOOL,
+            &json!({ "url": check_url }),
+            &chosen,
+            &profile,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
         let skip: &AskFn<'_> = &|q: String| -> AskFuture<'_> {
             Box::pin(async move {
                 assert!(q.contains("wants to check you're a person"), "{q}");
                 false
             })
         };
-        let declined = run
+        let declined = run2
             .run(
                 READ_PAGE_TOOL,
                 &json!({}),
@@ -1564,7 +1613,7 @@ mod tests {
         assert!(declined.contains("wasn't completed"), "{declined}");
         // Continue without finishing it: still a check.
         let cont: &AskFn<'_> = &|_q: String| -> AskFuture<'_> { Box::pin(async { true }) };
-        let still = run
+        let still = run2
             .run(
                 READ_PAGE_TOOL,
                 &json!({}),
@@ -1577,6 +1626,24 @@ mod tests {
             .unwrap_err()
             .for_model();
         assert!(still.contains("is still showing a check"), "{still}");
+        // Three checks not got past on this site in run2 (nobody, skip, still): no more asking.
+        let stopped = run2
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": check_url }),
+                &chosen,
+                &profile,
+                Some(cont),
+                None,
+            )
+            .await
+            .unwrap_err()
+            .for_model();
+        assert!(
+            stopped.contains("keeps asking for a human check"),
+            "{stopped}"
+        );
+        run2.close().await;
         // A long page with a reCAPTCHA widget is read normally.
         let contact = run
             .run(
@@ -1590,6 +1657,33 @@ mod tests {
             .await
             .expect("a form with a reCAPTCHA is content");
         assert_eq!(contact["title"], "Contact");
+        // A short page with only an ad network's hidden reCAPTCHA frame is content.
+        let cart = run
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": format!("http://127.0.0.1:{port}/cart") }),
+                &chosen,
+                &profile,
+                None,
+                None,
+            )
+            .await
+            .expect("a hidden reCAPTCHA frame isn't a check");
+        assert_eq!(cart["title"], "Cart");
+        // A visible CAPTCHA on a near-empty page is a check.
+        let again = run
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": format!("http://127.0.0.1:{port}/captcha") }),
+                &chosen,
+                &profile,
+                Some(cont),
+                None,
+            )
+            .await
+            .unwrap_err()
+            .for_model();
+        assert!(again.contains("still showing a check"), "{again}");
 
         // Another private address is still refused (loopback is only the test's).
         let refused = run

@@ -9,6 +9,7 @@ const ipc = vi.hoisted(() => ({
   getWorkflow: vi.fn(),
   listBrowsers: vi.fn(),
   resetBrowserProfile: vi.fn(),
+  browserRememberedSites: vi.fn(),
 }));
 vi.mock('../../ipc/client', () => ipc);
 
@@ -24,6 +25,7 @@ beforeEach(() => {
     { id: 'chrome', name: 'Google Chrome' },
   ]);
   ipc.resetBrowserProfile.mockResolvedValue(undefined);
+  ipc.browserRememberedSites.mockResolvedValue([]);
   ipc.previewCommandRule.mockResolvedValue({ error: null, covers: ['rm -rf x'], doesNotCover: ['rm file'] });
   ipc.updateSettings.mockImplementation(async (patch: Partial<AppSettings>) => patch as AppSettings);
 });
@@ -170,6 +172,35 @@ describe('ComputerSection', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Reset browser profile' }));
       expect(await screen.findByText('Browser profile reset.')).toBeInTheDocument();
       expect(ipc.resetBrowserProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it('lists the sites the agents’ browser remembers', async () => {
+      ipc.browserRememberedSites.mockResolvedValue(['github.com', 'example.org']);
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      expect(await screen.findByText('Signed in or remembered on: github.com, example.org')).toBeInTheDocument();
+    });
+
+    it('hides the sites line when there are none', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      await waitFor(() => expect(ipc.browserRememberedSites).toHaveBeenCalled());
+      expect(screen.queryByText(/Signed in or remembered on/)).toBeNull();
+    });
+
+    it('hides the sites line when reading them fails', async () => {
+      ipc.browserRememberedSites.mockRejectedValue({ message: 'no profile' });
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      await waitFor(() => expect(ipc.browserRememberedSites).toHaveBeenCalled());
+      expect(screen.queryByText(/Signed in or remembered on/)).toBeNull();
+    });
+
+    it('reads the sites again after a reset', async () => {
+      ipc.browserRememberedSites.mockResolvedValueOnce(['github.com']).mockResolvedValue([]);
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      expect(await screen.findByText('Signed in or remembered on: github.com')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Reset browser profile' }));
+      await screen.findByText('Browser profile reset.');
+      await waitFor(() => expect(screen.queryByText(/Signed in or remembered on/)).toBeNull());
+      expect(ipc.browserRememberedSites).toHaveBeenCalledTimes(2);
     });
 
     it('shows the translated error when the profile is in use', async () => {

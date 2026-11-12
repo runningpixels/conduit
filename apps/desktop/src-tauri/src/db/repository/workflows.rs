@@ -1218,7 +1218,7 @@ pub async fn get_action_rules(
     };
     let allowed = serde_json::from_value(decrypt_json(enc, &allowed)?)
         .map_err(|e| DbError::Query(format!("stored workflow action rules can't be read: {e}")))?;
-    let commands = match commands {
+    let stored: StoredComputerRules = match commands {
         Some(stored) => serde_json::from_value(decrypt_json(enc, &stored)?).map_err(|e| {
             DbError::Query(format!("stored workflow command rules can't be read: {e}"))
         })?,
@@ -1227,8 +1227,21 @@ pub async fn get_action_rules(
     Ok(ActionRules {
         allow_all: allow_all != 0,
         allowed,
-        commands,
+        commands: stored.commands,
+        browser_sites: stored.browser_sites,
     })
+}
+
+/// The `commands` column: the command rules plus the browser's site list,
+/// kept in one column so no migration is needed (older builds ignore the
+/// extra field).
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredComputerRules {
+    #[serde(flatten)]
+    commands: crate::workflows::computer::CommandRules,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    browser_sites: Vec<String>,
 }
 
 /// Replace which outside actions a workflow takes without asking.
@@ -1240,8 +1253,11 @@ pub async fn set_action_rules(
 ) -> Result<(), DbError> {
     let json = serde_json::to_value(&rules.allowed)
         .map_err(|e| DbError::Query(format!("workflow action rules can't be stored: {e}")))?;
-    let commands = serde_json::to_value(&rules.commands)
-        .map_err(|e| DbError::Query(format!("workflow command rules can't be stored: {e}")))?;
+    let commands = serde_json::to_value(StoredComputerRules {
+        commands: rules.commands.clone(),
+        browser_sites: rules.browser_sites.clone(),
+    })
+    .map_err(|e| DbError::Query(format!("workflow command rules can't be stored: {e}")))?;
     sqlx::query(
         "INSERT INTO workflow_action_rules (workflow_id, allow_all, allowed, commands, updated_at) \
          VALUES (?, ?, ?, ?, ?) ON CONFLICT(workflow_id) DO UPDATE SET \

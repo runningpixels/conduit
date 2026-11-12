@@ -12,16 +12,24 @@ import { useState } from 'react';
 import { useT } from '../i18n';
 import { setWorkflowActionRules } from '../ipc/client';
 import type { WorkflowActionRules, WorkflowComputer, WorkflowStep } from '../ipc/contracts';
+import { BrowserSitesEditor } from './BrowserSitesEditor';
 import { rejectionText } from './CommandRuleList';
 import { ComputerRules } from './ComputerRules';
 import { usesConnectorTools } from './editorModel';
 import { useRuleSuggestions } from './useActionRules';
 
 function isDefault(rules: WorkflowActionRules): boolean {
-  return !rules.allowAll && rules.allowed.length === 0 && !rules.commands?.allow.length && !rules.commands?.deny.length;
+  return (
+    !rules.allowAll &&
+    rules.allowed.length === 0 &&
+    !rules.commands?.allow.length &&
+    !rules.commands?.deny.length &&
+    !rules.browserSites?.length
+  );
 }
 
 /// Whether a workflow has permissions worth a tab: it can act, or it already has rules.
+/// `usesComputer` is true when an agent uses the computer or clicks and types in the browser.
 export function hasPermissions(steps: readonly WorkflowStep[], usesComputer: boolean, rules: WorkflowActionRules | null): boolean {
   return usesConnectorTools(steps) || usesComputer || (rules !== null && !isDefault(rules));
 }
@@ -30,6 +38,7 @@ export function ActionRulesSection({
   workflowId,
   steps,
   usesComputer = false,
+  usesBrowserAct = false,
   computer,
   rules,
   onRules,
@@ -39,6 +48,8 @@ export function ActionRulesSection({
   steps: readonly WorkflowStep[];
   /// An agent or helper of this workflow uses the computer, so command rules matter.
   usesComputer?: boolean;
+  /// An agent or helper of this workflow may click and type in the browser, so the site list matters.
+  usesBrowserAct?: boolean;
   /// The workflow's computer settings (edit mode, confinement), for the summary line.
   computer?: WorkflowComputer;
   rules: WorkflowActionRules;
@@ -53,7 +64,9 @@ export function ActionRulesSection({
   const connectors = usesConnectorTools(steps);
   const commands = rules.commands ?? { allow: [], deny: [] };
   const showCommands = usesComputer || commands.allow.length > 0 || commands.deny.length > 0;
-  const showConnectors = connectors || rules.allowAll || rules.allowed.length > 0 || !showCommands;
+  const browserSites = rules.browserSites ?? [];
+  const showSites = usesBrowserAct || browserSites.length > 0;
+  const showConnectors = connectors || rules.allowAll || rules.allowed.length > 0 || (!showCommands && !showSites);
   const { suggestions, dismiss } = useRuleSuggestions(workflowId, showCommands, runKey, commands.allow);
 
   const save = async (next: WorkflowActionRules): Promise<boolean> => {
@@ -131,6 +144,9 @@ export function ActionRulesSection({
           onSave={(next) => save({ ...rules, commands: next })}
           onDismiss={dismiss}
         />
+      ) : null}
+      {showSites ? (
+        <BrowserSitesEditor sites={browserSites} busy={saving} onSave={(next) => save({ ...rules, browserSites: next })} />
       ) : null}
       {error ? (
         <p className="wf-error" role="alert">

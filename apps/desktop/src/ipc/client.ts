@@ -692,6 +692,11 @@ export async function resetBrowserProfile(): Promise<void> {
   return invokeCommand<void>('reset_browser_profile');
 }
 
+/** The hosts the agents' browser profile has saved cookies for (signed in or remembered). */
+export async function browserRememberedSites(): Promise<string[]> {
+  return invokeCommand<string[]>('browser_remembered_sites');
+}
+
 export async function dictationStatus(): Promise<DictationStatus> {
   return invokeCommand<DictationStatus>('dictation_status');
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings } from '../../ipc/contracts';
 import {
+  browserRememberedSites,
   getWorkflow,
   listBrowsers,
   listWorkflows,
@@ -43,6 +44,10 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
   const [browsers, setBrowsers] = useState<BrowserInfo[] | null>(null);
   const [resetting, setResetting] = useState(false);
   const [browserNote, setBrowserNote] = useState<{ text: string; failed: boolean } | null>(null);
+  /// Hosts the agents' browser has cookies for; empty when none or when they can't be read.
+  const [sites, setSites] = useState<string[]>([]);
+  /// Bumped after a profile reset so the sites are read again.
+  const [sitesKey, setSitesKey] = useState(0);
   /// The workflows that give an agent the computer; null until read.
   const [workflows, setWorkflows] = useState<ComputerWorkflow[] | null>(null);
 
@@ -86,6 +91,23 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => browserRememberedSites())
+      .then(
+        (list) => {
+          if (!cancelled) setSites(Array.isArray(list) ? list : []);
+        },
+        () => {
+          if (!cancelled) setSites([]);
+        },
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [sitesKey]);
+
   /// Saves the computer settings. The browser choice rides along unless `next` names a new one
   /// (`null` for Automatic), so changing the switch or the rules never drops it.
   async function save(next: { enabled: boolean; deny: string[]; browser?: string | null }): Promise<boolean> {
@@ -114,6 +136,7 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
       setBrowserNote({ text: translateError(e, t), failed: true });
     } finally {
       setResetting(false);
+      setSitesKey((k) => k + 1);
     }
   }
 
@@ -179,6 +202,11 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
       {browsers && browsers.length === 0 ? (
         <p className="wf-muted" style={{ margin: '0 0 12px' }}>
           {t('settings.computer.browser.none')}
+        </p>
+      ) : null}
+      {sites.length > 0 ? (
+        <p className="wf-muted settings-browser-sites" style={{ margin: '0 0 12px' }}>
+          {t('settings.computer.browser.sites', { sites: sites.join(', ') })}
         </p>
       ) : null}
       <div className="srow">

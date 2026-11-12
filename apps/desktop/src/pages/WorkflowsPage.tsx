@@ -88,7 +88,7 @@ import type {
 import { PageEmpty, PageFrame, PageListItem } from '../shell/PageFrame';
 import { describeStep, stepLabels, type InputLabels } from '../workflows/describeStep';
 import { LibraryAgentsProvider, useLibraryAgents } from '../agents/useLibraryAgents';
-import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, stepAgentName, triggerNeedsFolder, usesComputer } from '../workflows/editorModel';
+import { findStep, helperNames, needsCollections, needsDocumentTarget, newStep, stepAgentName, triggerNeedsFolder, usesBrowserAct, usesComputer } from '../workflows/editorModel';
 import { describeJsonError } from '../workflows/jsonError';
 import { ResultView } from '../workflows/ResultView';
 import { runsAfterLine } from '../workflows/runsAfter';
@@ -1243,7 +1243,11 @@ function WorkflowsPageBody({
     const waitingStepIds = openRun
       ? [...reviews, ...questions, ...actions].filter((w) => w.runId === openRun.run.id).map((w) => w.stepId)
       : [];
-    const showPermissions = hasPermissions(record.definition.steps, usesComputer(record.definition), rules);
+    const showPermissions = hasPermissions(
+      record.definition.steps,
+      usesComputer(record.definition) || usesBrowserAct(record.definition),
+      rules,
+    );
     const notConfined = usesComputer(record.definition) && record.definition.computer?.allowOutside === true;
     // Steps of this workflow waiting on a command or file change on this computer.
     const computerWaitingStepIds = actions
@@ -1609,6 +1613,7 @@ function WorkflowsPageBody({
                 workflowId={record.id}
                 steps={record.definition.steps}
                 usesComputer={usesComputer(record.definition)}
+                usesBrowserAct={usesBrowserAct(record.definition)}
                 computer={record.definition.computer}
                 rules={rules}
                 onRules={setRules}

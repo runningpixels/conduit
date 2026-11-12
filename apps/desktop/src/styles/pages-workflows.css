@@ -381,6 +381,10 @@ html[data-theme="dark"] .wf-view-btn.active { background: var(--card-hi); filter
 .wf-computer-output { max-height: 12em; overflow: auto; }
 .wf-cmdrules-preview { display: grid; gap: 2px; }
 .wf-computer-option { display: grid; gap: var(--sp-1); }
+/* A tick that only means something under the one above it ("Let it click and type"). */
+.wf-check-sub { padding-left: var(--sp-5); }
+.wf-check-sub:has(input:disabled) { opacity: 0.6; }
+.wf-browser-sites textarea { width: 100%; font-family: var(--font-mono); }
 
 @media (max-width: 720px) {
   .wf-narrow { max-width: 100%; }

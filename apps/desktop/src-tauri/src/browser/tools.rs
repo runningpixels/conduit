@@ -197,12 +197,19 @@ struct ReadInput {
 /// The last refused page request of a tab (the page itself, not a stray image).
 type Blocked = Arc<Mutex<Option<(String, String)>>>;
 
+/// What a tool call says when the page opened a websocket to a refused
+/// address (the tab was moved to about:blank).
+pub const SOCKET_STOPPED: &str =
+    "This page tried to reach a local or private address, so it was stopped.";
+
 struct Tab {
     cdp: Arc<Cdp>,
     browser: Browser,
     target_id: String,
     session: String,
     blocked: Blocked,
+    /// A websocket the guard refused, until a tool call reports it.
+    socket: Blocked,
     guard_task: tokio::task::JoinHandle<()>,
 }
 
@@ -267,6 +274,15 @@ impl RunBrowser {
             other => Err(BrowserError::Other(format!(
                 "{other} is not a browser tool"
             ))),
+        };
+        // A websocket the guard stopped fails this call (or, when it came
+        // after, the next one), whatever was read.
+        let stopped = slot
+            .as_ref()
+            .and_then(|tab| tab.socket.lock().ok().and_then(|mut s| s.take()));
+        let result = match stopped {
+            Some(_) => Err(BrowserError::Other(SOCKET_STOPPED.to_string())),
+            None => result,
         };
         // A browser that went away takes its tab with it: the next call starts afresh.
         if slot.as_ref().is_some_and(|tab| tab.cdp.is_closed()) {
@@ -351,12 +367,13 @@ async fn new_tab(chosen: &Chosen, profile: &Path) -> Result<Tab, BrowserError> {
         .map_err(launch_error)?;
     let cdp = lease.cdp.clone();
     match set_up_tab(&cdp, lease.guard.clone()).await {
-        Ok((target_id, session, blocked, guard_task)) => Ok(Tab {
+        Ok((target_id, session, (blocked, socket), guard_task)) => Ok(Tab {
             cdp,
             browser: lease.browser,
             target_id,
             session,
             blocked,
+            socket,
             guard_task,
         }),
         Err(e) => {
@@ -369,7 +386,15 @@ async fn new_tab(chosen: &Chosen, profile: &Path) -> Result<Tab, BrowserError> {
 async fn set_up_tab(
     cdp: &Arc<Cdp>,
     guard: Arc<Guard>,
-) -> Result<(String, String, Blocked, tokio::task::JoinHandle<()>), BrowserError> {
+) -> Result<
+    (
+        String,
+        String,
+        (Blocked, Blocked),
+        tokio::task::JoinHandle<()>,
+    ),
+    BrowserError,
+> {
     let target = cdp
         .call("Target.createTarget", json!({ "url": "about:blank" }), None)
         .await
@@ -402,13 +427,14 @@ async fn set_up_tab(
         }
     };
     let blocked: Blocked = Arc::default();
+    let socket: Blocked = Arc::default();
     // Listen before anything can be paused.
     let events = cdp.subscribe();
     let task = tokio::spawn(guard_requests(
         cdp.clone(),
         guard,
         session.clone(),
-        blocked.clone(),
+        (blocked.clone(), socket.clone()),
         events,
     ));
     let setup = async {
@@ -420,11 +446,13 @@ async fn set_up_tab(
         close_target(cdp.clone(), target_id).await;
         return Err(cdp_error(e));
     }
-    Ok((target_id, session, blocked, task))
+    Ok((target_id, session, (blocked, socket), task))
 }
 
 /// Hold every request of `session` for the guard, and follow what it opens
 /// (frames in other processes, workers), paused until they are guarded too.
+/// `Fetch` can't hold a websocket handshake, so `Network` reports each one
+/// opening (`webSocketCreated`) for the guard to check.
 async fn enable_guarding(cdp: &Cdp, session: &str) -> Result<(), CdpError> {
     cdp.call(
         "Target.setAutoAttach",
@@ -438,7 +466,18 @@ async fn enable_guarding(cdp: &Cdp, session: &str) -> Result<(), CdpError> {
         Some(session),
     )
     .await?;
+    cdp.call("Network.enable", json!({}), Some(session)).await?;
     Ok(())
+}
+
+/// The guard's verdict on a `Network.webSocketCreated` event: the socket's
+/// address and why it is refused, or `None` when it may connect.
+async fn judge_socket(guard: &Guard, params: &Value) -> Option<(String, String)> {
+    let url = params["url"].as_str()?;
+    match guard.check(url).await {
+        Decision::Allow => None,
+        Decision::Block(why) => Some((url.to_string(), why)),
+    }
 }
 
 /// The guard's loop for one tab: decide every paused request, attach to what
@@ -447,7 +486,7 @@ async fn guard_requests(
     cdp: Arc<Cdp>,
     guard: Arc<Guard>,
     root: String,
-    blocked: Blocked,
+    (blocked, socket): (Blocked, Blocked),
     mut events: tokio::sync::broadcast::Receiver<Event>,
 ) {
     let mut sessions: HashSet<String> = HashSet::from([root.clone()]);
@@ -472,6 +511,27 @@ async fn guard_requests(
                     decide(&cdp, &guard, &blocked, &root, &session, &event.params).await;
                 });
             }
+            "Network.webSocketCreated" => {
+                let (cdp, guard, socket, root) =
+                    (cdp.clone(), guard.clone(), socket.clone(), root.clone());
+                tokio::spawn(async move {
+                    let Some((url, why)) = judge_socket(&guard, &event.params).await else {
+                        return;
+                    };
+                    tracing::info!(%url, %why, "a page's websocket was refused; the tab was emptied");
+                    if let Ok(mut slot) = socket.lock() {
+                        *slot = Some((url, why));
+                    }
+                    // The handshake can't be held, so the page goes instead.
+                    let _ = cdp
+                        .call(
+                            "Page.navigate",
+                            json!({ "url": "about:blank" }),
+                            Some(&root),
+                        )
+                        .await;
+                });
+            }
             "Target.attachedToTarget" => {
                 let child = event.params["sessionId"].as_str().unwrap_or_default();
                 let kind = event.params["targetInfo"]["type"]
@@ -494,7 +554,12 @@ async fn guard_requests(
                             .await;
                         return;
                     }
-                    let _ = enable_guarding(&cdp, &child).await;
+                    // A service worker is guarded at browser level (see
+                    // `launch::guard_service_workers`); here it only waits
+                    // for this session to let it go too.
+                    if kind != "service_worker" {
+                        let _ = enable_guarding(&cdp, &child).await;
+                    }
                     let _ = cdp
                         .call("Runtime.runIfWaitingForDebugger", json!({}), Some(&child))
                         .await;
@@ -1161,6 +1226,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn websockets_to_private_addresses_are_refused() {
+        let guard = Guard::default();
+        for url in [
+            "ws://10.255.255.1/",
+            "wss://192.168.1.20:8443/live",
+            "ws://127.0.0.1:9222/devtools/browser/x",
+            "ws://localhost:3000/socket",
+        ] {
+            let params = json!({ "requestId": "1", "url": url });
+            let (seen, why) = judge_socket(&guard, &params).await.expect(url);
+            assert_eq!(seen, url);
+            assert!(!why.is_empty());
+        }
+        let public = json!({ "requestId": "2", "url": "wss://8.8.8.8/feed" });
+        assert_eq!(judge_socket(&guard, &public).await, None);
+        // An event without a URL is nothing to judge.
+        assert_eq!(judge_socket(&guard, &json!({})).await, None);
+        assert!(SOCKET_STOPPED.contains("local or private address"));
+    }
+
+    #[tokio::test]
     async fn read_page_before_open_page_says_so() {
         let run = RunBrowser::default();
         let chosen = Chosen {
@@ -1242,13 +1328,42 @@ mod tests {
                             "200 OK",
                             "<!doctype html><html><head><title>Contact</title></head><body><main><p>LONGTEXT</p><form><div class=\"g-recaptcha\"></div></form></main></body></html>",
                         )
+                    } else if first.starts_with("GET /socket ") {
+                        // Opens a websocket to a private address once loaded.
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Live</title></head><body><main><h1>Live prices</h1><p>LONGTEXT</p></main><script>window.addEventListener('load',function(){try{new WebSocket('ws://10.255.255.1/feed')}catch(e){}})</script></body></html>",
+                        )
+                    } else if first.starts_with("GET /socket-ok ") {
+                        // A websocket to this test server (loopback, allowed in the test).
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Live ok</title></head><body><main><h1>Live prices</h1><p>LONGTEXT</p></main><script>try{new WebSocket('ws://'+location.host+'/feed')}catch(e){}</script></body></html>",
+                        )
+                    } else if first.starts_with("GET /worker ") {
+                        // Registers a service worker that fetches a private
+                        // address and reports how that went.
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Worker</title></head><body><main><h1>Worker</h1><p id=\"r\">waiting</p></main><script>navigator.serviceWorker.addEventListener('message',function(e){document.getElementById('r').textContent='worker said '+e.data});navigator.serviceWorker.register('/sw.js').then(function(){return navigator.serviceWorker.ready}).then(function(reg){reg.active.postMessage('go')}).catch(function(e){document.getElementById('r').textContent='no worker '+e})</script></body></html>",
+                        )
+                    } else if first.starts_with("GET /sw.js ") {
+                        (
+                            "200 OK",
+                            "self.addEventListener('install',function(){self.skipWaiting()});self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim())});self.addEventListener('message',function(e){var t=Date.now();e.waitUntil(fetch('http://10.255.255.1/x',{mode:'no-cors'}).then(function(){return 'reached'},function(){return 'refused'}).then(function(r){e.source.postMessage(r+' after '+(Date.now()-t)+' ms')}))});",
+                        )
                     } else {
                         ("404 Not Found", "nothing")
+                    };
+                    let kind = if first.starts_with("GET /sw.js ") {
+                        "application/javascript"
+                    } else {
+                        "text/html; charset=utf-8"
                     };
                     let long = "word ".repeat(600);
                     let body = body.replace("LONGTEXT", &long);
                     let reply = format!(
-                        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                         body.len()
                     );
                     let _ = stream.write_all(reply.as_bytes()).await;
@@ -1291,6 +1406,22 @@ mod tests {
             .expect("page opens");
         let pid = launch::host().pid().await;
         println!("browser pid {pid:?}; result {opened}");
+        // The pipe launch opens no debugging port: the browser listens on nothing.
+        #[cfg(windows)]
+        {
+            let pid = pid.expect("the browser runs").to_string();
+            let netstat = std::process::Command::new("netstat")
+                .args(["-ano"])
+                .output()
+                .expect("netstat runs");
+            let netstat = String::from_utf8_lossy(&netstat.stdout);
+            let listening: Vec<&str> = netstat
+                .lines()
+                .filter(|l| l.contains("LISTENING"))
+                .filter(|l| l.split_whitespace().last() == Some(pid.as_str()))
+                .collect();
+            assert!(listening.is_empty(), "the browser listens: {listening:?}");
+        }
         assert_eq!(opened["title"], "JS only");
         let content = opened["content"].as_str().unwrap();
         assert!(content.contains("Rendered by script"), "{content}");
@@ -1375,20 +1506,100 @@ mod tests {
             .unwrap_err();
         assert!(matches!(refused, BrowserError::Blocked { .. }), "{refused}");
 
+        // A page that opens a websocket to a private address: stopped, and
+        // the call fails.
+        let socket = run
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": format!("http://127.0.0.1:{port}/socket") }),
+                &chosen,
+                &profile,
+                None,
+            )
+            .await
+            .unwrap_err()
+            .for_model();
+        println!("socket page: {socket}");
+        assert!(socket.contains(SOCKET_STOPPED), "{socket}");
+        // Reported once: the next call reads normally.
+        let after = run
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": url }),
+                &chosen,
+                &profile,
+                None,
+            )
+            .await
+            .expect("a page reads after the stopped socket");
+        assert_eq!(after["title"], "JS only");
+        // A websocket the guard allows changes nothing.
+        let socket_ok = run
+            .run(
+                OPEN_PAGE_TOOL,
+                &json!({ "url": format!("http://127.0.0.1:{port}/socket-ok") }),
+                &chosen,
+                &profile,
+                None,
+            )
+            .await
+            .expect("an allowed websocket is fine");
+        assert_eq!(socket_ok["title"], "Live ok");
+
+        // A service worker's fetch to a private address is refused at once
+        // (a real attempt at 10.255.255.1 would hang, not fail).
+        run.run(
+            OPEN_PAGE_TOOL,
+            &json!({ "url": format!("http://127.0.0.1:{port}/worker") }),
+            &chosen,
+            &profile,
+            None,
+        )
+        .await
+        .expect("the worker page opens");
+        let began = Instant::now();
+        let said = loop {
+            let page = run
+                .run(READ_PAGE_TOOL, &json!({}), &chosen, &profile, None)
+                .await
+                .expect("the worker page reads");
+            let content = page["content"].as_str().unwrap_or_default().to_string();
+            if content.contains("worker said") || content.contains("no worker") {
+                break content;
+            }
+            assert!(
+                began.elapsed() < Duration::from_secs(20),
+                "the worker never answered: {content}"
+            );
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        };
+        println!("worker page: {said}");
+        assert!(said.contains("worker said refused"), "{said}");
+        let ms: u64 = said
+            .split("refused after ")
+            .nth(1)
+            .and_then(|r| r.split_whitespace().next())
+            .and_then(|n| n.parse().ok())
+            .expect("a time");
+        assert!(ms < 5_000, "refused only after {ms} ms: {said}");
+
         // The run ends: the tab goes, and with the last user, the browser.
+        let pid = launch::host().pid().await.expect("the browser runs");
         run.close().await;
         assert!(!launch::host().is_running().await);
         assert_eq!(launch::host().pid().await, None);
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let port_file =
-            std::fs::read_to_string(profile.join("DevToolsActivePort")).unwrap_or_default();
-        if let Some((port, path)) = launch::parse_active_port(&port_file) {
+        #[cfg(windows)]
+        {
+            let tasks = std::process::Command::new("tasklist")
+                .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+                .output()
+                .expect("tasklist runs");
+            let tasks = String::from_utf8_lossy(&tasks.stdout);
             assert!(
-                Cdp::connect(&launch::websocket_url(port, &path))
-                    .await
-                    .is_err(),
-                "the browser still answers"
+                !tasks.contains(&pid.to_string()),
+                "the browser still runs: {tasks}"
             );
         }
+        let _ = pid;
     }
 }

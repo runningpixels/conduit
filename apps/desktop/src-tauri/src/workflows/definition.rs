@@ -1602,10 +1602,18 @@ fn check_agent_tools(who: &str, tools: &[String], problems: &mut Vec<String>) {
         if !AGENT_TOOLS.contains(&tool.as_str())
             && tool != super::computer::COMPUTER_TOOL
             && tool != crate::browser::BROWSER_TOOL
+            && tool != crate::browser::BROWSER_ACT_TOOL
             && connector_tool_entry(tool).is_none()
         {
             problems.push(format!("{who} can't use the tool \"{tool}\"."));
         }
+    }
+    if tools.iter().any(|t| t == crate::browser::BROWSER_ACT_TOOL)
+        && !tools.iter().any(|t| t == crate::browser::BROWSER_TOOL)
+    {
+        problems.push(format!(
+            "{who} can click and type only with \"Use the browser\" on."
+        ));
     }
     let connector_tools = tools
         .iter()

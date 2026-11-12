@@ -5,7 +5,15 @@ import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import { WorkflowEditor, type WorkflowDraft } from './WorkflowEditor';
 import { describeStep, computerText } from './describeStep';
 import { permissionText, reviewText, agentToolsText } from './permissionText';
-import { usesComputer, withBrowserTool, withComputer, withComputerTool, withFolder } from './editorModel';
+import {
+  usesBrowserAct,
+  usesComputer,
+  withBrowserActTool,
+  withBrowserTool,
+  withComputer,
+  withComputerTool,
+  withFolder,
+} from './editorModel';
 import { EN_MESSAGES } from '../i18n';
 
 const ipc = vi.hoisted(() => ({
@@ -45,6 +53,7 @@ const t = (key: string, params?: Record<string, unknown>) =>
 
 const COMPUTER_LABEL = /Use the computer/;
 const BROWSER_LABEL = /Use the browser/;
+const ACT_LABEL = /Let it click and type/;
 
 describe('model helpers', () => {
   it('keeps computer in tools without treating it as a connector tool', () => {
@@ -59,6 +68,19 @@ describe('model helpers', () => {
     expect(withComputerTool(['web_search', 'browser'], true)).toEqual(['web_search', 'computer', 'browser']);
     expect(usesComputer({ steps: [{ id: 'a', type: 'agent', prompt: '', tools: ['browser'] }] })).toBe(false);
     expect(agentToolsText(['browser'], t)).toBe('read web pages in a browser');
+  });
+
+  it('keeps browser_act right after the browser, only with it', () => {
+    expect(withBrowserActTool(['web_search', 'browser', 'gh/list'], true)).toEqual(['web_search', 'browser', 'browser_act', 'gh/list']);
+    expect(withBrowserActTool(['web_search'], true)).toEqual(['web_search']);
+    expect(withBrowserActTool(['browser', 'browser_act'], false)).toEqual(['browser']);
+    expect(withBrowserTool(['web_search', 'browser', 'browser_act'], false)).toEqual(['web_search']);
+    expect(withBrowserTool(['computer', 'browser', 'browser_act', 'gh/list'], true)).toEqual(['computer', 'browser', 'browser_act', 'gh/list']);
+    expect(usesBrowserAct({ steps: [{ id: 'a', type: 'agent', prompt: '', tools: ['browser', 'browser_act'] }] })).toBe(true);
+    expect(usesBrowserAct({ steps: [{ id: 'a', type: 'agent', prompt: '', tools: ['browser_act'] }] })).toBe(false);
+    expect(usesBrowserAct({ steps: [{ id: 'a', type: 'agent', prompt: '', tools: ['browser'] }] })).toBe(false);
+    expect(usesBrowserAct({ agents: [{ id: 'h', name: 'H', instructions: '', tools: ['browser', 'browser_act'] }], steps: [] })).toBe(true);
+    expect(agentToolsText(['browser', 'browser_act'], t)).toBe('read web pages in a browser, click and type in a browser');
   });
 
   it('finds the computer in steps, loops and helpers', () => {
@@ -120,6 +142,22 @@ describe('the editor', () => {
     expect(screen.queryByRole('heading', { name: 'Computer' })).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: BROWSER_LABEL }));
     expect(latest.draft.definition.steps[0]).toMatchObject({ tools: ['web_search'] });
+  });
+
+  it('offers “Let it click and type” only once the browser is on, and takes it away with the browser', () => {
+    const latest = renderEditor({ steps: [{ id: 'agent', type: 'agent', prompt: 'Do it', tools: ['web_search'] }] });
+    const act = screen.getByRole('checkbox', { name: ACT_LABEL });
+    expect(act).toBeDisabled();
+    expect(act).not.toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: BROWSER_LABEL }));
+    expect(screen.getByRole('checkbox', { name: ACT_LABEL })).toBeEnabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: ACT_LABEL }));
+    expect(latest.draft.definition.steps[0]).toMatchObject({ tools: ['web_search', 'browser', 'browser_act'] });
+    expect(screen.getByText(/Asks before submitting forms/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: BROWSER_LABEL }));
+    expect(latest.draft.definition.steps[0]).toMatchObject({ tools: ['web_search'] });
+    expect(screen.getByRole('checkbox', { name: ACT_LABEL })).toBeDisabled();
+    expect(screen.queryByText(/Asks before submitting forms/)).toBeNull();
   });
 
   it('edits the Computer section and round-trips it', () => {

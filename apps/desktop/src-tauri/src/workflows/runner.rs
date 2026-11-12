@@ -1189,6 +1189,7 @@ impl ConnectorTools<'_, '_> {
                         requested_at: window.since.clone(),
                         expires_at: window.until.clone(),
                         computer: Some(request),
+                        browser: None,
                     })
                     .await;
                 waited = started.elapsed();
@@ -1429,6 +1430,7 @@ impl ConnectorTools<'_, '_> {
                 requested_at: window.since.clone(),
                 expires_at: window.until.clone(),
                 computer: Some(request),
+                browser: None,
             })
             .await?;
         let waited = started.elapsed();
@@ -1625,6 +1627,7 @@ impl ConnectorTools<'_, '_> {
                     requested_at: window.since.clone(),
                     expires_at: window.until.clone(),
                     computer: Some(request),
+                    browser: None,
                 })
                 .await;
             waited = started.elapsed();
@@ -2829,6 +2832,7 @@ impl Exec<'_> {
                 requested_at: window.since.clone(),
                 expires_at: window.until.clone(),
                 computer: None,
+                browser: None,
             })
             .await?;
         let answer = match asked {

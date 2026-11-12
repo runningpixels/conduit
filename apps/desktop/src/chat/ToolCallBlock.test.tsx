@@ -78,6 +78,21 @@ describe('ToolCallBlock browser pages', () => {
     const { container } = render(<ToolCallBlock toolCall={call('read_page', {})} defaultCollapsed={false} />);
     expect(container.textContent).toContain('Read page');
   });
+
+  it.each([
+    ['click', 'Clicked'],
+    ['type_text', 'Typed'],
+    ['choose_option', 'Chose'],
+    ['scroll', 'Scrolled'],
+    ['go_back', 'Went back'],
+    ['ask_to_sign_in', 'Asked you to sign in'],
+  ])('labels %s as %s and leads with why', (name, label) => {
+    const { container } = render(
+      <ToolCallBlock toolCall={call(name, { ref: 'e7', why: 'Open the pricing page' })} defaultCollapsed />,
+    );
+    expect(container.textContent).toContain(label);
+    expect(container.textContent).toContain('Open the pricing page');
+  });
 });
 
 describe('ToolCallBlock consent card', () => {

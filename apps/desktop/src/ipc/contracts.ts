@@ -1283,8 +1283,39 @@ export interface WorkflowAction {
   sensitive: boolean;
   /** Present when this is a command or file change on this computer, not a connector call. */
   computer?: ComputerRequest;
+  /** Present when this is a click, typing or choice in the agent's browser (`connectorId: "browser"`). */
+  browser?: BrowserRequest;
   requestedAt: string;
   expiresAt: string;
+}
+
+/** Why a browser action asks (Rust `actions::BrowserAskReason`). */
+export type BrowserAskReason = 'submit' | 'risky' | 'newSite';
+
+/** A click, typing or choice in the agent's browser waiting for the user (Rust `actions::BrowserRequest`). */
+export interface BrowserRequest {
+  /** `click`, `type_text`, `choose_option`, `scroll` or `go_back`. */
+  action: string;
+  host: string;
+  pageUrl: string;
+  pageTitle: string;
+  elementRole?: string;
+  elementName?: string;
+  /** The text to type, in full. */
+  text?: string;
+  /** The option to choose. */
+  option?: string;
+  /** What the agent said it's for. */
+  why?: string;
+  reason: BrowserAskReason;
+  /** The word that made it risky, as found in the element's name. */
+  riskyWord?: string;
+  /** What the agent read from outside before this, when it did. */
+  readBefore?: string;
+  /** What this step already did in the browser, oldest first. */
+  soFar?: unknown[];
+  /** The host "Always on" adds to the workflow's site list; absent = not offered. */
+  offerSite?: string;
 }
 
 /** The answer to a `WorkflowAction`. */
@@ -1292,7 +1323,7 @@ export interface WorkflowActionAnswer {
   send: boolean;
   /** The changed arguments; leave out to send them as they were. */
   arguments?: Record<string, unknown>;
-  /** Don't ask again for this tool in this workflow (ignored for a sensitive tool). */
+  /** Don't ask again for this tool in this workflow (ignored for a sensitive tool); for a browser action, add its `offerSite` to the site list. */
   remember?: boolean;
   /** The rule to remember (computer commands); used only with `remember: true`. */
   rule?: string;
@@ -1313,6 +1344,8 @@ export interface WorkflowActionRules {
   allowed: WorkflowAllowedAction[];
   /** Command rules; when left out on save, the stored ones are kept. */
   commands?: WorkflowCommandRules;
+  /** Sites agents may click and type on without asking first: hosts, or `*.example.com`. */
+  browserSites?: string[];
 }
 
 /** Command rules: a program plus leading arguments, optionally ending in ` *`. */

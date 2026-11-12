@@ -983,7 +983,8 @@ impl Taint {
     pub fn saw_tool(&self, tool: &str) {
         match tool {
             "web_search" => self.add("web search"),
-            "web_fetch" | "open_page" | "read_page" => self.add("web page"),
+            "web_fetch" | "open_page" | "read_page" | "click" | "type_text" | "choose_option"
+            | "scroll" | "go_back" | "ask_to_sign_in" => self.add("web page"),
             _ => {}
         }
     }

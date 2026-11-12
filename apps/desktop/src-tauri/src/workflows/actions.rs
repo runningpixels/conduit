@@ -40,6 +40,61 @@ pub struct PendingAction {
     /// file change) rather than a connector tool.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub computer: Option<ComputerRequest>,
+    /// Set when the action is the agent clicking or typing in its browser.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub browser: Option<BrowserRequest>,
+}
+
+/// Why a browser action asks rather than going ahead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BrowserAskReason {
+    /// It submits a form (always asks on a site not in the list, and for any
+    /// form with a password field).
+    Submit,
+    /// The element's name matches the money-and-accounts word list.
+    Risky,
+    /// The first action on a site that isn't in the workflow's site list.
+    NewSite,
+}
+
+/// A click, typing or choice in the agent's browser waiting for the user, as
+/// the card shows it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserRequest {
+    /// `click`, `type_text`, `choose_option`, `scroll` or `go_back`.
+    pub action: String,
+    pub host: String,
+    pub page_url: String,
+    pub page_title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_name: Option<String>,
+    /// The text to type, in full.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// The option to choose.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub option: Option<String>,
+    /// What the agent said it's for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+    pub reason: BrowserAskReason,
+    /// The word that made it risky, as found in the element's name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub risky_word: Option<String>,
+    /// What the agent read from outside before this, when it did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_before: Option<String>,
+    /// What this step already did in the browser, oldest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub so_far: Vec<Value>,
+    /// The host "Always on this site" adds to the site list; `None` when it
+    /// isn't offered (submits and risky words always ask).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offer_site: Option<String>,
 }
 
 /// A command or file change waiting for the user, as the card shows it.
@@ -151,6 +206,10 @@ pub struct ActionRules {
     /// always ask.
     #[serde(default)]
     pub commands: super::computer::CommandRules,
+    /// Sites the workflow's agents may click and type on without asking
+    /// first: hosts, or `*.example.com` for a site and its subdomains.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub browser_sites: Vec<String>,
 }
 
 impl ActionRules {

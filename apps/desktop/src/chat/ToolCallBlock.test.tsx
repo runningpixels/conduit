@@ -53,6 +53,33 @@ describe('ToolCallBlock generic card', () => {
   });
 });
 
+describe('ToolCallBlock browser pages', () => {
+  const call = (name: string, args: Record<string, unknown>): ToolCallState => ({
+    toolCallId: 'tc-b',
+    toolId: name,
+    name,
+    argumentsText: '',
+    arguments: args,
+    complete: true,
+    status: 'completed',
+    startedAt: 0,
+    endedAt: 10,
+  });
+
+  it('labels open_page as Opened page and shows the address', () => {
+    const { container } = render(
+      <ToolCallBlock toolCall={call('open_page', { url: 'https://example.com/a' })} defaultCollapsed={false} />,
+    );
+    expect(container.textContent).toContain('Opened page');
+    expect(container.textContent).toContain('https://example.com/a');
+  });
+
+  it('labels read_page as Read page', () => {
+    const { container } = render(<ToolCallBlock toolCall={call('read_page', {})} defaultCollapsed={false} />);
+    expect(container.textContent).toContain('Read page');
+  });
+});
+
 describe('ToolCallBlock consent card', () => {
   const asking = (undeclared: boolean): ToolCallState => ({
     toolCallId: 'tc-2',

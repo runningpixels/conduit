@@ -14,6 +14,7 @@ const AGENT_TOOL_KEY: Record<string, string> = {
   current_time: 'workspace.workflows.agentTool.currentTime',
   calculator: 'workspace.workflows.agentTool.calculator',
   computer: 'workspace.workflows.agentTool.computer',
+  browser: 'workspace.workflows.agentTool.browser',
 };
 
 /// What one agent tool lets a step do ("search the web").

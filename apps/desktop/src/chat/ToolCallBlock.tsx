@@ -291,10 +291,14 @@ export function ToolCallBlock({
       displayName.tool && displayName.tool !== displayName.connector
         ? `${displayName.connector} · ${displayName.tool}`
         : displayName.connector;
+    // Pages read in the agents' browser: a plain label, the address stays in the summary.
+    if (toolCall.name === 'open_page') name = t('chat.toolCall.browser.opened');
+    else if (toolCall.name === 'read_page') name = t('chat.toolCall.browser.read');
     const rows: [string, string][] = Object.entries(toolCall.arguments ?? {})
       .slice(0, 6)
       .map(([k, v]) => [k, toolArgumentDisplay(toolCall.name, k, v, (bytes) => fmt.size(bytes))]);
     summary = rows.length > 0 ? rows[0][1] : undefined;
+    if (toolCall.name === 'read_page') summary = undefined;
     body = (
       <>
         {kvRows(rows)}

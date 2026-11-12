@@ -3810,5 +3810,22 @@
   "chat.composer.dictation.openSettings": "クリックして設定します。",
   "error.dictation.noKey": "音声入力は {provider} を使う設定ですが、API キーが保存されていません。",
   "onboarding.provider.dictationIncluded": "このキーで音声入力も使えます。送信ボタンの横のマイクをクリックしてください。",
-  "onboarding.provider.dictationLater": "音声入力には OpenAI、OpenRouter、または Groq のキーが必要です。あとで 設定 → 音声 から追加できます。"
+  "onboarding.provider.dictationLater": "音声入力には OpenAI、OpenRouter、または Groq のキーが必要です。あとで 設定 → 音声 から追加できます。",
+  "settings.computer.browser.label": "ブラウザー",
+  "settings.computer.browser.help": "エージェントは、通常のブラウズとは別の専用プロファイルでこのブラウザーを使います。どこにもサインインしていません。「自動」は、複数インストールされている場合に初回だけ確認します。",
+  "settings.computer.browser.automatic": "自動",
+  "settings.computer.browser.none": "ブラウザーが見つかりません。スクリプトが必要なページを読むには、Microsoft Edge、Google Chrome、Brave、Chromium のいずれかが必要です。",
+  "settings.computer.browser.reset": "ブラウザープロファイルをリセット",
+  "settings.computer.browser.resetHelp": "エージェントのブラウザーが保存したものをすべて削除します。Cookie、サインイン情報、サイトデータが対象です。",
+  "settings.computer.browser.resetDone": "ブラウザープロファイルをリセットしました。",
+  "workspace.workflows.editor.agent.browser": "ブラウザーを使う",
+  "workspace.workflows.editor.agent.browserHint": "実際のブラウザーウィンドウで Web ページを読みます。スクリプトが必要なページ向けです。現時点では読み取り専用です。",
+  "workspace.workflows.agentTool.browser": "ブラウザーで Web ページを読む",
+  "chat.toolCall.browser.opened": "ページを開きました",
+  "chat.toolCall.browser.read": "ページを読みました",
+  "error.browser.notInstalled": "ブラウザーが見つかりませんでした。Microsoft Edge、Google Chrome、Brave、Chromium のいずれかをインストールして、もう一度お試しください。",
+  "error.browser.inUse": "ブラウザーは現在ワークフローが使用中です。終了してからもう一度お試しください。",
+  "error.browser.launchFailed": "ブラウザーを起動できませんでした。インストールされているか確認して、もう一度お試しください。",
+  "error.browser.blocked": "{url} は開けません。エージェントが読めるのは公開 Web ページだけです。",
+  "error.browser.timeout": "ページの読み込みに時間がかかりすぎました。"
 }

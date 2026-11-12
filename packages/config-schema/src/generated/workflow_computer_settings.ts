@@ -9,4 +9,10 @@ export type WorkflowComputerSettings = { enabled: boolean,
 /**
  * Deny rules (`git push *`) every workflow's commands are checked against.
  */
-deny: Array<string>, };
+deny: Array<string>, 
+/**
+ * The browser workflow agents use: `edge`, `chrome`, `brave` or
+ * `chromium`. Absent means Automatic (asked on first use when more than
+ * one is installed).
+ */
+browser?: string, };

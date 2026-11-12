@@ -3810,5 +3810,22 @@
   "chat.composer.dictation.openSettings": "Cliquez pour la configurer.",
   "error.dictation.noKey": "La dictée est réglée sur {provider}, qui n’a pas de clé API enregistrée.",
   "onboarding.provider.dictationIncluded": "La saisie vocale fonctionne aussi avec cette clé : cliquez sur le micro à côté d’Envoyer.",
-  "onboarding.provider.dictationLater": "La saisie vocale nécessite une clé OpenAI, OpenRouter ou Groq. Vous pourrez en ajouter une plus tard dans Paramètres → Voix."
+  "onboarding.provider.dictationLater": "La saisie vocale nécessite une clé OpenAI, OpenRouter ou Groq. Vous pourrez en ajouter une plus tard dans Paramètres → Voix.",
+  "settings.computer.browser.label": "Navigateur",
+  "settings.computer.browser.help": "Les agents utilisent ce navigateur avec son propre profil, séparé de votre navigation habituelle et connecté à rien. Automatique pose la question la première fois si plusieurs sont installés.",
+  "settings.computer.browser.automatic": "Automatique",
+  "settings.computer.browser.none": "Aucun navigateur trouvé. Les agents ont besoin de Microsoft Edge, Google Chrome, Brave ou Chromium pour lire les pages qui nécessitent des scripts.",
+  "settings.computer.browser.reset": "Réinitialiser le profil du navigateur",
+  "settings.computer.browser.resetHelp": "Supprime tout ce que le navigateur des agents a enregistré : cookies, connexions et données de sites.",
+  "settings.computer.browser.resetDone": "Profil du navigateur réinitialisé.",
+  "workspace.workflows.editor.agent.browser": "Utiliser le navigateur",
+  "workspace.workflows.editor.agent.browserHint": "Lit les pages web dans une vraie fenêtre de navigateur, pour les pages qui nécessitent des scripts. Lecture seule pour l’instant.",
+  "workspace.workflows.agentTool.browser": "lire des pages web dans un navigateur",
+  "chat.toolCall.browser.opened": "Page ouverte",
+  "chat.toolCall.browser.read": "Page lue",
+  "error.browser.notInstalled": "Aucun navigateur n’a été trouvé. Installez Microsoft Edge, Google Chrome, Brave ou Chromium, puis réessayez.",
+  "error.browser.inUse": "Le navigateur est en cours d’utilisation par un workflow. Réessayez quand il aura terminé.",
+  "error.browser.launchFailed": "Le navigateur n’a pas pu démarrer. Vérifiez qu’il est installé, puis réessayez.",
+  "error.browser.blocked": "{url} ne peut pas être ouvert : les agents ne peuvent lire que des pages web publiques.",
+  "error.browser.timeout": "La page a mis trop de temps à se charger."
 }

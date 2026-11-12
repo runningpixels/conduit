@@ -122,6 +122,19 @@ export function withComputerTool(tools: readonly string[], on: boolean): string[
   return [...builtins, COMPUTER_TOOL, ...others.filter((x) => !builtins.includes(x))];
 }
 
+/// The `tools` entry that lets an agent read web pages in a real browser window.
+export const BROWSER_TOOL = 'browser';
+
+/// `tools` with the browser turned on or off; it sits right after the computer entry when there is one.
+export function withBrowserTool(tools: readonly string[], on: boolean): string[] {
+  const others = tools.filter((x) => x !== BROWSER_TOOL);
+  if (!on) return others;
+  const builtins = others.filter((x) => (AGENT_TOOLS as readonly string[]).includes(x));
+  const computer = others.includes(COMPUTER_TOOL) ? [COMPUTER_TOOL] : [];
+  const rest = others.filter((x) => !builtins.includes(x) && x !== COMPUTER_TOOL);
+  return [...builtins, ...computer, BROWSER_TOOL, ...rest];
+}
+
 /// `def` with its computer settings replaced; `null` or settings with nothing set remove the key.
 export function withComputer(def: WorkflowDefinition, computer: WorkflowComputer | null): WorkflowDefinition {
   const { computer: _drop, ...rest } = def;

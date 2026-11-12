@@ -3810,5 +3810,22 @@
   "chat.composer.dictation.openSettings": "Click to set it up.",
   "error.dictation.noKey": "Dictation is set to use {provider}, which has no saved API key.",
   "onboarding.provider.dictationIncluded": "Voice typing works with this key too: click the microphone beside Send.",
-  "onboarding.provider.dictationLater": "Voice typing needs an OpenAI, OpenRouter or Groq key. You can add one later in Settings → Voice."
+  "onboarding.provider.dictationLater": "Voice typing needs an OpenAI, OpenRouter or Groq key. You can add one later in Settings → Voice.",
+  "settings.computer.browser.label": "Browser",
+  "settings.computer.browser.help": "Agents use this browser with its own profile, separate from your normal browsing and signed in to nothing. Automatic asks the first time when more than one is installed.",
+  "settings.computer.browser.automatic": "Automatic",
+  "settings.computer.browser.none": "No browser found. Agents need Microsoft Edge, Google Chrome, Brave or Chromium to read pages that need scripts.",
+  "settings.computer.browser.reset": "Reset browser profile",
+  "settings.computer.browser.resetHelp": "Deletes everything the agents’ browser saved: cookies, sign-ins and site data.",
+  "settings.computer.browser.resetDone": "Browser profile reset.",
+  "workspace.workflows.editor.agent.browser": "Use the browser",
+  "workspace.workflows.editor.agent.browserHint": "Reads web pages in a real browser window, for pages that need scripts. Read only for now.",
+  "workspace.workflows.agentTool.browser": "read web pages in a browser",
+  "chat.toolCall.browser.opened": "Opened page",
+  "chat.toolCall.browser.read": "Read page",
+  "error.browser.notInstalled": "No browser was found. Install Microsoft Edge, Google Chrome, Brave or Chromium, then try again.",
+  "error.browser.inUse": "The browser is being used by a workflow right now. Try again when it finishes.",
+  "error.browser.launchFailed": "The browser couldn’t be started. Check that it’s installed and try again.",
+  "error.browser.blocked": "{url} can’t be opened: agents may only read public web pages.",
+  "error.browser.timeout": "The page took too long to load."
 }

@@ -7,16 +7,23 @@ const ipc = vi.hoisted(() => ({
   previewCommandRule: vi.fn(),
   listWorkflows: vi.fn(),
   getWorkflow: vi.fn(),
+  listBrowsers: vi.fn(),
+  resetBrowserProfile: vi.fn(),
 }));
 vi.mock('../../ipc/client', () => ipc);
 
 import { ComputerSection } from './ComputerSection';
 
-const settings = (workflowComputer?: { enabled: boolean; deny: string[] }) => ({ workflowComputer }) as unknown as AppSettings;
+const settings = (workflowComputer?: { enabled: boolean; deny: string[]; browser?: string }) => ({ workflowComputer }) as unknown as AppSettings;
 
 beforeEach(() => {
   vi.resetAllMocks();
   ipc.listWorkflows.mockResolvedValue([]);
+  ipc.listBrowsers.mockResolvedValue([
+    { id: 'edge', name: 'Microsoft Edge' },
+    { id: 'chrome', name: 'Google Chrome' },
+  ]);
+  ipc.resetBrowserProfile.mockResolvedValue(undefined);
   ipc.previewCommandRule.mockResolvedValue({ error: null, covers: ['rm -rf x'], doesNotCover: ['rm file'] });
   ipc.updateSettings.mockImplementation(async (patch: Partial<AppSettings>) => patch as AppSettings);
 });
@@ -108,5 +115,68 @@ describe('ComputerSection', () => {
     await waitFor(() =>
       expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['sudo *'] } }),
     );
+  });
+
+  describe('browser', () => {
+    it('offers Automatic and the installed browsers, on Automatic by default', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      const select = screen.getByRole('combobox', { name: 'Browser' });
+      expect(await screen.findByRole('option', { name: 'Microsoft Edge' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Google Chrome' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Automatic' })).toBeInTheDocument();
+      expect(select).toHaveValue('');
+      expect(screen.queryByText(/No browser found/)).toBeNull();
+    });
+
+    it('saves the chosen browser with the switch and the rules', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: ['rm *'] })} onUpdate={vi.fn()} />);
+      await screen.findByRole('option', { name: 'Google Chrome' });
+      fireEvent.change(screen.getByRole('combobox', { name: 'Browser' }), { target: { value: 'chrome' } });
+      await waitFor(() =>
+        expect(ipc.updateSettings).toHaveBeenCalledWith({
+          workflowComputer: { enabled: true, deny: ['rm *'], browser: 'chrome' },
+        }),
+      );
+    });
+
+    it('going back to Automatic leaves the browser out', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: [], browser: 'edge' })} onUpdate={vi.fn()} />);
+      await screen.findByRole('option', { name: 'Microsoft Edge' });
+      expect(screen.getByRole('combobox', { name: 'Browser' })).toHaveValue('edge');
+      fireEvent.change(screen.getByRole('combobox', { name: 'Browser' }), { target: { value: '' } });
+      await waitFor(() =>
+        expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: [] } }),
+      );
+    });
+
+    it('keeps the browser when the switch is toggled', async () => {
+      render(<ComputerSection settings={settings({ enabled: false, deny: ['rm *'], browser: 'edge' })} onUpdate={vi.fn()} />);
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Let workflows use this computer' }));
+      await waitFor(() =>
+        expect(ipc.updateSettings).toHaveBeenCalledWith({
+          workflowComputer: { enabled: true, deny: ['rm *'], browser: 'edge' },
+        }),
+      );
+    });
+
+    it('says which browsers agents need when none is found', async () => {
+      ipc.listBrowsers.mockResolvedValue([]);
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      expect(await screen.findByText(/Microsoft Edge, Google Chrome, Brave or Chromium/)).toBeInTheDocument();
+    });
+
+    it('resets the profile and says so', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Reset browser profile' }));
+      expect(await screen.findByText('Browser profile reset.')).toBeInTheDocument();
+      expect(ipc.resetBrowserProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the translated error when the profile is in use', async () => {
+      ipc.resetBrowserProfile.mockRejectedValue({ code: 'error.browser.inUse', params: {}, fallback: 'in use' });
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Reset browser profile' }));
+      expect(await screen.findByText(/being used by a workflow/)).toBeInTheDocument();
+    });
   });
 });

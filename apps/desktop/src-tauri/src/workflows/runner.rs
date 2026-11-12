@@ -575,6 +575,8 @@ impl Runner<'_> {
             rounds: Mutex::new(HashMap::new()),
             sent_earlier: Mutex::new(Vec::new()),
             sent: tokio::sync::Mutex::new(Vec::new()),
+            browser: crate::browser::tools::RunBrowser::default(),
+            browser_pick: tokio::sync::OnceCell::new(),
         }
     }
 
@@ -584,6 +586,9 @@ impl Runner<'_> {
         exec: &Exec<'_>,
         result: Result<Flow, String>,
     ) -> Result<WorkflowRunDetail, String> {
+        // The run's browser tab closes with it, and the browser itself once
+        // no other run is using it.
+        exec.browser.close().await;
         let pool = &self.state.db;
         let enc = &self.state.encryption;
         let run_id = exec.run_id;
@@ -753,6 +758,8 @@ struct ConnectorTools<'e, 'a> {
     team: &'e Team,
     /// The computer, when this agent may use it.
     computer: Option<ComputerAccess>,
+    /// Whether this agent has the browser tools.
+    browser: bool,
     /// The outside content this agent has read so far.
     taint: &'e computer::Taint,
     /// A helper's Stop: its waits for the user end with it, and the helpers
@@ -961,6 +968,56 @@ impl ConnectorTools<'_, '_> {
             }
             _ => (read_files(access, name, arguments).await, Duration::ZERO),
         }
+    }
+
+    /// `open_page` or `read_page`: the run's browser tab. Ends with the run's
+    /// Stop, or the helper's.
+    async fn use_browser(
+        &self,
+        name: &str,
+        arguments: &Value,
+    ) -> (Result<Value, String>, Duration) {
+        if !arguments.is_object() {
+            return (
+                Err("The arguments should be a set of named values.".to_string()),
+                Duration::ZERO,
+            );
+        }
+        let exec = self.exec;
+        let work = async {
+            let chosen = exec.browser_choice(self.step_id).await?;
+            let profile = crate::browser::launch::profile_dir(&exec.runner.state.paths.root);
+            // A human check is handed to the person running, when someone can
+            // be asked: Continue, or Skip (also what nobody answering takes).
+            let step_id = self.step_id;
+            let ask = move |question: String| -> crate::browser::tools::AskFuture<'_> {
+                Box::pin(async move {
+                    let choices = ["Continue".to_string(), "Skip this page".to_string()];
+                    matches!(
+                        exec.ask(step_id, &question, &choices, Some("Skip this page"))
+                            .await
+                            .as_deref(),
+                        Ok("Continue")
+                    )
+                })
+            };
+            let askable = exec.runner.unattended.is_none() && exec.runner.questions.is_some();
+            exec.browser
+                .run(
+                    name,
+                    arguments,
+                    chosen,
+                    &profile,
+                    askable.then_some(&ask as &crate::browser::tools::AskFn<'_>),
+                )
+                .await
+                .map_err(|e| e.for_model())
+        };
+        let result = tokio::select! {
+            result = exec.unless_stopped(work) => result,
+            () = stopped(self.stop.as_ref()) => Err(handoff::STOPPED_BY_YOU.to_string()),
+        };
+        (result, Duration::ZERO)
     }
 
     /// The folder a command runs in: the workflow's folder, or a subfolder.
@@ -1633,6 +1690,9 @@ impl ConnectorTools<'_, '_> {
         if self.computer.is_some() && computer::is_computer_tool(name) {
             return self.use_computer(name, arguments).await;
         }
+        if self.browser && crate::browser::tools::is_browser_tool(name) {
+            return self.use_browser(name, arguments).await;
+        }
         let Some(offered) = self.offered.iter().find(|o| o.name == name) else {
             return (
                 Err("This step can't use that tool.".to_string()),
@@ -1765,6 +1825,7 @@ impl StepTools for ConnectorTools<'_, '_> {
         self.offered.iter().any(|o| o.name == name)
             || self.helpers.iter().any(|(n, _)| n == name)
             || (self.computer.is_some() && computer::is_computer_tool(name))
+            || (self.browser && crate::browser::tools::is_browser_tool(name))
     }
 
     fn call<'s>(&'s self, name: &'s str, arguments: &'s Value) -> StepToolCall<'s> {
@@ -1845,6 +1906,11 @@ struct Exec<'a> {
     sent_earlier: Mutex<Vec<Value>>,
     /// Every outside action this run sent, kept on the run (see migration 0039).
     sent: tokio::sync::Mutex<Vec<Value>>,
+    /// The run's browser tab, opened by its first `open_page` and closed when
+    /// the run ends ([`Runner::finish`]; dropping it closes it too).
+    browser: crate::browser::tools::RunBrowser,
+    /// The browser the run's agents use, once worked out.
+    browser_pick: tokio::sync::OnceCell<crate::browser::tools::Chosen>,
 }
 
 /// How many waits for the user are open at once, and for how long the run has
@@ -3006,6 +3072,20 @@ impl Exec<'_> {
         choices: &[String],
         default: Option<&str>,
     ) -> Result<String, String> {
+        self.ask_noting_who(step_id, question, choices, default)
+            .await
+            .map(|(answer, _)| answer)
+    }
+
+    /// [`Exec::ask`], also saying whether the user answered (`true`) or the
+    /// default was taken because nobody did (`false`).
+    async fn ask_noting_who(
+        &self,
+        step_id: &str,
+        question: &str,
+        choices: &[String],
+        default: Option<&str>,
+    ) -> Result<(String, bool), String> {
         let questions = self
             .runner
             .questions
@@ -3042,10 +3122,81 @@ impl Exec<'_> {
             return Err(STOPPED.to_string());
         }
         match (answer, default) {
-            (Some(answer), _) => Ok(answer),
-            (None, Some(default)) => Ok(default.to_string()),
+            (Some(answer), _) => Ok((answer, true)),
+            (None, Some(default)) => Ok((default.to_string(), false)),
             (None, None) => Err("Nobody answered in time.".to_string()),
         }
+    }
+
+    /// The browser this run's agents use, worked out once: the one chosen in
+    /// Settings, else the only one installed, else the user's pick from the
+    /// ones installed (saved to Settings when they answered). Nobody
+    /// answering takes the preferred browser for this run only.
+    async fn browser_choice(
+        &self,
+        step_id: &str,
+    ) -> Result<&crate::browser::tools::Chosen, String> {
+        self.browser_pick
+            .get_or_try_init(|| async {
+                use crate::browser::{detect::Browser, BrowserError};
+                let state = self.runner.state;
+                let settings = state.settings()?.workflow_computer.unwrap_or_default();
+                let installed = crate::browser::detect::installed_now();
+                let chosen = |(browser, exe): (Browser, std::path::PathBuf)| {
+                    crate::browser::tools::Chosen { browser, exe }
+                };
+                if installed.is_empty() {
+                    return Err(BrowserError::NotInstalled.for_model());
+                }
+                if let Some(wanted) = settings.browser.as_deref().and_then(Browser::from_id) {
+                    return match installed.into_iter().find(|(b, _)| *b == wanted) {
+                        Some(found) => Ok(chosen(found)),
+                        None => Err(format!(
+                            "browser error: {} is chosen in Settings, under Computer, but isn't installed.",
+                            wanted.name()
+                        )),
+                    };
+                }
+                if installed.len() == 1 {
+                    return Ok(chosen(installed.into_iter().next().expect("one")));
+                }
+                let names: Vec<String> =
+                    installed.iter().map(|(b, _)| b.name().to_string()).collect();
+                // Nobody is watching a scheduled run, so it doesn't wait on a
+                // question: the preferred browser, for this run only.
+                if self.runner.unattended.is_some() {
+                    return Ok(chosen(installed.into_iter().next().expect("not empty")));
+                }
+                let (answer, by_user) = match self
+                    .ask_noting_who(
+                        step_id,
+                        "Which browser should agents use?",
+                        &names,
+                        Some(&names[0]),
+                    )
+                    .await
+                {
+                    Ok(answered) => answered,
+                    Err(e) if e == STOPPED => return Err(e),
+                    // Nowhere to ask here: the preferred one, this run only.
+                    Err(_) => (names[0].clone(), false),
+                };
+                let picked = Browser::from_name(&answer)
+                    .and_then(|b| installed.iter().find(|(i, _)| *i == b).cloned())
+                    .unwrap_or_else(|| installed[0].clone());
+                if by_user && Browser::from_name(&answer).is_some() {
+                    let mut computer = settings.clone();
+                    computer.browser = Some(picked.0.id().to_string());
+                    let patch: crate::state::SettingsPatch =
+                        serde_json::from_value(json!({ "workflowComputer": computer }))
+                            .map_err(|e| e.to_string())?;
+                    if let Err(e) = state.update_settings(patch) {
+                        tracing::warn!(error = %e.fallback, "could not save the browser choice");
+                    }
+                }
+                Ok(chosen(picked))
+            })
+            .await
     }
 
     /// The budget reason, once one is exceeded.
@@ -3468,6 +3619,10 @@ impl Exec<'_> {
             system.push_str("\n\n");
             system.push_str(COMPUTER_SYSTEM);
         }
+        if tools.iter().any(|t| t == crate::browser::BROWSER_TOOL) {
+            system.push_str("\n\n");
+            system.push_str(crate::browser::tools::BROWSER_SYSTEM);
+        }
         if let Some(kit) = &kit {
             kit.add_to_system(&mut system);
             kit.add_next_run_hint(&mut system);
@@ -3585,6 +3740,11 @@ impl Exec<'_> {
                     .iter()
                     .any(|t| t == computer::COMPUTER_TOOL)
                     .then_some(COMPUTER_SYSTEM),
+                helper
+                    .tools
+                    .iter()
+                    .any(|t| t == crate::browser::BROWSER_TOOL)
+                    .then_some(crate::browser::tools::BROWSER_SYSTEM),
             ]
             .into_iter()
             .flatten()
@@ -3665,6 +3825,15 @@ impl Exec<'_> {
             .map(|h| (helper_tool_name(&h.id), h))
             .collect();
         let uses_computer = turn.tools.iter().any(|t| t == computer::COMPUTER_TOOL);
+        // The browser needs the Computer switch on, but no work folder.
+        let browser_tools = crate::browser::tools::offered(
+            turn.tools,
+            state
+                .settings()?
+                .workflow_computer
+                .unwrap_or_default()
+                .enabled,
+        )?;
         let step_tools = ConnectorTools {
             exec: self,
             step_id: turn.step_id,
@@ -3679,12 +3848,14 @@ impl Exec<'_> {
             } else {
                 None
             },
+            browser: !browser_tools.is_empty(),
             taint: turn.taint,
             stop: turn.helper_stop.cloned(),
         };
         if uses_computer {
             definitions.extend(computer::tool_definitions());
         }
+        definitions.extend(browser_tools);
         definitions.extend(step_tools.offered.iter().map(Offered::definition));
         definitions.extend(
             step_tools

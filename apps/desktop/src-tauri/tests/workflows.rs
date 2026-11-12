@@ -8343,6 +8343,7 @@ fn computer_on(h: &Harness, deny: &[&str]) {
     patch.workflow_computer = Some(provider_core::schema::WorkflowComputerSettings {
         enabled: true,
         deny: deny.iter().map(|d| d.to_string()).collect(),
+        browser: None,
     });
     h.state.update_settings(patch).unwrap();
 }

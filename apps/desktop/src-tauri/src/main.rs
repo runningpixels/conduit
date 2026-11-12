@@ -268,6 +268,8 @@ fn main() {
             export_deck_html,
             export_deck_pdf,
             export_deck_pptx,
+            list_browsers,
+            reset_browser_profile,
             dictation_status,
             dictation_start,
             dictation_stop,
@@ -651,6 +653,8 @@ fn main() {
             if let Some(mgr) = handle.try_state::<ConnectorRuntimeManager>() {
                 tauri::async_runtime::block_on(mgr.shutdown_all());
             }
+            // The agents' browser is a child process too.
+            conduit_desktop::browser::launch::shutdown();
             // Strictly last: on Windows this spawns the installer and calls
             // `std::process::exit(0)`, so nothing sequenced after it runs. It
             // must not pre-empt the connector shutdown above, or child

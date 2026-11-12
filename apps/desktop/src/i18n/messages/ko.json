@@ -3810,5 +3810,22 @@
   "chat.composer.dictation.openSettings": "클릭하여 설정하세요.",
   "error.dictation.noKey": "받아쓰기가 {provider}을(를) 사용하도록 설정되어 있지만 저장된 API 키가 없습니다.",
   "onboarding.provider.dictationIncluded": "이 키로 음성 입력도 사용할 수 있습니다. 보내기 옆의 마이크를 클릭하세요.",
-  "onboarding.provider.dictationLater": "음성 입력에는 OpenAI, OpenRouter 또는 Groq 키가 필요합니다. 나중에 설정 → 음성에서 추가할 수 있습니다."
+  "onboarding.provider.dictationLater": "음성 입력에는 OpenAI, OpenRouter 또는 Groq 키가 필요합니다. 나중에 설정 → 음성에서 추가할 수 있습니다.",
+  "settings.computer.browser.label": "브라우저",
+  "settings.computer.browser.help": "에이전트는 평소 사용하는 브라우저와 분리된 전용 프로필로 이 브라우저를 사용하며, 어디에도 로그인되어 있지 않습니다. 자동은 둘 이상 설치되어 있으면 처음 한 번 물어봅니다.",
+  "settings.computer.browser.automatic": "자동",
+  "settings.computer.browser.none": "브라우저를 찾을 수 없습니다. 스크립트가 필요한 페이지를 읽으려면 에이전트에 Microsoft Edge, Google Chrome, Brave 또는 Chromium이 필요합니다.",
+  "settings.computer.browser.reset": "브라우저 프로필 초기화",
+  "settings.computer.browser.resetHelp": "에이전트 브라우저가 저장한 모든 것(쿠키, 로그인 정보, 사이트 데이터)을 삭제합니다.",
+  "settings.computer.browser.resetDone": "브라우저 프로필을 초기화했습니다.",
+  "workspace.workflows.editor.agent.browser": "브라우저 사용",
+  "workspace.workflows.editor.agent.browserHint": "실제 브라우저 창에서 웹 페이지를 읽습니다. 스크립트가 필요한 페이지용이며, 지금은 읽기 전용입니다.",
+  "workspace.workflows.agentTool.browser": "브라우저에서 웹 페이지 읽기",
+  "chat.toolCall.browser.opened": "페이지 열림",
+  "chat.toolCall.browser.read": "페이지 읽음",
+  "error.browser.notInstalled": "브라우저를 찾을 수 없습니다. Microsoft Edge, Google Chrome, Brave 또는 Chromium을 설치한 다음 다시 시도하세요.",
+  "error.browser.inUse": "지금 워크플로가 브라우저를 사용 중입니다. 끝난 뒤에 다시 시도하세요.",
+  "error.browser.launchFailed": "브라우저를 시작할 수 없습니다. 설치되어 있는지 확인한 다음 다시 시도하세요.",
+  "error.browser.blocked": "{url}을(를) 열 수 없습니다. 에이전트는 공개 웹 페이지만 읽을 수 있습니다.",
+  "error.browser.timeout": "페이지를 불러오는 데 너무 오래 걸렸습니다."
 }

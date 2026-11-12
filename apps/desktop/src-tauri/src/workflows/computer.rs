@@ -983,7 +983,7 @@ impl Taint {
     pub fn saw_tool(&self, tool: &str) {
         match tool {
             "web_search" => self.add("web search"),
-            "web_fetch" => self.add("web page"),
+            "web_fetch" | "open_page" | "read_page" => self.add("web page"),
             _ => {}
         }
     }
@@ -1028,9 +1028,12 @@ fn reads_outside(step: &super::definition::Step) -> bool {
         | StepAction::ConnectorTool { .. } => true,
         StepAction::Agent { tools, agents, .. } => {
             !agents.is_empty()
-                || tools
-                    .iter()
-                    .any(|t| t == "web_search" || t == "web_fetch" || t.contains('/'))
+                || tools.iter().any(|t| {
+                    t == "web_search"
+                        || t == "web_fetch"
+                        || t == crate::browser::BROWSER_TOOL
+                        || t.contains('/')
+                })
         }
         _ => false,
     }
@@ -1511,6 +1514,28 @@ mod tests {
         assert_eq!(taint.describe().unwrap(), "2 web pages and a web search");
         let handed = Taint::starting_with(vec!["the item that started this run".into()]);
         assert_eq!(handed.describe().unwrap(), "the item that started this run");
+    }
+
+    #[test]
+    fn browser_pages_taint_like_web_pages() {
+        let taint = Taint::default();
+        taint.saw_tool("open_page");
+        taint.saw_tool("read_page");
+        taint.saw_tool("web_fetch");
+        assert_eq!(taint.describe().unwrap(), "3 web pages");
+    }
+
+    #[test]
+    fn a_step_with_the_browser_marker_reads_outside() {
+        let def: crate::workflows::definition::WorkflowDefinition =
+            serde_json::from_value(json!({ "steps": [
+                { "id": "a", "type": "agent", "prompt": "Go", "tools": ["browser"] },
+                { "id": "b", "type": "agent", "prompt": "Go", "tools": ["calculator"] },
+            ] }))
+            .unwrap();
+        let outside = outside_steps(&def);
+        assert!(outside.contains("a"));
+        assert!(!outside.contains("b"));
     }
 
     #[test]

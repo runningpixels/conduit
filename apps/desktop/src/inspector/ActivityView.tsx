@@ -5,7 +5,7 @@ import { formatUsageParts } from '../chat/UsageSummary';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import { ChevronRight } from '../icons';
-import { StepStatusIcon, formatStepDuration, stepDetail, stepStatusLabel } from './stepPresentation';
+import { StepStatusIcon, formatStepDuration, stepDetail, stepName, stepStatusLabel } from './stepPresentation';
 import { turnActivity, turnMatchesId, type ActivityStep } from './turnActivity';
 
 export interface ActivityNetworkEntry {
@@ -47,7 +47,7 @@ function StepList({ steps }: { steps: ActivityStep[] }) {
             <span className="sr-only">{stepStatusLabel(step.status, t)}</span>
             <span className="activity-step-body">
               <span className="activity-step-name" title={step.name || undefined}>
-                {step.name || t('inspector.activity.errorName')}
+                {stepName(step.name, t) || t('inspector.activity.errorName')}
               </span>
               {detail && (
                 <span className="activity-step-detail" title={detail}>

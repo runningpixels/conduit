@@ -3888,7 +3888,19 @@
     "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
     "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
     "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
-    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c",
+    "chat.browser.reason.newSite": "c85fa032d9fa46da28414c2d2677149f52f77e70",
+    "workspace.workflows.browser.role.link": "4f0aa52d656a3d75867f784b7e9c5d23bf1321c0",
+    "workspace.workflows.browser.role.button": "7b7fcc78d6cd1507925b769b1386ced3683f99c7",
+    "workspace.workflows.browser.role.textbox": "cf1f736cfeffd1f20b6e6d1ea5d26f02aae862e3",
+    "workspace.workflows.browser.role.searchbox": "dc0e307f51d6e863c1fa9c330d5f63bf612a2fa9",
+    "workspace.workflows.browser.role.combobox": "211017ac5dcbaadaa5ce23725bed43ad2723fc4c",
+    "workspace.workflows.browser.role.checkbox": "57018890029a5ca0506e051ea1f395b61b2a6106",
+    "workspace.workflows.browser.role.radio": "0a5eab1ecdfcdfd07422c57d2d63e4314c4838d1",
+    "workspace.workflows.browser.role.tab": "e974602114f14fbf55401c109937e173b1b23220",
+    "workspace.workflows.browser.role.menuitem": "53add8d07647126e26b78ebea4e01418a656e621",
+    "workspace.workflows.browser.role.option": "14eb14ece52df99c284b819d9f8092e50aa1613e",
+    "workspace.workflows.browser.role.switch": "01ba7992f85de477e8e630428eb5ed14769f9155"
   },
   "es": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -7779,7 +7791,19 @@
     "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
     "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
     "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
-    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c",
+    "chat.browser.reason.newSite": "c85fa032d9fa46da28414c2d2677149f52f77e70",
+    "workspace.workflows.browser.role.link": "4f0aa52d656a3d75867f784b7e9c5d23bf1321c0",
+    "workspace.workflows.browser.role.button": "7b7fcc78d6cd1507925b769b1386ced3683f99c7",
+    "workspace.workflows.browser.role.textbox": "cf1f736cfeffd1f20b6e6d1ea5d26f02aae862e3",
+    "workspace.workflows.browser.role.searchbox": "dc0e307f51d6e863c1fa9c330d5f63bf612a2fa9",
+    "workspace.workflows.browser.role.combobox": "211017ac5dcbaadaa5ce23725bed43ad2723fc4c",
+    "workspace.workflows.browser.role.checkbox": "57018890029a5ca0506e051ea1f395b61b2a6106",
+    "workspace.workflows.browser.role.radio": "0a5eab1ecdfcdfd07422c57d2d63e4314c4838d1",
+    "workspace.workflows.browser.role.tab": "e974602114f14fbf55401c109937e173b1b23220",
+    "workspace.workflows.browser.role.menuitem": "53add8d07647126e26b78ebea4e01418a656e621",
+    "workspace.workflows.browser.role.option": "14eb14ece52df99c284b819d9f8092e50aa1613e",
+    "workspace.workflows.browser.role.switch": "01ba7992f85de477e8e630428eb5ed14769f9155"
   },
   "fr": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -11670,7 +11694,19 @@
     "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
     "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
     "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
-    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c",
+    "chat.browser.reason.newSite": "c85fa032d9fa46da28414c2d2677149f52f77e70",
+    "workspace.workflows.browser.role.link": "4f0aa52d656a3d75867f784b7e9c5d23bf1321c0",
+    "workspace.workflows.browser.role.button": "7b7fcc78d6cd1507925b769b1386ced3683f99c7",
+    "workspace.workflows.browser.role.textbox": "cf1f736cfeffd1f20b6e6d1ea5d26f02aae862e3",
+    "workspace.workflows.browser.role.searchbox": "dc0e307f51d6e863c1fa9c330d5f63bf612a2fa9",
+    "workspace.workflows.browser.role.combobox": "211017ac5dcbaadaa5ce23725bed43ad2723fc4c",
+    "workspace.workflows.browser.role.checkbox": "57018890029a5ca0506e051ea1f395b61b2a6106",
+    "workspace.workflows.browser.role.radio": "0a5eab1ecdfcdfd07422c57d2d63e4314c4838d1",
+    "workspace.workflows.browser.role.tab": "e974602114f14fbf55401c109937e173b1b23220",
+    "workspace.workflows.browser.role.menuitem": "53add8d07647126e26b78ebea4e01418a656e621",
+    "workspace.workflows.browser.role.option": "14eb14ece52df99c284b819d9f8092e50aa1613e",
+    "workspace.workflows.browser.role.switch": "01ba7992f85de477e8e630428eb5ed14769f9155"
   },
   "ja": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -15561,7 +15597,19 @@
     "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
     "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
     "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
-    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c",
+    "chat.browser.reason.newSite": "c85fa032d9fa46da28414c2d2677149f52f77e70",
+    "workspace.workflows.browser.role.link": "4f0aa52d656a3d75867f784b7e9c5d23bf1321c0",
+    "workspace.workflows.browser.role.button": "7b7fcc78d6cd1507925b769b1386ced3683f99c7",
+    "workspace.workflows.browser.role.textbox": "cf1f736cfeffd1f20b6e6d1ea5d26f02aae862e3",
+    "workspace.workflows.browser.role.searchbox": "dc0e307f51d6e863c1fa9c330d5f63bf612a2fa9",
+    "workspace.workflows.browser.role.combobox": "211017ac5dcbaadaa5ce23725bed43ad2723fc4c",
+    "workspace.workflows.browser.role.checkbox": "57018890029a5ca0506e051ea1f395b61b2a6106",
+    "workspace.workflows.browser.role.radio": "0a5eab1ecdfcdfd07422c57d2d63e4314c4838d1",
+    "workspace.workflows.browser.role.tab": "e974602114f14fbf55401c109937e173b1b23220",
+    "workspace.workflows.browser.role.menuitem": "53add8d07647126e26b78ebea4e01418a656e621",
+    "workspace.workflows.browser.role.option": "14eb14ece52df99c284b819d9f8092e50aa1613e",
+    "workspace.workflows.browser.role.switch": "01ba7992f85de477e8e630428eb5ed14769f9155"
   },
   "ko": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -19452,7 +19500,19 @@
     "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
     "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
     "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
-    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c",
+    "chat.browser.reason.newSite": "c85fa032d9fa46da28414c2d2677149f52f77e70",
+    "workspace.workflows.browser.role.link": "4f0aa52d656a3d75867f784b7e9c5d23bf1321c0",
+    "workspace.workflows.browser.role.button": "7b7fcc78d6cd1507925b769b1386ced3683f99c7",
+    "workspace.workflows.browser.role.textbox": "cf1f736cfeffd1f20b6e6d1ea5d26f02aae862e3",
+    "workspace.workflows.browser.role.searchbox": "dc0e307f51d6e863c1fa9c330d5f63bf612a2fa9",
+    "workspace.workflows.browser.role.combobox": "211017ac5dcbaadaa5ce23725bed43ad2723fc4c",
+    "workspace.workflows.browser.role.checkbox": "57018890029a5ca0506e051ea1f395b61b2a6106",
+    "workspace.workflows.browser.role.radio": "0a5eab1ecdfcdfd07422c57d2d63e4314c4838d1",
+    "workspace.workflows.browser.role.tab": "e974602114f14fbf55401c109937e173b1b23220",
+    "workspace.workflows.browser.role.menuitem": "53add8d07647126e26b78ebea4e01418a656e621",
+    "workspace.workflows.browser.role.option": "14eb14ece52df99c284b819d9f8092e50aa1613e",
+    "workspace.workflows.browser.role.switch": "01ba7992f85de477e8e630428eb5ed14769f9155"
   },
   "pt-BR": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -23343,7 +23403,19 @@
     "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
     "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
     "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
-    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c",
+    "chat.browser.reason.newSite": "c85fa032d9fa46da28414c2d2677149f52f77e70",
+    "workspace.workflows.browser.role.link": "4f0aa52d656a3d75867f784b7e9c5d23bf1321c0",
+    "workspace.workflows.browser.role.button": "7b7fcc78d6cd1507925b769b1386ced3683f99c7",
+    "workspace.workflows.browser.role.textbox": "cf1f736cfeffd1f20b6e6d1ea5d26f02aae862e3",
+    "workspace.workflows.browser.role.searchbox": "dc0e307f51d6e863c1fa9c330d5f63bf612a2fa9",
+    "workspace.workflows.browser.role.combobox": "211017ac5dcbaadaa5ce23725bed43ad2723fc4c",
+    "workspace.workflows.browser.role.checkbox": "57018890029a5ca0506e051ea1f395b61b2a6106",
+    "workspace.workflows.browser.role.radio": "0a5eab1ecdfcdfd07422c57d2d63e4314c4838d1",
+    "workspace.workflows.browser.role.tab": "e974602114f14fbf55401c109937e173b1b23220",
+    "workspace.workflows.browser.role.menuitem": "53add8d07647126e26b78ebea4e01418a656e621",
+    "workspace.workflows.browser.role.option": "14eb14ece52df99c284b819d9f8092e50aa1613e",
+    "workspace.workflows.browser.role.switch": "01ba7992f85de477e8e630428eb5ed14769f9155"
   },
   "zh-CN": {
     "app.deleteAllHistory.confirmLabel": "08170580cbf4275bbc82f95ca2564a30804a3e28",
@@ -27234,6 +27306,18 @@
     "chat.browser.decline.dontSignIn": "3cfff5f5ad7a91d761f8f73a6c40898536774d78",
     "chat.browser.question.humanCheck": "ed2aed8529c4b4db438d6354e785aba534289ec7",
     "chat.browser.question.signIn": "e341a28a7af3e2835822c5985ad4913b613570be",
-    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c"
+    "chat.browser.question.signInWhy": "2b9deb718c0299771b0dbd57173064e782cb8d0c",
+    "chat.browser.reason.newSite": "c85fa032d9fa46da28414c2d2677149f52f77e70",
+    "workspace.workflows.browser.role.link": "4f0aa52d656a3d75867f784b7e9c5d23bf1321c0",
+    "workspace.workflows.browser.role.button": "7b7fcc78d6cd1507925b769b1386ced3683f99c7",
+    "workspace.workflows.browser.role.textbox": "cf1f736cfeffd1f20b6e6d1ea5d26f02aae862e3",
+    "workspace.workflows.browser.role.searchbox": "dc0e307f51d6e863c1fa9c330d5f63bf612a2fa9",
+    "workspace.workflows.browser.role.combobox": "211017ac5dcbaadaa5ce23725bed43ad2723fc4c",
+    "workspace.workflows.browser.role.checkbox": "57018890029a5ca0506e051ea1f395b61b2a6106",
+    "workspace.workflows.browser.role.radio": "0a5eab1ecdfcdfd07422c57d2d63e4314c4838d1",
+    "workspace.workflows.browser.role.tab": "e974602114f14fbf55401c109937e173b1b23220",
+    "workspace.workflows.browser.role.menuitem": "53add8d07647126e26b78ebea4e01418a656e621",
+    "workspace.workflows.browser.role.option": "14eb14ece52df99c284b819d9f8092e50aa1613e",
+    "workspace.workflows.browser.role.switch": "01ba7992f85de477e8e630428eb5ed14769f9155"
   }
 }

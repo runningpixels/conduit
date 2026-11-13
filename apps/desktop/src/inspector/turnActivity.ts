@@ -4,6 +4,7 @@ import { toolCallAwaitsRuntimeFinish } from '../chat/streamState';
 import { isWebSearchToolCall } from '../chat/SearchCallBlock';
 import { DOCUMENT_TOOL_NAMES, summarizeDocumentToolCall } from '../chat/agentTools';
 import { splitToolDisplayName } from '../chat/connectorTools';
+import { isBrowserAction } from '../chat/browserToolLabels';
 import { hostOf } from '../chat/citationUtils';
 
 /**
@@ -152,6 +153,10 @@ function stepFor(tc: ToolCallState, state: AssistantStreamState): ActivityStep {
     const title =
       state.askUser?.toolCallId === tc.toolCallId ? state.askUser.title : pickString(tc.arguments, ['title']);
     return { ...base, kind: 'askUser', label: title ?? '' };
+  }
+  // A click or typing in the agents' browser: what it was for, not the element ref.
+  if (isBrowserAction(tc.name)) {
+    return { ...base, kind: 'tool', label: pickString(tc.arguments, ['why']) ?? '' };
   }
   const split = splitToolDisplayName(tc.name);
   return {

@@ -55,7 +55,7 @@ export function BrowserApprovalGate({ toolCallId, request }: { toolCallId: strin
       role="group"
       aria-labelledby={headingId}
     >
-      <BrowserActionDetails request={request} headingId={headingId} t={t} />
+      <BrowserActionDetails request={request} headingId={headingId} t={t} inChat />
       <BrowserActionButtons
         request={request}
         sending={sending}

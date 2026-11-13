@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.30] - 2026-11-13
+
+Clearer browser approvals in chat.
+
+### Fixed
+
+- **Browser approvals in chat read properly** (#333). The card now says
+  "first action on this site in this chat" instead of "in this workflow",
+  uses the normal interface font, and no longer sits under a "Tool call
+  complete" line while it waits for you.
+- Browser steps show plain names ("Opened page", "Clicked") with what each
+  action was for, instead of raw tool names like `open_page` or `click e4`.
+- Element types on approval cards ("link", "button", "text box"…) are
+  translated in every language, in chats and workflows.
+- Addresses in "pages visited so far" show readable characters instead of
+  percent-encoding.
+
 ## [1.0.0-rc.29] - 2026-11-12
 
 Browser use: agents read, click and type in a real browser, in workflows and in chat.

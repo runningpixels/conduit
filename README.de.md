@@ -42,7 +42,7 @@ einer erfundenen quelloffenen Sync-App, gebaut mit Rust und Tauri.
 
 ## Auf einen Blick
 
-| **[Agenten](#agenten)**: Agenten, die auf Ihrem Computer arbeiten und vor dem Handeln fragen | **[Workflows](#workflows)**: Routinen, die nach Zeitplan oder bei Neuem laufen und vorher fragen |
+| **[Agenten](#agenten)**: Agenten, die auf Ihrem Computer und in Ihrem Browser arbeiten und vor dem Handeln fragen | **[Workflows](#workflows)**: Routinen, die nach Zeitplan oder bei Neuem laufen und vorher fragen |
 | --- | --- |
 | ![Die Seite Agenten in Conduit: sechs Agenten in drei Workflows, gefiltert nach Alle 6, Arbeitet 1 und Helfer 2. Der Agent, der Issue #42 in ferry-sync behebt, arbeitet und nutzt Ihren Computer; daneben sind der Agent Competitor release watch, der Arbeit an seine Helfer Researcher und Editor weitergibt, der Agent Dependency advisories und der Schritt cargo test untätig. Jede Karte zeigt Modell, Werkzeuge sowie Aufgaben, Fehler und Tokens der letzten 30 Tage](./docs/assets/tour-agents.webp) | ![Der Workflow-Bildschirm mit dem Workflow „Weekly Ferry team brief“ auf der Zeichenfläche: ein Startschritt, der nach den Adressen des Tauri-Blogs und des Rust-Blogs fragt, zwei Schritte Seiten abrufen und zwei Zusammenfassungen durch das Modell nebeneinander, dann ein Schritt, der sie zusammenführt, jeder Schritt als abgeschlossen markiert, und rechts das Ergebnis des letzten Laufs, „Ferry team weekly brief 2026-10-17“](./docs/assets/tour-workflows.webp) |
 | **[Recherche](#recherche)**: jede Aussage mit einem echten Zitat belegt | **[Schreiben](#schreiben)**: Blogbeiträge, Dokumentation und Berichte, Abschnitt für Abschnitt geschrieben |
@@ -279,6 +279,14 @@ nicht mehr. Unter Windows laufen Befehle zudem auf diesen Ordner beschränkt.
 Jeder Workflow hat einen Reiter **Berechtigungen** mit seinen Befehlsregeln,
 wie oft jede genutzt wurde, und Regeln, die aus von Ihnen freigegebenen
 Befehlen vorgeschlagen werden.
+
+### Browser
+
+Schalten Sie **Browser** in einem Chat ein, oder **Den Browser nutzen** für einen Workflow-Schritt oder Helfer, und der Agent öffnet Seiten, klickt, tippt, wählt Optionen und füllt Formulare aus, in Ihrem installierten Edge, Chrome, Brave oder Chromium. Das funktioniert auch auf Websites ohne Connector und auf Seiten, die sich erst mit JavaScript aufbauen.
+
+Er nutzt ein eigenes Browserprofil, getrennt von Ihrem. Er fragt beim ersten Mal auf jeder neuen Website und vor allem, was bezahlt, postet, ein Konto ändert oder anmeldet; **Immer auf** *Website* und **Auf allen Websites erlauben** merken sich Ihre Antwort. Passwörter und Ihre gespeicherten API-Schlüssel tippt er nie: Wenn eine Website eine Anmeldung braucht, melden Sie sich selbst in seinem Fenster an, und er bleibt angemeldet. Zeigt eine Website eine Prüfung, ob Sie ein Mensch sind, werden Sie gebeten, sie abzuschließen; Conduit löst solche Prüfungen nie selbst. Lokale Adressen und Adressen im privaten Netz werden abgelehnt. Den Browser wählen oder sein Profil zurücksetzen Sie unter Einstellungen → Computer.
+
+![Ein Chat mit eingeschaltetem Browser, gebeten, die Golden Gate Bridge auf Wikipedia nachzuschlagen: Der Agent hat en.wikipedia.org in seinem eigenen Browser geöffnet und will auf den Link „Search“ klicken. Weil es die erste Aktion auf en.wikipedia.org in diesem Chat ist, fragt eine Karte zuerst, mit Do it, Always on en.wikipedia.org, Allow on all sites und Don't](./docs/assets/screenshot-browser.webp)
 
 ### MCP-Connectors
 

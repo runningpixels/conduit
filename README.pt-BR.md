@@ -41,7 +41,7 @@ app de sincronização de código aberto fictício, feito com Rust e Tauri.
 
 ## Num relance
 
-| **[Agentes](#agentes)**: agentes que trabalham no seu computador e perguntam antes de agir | **[Fluxos de trabalho](#fluxos-de-trabalho)**: rotinas que rodam em um agendamento ou quando chega algo novo, e perguntam antes |
+| **[Agentes](#agentes)**: agentes que trabalham no seu computador e no seu navegador, e perguntam antes de agir | **[Fluxos de trabalho](#fluxos-de-trabalho)**: rotinas que rodam em um agendamento ou quando chega algo novo, e perguntam antes |
 | --- | --- |
 | ![A página Agentes no Conduit: seis agentes em três fluxos de trabalho, filtrados por Todos 6, Trabalhando 1 e Ajudantes 2. O agente que corrige a issue #42 no ferry-sync está trabalhando e usa o seu computador; ao lado, o agente Competitor release watch, que passa trabalho aos ajudantes Researcher e Editor, o agente Dependency advisories e a etapa cargo test estão ociosos. Cada cartão mostra o modelo, as ferramentas e as tarefas, falhas e tokens dos últimos 30 dias](./docs/assets/tour-agents.webp) | ![A tela de Fluxos de trabalho com o fluxo "Weekly Ferry team brief" na tela: uma etapa Start que pede os endereços do blog do Tauri e do blog do Rust, duas etapas Fetch pages e dois resumos Ask the model lado a lado, depois uma etapa que os combina, todas as etapas marcadas como concluídas, e à direita o resultado da última execução, "Ferry team weekly brief 2026-10-17"](./docs/assets/tour-workflows.webp) |
 | **[Pesquisa](#pesquisa)**: cada afirmação sustentada por uma citação real | **[Escrita](#escrita)**: posts de blog, documentação e relatórios, escritos seção por seção |
@@ -257,6 +257,14 @@ permissão deixam de cobrir os comandos dele naquela execução. No Windows, os
 comandos também rodam confinados a essa pasta. Cada fluxo tem uma aba
 **Permissões** com as regras de comando, quantas vezes cada uma foi usada e
 regras sugeridas a partir dos comandos que você aprovou.
+
+### Navegador
+
+Ative **Navegador** em um chat, ou **Usar o navegador** em uma etapa ou ajudante de um fluxo de trabalho, e o agente abre páginas, clica, digita, escolhe opções e preenche formulários no Edge, Chrome, Brave ou Chromium instalado no seu computador. Funciona em sites que não têm conector e em páginas que se montam com JavaScript.
+
+Ele usa um perfil de navegador próprio, separado do seu. Ele pergunta na primeira vez que age em cada site novo, e antes de qualquer coisa que pague, publique, altere uma conta ou faça login; **Sempre em** *site* e **Permitir em todos os sites** lembram a sua resposta. Ele nunca digita senhas nem as suas chaves de API salvas: quando um site pede login, você mesmo entra na janela dele, e ele continua conectado. Se um site mostrar uma verificação de que você é humano, você é chamado para concluí-la; o Conduit nunca resolve essas verificações sozinho. Endereços locais e de redes privadas são recusados. Escolha o navegador, ou redefina o perfil dele, em Configurações → Computador.
+
+![Um chat com o botão Navegador ativado, pedindo para pesquisar a ponte Golden Gate na Wikipédia: o agente abriu en.wikipedia.org no próprio navegador e quer clicar no link Search. Como é a primeira ação em en.wikipedia.org neste chat, um cartão pergunta antes, com Do it, Always on en.wikipedia.org, Allow on all sites e Don't](./docs/assets/screenshot-browser.webp)
 
 ### Conectores MCP
 

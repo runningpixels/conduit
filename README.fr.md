@@ -41,7 +41,7 @@ app de synchronisation open source fictive construite avec Rust et Tauri.
 
 ## En un coup d'œil
 
-| **[Agents](#agents)** : des agents qui travaillent sur votre ordinateur et demandent avant d'agir | **[Flux de travail](#flux-de-travail)** : des routines qui s'exécutent selon un calendrier ou quand quelque chose de nouveau arrive, et demandent d'abord |
+| **[Agents](#agents)** : des agents qui travaillent sur votre ordinateur et dans votre navigateur, et demandent avant d'agir | **[Flux de travail](#flux-de-travail)** : des routines qui s'exécutent selon un calendrier ou quand quelque chose de nouveau arrive, et demandent d'abord |
 | --- | --- |
 | ![La page Agents de Conduit : six agents répartis sur trois flux de travail, filtrés par Tous 6, En cours 1 et Assistants 2. L'agent qui corrige le ticket #42 dans ferry-sync est en cours et utilise votre ordinateur ; à côté, l'agent Competitor release watch qui confie du travail à ses assistants Researcher et Editor, l'agent Dependency advisories et l'étape cargo test sont inactifs. Chaque carte indique son modèle et ses outils, ainsi que ses tâches, ses échecs et ses jetons des 30 derniers jours](./docs/assets/tour-agents.webp) | ![L'écran Flux de travail avec le flux « Weekly Ferry team brief » sur le canevas : une étape de départ qui demande les adresses du blog Tauri et du blog Rust, deux étapes de récupération de pages et deux résumés par le modèle côte à côte, puis une étape qui les combine, chaque étape marquée comme terminée, et à droite le résultat de la dernière exécution, « Ferry team weekly brief 2026-10-17 »](./docs/assets/tour-workflows.webp) |
 | **[Recherche](#recherche)** : chaque affirmation appuyée par une vraie citation | **[Rédaction](#rédaction)** : articles de blog, docs et rapports, rédigés section par section |
@@ -284,6 +284,14 @@ règles d'autorisation ne couvrent plus ses commandes pour cette exécution. Sou
 Windows, les commandes s'exécutent en outre confinées à ce dossier. Chaque flux
 a un onglet **Autorisations** avec ses règles de commande, le nombre d'usages de
 chacune et des règles suggérées à partir des commandes que vous avez approuvées.
+
+### Navigateur
+
+Activez **Navigateur** dans une conversation, ou **Utiliser le navigateur** pour une étape ou un assistant d'un flux de travail, et l'agent ouvre des pages, clique, saisit du texte, choisit des options et remplit des formulaires dans le Edge, Chrome, Brave ou Chromium installé sur votre ordinateur. Cela fonctionne sur les sites qui n'ont pas de connecteur, et sur les pages qui se construisent en JavaScript.
+
+Il utilise son propre profil de navigateur, séparé du vôtre. Il demande la première fois qu'il agit sur chaque nouveau site, et avant tout ce qui paie, publie, modifie un compte ou se connecte ; **Toujours sur** *site* et **Autoriser sur tous les sites** retiennent votre réponse. Il ne saisit jamais de mots de passe ni vos clés d'API enregistrées : quand un site demande d'être connecté, vous vous connectez vous-même dans sa fenêtre, et il reste connecté. Si un site affiche une vérification « êtes-vous humain », on vous demande de la terminer ; Conduit ne résout jamais ces vérifications lui-même. Les adresses locales et de réseau privé sont refusées. Choisissez le navigateur, ou réinitialisez son profil, dans Paramètres → Ordinateur.
+
+![Une conversation avec le bouton Navigateur activé, à qui l'on demande de chercher le Golden Gate Bridge sur Wikipédia : l'agent a ouvert en.wikipedia.org dans son propre navigateur et veut cliquer sur le lien Search. Comme c'est la première action sur en.wikipedia.org dans cette conversation, une carte demande d'abord, avec Do it, Always on en.wikipedia.org, Allow on all sites et Don't](./docs/assets/screenshot-browser.webp)
 
 ### Connecteurs MCP
 

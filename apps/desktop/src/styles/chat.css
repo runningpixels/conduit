@@ -2442,6 +2442,9 @@ html[data-reduce-motion="on"] .turn-doc-line.live .live-dot { animation: none; }
 .composer-browser-sites .chat-settings-pop-lead { margin: 0; flex: 1 1 auto; }
 
 /* A chat's browser approval and question on the tool row (the workflow card's content). */
+/* The tool card body is mono; a browser card is a question for a person. */
+.consent.browser-consent,
+.consent.browser-question { font-family: var(--font-ui); }
 .consent.browser-consent { display: grid; gap: 6px; }
 .consent.browser-consent p,
 .consent.browser-consent .cc-headline { margin: 0; }

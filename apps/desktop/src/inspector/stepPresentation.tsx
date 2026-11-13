@@ -1,6 +1,7 @@
 import type { Translate } from '../i18n';
 import type { Formatters } from '../i18n/formatters';
 import { documentWriteDetail } from '../chat/documentWriteScan';
+import { browserToolLabelKey } from '../chat/browserToolLabels';
 import type { ActivityStep, ActivityStepStatus } from './turnActivity';
 
 /** Status glyph for a step or a turn line. Inline SVG, `currentColor`, coloured by `data-status`. */
@@ -64,6 +65,12 @@ export function stepDetail(step: ActivityStep, t: Translate, fmt: Formatters): s
     default:
       return step.label;
   }
+}
+
+/** A step's tool as people read it: browser tools by their label, others by name. */
+export function stepName(name: string, t: Translate): string {
+  const key = browserToolLabelKey(name);
+  return key ? t(key) : name;
 }
 
 export function stepStatusLabel(status: ActivityStepStatus, t: Translate): string {

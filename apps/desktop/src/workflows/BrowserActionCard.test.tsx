@@ -116,7 +116,7 @@ describe('ActionCard for a browser action', () => {
 
   it('shows the full text to type, says it submits a form, and leads with Don’t', () => {
     setup(submit);
-    expect(screen.getByText('Type into “Search” (textbox)')).toBeInTheDocument();
+    expect(screen.getByText('Type into “Search” (text box)')).toBeInTheDocument();
     expect(screen.getByLabelText('Text to type').textContent).toBe('tauri  webview2\nline two');
     expect(screen.getByRole('note')).toHaveTextContent('It submits a form');
     expect(screen.queryByRole('button', { name: /Always on/ })).toBeNull();

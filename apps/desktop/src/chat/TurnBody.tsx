@@ -23,7 +23,7 @@ import {
   type ActivityStepStatus,
   type TurnSummary,
 } from '../inspector/turnActivity';
-import { StepStatusIcon, formatStepDuration, stepDetail, stepStatusLabel } from '../inspector/stepPresentation';
+import { StepStatusIcon, formatStepDuration, stepDetail, stepName, stepStatusLabel } from '../inspector/stepPresentation';
 import { useFormatters } from '../i18n/formatters';
 import { deckChangeSummary, liveSummary, thoughtSummary } from './compactTurnSummary';
 import { runningHandoffs } from './agentViewModel';
@@ -418,7 +418,7 @@ export function TurnBody({
                 <StepStatusIcon status={step.status} />
                 <span className="sr-only">{stepStatusLabel(step.status, t)}</span>
                 <span className="turn-step-name" title={step.name || undefined}>
-                  {step.name || t('inspector.activity.errorName')}
+                  {stepName(step.name, t) || t('inspector.activity.errorName')}
                 </span>
                 {detail && (
                   <span className="turn-step-detail" title={detail}>

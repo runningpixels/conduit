@@ -28,9 +28,29 @@ function text(value: unknown): string | undefined {
 }
 
 /// What the action does, in plain words ("Click “Place order” (button)").
+/// Element roles the card can name in the person's language; any other role
+/// is left out ("Click “Search”") rather than shown in English.
+const ROLE_KEY: Record<string, string> = {
+  link: 'workspace.workflows.browser.role.link',
+  button: 'workspace.workflows.browser.role.button',
+  textbox: 'workspace.workflows.browser.role.textbox',
+  searchbox: 'workspace.workflows.browser.role.searchbox',
+  combobox: 'workspace.workflows.browser.role.combobox',
+  checkbox: 'workspace.workflows.browser.role.checkbox',
+  radio: 'workspace.workflows.browser.role.radio',
+  tab: 'workspace.workflows.browser.role.tab',
+  menuitem: 'workspace.workflows.browser.role.menuitem',
+  option: 'workspace.workflows.browser.role.option',
+  switch: 'workspace.workflows.browser.role.switch',
+};
+
+function roleText(role: string | undefined, t: Translate): string | undefined {
+  return role && Object.prototype.hasOwnProperty.call(ROLE_KEY, role) ? t(ROLE_KEY[role]) : undefined;
+}
+
 export function browserActionText(request: BrowserRequest, t: Translate): string {
   const name = text(request.elementName);
-  const role = text(request.elementRole);
+  const role = roleText(text(request.elementRole), t);
   switch (request.action) {
     case 'click':
       if (name && role) return t('workspace.workflows.browser.do.click', { name, role });
@@ -54,7 +74,7 @@ export function browserActionText(request: BrowserRequest, t: Translate): string
 }
 
 /// Why it asks, as the chip says it.
-function reasonText(request: BrowserRequest, t: Translate): string {
+function reasonText(request: BrowserRequest, t: Translate, inChat: boolean): string {
   switch (request.reason) {
     case 'submit':
       return t('workspace.workflows.browser.reason.submit');
@@ -63,7 +83,9 @@ function reasonText(request: BrowserRequest, t: Translate): string {
         ? t('workspace.workflows.browser.reason.risky', { word: request.riskyWord })
         : t('workspace.workflows.browser.reason.riskyPlain');
     case 'newSite':
-      return t('workspace.workflows.browser.reason.newSite', { host: request.host });
+      return inChat
+        ? t('chat.browser.reason.newSite', { host: request.host })
+        : t('workspace.workflows.browser.reason.newSite', { host: request.host });
     default:
       return '';
   }
@@ -74,6 +96,16 @@ export function browserRequestCareful(request: BrowserRequest): boolean {
   return request.reason === 'submit' || request.reason === 'risky';
 }
 
+/// An address as people read it: percent-escapes decoded (Wikipédia, not Wikip%C3%A9dia).
+function readableUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return decodeURI(url);
+  } catch {
+    return url;
+  }
+}
+
 /// One earlier action, from whatever shape the backend sent ("Clicked “Search”").
 function soFarItem(entry: unknown, t: Translate): string | null {
   if (typeof entry === 'string') return text(entry) ?? null;
@@ -81,7 +113,7 @@ function soFarItem(entry: unknown, t: Translate): string | null {
   const e = entry as Record<string, unknown>;
   const action = text(e.action) ?? text(e.tool);
   const label = action && Object.prototype.hasOwnProperty.call(DONE_LABEL, action) ? t(DONE_LABEL[action]) : action;
-  const what = text(e.elementName) ?? text(e.element) ?? text(e.name) ?? text(e.option) ?? text(e.url) ?? text(e.host);
+  const what = text(e.elementName) ?? text(e.element) ?? text(e.name) ?? text(e.option) ?? readableUrl(text(e.url)) ?? text(e.host);
   const parts = [label, what ? `“${what}”` : undefined].filter((p): p is string => Boolean(p));
   return parts.length > 0 ? parts.join(' ') : null;
 }
@@ -101,10 +133,13 @@ export function BrowserActionDetails({
   request,
   headingId,
   t,
+  inChat = false,
 }: {
   request: BrowserRequest;
   headingId: string;
   t: Translate;
+  /** A chat's card: "in this chat" rather than "in this workflow". */
+  inChat?: boolean;
 }) {
   const careful = browserRequestCareful(request);
   const title = text(request.pageTitle);
@@ -125,7 +160,7 @@ export function BrowserActionDetails({
           : t('workspace.workflows.browser.pageHost', { host: request.host })}
       </p>
       <p className={`cc-chip${careful ? ' warn' : ''}`} role="note">
-        {reasonText(request, t)}
+        {reasonText(request, t, inChat)}
       </p>
       {text(request.readBefore) ? (
         <p className="wf-muted">{t('workspace.workflows.browser.readBefore', { what: text(request.readBefore) ?? '' })}</p>

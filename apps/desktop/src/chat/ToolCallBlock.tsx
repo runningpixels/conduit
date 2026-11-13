@@ -15,6 +15,7 @@ import { documentKindLabel } from '../lib/documentKind';
 import { useFormatters } from '../i18n/formatters';
 import { describeApproval } from '../lib/approvalSentence';
 import { BrowserApprovalGate, BrowserQuestionGate } from './BrowserPromptBlock';
+import { browserToolLabelKey, isBrowserAction } from './browserToolLabels';
 import { documentWriteDetail } from './documentWriteScan';
 import type { Translate } from '../i18n';
 
@@ -105,16 +106,6 @@ export function toolArgumentDisplay(
 }
 
 /** kv rows for the tool's arguments — mono, flat, one level of disclosure. */
-/// Actions in the agents' browser (Browser B2), as the run details label them.
-const BROWSER_ACTION_LABEL: Record<string, string> = {
-  click: 'chat.toolCall.browser.clicked',
-  type_text: 'chat.toolCall.browser.typed',
-  choose_option: 'chat.toolCall.browser.chose',
-  scroll: 'chat.toolCall.browser.scrolled',
-  go_back: 'chat.toolCall.browser.wentBack',
-  ask_to_sign_in: 'chat.toolCall.browser.askedSignIn',
-};
-
 function kvRows(rows: [string, string][]): React.ReactNode {
   return rows.map(([k, v]) => (
     <dl className="kv" key={k}>
@@ -305,27 +296,25 @@ export function ToolCallBlock({
       displayName.tool && displayName.tool !== displayName.connector
         ? `${displayName.connector} · ${displayName.tool}`
         : displayName.connector;
-    // Pages read in the agents' browser: a plain label, the address stays in the summary.
-    if (toolCall.name === 'open_page') name = t('chat.toolCall.browser.opened');
-    else if (toolCall.name === 'read_page') name = t('chat.toolCall.browser.read');
+    // The agents' browser: a plain label; the address, or what an action was
+    // for, is the summary. An action's `ref` and `why` aren't shown as rows.
+    const browserKey = browserToolLabelKey(toolCall.name);
+    const browserAction = isBrowserAction(toolCall.name);
+    if (browserKey) name = t(browserKey);
     const rows: [string, string][] = Object.entries(toolCall.arguments ?? {})
+      .filter(([k]) => !browserAction || (k !== 'ref' && k !== 'why'))
       .slice(0, 6)
       .map(([k, v]) => [k, toolArgumentDisplay(toolCall.name, k, v, (bytes) => fmt.size(bytes))]);
     summary = rows.length > 0 ? rows[0][1] : undefined;
     if (toolCall.name === 'read_page') summary = undefined;
-    // Clicks, typing and the rest in the agents' browser: a plain label, and what it was for.
-    const browserAction = Object.prototype.hasOwnProperty.call(BROWSER_ACTION_LABEL, toolCall.name)
-      ? BROWSER_ACTION_LABEL[toolCall.name]
-      : undefined;
     if (browserAction) {
-      name = t(browserAction);
       const why = toolCall.arguments?.why;
       summary = typeof why === 'string' && why.trim() ? why.trim() : undefined;
     }
     body = (
       <>
         {kvRows(rows)}
-        {toolCall.complete && consent !== 'denied' && (
+        {toolCall.complete && consent !== 'denied' && !toolCall.browserApproval && !toolCall.browserQuestion && (
           <div className={`tool-out${status === 'failed' ? ' tool-out-prose' : ''}`}>
             {status === 'failed' ? (
               tr('chat.toolCall.generic.failed', {

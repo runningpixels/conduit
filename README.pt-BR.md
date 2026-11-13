@@ -444,7 +444,7 @@ Veja o [`CHANGELOG.md`](./CHANGELOG.md) para tudo o que muda em cada versão.
 
 ## Situação
 
-**v1.0.0-rc.29 — versão candidata.** Os instaladores para Windows, macOS (Apple
+**v1.0.0-rc.30 — versão candidata.** Os instaladores para Windows, macOS (Apple
 silicon e Intel) e Linux estão na
 [página de versões](https://github.com/runningpixels/conduit/releases). Eles não
 são assinados no nível do sistema operacional, então a primeira execução exibe um
@@ -487,7 +487,7 @@ Esta é a versão candidata da 1.0: tudo o que está abaixo funciona, e o que fa
 | Exportação do Slides — HTML e PowerPoint em todas as plataformas, PDF no Windows | Funcionando |
 | Início e navegação — campo de pedido, precisa de você, novidades, continue de onde parou, blocos de áreas, barra agrupada, `Ctrl+1`…`9` | Funcionando |
 | Interface em oito idiomas | Funcionando |
-| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.29 foi compilada, assinada e publicada nos quatro alvos; a atualização foi verificada em uma instalação real do Windows, ainda não no macOS nem no Linux |
+| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.30 foi compilada, assinada e publicada nos quatro alvos; a atualização foi verificada em uma instalação real do Windows, ainda não no macOS nem no Linux |
 | Assinatura de código do SO | Não feita — os pacotes não são assinados |
 | Sincronização na nuvem / contas | Não planejado neste repositório |
 

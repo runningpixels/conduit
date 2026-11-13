@@ -37,7 +37,7 @@ open-source sync app built with Rust and Tauri.
 
 ## At a glance
 
-| **[Agents](#agents)**: agents that work on your computer, and ask before they act | **[Workflows](#workflows)**: routines that run on a schedule or when something new arrives, and ask first |
+| **[Agents](#agents)**: agents that work on your computer and in your browser, and ask before they act | **[Workflows](#workflows)**: routines that run on a schedule or when something new arrives, and ask first |
 | --- | --- |
 | ![The Agents page in Conduit: six agents across three workflows, filtered by All 6, Working 1 and Helpers 2. The agent fixing issue #42 in ferry-sync is working and uses your computer; beside it, the Competitor release watch agent that hands work to its Researcher and Editor helpers, the Dependency advisories agent and the cargo test step are idle. Each card shows its model and tools and its tasks, failures and tokens over the last 30 days](./docs/assets/tour-agents.webp) | ![The Workflows screen with the "Weekly Ferry team brief" workflow on the canvas: a Start step that asks for the Tauri blog and Rust blog addresses, two Fetch pages steps and two Ask the model summaries side by side, then a step that combines them, every step marked Finished, and the latest run's result, "Ferry team weekly brief 2026-10-17", on the right](./docs/assets/tour-workflows.webp) |
 | **[Research](#research)**: every claim backed by a real quote | **[Writing](#writing)**: blog posts, docs and reports, written section by section |
@@ -243,6 +243,14 @@ a diff. After an agent reads outside content such as a web page, your allow
 rules stop covering its commands for that run. On Windows, commands also run
 confined to that folder. Each workflow has a **Permissions** tab with its command
 rules, how often each was used, and rules suggested from commands you approved.
+
+### Browser
+
+Turn on **Browser** in a chat, or **Use the browser** for a workflow step or helper, and the agent opens pages, clicks, types, picks options and fills in forms in your installed Edge, Chrome, Brave or Chromium. It works on sites that have no connector, and on pages that build themselves with JavaScript.
+
+It uses its own browser profile, apart from yours. It asks the first time it acts on each new site, and before anything that pays, posts, changes an account or signs in; **Always on** *site* and **Allow on all sites** remember your answer. It never types passwords or your saved API keys: when a site needs you signed in, you sign in yourself in its window, and it stays signed in. If a site shows a human check, you're asked to finish it; Conduit never solves checks itself. Local and private-network addresses are refused. Pick the browser, or reset its profile, in Settings → Computer.
+
+![A chat with the Browser button on, asked to look up the Golden Gate Bridge on Wikipedia: the agent has opened en.wikipedia.org in its own browser and wants to click the site's Search link. Because it is the first action on en.wikipedia.org in this chat, a card asks first, with Do it, Always on en.wikipedia.org, Allow on all sites and Don't](./docs/assets/screenshot-browser.webp)
 
 ### MCP connectors
 

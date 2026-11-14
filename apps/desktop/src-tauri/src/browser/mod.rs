@@ -12,6 +12,7 @@ pub mod detect;
 pub mod elements;
 pub mod guard;
 pub mod launch;
+pub mod look;
 pub mod rules;
 pub mod secrets;
 #[cfg(windows)]

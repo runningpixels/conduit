@@ -106,17 +106,32 @@ pub async fn reset_browser_profile(state: State<'_, AppState>) -> Result<(), App
 
 /// The browser tools a chat turn declares: reading, or with `act` also
 /// clicking and typing. The renderer adds them when the chat's browser is on.
+/// With the turn's `provider` and `model`, a model that sees images also
+/// gets `look_at_page`.
 #[tauri::command]
-pub fn browser_tool_definitions(act: bool) -> Vec<provider_core::schema::ToolDefinition> {
-    chat_tool_definitions(act)
+pub fn browser_tool_definitions(
+    act: bool,
+    provider: Option<String>,
+    model: Option<String>,
+) -> Vec<provider_core::schema::ToolDefinition> {
+    let sees_images = match (provider.as_deref(), model.as_deref()) {
+        (Some(provider), Some(model)) => {
+            provider_core::vision::model_accepts_images(provider, model)
+        }
+        _ => false,
+    };
+    chat_tool_definitions(act, sees_images)
 }
 
-fn chat_tool_definitions(act: bool) -> Vec<provider_core::schema::ToolDefinition> {
+fn chat_tool_definitions(
+    act: bool,
+    sees_images: bool,
+) -> Vec<provider_core::schema::ToolDefinition> {
     let mut markers = vec![browser::BROWSER_TOOL.to_string()];
     if act {
         markers.push(browser::BROWSER_ACT_TOOL.to_string());
     }
-    browser::tools::offered(&markers, true).unwrap_or_default()
+    browser::tools::offered(&markers, true, sees_images).unwrap_or_default()
 }
 
 /// A chat's browser switches and site list (all off and empty when never set).
@@ -221,7 +236,7 @@ mod chat_tests {
     #[test]
     fn chat_tools_read_or_also_act() {
         let names = |act| -> Vec<String> {
-            chat_tool_definitions(act)
+            chat_tool_definitions(act, false)
                 .into_iter()
                 .map(|d| d.name)
                 .collect()
@@ -232,6 +247,17 @@ mod chat_tests {
         assert!(act.contains(&"click".to_string()));
         assert!(act.contains(&"ask_to_sign_in".to_string()));
         assert!(act.iter().all(|n| browser::tools::is_browser_tool(n)));
+        // A model that sees images also gets look_at_page.
+        let seeing: Vec<String> =
+            browser_tool_definitions(true, Some("openai".to_string()), Some("gpt-4o".to_string()))
+                .into_iter()
+                .map(|d| d.name)
+                .collect();
+        assert!(seeing.contains(&"look_at_page".to_string()));
+        assert!(seeing.iter().all(|n| browser::tools::is_browser_tool(n)));
+        assert!(!browser_tool_definitions(false, None, None)
+            .iter()
+            .any(|d| d.name == "look_at_page"));
     }
 
     #[test]

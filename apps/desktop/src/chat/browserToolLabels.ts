@@ -4,6 +4,7 @@
 export const BROWSER_TOOL_LABEL: Record<string, string> = {
   open_page: 'chat.toolCall.browser.opened',
   read_page: 'chat.toolCall.browser.read',
+  look_at_page: 'chat.toolCall.browser.looked',
   click: 'chat.toolCall.browser.clicked',
   type_text: 'chat.toolCall.browser.typed',
   choose_option: 'chat.toolCall.browser.chose',

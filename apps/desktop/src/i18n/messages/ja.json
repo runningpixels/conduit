@@ -3823,6 +3823,7 @@
   "workspace.workflows.agentTool.browser": "ブラウザーで Web ページを読む",
   "chat.toolCall.browser.opened": "ページを開きました",
   "chat.toolCall.browser.read": "ページを読みました",
+  "chat.toolCall.browser.looked": "ページを見ました",
   "error.browser.notInstalled": "ブラウザーが見つかりませんでした。Microsoft Edge、Google Chrome、Brave、Chromium のいずれかをインストールして、もう一度お試しください。",
   "error.browser.inUse": "ブラウザーは現在ワークフローが使用中です。終了してからもう一度お試しください。",
   "error.browser.launchFailed": "ブラウザーを起動できませんでした。インストールされているか確認して、もう一度お試しください。",

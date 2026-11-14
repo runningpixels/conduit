@@ -910,3 +910,59 @@ async fn cumulative_usage_handles_none_first_round() {
     assert_eq!(total.input_tokens, Some(50));
     assert_eq!(total.output_tokens, Some(25));
 }
+
+#[tokio::test]
+async fn a_look_at_page_picture_follows_the_tool_results() {
+    let (_dir, state, conversation_id) = seeded_state().await;
+    let pool = state.db();
+    seed_assistant_round(&pool, &conversation_id, "req-1").await;
+    tool_calls::insert_tool_call(
+        &pool,
+        &ToolCallRecord {
+            id: "look-1".into(),
+            tool_id: "look_at_page".into(),
+            request_id: "req-1".into(),
+            status: ToolCallStatus::Completed,
+            arguments: Some(json!({"why": "see the chart"})),
+            result: None,
+            error: None,
+            approved_at: None,
+            completed_at: Some("2026-06-27T00:00:01Z".into()),
+        },
+    )
+    .await
+    .unwrap();
+    tool_calls::insert_tool_result(
+        &pool,
+        &state.encryption,
+        "look-1",
+        &json!({"url": "https://example.com/", "screenshot": "attached below", "screenshot_id": "att-1"}),
+        false,
+    )
+    .await
+    .unwrap();
+
+    let continuation = StreamManager::new()
+        .build_continuation_request(&state, &request(&conversation_id, "req-1"), &[])
+        .await
+        .unwrap();
+
+    // The model's text doesn't carry the attachment id ...
+    let tool_at = continuation
+        .messages
+        .iter()
+        .position(|m| m.role == MessageRole::Tool)
+        .unwrap();
+    let text = continuation.messages[tool_at].parts[0]
+        .content
+        .clone()
+        .unwrap();
+    assert!(!text.contains("att-1"), "{text}");
+    // ... the picture comes right after, as an attachment the vision step loads.
+    let shown = &continuation.messages[tool_at + 1];
+    assert_eq!(shown.role, MessageRole::User);
+    assert!(shown.parts.iter().any(|p| {
+        p.kind == MessagePartKind::AttachmentReference
+            && p.attachment_id.as_deref() == Some("att-1")
+    }));
+}

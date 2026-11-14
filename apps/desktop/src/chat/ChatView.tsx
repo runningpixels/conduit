@@ -1185,7 +1185,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const chatBrowserRef = useRef<ConversationBrowser | null>(null);
   chatBrowserRef.current = chatBrowser;
   /** The browser tools, fetched once per "Let it click and type" value. */
-  const browserToolsCacheRef = useRef(new Map<boolean, Promise<ToolDefinition[]>>());
+  const browserToolsCacheRef = useRef(new Map<string, Promise<ToolDefinition[]>>());
   useEffect(() => {
     setChatBrowser(null);
     if (!conversationId) return;
@@ -2187,15 +2187,17 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     // A deck or draft chat has no browser tick.
     if (deck || draft || !browser || !chatBrowserAllowed(browser, turnSettings)) return [];
     const cache = browserToolsCacheRef.current;
-    let tools = cache.get(browser.act);
+    // By model too: a model that sees images also gets look_at_page.
+    const key = `${browser.act}|${turnSettings.activeProvider}|${turnSettings.activeModel}`;
+    let tools = cache.get(key);
     if (!tools) {
-      tools = browserToolDefinitions(browser.act);
-      cache.set(browser.act, tools);
+      tools = browserToolDefinitions(browser.act, turnSettings.activeProvider, turnSettings.activeModel);
+      cache.set(key, tools);
     }
     try {
       return await tools;
     } catch {
-      cache.delete(browser.act);
+      cache.delete(key);
       return [];
     }
   }

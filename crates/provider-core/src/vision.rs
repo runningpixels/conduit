@@ -101,6 +101,13 @@ pub fn listed_file_input(item: &serde_json::Value) -> Option<bool> {
     Some(modalities.iter().any(|m| m.as_str() == Some("file")))
 }
 
+/// What an OpenRouter catalogue entry says about image input, like
+/// [`listed_file_input`].
+pub fn listed_image_input(item: &serde_json::Value) -> Option<bool> {
+    let modalities = item.pointer("/architecture/input_modalities")?.as_array()?;
+    Some(modalities.iter().any(|m| m.as_str() == Some("image")))
+}
+
 /// True when the active provider/model is expected to accept image inputs.
 ///
 /// This is a coarse heuristic — `ModelInfo` has no vision flag yet. Prefer

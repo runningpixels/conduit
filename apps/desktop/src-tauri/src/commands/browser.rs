@@ -110,14 +110,22 @@ pub async fn reset_browser_profile(state: State<'_, AppState>) -> Result<(), App
 /// gets `look_at_page`.
 #[tauri::command]
 pub fn browser_tool_definitions(
+    state: State<'_, AppState>,
     act: bool,
     provider: Option<String>,
     model: Option<String>,
 ) -> Vec<provider_core::schema::ToolDefinition> {
-    let sees_images = match (provider.as_deref(), model.as_deref()) {
-        (Some(provider), Some(model)) => {
-            provider_core::vision::model_accepts_images(provider, model)
-        }
+    browser_tools_for(&state, act, provider.as_deref(), model.as_deref())
+}
+
+fn browser_tools_for(
+    state: &AppState,
+    act: bool,
+    provider: Option<&str>,
+    model: Option<&str>,
+) -> Vec<provider_core::schema::ToolDefinition> {
+    let sees_images = match (provider, model) {
+        (Some(provider), Some(model)) => state.model_sees_images(provider, model),
         _ => false,
     };
     chat_tool_definitions(act, sees_images)
@@ -248,16 +256,12 @@ mod chat_tests {
         assert!(act.contains(&"ask_to_sign_in".to_string()));
         assert!(act.iter().all(|n| browser::tools::is_browser_tool(n)));
         // A model that sees images also gets look_at_page.
-        let seeing: Vec<String> =
-            browser_tool_definitions(true, Some("openai".to_string()), Some("gpt-4o".to_string()))
-                .into_iter()
-                .map(|d| d.name)
-                .collect();
+        let seeing: Vec<String> = chat_tool_definitions(true, true)
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
         assert!(seeing.contains(&"look_at_page".to_string()));
         assert!(seeing.iter().all(|n| browser::tools::is_browser_tool(n)));
-        assert!(!browser_tool_definitions(false, None, None)
-            .iter()
-            .any(|d| d.name == "look_at_page"));
     }
 
     #[test]

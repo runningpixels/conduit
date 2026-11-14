@@ -3959,7 +3959,7 @@ impl Exec<'_> {
                 .workflow_computer
                 .unwrap_or_default()
                 .enabled,
-            provider_core::vision::model_accepts_images(&turn.model.provider, &turn.model.model),
+            state.model_sees_images(&turn.model.provider, &turn.model.model),
         )?;
         let step_tools = ConnectorTools {
             exec: self,

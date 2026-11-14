@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.31] - 2026-11-14
+
+The agent's browser no longer saves downloads or shows site permission prompts.
+
+### Fixed
+
+- **Downloads started by the agent are refused** (#338). Before, a link or
+  button that downloaded a file could save it into your own Downloads folder
+  without asking, and the agent wasn't told. Now the agent's browser refuses
+  every download and the agent sees "This started a download (*name*).
+  Downloads aren't available, so nothing was saved." Asking before a download
+  comes in a later release.
+- **Site permission prompts are refused** in the agent's browser:
+  notifications, location, camera, microphone, clipboard reading and MIDI.
+  Nothing waits on a prompt in a window nobody is watching.
+- The Writing studio's side panel no longer jumps back to "Ask" right after
+  you open another tab (#337).
+
 ## [1.0.0-rc.30] - 2026-11-13
 
 Clearer browser approvals in chat.

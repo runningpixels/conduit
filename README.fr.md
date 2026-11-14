@@ -496,7 +496,7 @@ Voir [`CHANGELOG.md`](./CHANGELOG.md) pour le détail de chaque version.
 
 ## État
 
-**v1.0.0-rc.30 — version candidate.** Les installateurs pour Windows, macOS (Apple
+**v1.0.0-rc.31 — version candidate.** Les installateurs pour Windows, macOS (Apple
 silicon et Intel) et Linux se trouvent sur la
 [page des versions](https://github.com/runningpixels/conduit/releases). Ils ne
 sont pas signés au niveau du système, si bien que le premier lancement affiche
@@ -539,7 +539,7 @@ C'est la version candidate de la 1.0 : tout ce qui suit fonctionne, et il reste
 | Export des présentations — HTML et PowerPoint sur toutes les plateformes, PDF sous Windows | Fonctionnel |
 | Accueil et navigation — zone de saisie, À vous, résultats récents, reprise, tuiles des espaces, barre regroupée, `Ctrl+1`…`9` | Fonctionnel |
 | Interface en huit langues | Fonctionnel |
-| Chaîne de mise à jour et de packaging, avec mises à jour automatiques facultatives | Fonctionnel — la 1.0.0-rc.30 est compilée, signée et publiée sur les quatre cibles ; la mise à jour a été vérifiée sur une vraie installation Windows, pas encore sur macOS ni Linux |
+| Chaîne de mise à jour et de packaging, avec mises à jour automatiques facultatives | Fonctionnel — la 1.0.0-rc.31 est compilée, signée et publiée sur les quatre cibles ; la mise à jour a été vérifiée sur une vraie installation Windows, pas encore sur macOS ni Linux |
 | Signature de code au niveau du système | Non fait — les bundles ne sont pas signés |
 | Synchronisation cloud / comptes | Non prévu dans ce dépôt |
 

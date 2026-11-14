@@ -487,7 +487,7 @@ Siehe [`CHANGELOG.md`](./CHANGELOG.md) für alles, was in jeder Version enthalte
 
 ## Status
 
-**v1.0.0-rc.30 — Release Candidate.** Installationsprogramme für Windows, macOS (Apple
+**v1.0.0-rc.31 — Release Candidate.** Installationsprogramme für Windows, macOS (Apple
 Silicon und Intel) und Linux liegen auf der
 [Releases-Seite](https://github.com/runningpixels/conduit/releases). Sie sind
 nicht vom Betriebssystem signiert, daher zeigt der erste Start eine Gatekeeper-
@@ -530,7 +530,7 @@ gilt.
 | Folien-Export — HTML und PowerPoint auf jeder Plattform, PDF unter Windows | Funktioniert |
 | Start und Navigation — Eingabefeld, Braucht dich, neue Ergebnisse, Weitermachen, Bereichskacheln, gruppierte Navigationsleiste, `Ctrl+1`…`9` | Funktioniert |
 | Oberfläche in acht Sprachen | Funktioniert |
-| Update-/Paketierungs-Pipeline, mit optionalen automatischen Updates | Funktioniert — 1.0.0-rc.30 für alle vier Ziele gebaut, signiert und veröffentlicht; das Update auf einer echten Windows-Installation geprüft, auf macOS und Linux noch nicht |
+| Update-/Paketierungs-Pipeline, mit optionalen automatischen Updates | Funktioniert — 1.0.0-rc.31 für alle vier Ziele gebaut, signiert und veröffentlicht; das Update auf einer echten Windows-Installation geprüft, auf macOS und Linux noch nicht |
 | Code-Signierung durch das Betriebssystem | Nicht erledigt — die Bundles sind unsigniert |
 | Cloud-Synchronisierung / Konten | In diesem Repository nicht geplant |
 

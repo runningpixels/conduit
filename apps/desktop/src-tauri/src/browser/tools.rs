@@ -37,7 +37,10 @@ const SETTLE_CAP: Duration = Duration::from_secs(15);
 
 /// Whether `name` is one of the browser tools.
 pub fn is_browser_tool(name: &str) -> bool {
-    matches!(name, OPEN_PAGE_TOOL | READ_PAGE_TOOL) || super::act::is_action_tool(name)
+    matches!(
+        name,
+        OPEN_PAGE_TOOL | READ_PAGE_TOOL | super::look::LOOK_TOOL
+    ) || super::act::is_action_tool(name)
 }
 
 /// The tools an agent with [`super::BROWSER_TOOL`] sees.
@@ -88,10 +91,12 @@ const WHOLE_PAGE_HELP: &str = "By default only the page's main article text is r
 
 /// The browser tools an agent with `tools` is offered: none without the
 /// marker; with it, they need Settings → Computer switched on (`switch_on`),
-/// and there is no work folder to ask for.
+/// and there is no work folder to ask for. `look_at_page` only for a model
+/// that `sees_images`.
 pub fn offered(
     tools: &[String],
     switch_on: bool,
+    sees_images: bool,
 ) -> Result<Vec<provider_core::schema::ToolDefinition>, String> {
     if !tools.iter().any(|t| t == super::BROWSER_TOOL) {
         return Ok(Vec::new());
@@ -103,6 +108,9 @@ pub fn offered(
         );
     }
     let mut definitions = tool_definitions();
+    if sees_images {
+        definitions.push(super::look::tool_definition());
+    }
     if tools.iter().any(|t| t == super::BROWSER_ACT_TOOL) {
         definitions.extend(super::act::tool_definitions());
     }
@@ -316,6 +324,33 @@ impl RunBrowser {
                     )),
                 }
             }
+            super::look::LOOK_TOOL => {
+                let full_page = arguments["full_page"].as_bool().unwrap_or(false);
+                match slot.as_ref() {
+                    // An agent that may act gets the elements first, so the
+                    // refs drawn on the picture are the ones it is given.
+                    Some(tab) => {
+                        match act {
+                            Some(_) => {
+                                let mut listed = json!({});
+                                match super::act::with_elements(tab, &mut listed, &self.act).await {
+                                    Ok(()) => super::look::look(tab, full_page, true).await.map(
+                                        |mut page| {
+                                            page["elements"] = listed["elements"].take();
+                                            page
+                                        },
+                                    ),
+                                    Err(e) => Err(e),
+                                }
+                            }
+                            None => super::look::look(tab, full_page, false).await,
+                        }
+                    }
+                    None => Err(BrowserError::Other(
+                        "no page is open; call open_page first".to_string(),
+                    )),
+                }
+            }
             action if super::act::is_action_tool(action) => match (slot.as_ref(), act) {
                 (_, None) => Err(BrowserError::Other(
                     "This agent can only read pages, not click or type.".to_string(),
@@ -332,7 +367,7 @@ impl RunBrowser {
             ))),
         };
         // An agent that may act sees the page's elements with every read.
-        if act.is_some() && !super::act::is_action_tool(name) {
+        if act.is_some() && !super::act::is_action_tool(name) && name != super::look::LOOK_TOOL {
             let mut failed = None;
             if let (Ok(page), Some(tab)) = (result.as_mut(), slot.as_ref()) {
                 failed = super::act::with_elements(tab, page, &self.act).await.err();
@@ -940,13 +975,13 @@ pub fn judge_block(sample: &ChallengeSample) -> Option<String> {
     (!solvable && sample.text_chars < WEAK_TEXT_LIMIT).then(|| "an access block".to_string())
 }
 
-enum Check {
+pub(super) enum Check {
     Clear,
     Blocked(String),
     Challenge(String),
 }
 
-async fn detect_challenge(tab: &Tab) -> Result<Check, BrowserError> {
+pub(super) async fn detect_challenge(tab: &Tab) -> Result<Check, BrowserError> {
     let raw = evaluate(tab, CHALLENGE_SCRIPT).await?;
     let Ok(sample) = serde_json::from_str::<ChallengeSample>(&raw) else {
         return Ok(Check::Clear);
@@ -1263,12 +1298,21 @@ mod tests {
     fn tools_are_offered_only_with_the_marker_and_the_switch() {
         let none: Vec<String> = vec!["web_fetch".into(), "computer".into()];
         let marked: Vec<String> = vec!["web_fetch".into(), "browser".into()];
-        assert!(offered(&none, true).unwrap().is_empty());
-        assert!(offered(&none, false).unwrap().is_empty());
-        let defs = offered(&marked, true).unwrap();
+        assert!(offered(&none, true, false).unwrap().is_empty());
+        assert!(offered(&none, false, false).unwrap().is_empty());
+        let defs = offered(&marked, true, false).unwrap();
         let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(names, vec!["open_page", "read_page"]);
-        assert!(offered(&marked, false).unwrap_err().contains("turned off"));
+        assert!(offered(&marked, false, false)
+            .unwrap_err()
+            .contains("turned off"));
+        // Looking is only for a model that sees images.
+        let seeing: Vec<String> = offered(&marked, true, true)
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        assert_eq!(seeing, vec!["open_page", "read_page", "look_at_page"]);
     }
 
     fn sample(strong: &[&str], weak: &[&str], text_chars: i64, title: &str) -> ChallengeSample {
@@ -1943,7 +1987,7 @@ mod tests {
     fn actions_are_offered_only_with_both_markers() {
         let names = |tools: &[&str]| -> Vec<String> {
             let tools: Vec<String> = tools.iter().map(|t| t.to_string()).collect();
-            offered(&tools, true)
+            offered(&tools, true, false)
                 .unwrap()
                 .into_iter()
                 .map(|d| d.name)
@@ -2126,6 +2170,39 @@ mod tests {
         );
         let page = call(READ_PAGE_TOOL, json!({})).await.expect("reads");
         assert_eq!(page["title"], "Shop", "the risky click went ahead");
+
+        // Looking: a JPEG within the size limit, the elements with it, and
+        // the ref tags gone from the page afterwards.
+        let look = call(
+            crate::browser::look::LOOK_TOOL,
+            json!({ "why": "see the shop" }),
+        )
+        .await
+        .expect("looks");
+        use base64::Engine;
+        let jpeg = base64::engine::general_purpose::STANDARD
+            .decode(look["_jpeg"].as_str().expect("a picture"))
+            .expect("base64");
+        assert_eq!(&jpeg[..2], &[0xFF, 0xD8], "a JPEG");
+        let (w, h) = (
+            look["width"].as_u64().unwrap(),
+            look["height"].as_u64().unwrap(),
+        );
+        assert!(w > 0 && h > 0 && w.max(h) <= 1568, "{w}x{h}");
+        assert!(!look["elements"].as_array().unwrap().is_empty());
+        let after = call(READ_PAGE_TOOL, json!({ "whole_page": true }))
+            .await
+            .expect("reads");
+        let tags = look["elements"].as_array().unwrap().len();
+        let again = after["elements"].as_array().unwrap().len();
+        assert_eq!(tags, again, "the tag layer added nothing to the page");
+        let full = call(
+            crate::browser::look::LOOK_TOOL,
+            json!({ "why": "whole page", "full_page": true }),
+        )
+        .await
+        .expect("looks at the whole page");
+        assert!(full["_jpeg"].as_str().is_some_and(|d| !d.is_empty()));
 
         // A link made clickable only by script is listed, and its money word asks.
         let checkout = ref_of(&page, "Proceed To Checkout");

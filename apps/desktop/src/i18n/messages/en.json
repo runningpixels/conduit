@@ -3823,6 +3823,7 @@
   "workspace.workflows.agentTool.browser": "read web pages in a browser",
   "chat.toolCall.browser.opened": "Opened page",
   "chat.toolCall.browser.read": "Read page",
+  "chat.toolCall.browser.looked": "Looked at page",
   "error.browser.notInstalled": "No browser was found. Install Microsoft Edge, Google Chrome, Brave or Chromium, then try again.",
   "error.browser.inUse": "The browser is being used by a workflow right now. Try again when it finishes.",
   "error.browser.launchFailed": "The browser couldn’t be started. Check that it’s installed and try again.",

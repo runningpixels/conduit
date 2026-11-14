@@ -2526,8 +2526,13 @@ export async function answerWorkflowAction(runId: string, stepId: string, answer
 }
 
 /** The browser tools a chat turn declares; `act` adds clicking and typing. */
-export async function browserToolDefinitions(act: boolean): Promise<ToolDefinition[]> {
-  return invokeCommand<ToolDefinition[]>('browser_tool_definitions', { act });
+export async function browserToolDefinitions(
+  act: boolean,
+  provider?: string,
+  model?: string,
+): Promise<ToolDefinition[]> {
+  // With the turn's model: one that sees images also gets look_at_page.
+  return invokeCommand<ToolDefinition[]>('browser_tool_definitions', { act, provider, model });
 }
 
 /** A chat's browser ticks and the sites it may act on. */

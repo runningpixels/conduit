@@ -745,6 +745,9 @@ impl Offered {
 struct ConnectorTools<'e, 'a> {
     exec: &'e Exec<'a>,
     step_id: &'e str,
+    /// The conversation the agent's turn is in: where its pictures of pages
+    /// are stored.
+    conversation: &'e str,
     /// The step's id for the step's own agent, `<step>/<helper>` for a
     /// helper: what the sent journal keys its outside actions by.
     key: String,
@@ -1038,6 +1041,12 @@ impl ConnectorTools<'_, '_> {
                 )
                 .await
                 .map_err(|e| e.for_model())
+        };
+        let work = async {
+            let mut page = work.await?;
+            crate::browser::look::store_screenshot(exec.runner.state, self.conversation, &mut page)
+                .await?;
+            Ok(page)
         };
         let result = tokio::select! {
             result = exec.unless_stopped(work) => result,
@@ -3950,10 +3959,12 @@ impl Exec<'_> {
                 .workflow_computer
                 .unwrap_or_default()
                 .enabled,
+            provider_core::vision::model_accepts_images(&turn.model.provider, &turn.model.model),
         )?;
         let step_tools = ConnectorTools {
             exec: self,
             step_id: turn.step_id,
+            conversation: turn.conversation,
             key: turn.key,
             offered: self.offer_connector_tools(turn.tools).await?,
             helpers,

@@ -197,7 +197,7 @@ describe('ChatView browser tools', () => {
   it('declares the reading tools when "Use the browser" is on', async () => {
     vi.mocked(getConversationBrowser).mockResolvedValue({ use: true, act: false, sites: [] });
     const names = toolNames(await sendTurn({}));
-    expect(browserToolDefinitions).toHaveBeenCalledWith(false);
+    expect(vi.mocked(browserToolDefinitions).mock.calls[0]?.[0]).toBe(false);
     expect(names).toEqual(expect.arrayContaining(['open_page', 'read_page']));
     expect(names).not.toContain('click');
   });
@@ -205,7 +205,7 @@ describe('ChatView browser tools', () => {
   it('adds clicking and typing when "Let it click and type" is on', async () => {
     vi.mocked(getConversationBrowser).mockResolvedValue({ use: true, act: true, sites: [] });
     const names = toolNames(await sendTurn({}));
-    expect(browserToolDefinitions).toHaveBeenCalledWith(true);
+    expect(vi.mocked(browserToolDefinitions).mock.calls[0]?.[0]).toBe(true);
     expect(names).toEqual(expect.arrayContaining(['open_page', 'click', 'type_text']));
     expect(names.filter((n) => n === 'open_page')).toHaveLength(1);
   });

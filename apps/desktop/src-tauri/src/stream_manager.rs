@@ -3653,7 +3653,9 @@ impl StreamManager {
         };
         drop(browser);
         self.browsers.touch(conversation_id);
-        result
+        let mut page = result?;
+        crate::browser::look::store_screenshot(state, conversation_id, &mut page).await?;
+        Ok(page)
     }
 
     /// Build a continuation `ProviderRequest` for the next provider round.
@@ -3732,6 +3734,8 @@ impl StreamManager {
         // Parallel tuples for DB persistence — mirrors tool_call_meta but as
         // typed (String, String, Value) triplets for enrich_assistant_with_tool_calls.
         let mut tool_call_tuples: Vec<(String, String, serde_json::Value)> = Vec::new();
+        // Pictures `look_at_page` took this round: shown after the results.
+        let mut screenshots: Vec<(String, String)> = Vec::new();
 
         for record in &records {
             tool_call_tuples.push((
@@ -3749,7 +3753,11 @@ impl StreamManager {
                 ToolCallStatus::Completed => {
                     match tool_calls::latest_tool_result(pool, &state.encryption, &record.id).await
                     {
-                        Ok(Some((value, _is_error))) => {
+                        Ok(Some((mut value, _is_error))) => {
+                            if record.tool_id == crate::browser::look::LOOK_TOOL {
+                                screenshots
+                                    .extend(crate::browser::look::take_screenshot(&mut value));
+                            }
                             // Only ask_user writes `user_authored`; another tool's output
                             // claiming it is still checked.
                             let user_authored = record.tool_id == agent_tools::ASK_USER_TOOL
@@ -4046,9 +4054,19 @@ impl StreamManager {
                         p
                     })
                     .collect(),
-                created_at: turn_now,
+                created_at: turn_now.clone(),
             });
         }
+
+        if !screenshots.is_empty() {
+            continuation_messages.push(crate::browser::look::screenshot_message(
+                &format!("{}/screenshots", previous_request.request_id),
+                &previous_request.conversation_id,
+                &screenshots,
+                &turn_now,
+            ));
+        }
+        crate::browser::look::fade_old_screenshots(&mut continuation_messages);
 
         Ok(ProviderRequest {
             request_id: Uuid::new_v4().to_string(),

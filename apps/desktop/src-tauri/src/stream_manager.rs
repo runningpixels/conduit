@@ -1987,6 +1987,20 @@ impl StreamManager {
         Ok(models)
     }
 
+    /// Whether this model sees images, for offering `look_at_page`. OpenRouter
+    /// fronts text-only models too, and only its listing tells them apart, so
+    /// when this session hasn't listed its models yet (the picker hasn't
+    /// opened since launch) they are listed first, waiting a few seconds at
+    /// most. A listing that fails falls back to the provider-wide rule.
+    pub async fn model_sees_images(state: &AppState, provider_id: &str, model_id: &str) -> bool {
+        let provider = provider_id.trim();
+        if provider.eq_ignore_ascii_case("openrouter") && !state.has_listed_images(provider) {
+            let listing = Self::list_models(state, provider);
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(8), listing).await;
+        }
+        state.model_sees_images(provider_id, model_id)
+    }
+
     pub async fn start_chat_stream(
         &self,
         state: &AppState,

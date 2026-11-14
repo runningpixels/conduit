@@ -109,26 +109,19 @@ pub async fn reset_browser_profile(state: State<'_, AppState>) -> Result<(), App
 /// With the turn's `provider` and `model`, a model that sees images also
 /// gets `look_at_page`.
 #[tauri::command]
-pub fn browser_tool_definitions(
+pub async fn browser_tool_definitions(
     state: State<'_, AppState>,
     act: bool,
     provider: Option<String>,
     model: Option<String>,
-) -> Vec<provider_core::schema::ToolDefinition> {
-    browser_tools_for(&state, act, provider.as_deref(), model.as_deref())
-}
-
-fn browser_tools_for(
-    state: &AppState,
-    act: bool,
-    provider: Option<&str>,
-    model: Option<&str>,
-) -> Vec<provider_core::schema::ToolDefinition> {
-    let sees_images = match (provider, model) {
-        (Some(provider), Some(model)) => state.model_sees_images(provider, model),
+) -> Result<Vec<provider_core::schema::ToolDefinition>, AppError> {
+    let sees_images = match (provider.as_deref(), model.as_deref()) {
+        (Some(provider), Some(model)) => {
+            crate::stream_manager::StreamManager::model_sees_images(&state, provider, model).await
+        }
         _ => false,
     };
-    chat_tool_definitions(act, sees_images)
+    Ok(chat_tool_definitions(act, sees_images))
 }
 
 fn chat_tool_definitions(

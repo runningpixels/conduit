@@ -88,6 +88,16 @@ impl AppState {
         }
     }
 
+    /// Whether this session has a listing of `provider_id`'s image support
+    /// (only OpenRouter's listing says, model by model).
+    pub fn has_listed_images(&self, provider_id: &str) -> bool {
+        let provider_id = provider_id.trim();
+        self.listed_image_input
+            .lock()
+            .map(|listed| listed.keys().any(|(p, _)| p == provider_id))
+            .unwrap_or(false)
+    }
+
     /// Whether this model sees images, for offering `look_at_page`: what the
     /// provider's listing said this session when it said anything (OpenRouter
     /// fronts text-only models too), else `provider_core::model_accepts_images`.

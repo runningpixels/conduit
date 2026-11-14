@@ -175,6 +175,7 @@ async fn openrouter_image_support_comes_from_its_listing() {
     };
     // Before a listing, the provider-level guess.
     assert!(state.model_sees_images("openrouter", "deepseek/deepseek-v4-pro"));
+    assert!(!state.has_listed_images("openrouter"));
     state.record_listed_file_input(
         "openrouter",
         &[
@@ -184,6 +185,16 @@ async fn openrouter_image_support_comes_from_its_listing() {
     );
     assert!(!state.model_sees_images("openrouter", "deepseek/deepseek-v4-pro"));
     assert!(state.model_sees_images("openrouter", "z-ai/glm-5.3-flash"));
+    // Once listed, the turn-time check uses the listing without listing again.
+    assert!(state.has_listed_images("openrouter"));
+    assert!(
+        !conduit_desktop::stream_manager::StreamManager::model_sees_images(
+            &state,
+            "openrouter",
+            "deepseek/deepseek-v4-pro"
+        )
+        .await
+    );
     // Other providers keep the static rule.
     assert!(state.model_sees_images("openai", "gpt-4o"));
 }

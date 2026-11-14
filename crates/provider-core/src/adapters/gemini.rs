@@ -636,6 +636,7 @@ fn parse_model_list(response: &Value) -> Result<Vec<ModelInfo>, ProviderError> {
                     .map(str::to_string),
                 price: None,
                 accepts_file_input: None,
+                accepts_image_input: None,
             })
         })
         .collect();

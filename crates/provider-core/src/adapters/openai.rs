@@ -1757,6 +1757,7 @@ impl ProviderAdapter for OpenAiAdapter {
                                 .map(str::to_string),
                             price: crate::pricing::parse_listed_price(item),
                             accepts_file_input: crate::vision::listed_file_input(item),
+                            accepts_image_input: crate::vision::listed_image_input(item),
                         })
                     })
                     .collect()

@@ -60,6 +60,9 @@ pub struct AppState {
     /// OpenRouter's models again after a restart, its PDFs go as extracted
     /// text, which every model reads.
     listed_file_input: Arc<Mutex<HashMap<(String, String), bool>>>,
+    /// Whether a model takes images, as the provider's own listing said this
+    /// session (OpenRouter only), keyed like `live_prices`.
+    listed_image_input: Arc<Mutex<HashMap<(String, String), bool>>>,
     /// Where agent calls announce that they started or ended.
     pub agent_calls: Arc<crate::agents::calls::AgentCalls>,
 }
@@ -75,6 +78,36 @@ impl AppState {
                 listed.insert((provider_id.to_string(), model.id.clone()), accepts);
             }
         }
+        drop(listed);
+        if let Ok(mut listed) = self.listed_image_input.lock() {
+            for model in models {
+                if let Some(accepts) = model.accepts_image_input {
+                    listed.insert((provider_id.to_string(), model.id.clone()), accepts);
+                }
+            }
+        }
+    }
+
+    /// Whether this session has a listing of `provider_id`'s image support
+    /// (only OpenRouter's listing says, model by model).
+    pub fn has_listed_images(&self, provider_id: &str) -> bool {
+        let provider_id = provider_id.trim();
+        self.listed_image_input
+            .lock()
+            .map(|listed| listed.keys().any(|(p, _)| p == provider_id))
+            .unwrap_or(false)
+    }
+
+    /// Whether this model sees images, for offering `look_at_page`: what the
+    /// provider's listing said this session when it said anything (OpenRouter
+    /// fronts text-only models too), else `provider_core::model_accepts_images`.
+    pub fn model_sees_images(&self, provider_id: &str, model_id: &str) -> bool {
+        let listed = self.listed_image_input.lock().ok().and_then(|listed| {
+            listed
+                .get(&(provider_id.trim().to_string(), model_id.trim().to_string()))
+                .copied()
+        });
+        listed.unwrap_or_else(|| provider_core::model_accepts_images(provider_id, model_id))
     }
 
     /// Whether a PDF attachment goes to this model as the PDF itself, by the
@@ -311,6 +344,7 @@ impl AppState {
             drop_grants: Arc::new(Mutex::new(DropGrants::new())),
             live_prices: Arc::new(Mutex::new(HashMap::new())),
             listed_file_input: Arc::new(Mutex::new(HashMap::new())),
+            listed_image_input: Arc::new(Mutex::new(HashMap::new())),
             agent_calls: Arc::default(),
         })
     }
@@ -338,6 +372,7 @@ impl AppState {
             drop_grants: Arc::new(Mutex::new(DropGrants::new())),
             live_prices: Arc::new(Mutex::new(HashMap::new())),
             listed_file_input: Arc::new(Mutex::new(HashMap::new())),
+            listed_image_input: Arc::new(Mutex::new(HashMap::new())),
             agent_calls: Arc::default(),
         }
     }

@@ -3841,6 +3841,12 @@ pub struct ModelInfo {
     #[serde(skip)]
     #[ts(skip)]
     pub accepts_file_input: Option<bool>,
+    /// Whether the provider's own listing says this model takes images
+    /// (`image` in OpenRouter's `architecture.input_modalities`). `None`
+    /// elsewhere. In-process only, like `accepts_file_input`.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub accepts_image_input: Option<bool>,
 }
 
 /// What one model costs, in USD per million tokens.

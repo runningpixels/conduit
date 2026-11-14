@@ -3952,6 +3952,17 @@ impl Exec<'_> {
             .collect();
         let uses_computer = turn.tools.iter().any(|t| t == computer::COMPUTER_TOOL);
         // The browser needs the Computer switch on, but no work folder.
+        let wants_browser = turn
+            .tools
+            .iter()
+            .any(|t| t == crate::browser::BROWSER_TOOL || t == crate::browser::BROWSER_ACT_TOOL);
+        let sees_images = wants_browser
+            && crate::stream_manager::StreamManager::model_sees_images(
+                state,
+                &turn.model.provider,
+                &turn.model.model,
+            )
+            .await;
         let browser_tools = crate::browser::tools::offered(
             turn.tools,
             state
@@ -3959,7 +3970,7 @@ impl Exec<'_> {
                 .workflow_computer
                 .unwrap_or_default()
                 .enabled,
-            provider_core::vision::model_accepts_images(&turn.model.provider, &turn.model.model),
+            sees_images,
         )?;
         let step_tools = ConnectorTools {
             exec: self,

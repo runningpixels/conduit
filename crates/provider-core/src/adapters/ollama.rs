@@ -485,6 +485,7 @@ impl ProviderAdapter for OllamaAdapter {
                             display_name: Some(id),
                             price: None,
                             accepts_file_input: None,
+                            accepts_image_input: None,
                         })
                     })
                     .collect()

@@ -147,6 +147,7 @@ async fn a_listed_price_beats_the_snapshot_but_not_an_override() {
             display_name: None,
             price: Some(price(0.2, 0.8)),
             accepts_file_input: None,
+            accepts_image_input: None,
         }],
     );
     let resolved = state.resolve_model_price("openrouter", model).unwrap();
@@ -159,4 +160,41 @@ async fn a_listed_price_beats_the_snapshot_but_not_an_override() {
         .unwrap();
     let resolved = state.resolve_model_price("openrouter", model).unwrap();
     assert_eq!(resolved.source, PriceSource::Override);
+}
+
+#[tokio::test]
+async fn openrouter_image_support_comes_from_its_listing() {
+    let root = tempfile::tempdir().unwrap();
+    let state = state_at(root.path()).await;
+    let model = |id: &str, images: Option<bool>| ModelInfo {
+        id: id.into(),
+        display_name: None,
+        price: None,
+        accepts_file_input: None,
+        accepts_image_input: images,
+    };
+    // Before a listing, the provider-level guess.
+    assert!(state.model_sees_images("openrouter", "deepseek/deepseek-v4-pro"));
+    assert!(!state.has_listed_images("openrouter"));
+    state.record_listed_file_input(
+        "openrouter",
+        &[
+            model("deepseek/deepseek-v4-pro", Some(false)),
+            model("z-ai/glm-5.3-flash", Some(true)),
+        ],
+    );
+    assert!(!state.model_sees_images("openrouter", "deepseek/deepseek-v4-pro"));
+    assert!(state.model_sees_images("openrouter", "z-ai/glm-5.3-flash"));
+    // Once listed, the turn-time check uses the listing without listing again.
+    assert!(state.has_listed_images("openrouter"));
+    assert!(
+        !conduit_desktop::stream_manager::StreamManager::model_sees_images(
+            &state,
+            "openrouter",
+            "deepseek/deepseek-v4-pro"
+        )
+        .await
+    );
+    // Other providers keep the static rule.
+    assert!(state.model_sees_images("openai", "gpt-4o"));
 }

@@ -205,6 +205,79 @@ pub async fn get_attachment_bytes(
         .map_err(|e| e.to_string())
 }
 
+/// Save an attachment (a file the agent's browser downloaded) where the
+/// person picks, under its own name. `false` when they closed the dialog.
+/// The file is only written, never opened.
+#[tauri::command]
+pub async fn save_attachment_as(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    attachment_id: String,
+) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let att = attachments::get(&state.db, &attachment_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Attachment not found".to_string())?;
+    let name = safe_file_name(att.origin.as_deref().unwrap_or("download"));
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(&name)
+        .save_file(move |file_path| {
+            let _ = tx.send(file_path);
+        });
+    let Some(picked) = rx
+        .await
+        .map_err(|_| "The file dialog closed without a response.".to_string())?
+    else {
+        return Ok(false);
+    };
+    let path = picked
+        .into_path()
+        .map_err(|e| format!("Couldn't use that file location: {e}"))?;
+    let bytes = attachments::read_bytes(&state.paths.attachments, &state.encryption, &att.path)
+        .map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// A file name with no folders in it and nothing Windows refuses.
+fn safe_file_name(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or_default();
+    let clean: String = base
+        .chars()
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') || c.is_control() {
+                '-'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let clean = clean.trim().trim_matches('.').to_string();
+    if clean.is_empty() {
+        "download".to_string()
+    } else {
+        clean
+    }
+}
+
+#[cfg(test)]
+mod save_as_tests {
+    #[test]
+    fn saved_names_have_no_folders_or_odd_characters() {
+        assert_eq!(
+            super::safe_file_name("report-march.pdf"),
+            "report-march.pdf"
+        );
+        assert_eq!(super::safe_file_name("../../x/evil.pdf"), "evil.pdf");
+        assert_eq!(super::safe_file_name("C:\\a\\b?.csv"), "b-.csv");
+        assert_eq!(super::safe_file_name(".."), "download");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Artifacts
 // ---------------------------------------------------------------------------

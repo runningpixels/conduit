@@ -85,7 +85,11 @@ pub struct ActState {
     /// Hosts allowed once in this run (or added to the list during it).
     allowed_hosts: HashSet<String>,
     /// What was done, oldest first, for the card.
-    so_far: Vec<Value>,
+    pub(super) so_far: Vec<Value>,
+    /// Files downloaded and kept in this run.
+    pub(super) downloads: usize,
+    /// Sites whose downloads were allowed for the rest of this run.
+    pub(super) download_hosts: HashSet<String>,
 }
 
 /// The action tools, as the model sees them.
@@ -107,7 +111,7 @@ pub fn tool_definitions() -> Vec<provider_core::schema::ToolDefinition> {
     vec![
         tool(
             CLICK_TOOL,
-            "Click an element of the open page (a link, button, checkbox, tab...). Give its `ref` from the latest elements list and `why`. Returns the page after the click, with fresh elements. Submitting forms, and anything that spends money or changes an account, asks the person first; so does the first action on a site that isn't in the workflow's list.",
+            "Click an element of the open page (a link, button, checkbox, tab...). Give its `ref` from the latest elements list and `why`. Returns the page after the click, with fresh elements. Submitting forms, and anything that spends money or changes an account, asks the person first; so does the first action on a site that isn't in the workflow's list. A click that downloads a file asks the person too; a file they allow is attached for you to read (programs and scripts never download).",
             json!({ "type": "object", "properties": { "ref": reference, "why": why }, "required": ["ref", "why"] }),
         ),
         tool(
@@ -322,6 +326,8 @@ async fn on_element(
                 read_before: ctx.read_before.clone(),
                 so_far: state.lock().map(|s| s.so_far.clone()).unwrap_or_default(),
                 offer_site: offer_site.then(|| offer.clone()),
+                file_name: None,
+                file_size: None,
             };
             match (ctx.approve)(request).await {
                 Approval::No(why) => return Err(BrowserError::Other(why)),

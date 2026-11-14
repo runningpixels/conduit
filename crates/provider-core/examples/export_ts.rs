@@ -33,11 +33,11 @@ use provider_core::schema::{
     ResearchMaterialClaim, ResearchProgress, ResearchReportSummary, ResearchRun,
     ResearchRunUpdated, ResearchSource, ResearchSourceStatus, ResearchStatus, ResolvedModelPrice,
     ResourceBlock, ResourceRef, ResponseFormatHint, RetentionState, ReturnTokenBudget,
-    RolloutChannel, SearchContextSize, SettingsPatch, SkippedResource, SlideReplaceCount,
-    SlideSlot, SlideTheme, SlotEdit, StarterAppInfo, StorylineItem, SupportState, TenantConfig,
-    TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice, ToolDefinition, ToolKind,
-    Transport, UpdatePolicy, UserLocation, WebSearchDefaults, WebSearchFilters, WebSearchMode,
-    WebSearchRequest, WorkflowComputerSettings,
+    RolloutChannel, SavedFile, SearchContextSize, SettingsPatch, SkippedResource,
+    SlideReplaceCount, SlideSlot, SlideTheme, SlotEdit, StarterAppInfo, StorylineItem,
+    SupportState, TenantConfig, TenantIdentity, Theme, ToolCallRecord, ToolCallStatus, ToolChoice,
+    ToolDefinition, ToolKind, Transport, UpdatePolicy, UserLocation, WebSearchDefaults,
+    WebSearchFilters, WebSearchMode, WebSearchRequest, WorkflowComputerSettings,
 };
 use ts_rs::TS;
 
@@ -62,6 +62,7 @@ fn main() {
     AskUserField::export().expect("export AskUserField");
     BrowserAskReason::export().expect("export BrowserAskReason");
     BrowserRequest::export().expect("export BrowserRequest");
+    SavedFile::export().expect("export SavedFile");
     ProviderEvent::export().expect("export ProviderEvent");
 
     // Image generation (t0-8).

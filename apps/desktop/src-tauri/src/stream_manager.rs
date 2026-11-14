@@ -3669,6 +3669,23 @@ impl StreamManager {
         self.browsers.touch(conversation_id);
         let mut page = result?;
         crate::browser::look::store_screenshot(state, conversation_id, &mut page).await?;
+        match crate::browser::download::store_download(state, conversation_id, &mut page).await {
+            Ok(Some(file)) => {
+                if let Some(ch) = provider_channel {
+                    let _ = ch.send(ProviderEvent::BrowserFileSaved {
+                        request_id: request_id.to_string(),
+                        tool_call_id: tool_call_id.to_string(),
+                        file,
+                    });
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                page["download"] = serde_json::Value::String(format!(
+                    "The download finished but {error}, so nothing was kept."
+                ));
+            }
+        }
         Ok(page)
     }
 
@@ -3750,6 +3767,7 @@ impl StreamManager {
         let mut tool_call_tuples: Vec<(String, String, serde_json::Value)> = Vec::new();
         // Pictures `look_at_page` took this round: shown after the results.
         let mut screenshots: Vec<(String, String)> = Vec::new();
+        let mut downloads: Vec<crate::browser::download::Downloaded> = Vec::new();
 
         for record in &records {
             tool_call_tuples.push((
@@ -3771,6 +3789,10 @@ impl StreamManager {
                             if record.tool_id == crate::browser::look::LOOK_TOOL {
                                 screenshots
                                     .extend(crate::browser::look::take_screenshot(&mut value));
+                            }
+                            if crate::browser::tools::is_browser_tool(&record.tool_id) {
+                                downloads
+                                    .extend(crate::browser::download::take_download(&mut value));
                             }
                             // Only ask_user writes `user_authored`; another tool's output
                             // claiming it is still checked.
@@ -4081,6 +4103,14 @@ impl StreamManager {
             ));
         }
         crate::browser::look::fade_old_screenshots(&mut continuation_messages);
+        if !downloads.is_empty() {
+            continuation_messages.push(crate::browser::download::download_message(
+                &format!("{}/downloads", previous_request.request_id),
+                &previous_request.conversation_id,
+                &downloads,
+                &turn_now,
+            ));
+        }
 
         Ok(ProviderRequest {
             request_id: Uuid::new_v4().to_string(),

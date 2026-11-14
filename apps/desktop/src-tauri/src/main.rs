@@ -194,6 +194,7 @@ fn main() {
             list_attachments,
             delete_attachment,
             get_attachment_bytes,
+            save_attachment_as,
             create_artifact,
             list_artifacts,
             get_message_id_by_request,

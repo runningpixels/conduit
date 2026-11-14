@@ -3,4 +3,4 @@
 /**
  * Why a browser action asks rather than going ahead.
  */
-export type BrowserAskReason = "submit" | "risky" | "newSite";
+export type BrowserAskReason = "submit" | "risky" | "newSite" | "download";

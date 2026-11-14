@@ -2903,3 +2903,24 @@ html[data-reduce-motion="on"] .research-spinner { animation: none; }
 .helper-totals-model { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; overflow-wrap: anywhere; }
 .helper-totals-nums { font-variant-numeric: tabular-nums; }
 .helper-totals-sum { border-top: 1px solid var(--line-soft); padding-top: var(--sp-1); color: var(--ink-2); }
+
+/* A file a tool saved (a browser download): one compact card under the step's row. */
+.saved-files { display: grid; gap: var(--sp-1); margin-top: var(--sp-1); }
+.saved-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-lg);
+}
+.saved-file-icon { display: inline-flex; flex: none; }
+.saved-file-icon svg { width: 14px; height: 14px; }
+.saved-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.saved-file-size { flex: none; font-variant-numeric: tabular-nums; }
+.saved-file .btn { margin-left: auto; }
+.saved-file-error { flex-basis: 100%; margin: 0; color: var(--err); }

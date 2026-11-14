@@ -5,6 +5,7 @@ import type { ContentAnnotation } from "./content_annotation";
 import type { HandoffTokens } from "./handoff_tokens";
 import type { ProviderError } from "./provider_error";
 import type { ProviderUsage } from "./provider_usage";
+import type { SavedFile } from "./saved_file";
 
 export type ProviderEvent = { "kind": "messageStart", requestId: string, index: number, } | { "kind": "contentBlockStart", requestId: string, blockId: string, index: number, blockKind: string, } | { "kind": "contentDelta", requestId: string, blockId: string, index: number, content: string, } | { "kind": "reasoningDelta", requestId: string, blockId: string, index: number, content: string, } | { "kind": "contentBlockStop", requestId: string, blockId: string, index: number, } | { "kind": "toolCallStart", requestId: string, toolCallId: string, index: number, toolId: string, name: string, } | { "kind": "toolCallDelta", requestId: string, toolCallId: string, index: number, content: string, } | { "kind": "toolCallComplete", requestId: string, toolCallId: string, index: number, arguments: Record<string, unknown>, } | { "kind": "usage", requestId: string, usage: ProviderUsage, } | { "kind": "ping", requestId: string, } | { "kind": "messageComplete", requestId: string, index: number, finishReason: string, } | { "kind": "error", requestId: string, error: ProviderError, } | { "kind": "searchSources", requestId: string, index: number, 
 /**
@@ -95,4 +96,4 @@ code?: string, params: Record<string, string>,
 /**
  * The declining choice ("Skip this page", "Don't sign in").
  */
-decline: string, } | { "kind": "browserPromptResolved", requestId: string, toolCallId: string, };
+decline: string, } | { "kind": "browserPromptResolved", requestId: string, toolCallId: string, } | { "kind": "browserFileSaved", requestId: string, toolCallId: string, file: SavedFile, };

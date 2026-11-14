@@ -15,6 +15,7 @@ import { documentKindLabel } from '../lib/documentKind';
 import { useFormatters } from '../i18n/formatters';
 import { describeApproval } from '../lib/approvalSentence';
 import { BrowserApprovalGate, BrowserQuestionGate } from './BrowserPromptBlock';
+import { SavedFileCards } from './SavedFileCards';
 import { browserToolLabelKey, isBrowserAction } from './browserToolLabels';
 import { documentWriteDetail } from './documentWriteScan';
 import type { Translate } from '../i18n';
@@ -463,6 +464,7 @@ export function ToolCallBlock({
           </div>
         </div>
       </div>
+      <SavedFileCards files={activeCalls.flatMap((c) => c.files ?? [])} />
     </div>
   );
 }

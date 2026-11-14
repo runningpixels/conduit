@@ -1290,11 +1290,11 @@ export interface WorkflowAction {
 }
 
 /** Why a browser action asks (Rust `actions::BrowserAskReason`). */
-export type BrowserAskReason = 'submit' | 'risky' | 'newSite';
+export type BrowserAskReason = 'submit' | 'risky' | 'newSite' | 'download';
 
 /** A click, typing or choice in the agent's browser waiting for the user (Rust `actions::BrowserRequest`). */
 export interface BrowserRequest {
-  /** `click`, `type_text`, `choose_option`, `scroll` or `go_back`. */
+  /** `click`, `type_text`, `choose_option`, `scroll`, `go_back` or `download`. */
   action: string;
   host: string;
   pageUrl: string;
@@ -1316,6 +1316,18 @@ export interface BrowserRequest {
   soFar?: unknown[];
   /** The host "Always on" adds to the workflow's site list; absent = not offered. */
   offerSite?: string;
+  /** A download: the file's name. */
+  fileName?: string;
+  /** A download: its size in bytes; absent when unknown. */
+  fileSize?: number;
+}
+
+/** A file a tool saved as an attachment of the chat (a browser download), as its file card shows it (Rust `SavedFile`). */
+export interface SavedFile {
+  attachmentId: string;
+  name: string;
+  mime: string;
+  size: number;
 }
 
 /** A chat's browser ticks (`conversations.metadata.browser`): "Use the browser",
@@ -1343,7 +1355,8 @@ export type BrowserStreamEvent =
       params?: Record<string, string>;
       decline: string;
     }
-  | { kind: 'browserPromptResolved'; requestId: string; toolCallId: string };
+  | { kind: 'browserPromptResolved'; requestId: string; toolCallId: string }
+  | { kind: 'browserFileSaved'; requestId: string; toolCallId: string; file: SavedFile };
 
 /** The answer to a `WorkflowAction`. */
 export interface WorkflowActionAnswer {

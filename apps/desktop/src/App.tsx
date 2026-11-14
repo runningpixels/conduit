@@ -1267,6 +1267,14 @@ export default function App() {
   // Slides studio (the draft takes the window, the chat column is the dock).
   const [studioDraftId, setStudioDraftId] = useState<string | null>(null);
   const [draftDockTab, setDraftDockTab] = useState<DraftDockTab>('ask');
+  // Another draft opens on Ask. Reset while rendering, not in an effect: an
+  // effect runs after the new draft's dock is on screen, so a tab picked in
+  // that gap (fast click, or a test on a slow machine) snapped back to Ask.
+  const [draftDockFor, setDraftDockFor] = useState(studioDraftId);
+  if (draftDockFor !== studioDraftId) {
+    setDraftDockFor(studioDraftId);
+    setDraftDockTab('ask');
+  }
   const writingStudio = destination === 'writing' && studioDraftId != null && activeDraft?.id === studioDraftId;
   const anyStudio = studio || writingStudio;
   // In the outline stage the outline is the studio's main view, not a dock tab.
@@ -1318,9 +1326,6 @@ export default function App() {
       setDestination('writing');
     }
   }, [activeDraft, destination]);
-  useEffect(() => {
-    setDraftDockTab('ask');
-  }, [studioDraftId]);
   useEffect(() => {
     setDockTab('ask');
     setScriptFocus(null);

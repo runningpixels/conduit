@@ -71,7 +71,11 @@ pub fn launch_args(profile: &Path) -> Vec<String> {
 /// The settings a fresh profile starts with: no password manager, no
 /// autofill. Keys already in `existing` (the browser's own file, or a choice
 /// the user made in this profile) are kept as they are.
-pub fn merge_preferences(existing: Option<&str>) -> String {
+///
+/// Download and permission settings are not choices: they are set every
+/// launch, whatever the file says. `downloads_dir` is a folder inside the
+/// profile that nothing ever lands in.
+pub fn merge_preferences(existing: Option<&str>, downloads_dir: &Path) -> String {
     let mut root: Value = existing
         .and_then(|raw| serde_json::from_str(raw).ok())
         .filter(Value::is_object)
@@ -92,6 +96,16 @@ pub fn merge_preferences(existing: Option<&str>) -> String {
             at[last] = value;
         }
     }
+    fn set_always(root: &mut Value, path: &[&str], value: Value) {
+        let mut at = root;
+        for key in &path[..path.len() - 1] {
+            if !at.get(*key).is_some_and(Value::is_object) {
+                at[*key] = Value::Object(Map::new());
+            }
+            at = &mut at[*key];
+        }
+        at[path[path.len() - 1]] = value;
+    }
     set_default(&mut root, &["credentials_enable_service"], json!(false));
     set_default(
         &mut root,
@@ -104,8 +118,40 @@ pub fn merge_preferences(existing: Option<&str>) -> String {
         &["autofill", "credit_card_enabled"],
         json!(false),
     );
+    // Downloads are refused over CDP at launch. These keep it that way even
+    // if that call is ever lost: no "where to save" prompt, and never the
+    // user's own Downloads folder.
+    set_always(
+        &mut root,
+        &["download", "prompt_for_download"],
+        json!(false),
+    );
+    set_always(
+        &mut root,
+        &["download", "default_directory"],
+        json!(downloads_dir.to_string_lossy()),
+    );
+    // 2 = block: no permission prompts in a window nobody may be watching.
+    for setting in [
+        "notifications",
+        "geolocation",
+        "media_stream_camera",
+        "media_stream_mic",
+        "clipboard",
+        "midi_sysex",
+    ] {
+        set_always(
+            &mut root,
+            &["profile", "default_content_setting_values", setting],
+            json!(2),
+        );
+    }
     serde_json::to_string(&root).unwrap_or_default()
 }
+
+/// The profile's download folder. Downloads are refused, so it stays empty;
+/// it exists only so the profile never points at the user's own Downloads.
+pub const REFUSED_DOWNLOADS_DIR: &str = "downloads-refused";
 
 /// Write `Default/Preferences` (before the browser runs: it rewrites the file
 /// itself while open).
@@ -114,7 +160,8 @@ pub fn prepare_profile(profile: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(&folder)?;
     let file = folder.join("Preferences");
     let existing = std::fs::read_to_string(&file).ok();
-    std::fs::write(&file, merge_preferences(existing.as_deref()))
+    let downloads = profile.join(REFUSED_DOWNLOADS_DIR);
+    std::fs::write(&file, merge_preferences(existing.as_deref(), &downloads))
 }
 
 /// The browser process. Dropping it ends the browser: on Windows its job
@@ -386,6 +433,13 @@ async fn start(browser: Browser, exe: &Path, profile: &Path) -> Result<Running, 
         }));
     }
 
+    if let Err(error) = refuse_downloads_and_prompts(&cdp).await {
+        child.start_kill();
+        return Err(LaunchError::LaunchFailed(format!(
+            "its downloads could not be turned off ({error})"
+        )));
+    }
+
     let guard = Arc::new(Guard::default());
     let workers = match guard_service_workers(&cdp, guard.clone()).await {
         Ok(task) => task,
@@ -403,6 +457,41 @@ async fn start(browser: Browser, exe: &Path, profile: &Path) -> Result<Running, 
         browser,
         workers,
     })
+}
+
+/// Site permissions the agent's pages are refused without a prompt.
+pub const DENIED_PERMISSIONS: [&str; 6] = [
+    "notifications",
+    "geolocation",
+    "camera",
+    "microphone",
+    "clipboard-read",
+    "midi",
+];
+
+/// No download is ever saved: the browser refuses them all (and reports
+/// each one, so the tab can tell the agent). Permission prompts are refused
+/// too, for every site, so nothing waits on a prompt nobody sees. A browser
+/// that won't refuse downloads is not used.
+async fn refuse_downloads_and_prompts(cdp: &Cdp) -> Result<(), CdpError> {
+    cdp.call(
+        "Browser.setDownloadBehavior",
+        json!({ "behavior": "deny", "eventsEnabled": true }),
+        None,
+    )
+    .await?;
+    for name in DENIED_PERMISSIONS {
+        // A name this browser version doesn't know is skipped; the profile's
+        // own settings (see `merge_preferences`) block them as well.
+        let _ = cdp
+            .call(
+                "Browser.setPermission",
+                json!({ "permission": { "name": name }, "setting": "denied" }),
+                None,
+            )
+            .await;
+    }
+    Ok(())
 }
 
 /// Service workers are targets of their own, not children of a page, so the
@@ -575,7 +664,7 @@ mod tests {
 
     #[test]
     fn preferences_for_a_fresh_profile() {
-        let value: Value = serde_json::from_str(&merge_preferences(None)).unwrap();
+        let value: Value = serde_json::from_str(&merge_preferences(None, Path::new("dl"))).unwrap();
         assert_eq!(value["credentials_enable_service"], false);
         assert_eq!(value["profile"]["password_manager_enabled"], false);
         assert_eq!(value["autofill"]["profile_enabled"], false);
@@ -586,7 +675,8 @@ mod tests {
     fn preferences_merge_keeps_what_is_there() {
         let existing = r#"{"profile":{"name":"Mine","password_manager_enabled":true},
             "autofill":{"profile_enabled":true},"homepage":"https://x.test"}"#;
-        let value: Value = serde_json::from_str(&merge_preferences(Some(existing))).unwrap();
+        let value: Value =
+            serde_json::from_str(&merge_preferences(Some(existing), Path::new("dl"))).unwrap();
         assert_eq!(value["homepage"], "https://x.test");
         assert_eq!(value["profile"]["name"], "Mine");
         // A choice already made in the profile is not overridden.
@@ -598,10 +688,42 @@ mod tests {
     }
 
     #[test]
+    fn downloads_and_prompts_are_set_whatever_the_file_says() {
+        let existing = r#"{"download":{"prompt_for_download":true,
+            "default_directory":"C:\\Users\\me\\Downloads","directory_upgrade":true},
+            "profile":{"default_content_setting_values":{"notifications":1,"popups":1}}}"#;
+        let dir = Path::new("C:/data/browser-profile/downloads-refused");
+        let value: Value = serde_json::from_str(&merge_preferences(Some(existing), dir)).unwrap();
+        assert_eq!(value["download"]["prompt_for_download"], false);
+        assert_eq!(
+            value["download"]["default_directory"],
+            dir.to_string_lossy().as_ref()
+        );
+        // Unrelated keys under the same objects are kept.
+        assert_eq!(value["download"]["directory_upgrade"], true);
+        let settings = &value["profile"]["default_content_setting_values"];
+        assert_eq!(settings["popups"], 1);
+        for blocked in [
+            "notifications",
+            "geolocation",
+            "media_stream_camera",
+            "media_stream_mic",
+        ] {
+            assert_eq!(settings[blocked], 2, "{blocked}");
+        }
+        // A non-object where an object belongs is replaced, not a reason to skip.
+        let value: Value =
+            serde_json::from_str(&merge_preferences(Some(r#"{"download":"x"}"#), dir)).unwrap();
+        assert_eq!(value["download"]["prompt_for_download"], false);
+    }
+
+    #[test]
     fn unreadable_preferences_start_over() {
-        let value: Value = serde_json::from_str(&merge_preferences(Some("{ not json"))).unwrap();
+        let value: Value =
+            serde_json::from_str(&merge_preferences(Some("{ not json"), Path::new("dl"))).unwrap();
         assert_eq!(value["credentials_enable_service"], false);
-        let value: Value = serde_json::from_str(&merge_preferences(Some("[1]"))).unwrap();
+        let value: Value =
+            serde_json::from_str(&merge_preferences(Some("[1]"), Path::new("dl"))).unwrap();
         assert_eq!(value["profile"]["password_manager_enabled"], false);
     }
 

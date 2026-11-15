@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.32] - 2026-11-15
+
+The agent's browser can download files you allow, and can look at the page.
+
+### Added
+
+- **Downloads ask first** (#342). When a click by the agent starts a download,
+  a card shows the file's name and size and asks: Do it, Always on this site,
+  or Don't. Programs and scripts are always refused, and so are files over
+  100 MB and more than five downloads in one run. A file you allow never goes
+  to your Downloads folder: it is saved with the conversation, the model reads
+  it, and a card under the step offers Save as…. "Always on this site" adds
+  the site to the chat's site list, which also lets the agent act there
+  without asking.
+- **The agent can look at the page** (#340). Models that accept images get a
+  `look_at_page` tool: a picture of the page in the agent's browser, for when
+  the page's text isn't enough. The picture is saved with the conversation
+  and sent to the model provider you chose.
+
+### Fixed
+
+- `look_at_page` is offered only to models that OpenRouter's own model list
+  says accept images, and that list is fetched before the first browser turn
+  if it hasn't loaded yet (#341).
+
 ## [1.0.0-rc.31] - 2026-11-14
 
 The agent's browser no longer saves downloads or shows site permission prompts.

@@ -3671,12 +3671,21 @@ impl StreamManager {
         crate::browser::look::store_screenshot(state, conversation_id, &mut page).await?;
         match crate::browser::download::store_download(state, conversation_id, &mut page).await {
             Ok(Some(file)) => {
+                let event = ProviderEvent::BrowserFileSaved {
+                    request_id: request_id.to_string(),
+                    tool_call_id: tool_call_id.to_string(),
+                    file,
+                };
+                // Saved to the turn's log as well as sent: a finished turn is
+                // drawn again from its log, and without it the card vanishes.
+                if let Err(e) =
+                    event_log::append_and_apply(&state.db, conversation_id, request_id, &event)
+                        .await
+                {
+                    warn!(request_id = %request_id, error = %e, "failed to save the downloaded file's card");
+                }
                 if let Some(ch) = provider_channel {
-                    let _ = ch.send(ProviderEvent::BrowserFileSaved {
-                        request_id: request_id.to_string(),
-                        tool_call_id: tool_call_id.to_string(),
-                        file,
-                    });
+                    let _ = ch.send(event);
                 }
             }
             Ok(None) => {}

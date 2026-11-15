@@ -12,6 +12,7 @@ import type { Artifact, FileState } from '../ipc/contracts';
 import type { ArtifactCandidate } from './artifactCandidates';
 import { ChevronRight } from '../icons';
 import { ToolCallBlock } from './ToolCallBlock';
+import { SavedFileCards } from './SavedFileCards';
 import { HandoffLine, HandoffWaitingLabel } from './HandoffLine';
 import { AskUserBlock } from './AskUserBlock';
 import { SearchCallGroup } from './SearchCallGroup';
@@ -439,6 +440,11 @@ export function TurnBody({
     </div>
   );
   let stepLineShown = false;
+  /** The files kept by folded calls, whose own blocks aren't drawn. */
+  const pushFoldedFiles = (calls: ToolCallState[], key: string) => {
+    const files = calls.flatMap((c) => c.files ?? []);
+    if (files.length > 0) body.push(<SavedFileCards key={`${key}-files`} files={files} />);
+  };
 
   const body: ReactNode[] = [];
   // Compact turns: everything but the reply text waits behind one line.
@@ -511,6 +517,9 @@ export function TurnBody({
       }
       const folded = item.calls.filter((c) => !toolCallStaysInline(c, state.streaming));
       if (folded.length > 0) details.push(renderToolItem(folded, item.key));
+      // A kept download stays in view with its Save as… even while the
+      // steps are folded away (opened, their block shows it instead).
+      if (!compactOpen) pushFoldedFiles(folded, item.key);
       continue;
     }
     // tools — one compact step line per turn, at the first tool position.
@@ -525,6 +534,8 @@ export function TurnBody({
     }
     if (folded.length > 0 && stepsOpen && !onOpenActivity) {
       body.push(renderToolItem(folded, item.key));
+    } else {
+      pushFoldedFiles(folded, item.key);
     }
   }
   if (!compact && !stepLineShown && activity.steps > 0) {

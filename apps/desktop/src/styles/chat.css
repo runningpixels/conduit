@@ -2905,7 +2905,7 @@ html[data-reduce-motion="on"] .research-spinner { animation: none; }
 .helper-totals-sum { border-top: 1px solid var(--line-soft); padding-top: var(--sp-1); color: var(--ink-2); }
 
 /* A file a tool saved (a browser download): one compact card under the step's row. */
-.saved-files { display: grid; gap: var(--sp-1); margin-top: var(--sp-1); }
+.saved-files { display: grid; gap: var(--sp-1); margin-block: var(--sp-1) var(--sp-3); }
 .saved-file {
   display: flex;
   flex-wrap: wrap;

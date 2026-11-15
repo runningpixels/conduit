@@ -328,5 +328,6 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         ProviderEvent::BrowserApprovalRequested { .. } => "browserApprovalRequested",
         ProviderEvent::BrowserQuestionRequested { .. } => "browserQuestionRequested",
         ProviderEvent::BrowserPromptResolved { .. } => "browserPromptResolved",
+        ProviderEvent::BrowserFileSaved { .. } => "browserFileSaved",
     }
 }

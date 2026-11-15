@@ -1123,6 +1123,29 @@ pub enum ProviderEvent {
         request_id: String,
         tool_call_id: String,
     },
+    /// The browser call on `tool_call_id` downloaded a file the person
+    /// allowed; it is saved as an attachment of the conversation.
+    BrowserFileSaved {
+        request_id: String,
+        tool_call_id: String,
+        file: SavedFile,
+    },
+}
+
+/// A file a tool saved as an attachment of the conversation (a browser
+/// download), as its file card shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/saved_file.ts"
+)]
+pub struct SavedFile {
+    pub attachment_id: String,
+    pub name: String,
+    pub mime: String,
+    #[ts(type = "number")]
+    pub size: u64,
 }
 
 /// Why a browser action asks rather than going ahead.
@@ -1140,6 +1163,8 @@ pub enum BrowserAskReason {
     Risky,
     /// The first action on a site that isn't in the site list.
     NewSite,
+    /// A page started a download (`action` is `download`).
+    Download,
 }
 
 /// A click, typing or choice in the agent's browser waiting for the user, as
@@ -1193,6 +1218,14 @@ pub struct BrowserRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub offer_site: Option<String>,
+    /// A download's file name, as the site named it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub file_name: Option<String>,
+    /// A download's size in bytes, when the site said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub file_size: Option<u64>,
 }
 
 /// A helper's model tokens by kind, as the price of each is set.

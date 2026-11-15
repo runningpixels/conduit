@@ -237,12 +237,8 @@ type Blocked = Arc<Mutex<Option<(String, String)>>>;
 pub const SOCKET_STOPPED: &str =
     "This page tried to reach a local or private address, so it was stopped.";
 
-/// What a tool result carries when the page started a download: the browser
-/// refuses every download (see `launch::start`), and the agent is told so it
-/// doesn't keep trying.
-pub fn download_refused_note(file: &str) -> String {
-    format!("This started a download ({file}). Downloads aren't available, so nothing was saved.")
-}
+/// A tab's downloads (see [`super::download`]).
+type Downloads = Arc<Mutex<super::download::TabDownloads>>;
 
 pub(super) struct Tab {
     pub(super) cdp: Arc<Cdp>,
@@ -252,9 +248,8 @@ pub(super) struct Tab {
     blocked: Blocked,
     /// A websocket the guard refused, until a tool call reports it.
     socket: Blocked,
-    /// A download the browser refused (file name, address), until a tool
-    /// call reports it.
-    download: Blocked,
+    /// The downloads its pages started, until a tool call decides them.
+    downloads: Downloads,
     guard_task: tokio::task::JoinHandle<()>,
     /// Human checks not got past in this run, by host.
     checks_failed: Mutex<std::collections::HashMap<String, u32>>,
@@ -385,16 +380,43 @@ impl RunBrowser {
             Some(_) => Err(BrowserError::Other(SOCKET_STOPPED.to_string())),
             None => result,
         };
-        // A download the browser refused is said in this call's result (or,
-        // when it came after, the next one's), so the agent stops trying.
-        let refused = slot
-            .as_ref()
-            .and_then(|tab| tab.download.lock().ok().and_then(|mut d| d.take()));
-        if let (Some((file, _)), Ok(Value::Object(page))) = (refused, result.as_mut()) {
-            page.insert(
-                "download".into(),
-                Value::String(download_refused_note(&file)),
-            );
+        // A download the page started is decided in this call (or, when it
+        // came after, the next one): asked about, kept or cancelled, and the
+        // agent is told which.
+        if let (Some(tab), Ok(Value::Object(page))) = (slot.as_ref(), result.as_mut()) {
+            let started = tab
+                .downloads
+                .lock()
+                .map(|d| !d.started.is_empty())
+                .unwrap_or(false);
+            if started {
+                let facts: Value = match evaluate(
+                    tab,
+                    "JSON.stringify({u: location.href, h: location.hostname, t: document.title})",
+                )
+                .await
+                {
+                    Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
+                    Err(_) => Value::Null,
+                };
+                let facts = super::download::PageFacts {
+                    url: facts["u"].as_str().unwrap_or_default().to_string(),
+                    host: facts["h"].as_str().unwrap_or_default().to_lowercase(),
+                    title: facts["t"].as_str().unwrap_or_default().to_string(),
+                };
+                let why = arguments["why"].as_str().map(str::to_string);
+                super::download::settle_downloads(
+                    &tab.cdp,
+                    &tab.downloads,
+                    profile,
+                    facts,
+                    why,
+                    act,
+                    &self.act,
+                    page,
+                )
+                .await;
+            }
         }
         // A browser that went away takes its tab with it: the next call starts afresh.
         if slot.as_ref().is_some_and(|tab| tab.cdp.is_closed()) {
@@ -479,14 +501,14 @@ async fn new_tab(chosen: &Chosen, profile: &Path) -> Result<Tab, BrowserError> {
         .map_err(launch_error)?;
     let cdp = lease.cdp.clone();
     match set_up_tab(&cdp, lease.guard.clone()).await {
-        Ok((target_id, session, (blocked, socket, download), guard_task)) => Ok(Tab {
+        Ok((target_id, session, (blocked, socket, downloads), guard_task)) => Ok(Tab {
             cdp,
             browser: lease.browser,
             target_id,
             session,
             blocked,
             socket,
-            download,
+            downloads,
             guard_task,
             checks_failed: Mutex::default(),
         }),
@@ -504,7 +526,7 @@ async fn set_up_tab(
     (
         String,
         String,
-        (Blocked, Blocked, Blocked),
+        (Blocked, Blocked, Downloads),
         tokio::task::JoinHandle<()>,
     ),
     BrowserError,
@@ -542,14 +564,14 @@ async fn set_up_tab(
     };
     let blocked: Blocked = Arc::default();
     let socket: Blocked = Arc::default();
-    let download: Blocked = Arc::default();
+    let downloads: Downloads = Arc::default();
     // Listen before anything can be paused.
     let events = cdp.subscribe();
     let task = tokio::spawn(guard_requests(
         cdp.clone(),
         guard,
         (session.clone(), target_id.clone()),
-        (blocked.clone(), socket.clone(), download.clone()),
+        (blocked.clone(), socket.clone(), downloads.clone()),
         events,
     ));
     let setup = async {
@@ -561,7 +583,7 @@ async fn set_up_tab(
         close_target(cdp.clone(), target_id).await;
         return Err(cdp_error(e));
     }
-    Ok((target_id, session, (blocked, socket, download), task))
+    Ok((target_id, session, (blocked, socket, downloads), task))
 }
 
 /// Hold every request of `session` for the guard, and follow what it opens
@@ -601,7 +623,7 @@ async fn guard_requests(
     cdp: Arc<Cdp>,
     guard: Arc<Guard>,
     (root, target_id): (String, String),
-    (blocked, socket, download): (Blocked, Blocked, Blocked),
+    (blocked, socket, downloads): (Blocked, Blocked, Downloads),
     mut events: tokio::sync::broadcast::Receiver<Event>,
 ) {
     let mut sessions: HashSet<String> = HashSet::from([root.clone()]);
@@ -611,10 +633,28 @@ async fn guard_requests(
             Err(RecvError::Lagged(_)) => continue,
             Err(RecvError::Closed) => return,
         };
-        if let Some(refused) = refused_download(&event, &sessions, &target_id) {
-            tracing::info!(file = %refused.0, url = %refused.1, "a page's download was refused");
-            if let Ok(mut slot) = download.lock() {
-                *slot = Some(refused);
+        if let Some(seen) = started_download(&event, &sessions, &target_id) {
+            tracing::info!(file = %seen.file, url = %seen.url, "a page started a download");
+            // A program or script is stopped at once, before it is asked about.
+            if super::download::blocked_name(&seen.file) {
+                let (cdp, guid) = (cdp.clone(), seen.guid.clone());
+                tokio::spawn(async move {
+                    let _ = cdp
+                        .call("Browser.cancelDownload", json!({ "guid": guid }), None)
+                        .await;
+                });
+            }
+            if let Ok(mut d) = downloads.lock() {
+                d.begin(seen);
+            }
+            continue;
+        }
+        if matches!(
+            event.method.as_str(),
+            "Browser.downloadProgress" | "Page.downloadProgress"
+        ) {
+            if let Ok(mut d) = downloads.lock() {
+                d.update(&event.params);
             }
             continue;
         }
@@ -697,15 +737,15 @@ async fn guard_requests(
     }
 }
 
-/// A download this tab started, as (file name, address). The browser reports
-/// it at browser level (`Browser.downloadWillBegin`, by frame: a tab's main
-/// frame has the tab's id) and, on older versions, on the page's own session
-/// (`Page.downloadWillBegin`). Either way the browser has already refused it.
-fn refused_download(
+/// A download this tab started. The browser reports it at browser level
+/// (`Browser.downloadWillBegin`, by frame: a tab's main frame has the tab's
+/// id) and, on older versions, on the page's own session
+/// (`Page.downloadWillBegin`). It is already going, into the holding folder.
+fn started_download(
     event: &Event,
     sessions: &HashSet<String>,
     target_id: &str,
-) -> Option<(String, String)> {
+) -> Option<super::download::Seen> {
     let ours = match (event.method.as_str(), event.session_id.as_deref()) {
         ("Browser.downloadWillBegin", None) => event.params["frameId"].as_str() == Some(target_id),
         ("Page.downloadWillBegin", Some(session)) => sessions.contains(session),
@@ -720,7 +760,11 @@ fn refused_download(
         .filter(|f| !f.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| url.rsplit('/').next().unwrap_or("a file").to_string());
-    Some((file, url))
+    let guid = event.params["guid"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    Some(super::download::Seen { guid, url, file })
 }
 
 async fn decide(
@@ -1150,7 +1194,7 @@ mod tests {
     }
 
     #[test]
-    fn refused_downloads_are_matched_to_their_tab() {
+    fn started_downloads_are_matched_to_their_tab() {
         let sessions = HashSet::from(["s1".to_string()]);
         let event = |method: &str, session: Option<&str>, params: Value| Event {
             method: method.to_string(),
@@ -1161,29 +1205,36 @@ mod tests {
         let ours = event(
             "Browser.downloadWillBegin",
             None,
-            json!({ "frameId": "T1", "url": "https://x.test/r.pdf", "suggestedFilename": "report.pdf" }),
+            json!({ "frameId": "T1", "guid": "g1", "url": "https://x.test/r.pdf", "suggestedFilename": "report.pdf" }),
         );
         assert_eq!(
-            refused_download(&ours, &sessions, "T1"),
-            Some(("report.pdf".into(), "https://x.test/r.pdf".into()))
+            started_download(&ours, &sessions, "T1"),
+            Some(crate::browser::download::Seen {
+                guid: "g1".into(),
+                url: "https://x.test/r.pdf".into(),
+                file: "report.pdf".into(),
+            })
         );
         // Another tab's download is not this tab's.
-        assert_eq!(refused_download(&ours, &sessions, "T2"), None);
+        assert_eq!(started_download(&ours, &sessions, "T2"), None);
         // The page's own session; no name falls back to the address.
         let page = event(
             "Page.downloadWillBegin",
             Some("s1"),
-            json!({ "frameId": "F9", "url": "https://x.test/files/data.csv", "suggestedFilename": "" }),
+            json!({ "frameId": "F9", "guid": "g2", "url": "https://x.test/files/data.csv", "suggestedFilename": "" }),
         );
         assert_eq!(
-            refused_download(&page, &sessions, "T1"),
-            Some(("data.csv".into(), "https://x.test/files/data.csv".into()))
+            started_download(&page, &sessions, "T1"),
+            Some(crate::browser::download::Seen {
+                guid: "g2".into(),
+                url: "https://x.test/files/data.csv".into(),
+                file: "data.csv".into(),
+            })
         );
         let elsewhere = event("Page.downloadWillBegin", Some("s2"), page.params.clone());
-        assert_eq!(refused_download(&elsewhere, &sessions, "T1"), None);
+        assert_eq!(started_download(&elsewhere, &sessions, "T1"), None);
         let other = event("Page.frameNavigated", Some("s1"), json!({}));
-        assert_eq!(refused_download(&other, &sessions, "T1"), None);
-        assert!(download_refused_note("report.pdf").contains("report.pdf"));
+        assert_eq!(started_download(&other, &sessions, "T1"), None);
     }
 
     #[test]
@@ -2037,11 +2088,13 @@ mod tests {
 
         let asked: Arc<Mutex<Vec<BrowserRequest>>> = Arc::default();
         let log = asked.clone();
-        // Says yes to everything but risky clicks.
+        // Says yes to everything but risky clicks (and a download whose
+        // `why` says no).
         let approve = move |request: BrowserRequest| -> ApproveFuture<'_> {
             let log = log.clone();
             Box::pin(async move {
-                let risky = request.reason == BrowserAskReason::Risky;
+                let risky = request.reason == BrowserAskReason::Risky
+                    || request.why.as_deref() == Some("no download");
                 log.lock().unwrap().push(request);
                 if risky {
                     Approval::No("Not done: the user didn't allow it.".to_string())
@@ -2283,44 +2336,85 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("page changed"), "{error}");
 
-        // A download is refused: nothing saved anywhere, and the agent is told
-        // (in the click's result, or the next call's when it came later).
-        let downloads = directories::UserDirs::new()
+        // A download asks first. Said no to: cancelled, nothing kept, and the
+        // agent is told (in the click's result, or the next call's when it
+        // came later).
+        let user_downloads = directories::UserDirs::new()
             .and_then(|d| d.download_dir().map(Path::to_path_buf))
             .map(|d| d.join("conduit-test-prices.csv"));
+        let pending = profile.join(crate::browser::download::PENDING_DIR);
+        let download_note = |result: Value| async move {
+            match result.get("download") {
+                Some(_) => result,
+                None => {
+                    tokio::time::sleep(Duration::from_millis(1500)).await;
+                    call(READ_PAGE_TOOL, json!({})).await.expect("reads")
+                }
+            }
+        };
         let page = call(READ_PAGE_TOOL, json!({})).await.expect("reads");
         let get = ref_of(&page, "Get the prices");
         let clicked = call(
             crate::browser::act::CLICK_TOOL,
-            json!({ "ref": get, "why": "download" }),
+            json!({ "ref": get, "why": "no download" }),
         )
         .await
         .expect("clicks");
-        let note = match clicked.get("download") {
-            Some(note) => note.clone(),
-            None => {
-                tokio::time::sleep(Duration::from_millis(1500)).await;
-                call(READ_PAGE_TOOL, json!({})).await.expect("reads")["download"].clone()
-            }
-        };
+        let declined = download_note(clicked).await;
+        let note = declined["download"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         assert!(
-            note.as_str()
-                .is_some_and(|n| n.contains("conduit-test-prices.csv")),
+            note.contains("conduit-test-prices.csv") && note.contains("said no"),
             "{note}"
         );
-        tokio::time::sleep(Duration::from_millis(1500)).await;
-        if let Some(file) = downloads {
+        assert!(declined.get("_download").is_none(), "{declined}");
+        {
+            let asked = asked.lock().unwrap();
+            let card = asked.last().expect("asked");
+            assert_eq!(card.reason, BrowserAskReason::Download);
+            assert_eq!(card.file_name.as_deref(), Some("conduit-test-prices.csv"));
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(
+            std::fs::read_dir(&pending).map_or(true, |mut d| d.next().is_none()),
+            "a declined download stayed in the holding folder"
+        );
+
+        // Allowed: the file is kept for the conversation, by the hidden note
+        // `store_download` takes.
+        let page = call(READ_PAGE_TOOL, json!({})).await.expect("reads");
+        let get = ref_of(&page, "Get the prices");
+        let clicked = call(
+            crate::browser::act::CLICK_TOOL,
+            json!({ "ref": get, "why": "the prices" }),
+        )
+        .await
+        .expect("clicks");
+        let kept = download_note(clicked).await;
+        assert!(
+            kept["download"]
+                .as_str()
+                .is_some_and(|n| n.starts_with("Downloaded conduit-test-prices.csv")),
+            "{kept}"
+        );
+        let path = PathBuf::from(kept["_download"]["path"].as_str().expect("kept"));
+        assert!(path.starts_with(&pending), "{}", path.display());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "item,price
+soap,2
+"
+        );
+        assert_eq!(kept["_download"]["mime"], "text/csv");
+        if let Some(file) = user_downloads {
             assert!(
                 !file.exists(),
                 "saved to the user's Downloads: {}",
                 file.display()
             );
         }
-        let refused = profile.join(launch::REFUSED_DOWNLOADS_DIR);
-        assert!(
-            std::fs::read_dir(&refused).map_or(true, |mut d| d.next().is_none()),
-            "saved in the profile"
-        );
 
         run.close().await;
     }

@@ -6,6 +6,7 @@
 /// the first action on a site (`request.offerSite`), next to "Allow on all sites".
 
 import type { Translate } from '../i18n';
+import { useFormatters } from '../i18n/formatters';
 import type { BrowserRemember, BrowserRequest } from '../ipc/contracts';
 
 /// The run-details label for each action ("Clicked"), shared with the chat's tool rows.
@@ -48,7 +49,12 @@ function roleText(role: string | undefined, t: Translate): string | undefined {
   return role && Object.prototype.hasOwnProperty.call(ROLE_KEY, role) ? t(ROLE_KEY[role]) : undefined;
 }
 
-export function browserActionText(request: BrowserRequest, t: Translate): string {
+/// `formatSize` says a download's size in the reader's language; without it the size is left out.
+export function browserActionText(
+  request: BrowserRequest,
+  t: Translate,
+  formatSize?: (bytes: number) => string,
+): string {
   const name = text(request.elementName);
   const role = roleText(text(request.elementRole), t);
   switch (request.action) {
@@ -68,6 +74,14 @@ export function browserActionText(request: BrowserRequest, t: Translate): string
       return t('workspace.workflows.browser.do.scroll');
     case 'go_back':
       return t('workspace.workflows.browser.do.goBack');
+    case 'download': {
+      const file = text(request.fileName);
+      if (!file) return t('workspace.workflows.browser.do.downloadPlain');
+      if (request.fileSize !== undefined && formatSize) {
+        return t('workspace.workflows.browser.do.download', { name: file, size: formatSize(request.fileSize) });
+      }
+      return t('workspace.workflows.browser.do.downloadName', { name: file });
+    }
     default:
       return request.action;
   }
@@ -86,6 +100,8 @@ function reasonText(request: BrowserRequest, t: Translate, inChat: boolean): str
       return inChat
         ? t('chat.browser.reason.newSite', { host: request.host })
         : t('workspace.workflows.browser.reason.newSite', { host: request.host });
+    case 'download':
+      return t('workspace.workflows.browser.reason.download');
     default:
       return '';
   }
@@ -141,6 +157,7 @@ export function BrowserActionDetails({
   /** A chat's card: "in this chat" rather than "in this workflow". */
   inChat?: boolean;
 }) {
+  const fmt = useFormatters();
   const careful = browserRequestCareful(request);
   const title = text(request.pageTitle);
   return (
@@ -148,7 +165,7 @@ export function BrowserActionDetails({
       <b id={headingId} className="cc-headline">
         {text(request.why) ?? t('workspace.workflows.browser.title')}
       </b>
-      <p className="approval-sentence">{browserActionText(request, t)}</p>
+      <p className="approval-sentence">{browserActionText(request, t, (bytes) => fmt.size(bytes))}</p>
       {request.action === 'type_text' && request.text !== undefined ? (
         <pre className="cc-term" aria-label={t('workspace.workflows.browser.textLabel')}>
           {request.text}
@@ -193,9 +210,12 @@ export function BrowserActionButtons({
       <button type="button" className="btn" disabled={sending} onClick={() => onAnswer(true, 'site')}>
         {t('workspace.workflows.browser.always', { site: offerSite })}
       </button>
-      <button type="button" className="btn" disabled={sending} onClick={() => onAnswer(true, 'all')}>
-        {t('workspace.workflows.browser.allowAll')}
-      </button>
+      {/* A download never gets "Allow on all sites": each one asks. */}
+      {request.reason !== 'download' ? (
+        <button type="button" className="btn" disabled={sending} onClick={() => onAnswer(true, 'all')}>
+          {t('workspace.workflows.browser.allowAll')}
+        </button>
+      ) : null}
     </>
   ) : null;
   return (

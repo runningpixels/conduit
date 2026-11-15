@@ -39,4 +39,12 @@ soFar: Array<Record<string, unknown>>,
  * The host "Always on this site" adds to the site list; `None` when it
  * isn't offered (submits and risky words always ask).
  */
-offerSite?: string, };
+offerSite?: string, 
+/**
+ * A download's file name, as the site named it.
+ */
+fileName?: string, 
+/**
+ * A download's size in bytes, when the site said.
+ */
+fileSize?: number, };

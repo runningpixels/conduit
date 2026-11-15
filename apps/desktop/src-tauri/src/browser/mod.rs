@@ -9,6 +9,7 @@ pub mod act;
 pub mod cdp;
 pub mod chat;
 pub mod detect;
+pub mod download;
 pub mod elements;
 pub mod guard;
 pub mod launch;

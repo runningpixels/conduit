@@ -6,6 +6,7 @@ import {
   createAssistantStreamState,
   createReattachedStreamState,
   markInterrupted,
+  rebuildAssistantStreamStateFromLog,
   toolCallAwaitsReader,
   type AssistantStreamState,
 } from './streamState';
@@ -158,5 +159,32 @@ describe('a reattached reply waiting on the browser', () => {
       params: { site: 'github.com' },
       decline: 'Don’t sign in',
     });
+  });
+});
+
+describe('browserFileSaved', () => {
+  const file = { attachmentId: 'att-1', name: 'report.pdf', mime: 'application/pdf', size: 2048 };
+  const saved = { kind: 'browserFileSaved' as const, requestId: 'req-b', toolCallId: 'call-1', file };
+
+  it('adds the file to its tool call, once', () => {
+    let state = applyProviderEvent(withClick(), saved);
+    expect(call(state).files).toEqual([file]);
+    state = applyProviderEvent(state, saved);
+    expect(call(state).files).toEqual([file]);
+    state = applyProviderEvent(state, { ...saved, file: { ...file, attachmentId: 'att-2', name: 'b.csv' } });
+    expect(call(state).files?.map((f) => f.attachmentId)).toEqual(['att-1', 'att-2']);
+  });
+
+  it('comes back when a chat is reloaded from its event log', () => {
+    const at = '2026-11-14T10:00:00Z';
+    const state = rebuildAssistantStreamStateFromLog('req-b', {
+      events: [
+        { at, event: { kind: 'messageStart', requestId: 'req-b', index: 0 } },
+        { at, event: { kind: 'toolCallStart', requestId: 'req-b', toolCallId: 'call-1', index: 0, toolId: 'click', name: 'click' } },
+        { at, event: saved },
+        { at, event: saved },
+      ],
+    } as unknown as Parameters<typeof rebuildAssistantStreamStateFromLog>[1]);
+    expect(call(state).files).toEqual([file]);
   });
 });

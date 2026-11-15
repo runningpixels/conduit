@@ -7,7 +7,7 @@ import type {
   ProviderUsage,
   ToolCallStatus,
 } from '@conduit/config-schema';
-import type { BrowserRequest, BrowserStreamEvent } from '../ipc/contracts';
+import type { BrowserRequest, BrowserStreamEvent, SavedFile } from '../ipc/contracts';
 import { mergeProviderUsage } from '../lib/contextWindows';
 import {
   advanceDocumentWriteScan,
@@ -93,6 +93,8 @@ export interface ToolCallState {
   /** A human check or sign-in in a chat's browser waiting on Continue or the
    *  decline choice (`browserQuestionRequested`); cleared the same way. */
   browserQuestion?: { question: string; decline: string; code?: string; params?: Record<string, string> };
+  /** Files this call saved (a browser download the person allowed); each shows a file card. */
+  files?: SavedFile[];
 }
 
 /** Whether a tool call waits on the reader: a connector consent, or a browser
@@ -900,7 +902,8 @@ function isBrowserStreamEvent(event: { kind: string }): event is BrowserStreamEv
   return (
     event.kind === 'browserApprovalRequested' ||
     event.kind === 'browserQuestionRequested' ||
-    event.kind === 'browserPromptResolved'
+    event.kind === 'browserPromptResolved' ||
+    event.kind === 'browserFileSaved'
   );
 }
 
@@ -927,6 +930,11 @@ function reduceBrowserEvent(state: AssistantStreamState, event: BrowserStreamEve
         };
       case 'browserPromptResolved':
         return { ...tc, browserApproval: undefined, browserQuestion: undefined };
+      case 'browserFileSaved': {
+        // Once per attachment: a replayed log must not double the card.
+        if (tc.files?.some((f) => f.attachmentId === event.file.attachmentId)) return tc;
+        return { ...tc, files: [...(tc.files ?? []), event.file] };
+      }
     }
   });
 }

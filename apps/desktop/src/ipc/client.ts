@@ -1908,6 +1908,11 @@ export async function getAttachmentBytes(attachmentId: string): Promise<number[]
   return invokeCommand<number[]>('get_attachment_bytes', { attachmentId });
 }
 
+/** Write a saved attachment where the person picks; false when they closed the save dialog. */
+export async function saveAttachmentAs(attachmentId: string): Promise<boolean> {
+  return invokeCommand<boolean>('save_attachment_as', { attachmentId });
+}
+
 // Phase 7 / M-WebSearch: local database reset (Privacy & Data section).
 // Backs up the current DB and deletes the live file. The user must restart
 // Conduit to create a fresh store. Attachments and artifacts on disk are

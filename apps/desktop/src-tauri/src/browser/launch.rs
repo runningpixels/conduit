@@ -149,18 +149,17 @@ pub fn merge_preferences(existing: Option<&str>, downloads_dir: &Path) -> String
     serde_json::to_string(&root).unwrap_or_default()
 }
 
-/// The profile's download folder. Downloads are refused, so it stays empty;
-/// it exists only so the profile never points at the user's own Downloads.
-pub const REFUSED_DOWNLOADS_DIR: &str = "downloads-refused";
-
 /// Write `Default/Preferences` (before the browser runs: it rewrites the file
-/// itself while open).
+/// itself while open), and empty the downloads holding folder.
 pub fn prepare_profile(profile: &Path) -> std::io::Result<()> {
     let folder = profile.join("Default");
     std::fs::create_dir_all(&folder)?;
     let file = folder.join("Preferences");
     let existing = std::fs::read_to_string(&file).ok();
-    let downloads = profile.join(REFUSED_DOWNLOADS_DIR);
+    // The folder the profile used before downloads were asked about.
+    let _ = std::fs::remove_dir_all(profile.join("downloads-refused"));
+    super::download::clear_pending(profile);
+    let downloads = profile.join(super::download::PENDING_DIR);
     std::fs::write(&file, merge_preferences(existing.as_deref(), &downloads))
 }
 
@@ -433,10 +432,10 @@ async fn start(browser: Browser, exe: &Path, profile: &Path) -> Result<Running, 
         }));
     }
 
-    if let Err(error) = refuse_downloads_and_prompts(&cdp).await {
+    if let Err(error) = hold_downloads_and_refuse_prompts(&cdp, profile).await {
         child.start_kill();
         return Err(LaunchError::LaunchFailed(format!(
-            "its downloads could not be turned off ({error})"
+            "its downloads could not be set up ({error})"
         )));
     }
 
@@ -469,14 +468,21 @@ pub const DENIED_PERMISSIONS: [&str; 6] = [
     "midi",
 ];
 
-/// No download is ever saved: the browser refuses them all (and reports
-/// each one, so the tab can tell the agent). Permission prompts are refused
-/// too, for every site, so nothing waits on a prompt nobody sees. A browser
-/// that won't refuse downloads is not used.
-async fn refuse_downloads_and_prompts(cdp: &Cdp) -> Result<(), CdpError> {
+/// Downloads go into the profile's holding folder, named by the browser's
+/// id for each (never the file's own name, so nothing there opens as what
+/// it says it is), and are reported, so the tab can ask about each one (see
+/// [`super::download`]). Permission prompts are refused for every site, so
+/// nothing waits on a prompt nobody sees. A browser that won't take this
+/// download setting is not used.
+async fn hold_downloads_and_refuse_prompts(cdp: &Cdp, profile: &Path) -> Result<(), CdpError> {
+    let folder = profile.join(super::download::PENDING_DIR);
     cdp.call(
         "Browser.setDownloadBehavior",
-        json!({ "behavior": "deny", "eventsEnabled": true }),
+        json!({
+            "behavior": "allowAndName",
+            "downloadPath": folder.to_string_lossy(),
+            "eventsEnabled": true,
+        }),
         None,
     )
     .await?;

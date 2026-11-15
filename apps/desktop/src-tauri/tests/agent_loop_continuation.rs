@@ -966,3 +966,67 @@ async fn a_look_at_page_picture_follows_the_tool_results() {
             && p.attachment_id.as_deref() == Some("att-1")
     }));
 }
+
+#[tokio::test]
+async fn a_downloaded_file_follows_the_tool_results() {
+    let (_dir, state, conversation_id) = seeded_state().await;
+    let pool = state.db();
+    seed_assistant_round(&pool, &conversation_id, "req-1").await;
+    tool_calls::insert_tool_call(
+        &pool,
+        &ToolCallRecord {
+            id: "click-1".into(),
+            tool_id: "click".into(),
+            request_id: "req-1".into(),
+            status: ToolCallStatus::Completed,
+            arguments: Some(json!({"ref": "e4", "why": "get the invoice"})),
+            result: None,
+            error: None,
+            approved_at: None,
+            completed_at: Some("2026-06-27T00:00:01Z".into()),
+        },
+    )
+    .await
+    .unwrap();
+    tool_calls::insert_tool_result(
+        &pool,
+        &state.encryption,
+        "click-1",
+        &json!({
+            "url": "https://portal.example/",
+            "download": "Downloaded invoice.pdf (application/pdf, 12 KB). It is saved, and attached below.",
+            "_download_saved": { "id": "att-7", "name": "invoice.pdf", "mime": "application/pdf", "url": "https://portal.example/invoice.pdf" }
+        }),
+        false,
+    )
+    .await
+    .unwrap();
+
+    let continuation = StreamManager::new()
+        .build_continuation_request(&state, &request(&conversation_id, "req-1"), &[])
+        .await
+        .unwrap();
+
+    let tool_at = continuation
+        .messages
+        .iter()
+        .position(|m| m.role == MessageRole::Tool)
+        .unwrap();
+    let text = continuation.messages[tool_at].parts[0]
+        .content
+        .clone()
+        .unwrap();
+    assert!(!text.contains("att-7"), "{text}");
+    assert!(text.contains("Downloaded invoice.pdf"), "{text}");
+    // The file comes right after, as an attachment the send path reads like
+    // one the person attached.
+    let handed = continuation.messages[tool_at + 1..]
+        .iter()
+        .find(|m| m.role == MessageRole::User)
+        .expect("a message with the file");
+    assert!(handed.parts.iter().any(|p| {
+        p.kind == MessagePartKind::AttachmentReference
+            && p.attachment_id.as_deref() == Some("att-7")
+            && p.mime_type.as_deref() == Some("application/pdf")
+    }));
+}

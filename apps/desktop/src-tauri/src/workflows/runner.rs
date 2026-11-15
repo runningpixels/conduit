@@ -1046,6 +1046,17 @@ impl ConnectorTools<'_, '_> {
             let mut page = work.await?;
             crate::browser::look::store_screenshot(exec.runner.state, self.conversation, &mut page)
                 .await?;
+            if let Err(error) = crate::browser::download::store_download(
+                exec.runner.state,
+                self.conversation,
+                &mut page,
+            )
+            .await
+            {
+                page["download"] = Value::String(format!(
+                    "The download finished but {error}, so nothing was kept."
+                ));
+            }
             Ok(page)
         };
         let result = tokio::select! {

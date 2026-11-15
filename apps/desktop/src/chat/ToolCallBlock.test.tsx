@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ToolCallBlock, TOOL_ARGUMENT_MAX_CHARS, toolArgumentDisplay } from './ToolCallBlock';
 import type { ToolCallState } from './streamState';
 
+const saveAttachmentAs = vi.hoisted(() => vi.fn());
 vi.mock('../ipc/client', () => ({
   approveConnectorToolCall: vi.fn(),
   denyConnectorToolCall: vi.fn(),
+  saveAttachmentAs,
 }));
 
 const size = (bytes: number) => `${bytes} B`;
@@ -138,5 +140,48 @@ describe('ToolCallBlock consent card', () => {
   it('keeps the side-effect sentence for a tool that says it changes things', () => {
     const text = render(<ToolCallBlock toolCall={asking(false)} defaultCollapsed={false} />).container.textContent ?? '';
     expect(text).toContain('may change an external system');
+  });
+});
+
+describe('ToolCallBlock saved files', () => {
+  const file = { attachmentId: 'att-1', name: 'report.pdf', mime: 'application/pdf', size: 2_411_724 };
+  const withFile: ToolCallState = {
+    toolCallId: 'tc-f',
+    toolId: 'click',
+    name: 'click',
+    argumentsText: '{}',
+    arguments: { ref: 'e3' },
+    complete: true,
+    status: 'completed',
+    files: [file],
+  };
+
+  beforeEach(() => {
+    saveAttachmentAs.mockReset().mockResolvedValue(true);
+  });
+
+  it('shows a card with the name and size even when the row is collapsed', () => {
+    render(<ToolCallBlock toolCall={withFile} defaultCollapsed />);
+    expect(screen.getByText('report.pdf')).toBeInTheDocument();
+    expect(screen.getByText('2.3 MB')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Open/ })).toBeNull();
+  });
+
+  it('Save as… asks the app to save that attachment', async () => {
+    render(<ToolCallBlock toolCall={withFile} defaultCollapsed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save report.pdf as…' }));
+    await waitFor(() => expect(saveAttachmentAs).toHaveBeenCalledWith('att-1'));
+  });
+
+  it('says so, briefly, when saving fails', async () => {
+    saveAttachmentAs.mockRejectedValue(new Error('disk full'));
+    render(<ToolCallBlock toolCall={withFile} defaultCollapsed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save report.pdf as…' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t save the file: disk full');
+  });
+
+  it('draws no card for a call with no files', () => {
+    const { container } = render(<ToolCallBlock toolCall={{ ...withFile, files: undefined }} defaultCollapsed />);
+    expect(container.querySelector('.saved-file')).toBeNull();
   });
 });

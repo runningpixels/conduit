@@ -130,3 +130,43 @@ describe('ToolCallBlock browser question', () => {
     await waitFor(() => expect(ipc.answerBrowserQuestion).toHaveBeenCalledWith('tc-9', false));
   });
 });
+
+describe('ToolCallBlock browser download approval', () => {
+  const download: BrowserRequest = {
+    ...base,
+    action: 'download',
+    why: 'Get the report',
+    reason: 'download',
+    offerSite: 'github.com',
+    fileName: 'report.pdf',
+    fileSize: 2_411_724,
+  };
+  const asking = call({ name: 'click', browserApproval: download });
+
+  it('names the file and its size, with a reason chip and no "Allow on all sites"', () => {
+    render(<ToolCallBlock toolCall={asking} />);
+    const text = screen.getByRole('group').textContent ?? '';
+    expect(text).toContain('Download “report.pdf” (2.3 MB)');
+    expect(text).toContain('Downloads always ask first. Programs and scripts are never downloaded.');
+    expect(screen.getByRole('button', { name: 'Do it' })).toHaveClass('primary');
+    expect(screen.getByRole('button', { name: 'Always on github.com' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Allow on all sites' })).toBeNull();
+  });
+
+  it('leaves the size out when it is unknown, and says "a file" with no name', () => {
+    const { unmount } = render(
+      <ToolCallBlock toolCall={call({ browserApproval: { ...download, fileSize: undefined } })} />,
+    );
+    expect(screen.getByRole('group').textContent).toContain('Download “report.pdf”');
+    expect(screen.getByRole('group').textContent).not.toContain('(');
+    unmount();
+    render(<ToolCallBlock toolCall={call({ browserApproval: { ...download, fileName: undefined } })} />);
+    expect(screen.getByRole('group').textContent).toContain('Download a file');
+  });
+
+  it('Always on <site> remembers the site', async () => {
+    render(<ToolCallBlock toolCall={asking} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Always on github.com' }));
+    await waitFor(() => expect(ipc.answerBrowserAction).toHaveBeenCalledWith('tc-9', true, 'site'));
+  });
+});

@@ -2913,7 +2913,7 @@ html[data-reduce-motion="on"] .research-spinner { animation: none; }
   gap: var(--sp-2);
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r);
   background: var(--card);
   color: var(--ink-2);
   font-size: var(--fs-lg);

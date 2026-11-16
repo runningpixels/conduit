@@ -169,13 +169,20 @@ export function ToolCallBlock({
   // as opposed to the tool running on arguments it already has.
   const writing =
     !group && toolCall.documentWrite !== undefined && toolCall.arguments === undefined && anyRunning;
+  // The browser waiting before a page load says so, so it doesn't look stuck
+  // (the stream clears the pause when the wait or the call ends).
+  const pause = activeCalls.find((c) => c.browserPause)?.browserPause;
   const statusSuffix = anyFailed
     ? t('chat.toolCall.status.failed')
     : writing
       ? t('chat.toolCall.status.writing')
-      : anyRunning
-        ? t('chat.toolCall.status.running')
-        : '';
+      : pause
+        ? pause.slowDown
+          ? t('chat.toolCall.status.browserSlowDown', { host: pause.host, seconds: pause.seconds })
+          : t('chat.toolCall.status.browserPausing', { host: pause.host })
+        : anyRunning
+          ? t('chat.toolCall.status.running')
+          : '';
 
   const totalMs = activeCalls.reduce((acc, c) => {
     if (c.startedAt == null || c.endedAt == null) return acc;

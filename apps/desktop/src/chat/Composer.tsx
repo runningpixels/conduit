@@ -43,7 +43,7 @@ import { ComposerDocumentPicker, documentOptionId, type DocumentPickerOption } f
 import { findHashTrigger, type HashTrigger } from './hashTrigger';
 import { findAtTrigger, type AtTrigger } from './atTrigger';
 import { ComposerAgentPicker, agentOptionId, type AgentPickerOption } from './ComposerAgentPicker';
-import type { ConversationBrowser, ConversationProject, KnowledgeCollection, SkillSummary } from '../ipc/contracts';
+import type { BrowserPace, ConversationBrowser, ConversationProject, KnowledgeCollection, SkillSummary } from '../ipc/contracts';
 import { projectHasSettings } from './projectSummary';
 import { previewText, type QueuedMessage } from './messageQueue';
 import { useT } from '../i18n';
@@ -163,6 +163,8 @@ export interface ComposerProps {
   /** This chat's browser ticks. With `onBrowserChange`, the "+" menu offers "Browser". */
   browser?: ConversationBrowser;
   onBrowserChange?: (use: boolean, act: boolean) => void;
+  /** Set this chat's own browser pace; null follows Settings. */
+  onBrowserPaceChange?: (pace: BrowserPace | null) => void;
   /** Forget the sites this chat may act on without asking. */
   onBrowserClearSites?: () => void;
   /// Accumulated usage for spend (turns + live stream).
@@ -252,6 +254,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onOpenSettings,
   browser,
   onBrowserChange,
+  onBrowserPaceChange,
   onBrowserClearSites,
   usage,
   contextTokens = 0,
@@ -1583,6 +1586,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 localOnly={settings.localOnly}
                 onClose={closePop}
                 onChange={onBrowserChange!}
+                onPaceChange={onBrowserPaceChange}
                 onClearSites={onBrowserClearSites}
                 onOpenComputerSettings={onOpenSettings ? () => onOpenSettings('computer') : undefined}
               />

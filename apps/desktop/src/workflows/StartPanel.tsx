@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useT } from '../i18n';
 import { pickWorkspaceFolder } from '../ipc/client';
 import type { WorkflowDefinition, WorkflowInput } from '../ipc/contracts';
-import { newInput, usesComputer, withFolder, withWorkflowModel } from './editorModel';
+import { newInput, usesBrowser, usesComputer, withBrowserPace, withFolder, withWorkflowModel } from './editorModel';
 import { HelpersSection } from './HelpersSection';
 import { TriggerSection } from './TriggerSection';
 import { WorkflowComputerSection } from './WorkflowComputerSection';
@@ -121,6 +121,27 @@ export function StartPanel({
           <p className="wfe-help">{t('workspace.workflows.model.hint')}</p>
         </div>
         <FolderRow folder={def.folder} onChange={(folder) => setDefinition(withFolder(def, folder))} />
+        {usesBrowser(def) ? (
+          <div className="wfe-setting">
+            <label className="wfe-field">
+              <span>{t('workspace.workflows.browserPace.label')}</span>
+              <select
+                className="sel"
+                value={def.browserPace ?? ''}
+                onChange={(e) =>
+                  setDefinition(
+                    withBrowserPace(def, e.target.value === 'fast' || e.target.value === 'human' ? e.target.value : null),
+                  )
+                }
+              >
+                <option value="">{t('workspace.workflows.browserPace.default')}</option>
+                <option value="human">{t('settings.computer.pace.human')}</option>
+                <option value="fast">{t('settings.computer.pace.fast')}</option>
+              </select>
+            </label>
+            <p className="wfe-help">{t('workspace.workflows.browserPace.hint')}</p>
+          </div>
+        ) : null}
       </section>
 
       {usesComputer(def) ? <WorkflowComputerSection def={def} onChange={setDefinition} /> : null}

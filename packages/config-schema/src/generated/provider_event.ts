@@ -96,4 +96,4 @@ code?: string, params: Record<string, string>,
 /**
  * The declining choice ("Skip this page", "Don't sign in").
  */
-decline: string, } | { "kind": "browserPromptResolved", requestId: string, toolCallId: string, } | { "kind": "browserFileSaved", requestId: string, toolCallId: string, file: SavedFile, };
+decline: string, } | { "kind": "browserPromptResolved", requestId: string, toolCallId: string, } | { "kind": "browserPausing", requestId: string, toolCallId: string, host: string, seconds: number, slowDown: boolean, } | { "kind": "browserFileSaved", requestId: string, toolCallId: string, file: SavedFile, };

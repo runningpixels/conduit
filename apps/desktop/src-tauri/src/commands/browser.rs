@@ -175,6 +175,20 @@ pub async fn set_conversation_browser(
     load_chat_browser(&state.db, &conversation_id).await
 }
 
+/// Set a chat's own browser pace (`"fast"` or `"human"`); `None` follows
+/// the pace in Settings.
+#[tauri::command]
+pub async fn set_conversation_browser_pace(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    pace: Option<crate::browser::pace::Pace>,
+) -> Result<ChatBrowser, AppError> {
+    conversations::set_chat_browser_pace(&state.db, &conversation_id, pace)
+        .await
+        .map_err(|e| AppError::from(e.to_string()))?;
+    load_chat_browser(&state.db, &conversation_id).await
+}
+
 /// Replace a chat's browser site list. Each entry is a host (`example.com`),
 /// `*.host`, or `*` for every site; anything else is refused with
 /// `error.browser.badSite` and nothing is saved.

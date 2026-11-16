@@ -824,6 +824,8 @@ export interface WorkflowDefinition {
   trigger?: WorkflowTrigger;
   /** Helpers: agents that agent steps (and other helpers) may hand work to. */
   agents?: AgentDef[];
+  /** How fast its agents' browser goes; absent: Human for runs nobody is watching, else Settings. */
+  browserPace?: BrowserPace;
   steps: WorkflowStep[];
 }
 
@@ -1336,7 +1338,12 @@ export interface ConversationBrowser {
   use: boolean;
   act: boolean;
   sites: string[];
+  /** The chat's own browser pace; absent or null follows Settings. */
+  pace?: BrowserPace | null;
 }
+
+/** How fast the agents' browser goes. */
+export type BrowserPace = 'fast' | 'human';
 
 /** What "Always on <site>" / "Allow on all sites" saves to the chat's site list. */
 export type BrowserRemember = 'site' | 'all';
@@ -1356,7 +1363,17 @@ export type BrowserStreamEvent =
       decline: string;
     }
   | { kind: 'browserPromptResolved'; requestId: string; toolCallId: string }
-  | { kind: 'browserFileSaved'; requestId: string; toolCallId: string; file: SavedFile };
+  | { kind: 'browserFileSaved'; requestId: string; toolCallId: string; file: SavedFile }
+  | {
+      kind: 'browserPausing';
+      requestId: string;
+      toolCallId: string;
+      host: string;
+      /** 0 when the wait is over. */
+      seconds: number;
+      /** The site asked the browser to slow down. */
+      slowDown: boolean;
+    };
 
 /** The answer to a `WorkflowAction`. */
 export interface WorkflowActionAnswer {

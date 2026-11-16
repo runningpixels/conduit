@@ -561,6 +561,7 @@ impl Runner<'_> {
             folder: def.folder.as_deref(),
             helpers: &def.agents,
             computer: def.computer.as_ref(),
+            browser_pace: def.browser_pace,
             outside: computer::outside_steps(def),
             started: Instant::now(),
             stop: self.stop.child_token(),
@@ -2011,6 +2012,8 @@ struct Exec<'a> {
     helpers: &'a [AgentDef],
     /// How agents may use the computer (the workflow's `computer` setting).
     computer: Option<&'a computer::ComputerConfig>,
+    /// The workflow's own browser pace, if it sets one.
+    browser_pace: Option<crate::browser::pace::Pace>,
     /// Steps whose output may carry outside content (`computer::outside_steps`).
     outside: std::collections::HashSet<String>,
     started: Instant,
@@ -3285,12 +3288,16 @@ impl Exec<'_> {
                 let state = self.runner.state;
                 let settings = state.settings()?.workflow_computer.unwrap_or_default();
                 let installed = crate::browser::detect::installed_now();
-                // A run nobody is watching always goes at Human pace: nobody
-                // needs it faster, and a site that turns it away fails it.
-                let pace = if self.runner.unattended.is_some() {
-                    crate::browser::pace::Pace::Human
-                } else {
-                    crate::browser::pace::Pace::from_setting(settings.pace.as_deref())
+                // The workflow's own pace wins. Otherwise a run nobody is
+                // watching goes at Human pace (nobody needs it faster, and a
+                // site that turns it away fails it), and one the person
+                // started goes at the pace in Settings.
+                let pace = match self.browser_pace {
+                    Some(pace) => pace,
+                    None if self.runner.unattended.is_some() => {
+                        crate::browser::pace::Pace::Human
+                    }
+                    None => crate::browser::pace::Pace::from_setting(settings.pace.as_deref()),
                 };
                 let chosen = |(browser, exe): (Browser, std::path::PathBuf)| {
                     crate::browser::tools::Chosen { browser, exe, pace }

@@ -95,6 +95,8 @@ export interface ToolCallState {
   browserQuestion?: { question: string; decline: string; code?: string; params?: Record<string, string> };
   /** Files this call saved (a browser download the person allowed); each shows a file card. */
   files?: SavedFile[];
+  /** The browser is waiting before it opens a page (`browserPausing`); cleared when the wait ends. */
+  browserPause?: { host: string; seconds: number; slowDown: boolean };
 }
 
 /** Whether a tool call waits on the reader: a connector consent, or a browser
@@ -889,6 +891,7 @@ function reduceProviderEvent(
                 endedAt: now,
                 browserApproval: undefined,
                 browserQuestion: undefined,
+                browserPause: undefined,
               }
             : tc,
         ),
@@ -903,7 +906,8 @@ function isBrowserStreamEvent(event: { kind: string }): event is BrowserStreamEv
     event.kind === 'browserApprovalRequested' ||
     event.kind === 'browserQuestionRequested' ||
     event.kind === 'browserPromptResolved' ||
-    event.kind === 'browserFileSaved'
+    event.kind === 'browserFileSaved' ||
+    event.kind === 'browserPausing'
   );
 }
 
@@ -930,6 +934,12 @@ function reduceBrowserEvent(state: AssistantStreamState, event: BrowserStreamEve
         };
       case 'browserPromptResolved':
         return { ...tc, browserApproval: undefined, browserQuestion: undefined };
+      case 'browserPausing':
+        return {
+          ...tc,
+          browserPause:
+            event.seconds > 0 ? { host: event.host, seconds: event.seconds, slowDown: event.slowDown } : undefined,
+        };
       case 'browserFileSaved': {
         // Once per attachment: a replayed log must not double the card.
         if (tc.files?.some((f) => f.attachmentId === event.file.attachmentId)) return tc;

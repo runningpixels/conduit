@@ -328,6 +328,8 @@ fn event_kind_tag(event: &ProviderEvent) -> &'static str {
         ProviderEvent::BrowserApprovalRequested { .. } => "browserApprovalRequested",
         ProviderEvent::BrowserQuestionRequested { .. } => "browserQuestionRequested",
         ProviderEvent::BrowserPromptResolved { .. } => "browserPromptResolved",
+        // Live only: never logged.
+        ProviderEvent::BrowserPausing { .. } => "browserPausing",
         ProviderEvent::BrowserFileSaved { .. } => "browserFileSaved",
     }
 }

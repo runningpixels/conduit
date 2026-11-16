@@ -97,6 +97,40 @@ describe('ToolCallBlock browser pages', () => {
   });
 });
 
+describe('ToolCallBlock browser pauses', () => {
+  const running = (browserPause: ToolCallState['browserPause']): ToolCallState => ({
+    toolCallId: 'tc-p',
+    toolId: 'open_page',
+    name: 'open_page',
+    argumentsText: '',
+    arguments: { url: 'https://news.ycombinator.com/' },
+    complete: true,
+    status: 'running',
+    startedAt: 0,
+    browserPause,
+  });
+
+  it('says it is waiting instead of running', () => {
+    const { container } = render(
+      <ToolCallBlock toolCall={running({ host: 'news.ycombinator.com', seconds: 4, slowDown: false })} />,
+    );
+    expect(container.textContent).toContain('waiting before opening news.ycombinator.com');
+    expect(container.textContent).not.toContain('running…');
+  });
+
+  it('says when the site asked it to slow down', () => {
+    const { container } = render(
+      <ToolCallBlock toolCall={running({ host: 'news.ycombinator.com', seconds: 30, slowDown: true })} />,
+    );
+    expect(container.textContent).toContain('news.ycombinator.com asked to slow down, waiting 30 s');
+  });
+
+  it('says nothing about waiting once the wait is over', () => {
+    const { container } = render(<ToolCallBlock toolCall={running(undefined)} />);
+    expect(container.textContent).not.toContain('waiting');
+  });
+});
+
 describe('ToolCallBlock consent card', () => {
   const asking = (undeclared: boolean): ToolCallState => ({
     toolCallId: 'tc-2',

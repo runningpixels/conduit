@@ -379,8 +379,12 @@ export function TurnBody({
   }
 
   const lineStatus = stepLineStatus(activity);
+  // A wait on a step past the rows shown says so on the summary line instead.
+  const shownIds = new Set(shownSteps.map((step) => step.id));
+  const hiddenPause = [...pauses].find(([id]) => !shownIds.has(id))?.[1];
   const stepLineText = [
     t('chat.activity.steps', { count: activity.steps }),
+    hiddenPause ? browserPauseText(hiddenPause, t) : '',
     activity.sites > 0 ? t('chat.activity.sites', { count: activity.sites }) : '',
     activity.failed > 0 ? t('chat.activity.failed', { count: activity.failed }) : '',
     activity.needsYou ? t('chat.activity.needsYou') : '',

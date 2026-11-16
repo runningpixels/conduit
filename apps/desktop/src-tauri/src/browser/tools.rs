@@ -19,7 +19,7 @@ use super::cdp::{Cdp, CdpError, Event};
 use super::detect::Browser;
 use super::guard::{Decision, Guard};
 use super::launch::{self, LaunchError};
-use super::pace::{Backoff, PaceState, Pacer};
+use super::pace::{Backoff, OnPause, PaceState, Pacer};
 use super::BrowserError;
 
 pub const OPEN_PAGE_TOOL: &str = "open_page";
@@ -314,10 +314,28 @@ impl RunBrowser {
         ask: Option<&'a AskFn<'a>>,
         act: Option<&super::act::ActContext<'_>>,
     ) -> Result<Value, BrowserError> {
+        self.run_showing_pauses(name, arguments, chosen, profile, ask, act, None)
+            .await
+    }
+
+    /// [`Self::run`], telling `on_pause` about long waits before a page
+    /// load (the chat shows them on the tool's row).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn run_showing_pauses<'a>(
+        &self,
+        name: &str,
+        arguments: &Value,
+        chosen: &Chosen,
+        profile: &Path,
+        ask: Option<&'a AskFn<'a>>,
+        act: Option<&super::act::ActContext<'_>>,
+        on_pause: Option<&OnPause<'_>>,
+    ) -> Result<Value, BrowserError> {
         let mut slot = self.tab.lock().await;
         let pacer = Pacer {
             pace: chosen.pace,
             state: &self.pace,
+            on_pause,
         };
         let mut result = match name {
             OPEN_PAGE_TOOL => {

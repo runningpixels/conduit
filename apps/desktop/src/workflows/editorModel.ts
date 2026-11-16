@@ -10,7 +10,7 @@
 /// item's fields. It mirrors the backend's validation (`workflows::definition`),
 /// so anything offered here is accepted on save.
 
-import type { AgentDef, WorkflowComputer, WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep, WorkflowTrigger } from '../ipc/contracts';
+import type { AgentDef, BrowserPace, WorkflowComputer, WorkflowDefinition, WorkflowInput, WorkflowModel, WorkflowStep, WorkflowTrigger } from '../ipc/contracts';
 import { ancestorsOf, dependencies, removeTopLevel } from './stepGraph';
 
 export type StepType = WorkflowStep['type'];
@@ -157,6 +157,21 @@ export function usesBrowserAct(def: Pick<WorkflowDefinition, 'steps' | 'agents'>
   const inSteps = (steps: readonly WorkflowStep[]): boolean =>
     steps.some((s) => (s.type === 'agent' && acts(s.tools)) || (s.type === 'for_each' && inSteps(s.steps)));
   return inSteps(def.steps) || (def.agents ?? []).some((a) => acts(a.tools));
+}
+
+/// Whether an agent step or a helper may use the browser (inside loops too).
+export function usesBrowser(def: Pick<WorkflowDefinition, 'steps' | 'agents'>): boolean {
+  const inSteps = (steps: readonly WorkflowStep[]): boolean =>
+    steps.some(
+      (s) => (s.type === 'agent' && (s.tools ?? []).includes(BROWSER_TOOL)) || (s.type === 'for_each' && inSteps(s.steps)),
+    );
+  return inSteps(def.steps) || (def.agents ?? []).some((a) => (a.tools ?? []).includes(BROWSER_TOOL));
+}
+
+/// `def` with its own browser pace set, or removed with `null`.
+export function withBrowserPace(def: WorkflowDefinition, pace: BrowserPace | null): WorkflowDefinition {
+  const { browserPace: _drop, ...rest } = def;
+  return pace ? { ...rest, browserPace: pace } : rest;
 }
 
 /// `def` with its computer settings replaced; `null` or settings with nothing set remove the key.

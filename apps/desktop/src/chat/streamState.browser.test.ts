@@ -162,6 +162,36 @@ describe('a reattached reply waiting on the browser', () => {
   });
 });
 
+describe('browserPausing', () => {
+  const pausing = (seconds: number, slowDown = false) => ({
+    kind: 'browserPausing' as const,
+    requestId: 'req-b',
+    toolCallId: 'call-1',
+    host: 'news.ycombinator.com',
+    seconds,
+    slowDown,
+  });
+
+  it('shows the wait on its tool call and clears it when the wait ends', () => {
+    let state = applyProviderEvent(withClick(), pausing(15, true));
+    expect(call(state).browserPause).toEqual({ host: 'news.ycombinator.com', seconds: 15, slowDown: true });
+    state = applyProviderEvent(state, pausing(0));
+    expect(call(state).browserPause).toBeUndefined();
+  });
+
+  it('clears the wait when the tool finishes', () => {
+    const waiting = applyProviderEvent(withClick(), pausing(4));
+    const finished = applyProviderEvent(waiting, {
+      kind: 'toolExecutionFinished',
+      requestId: 'req-b',
+      toolCallId: 'call-1',
+      toolName: 'click',
+      isError: false,
+    });
+    expect(call(finished).browserPause).toBeUndefined();
+  });
+});
+
 describe('browserFileSaved', () => {
   const file = { attachmentId: 'att-1', name: 'report.pdf', mime: 'application/pdf', size: 2048 };
   const saved = { kind: 'browserFileSaved' as const, requestId: 'req-b', toolCallId: 'call-1', file };

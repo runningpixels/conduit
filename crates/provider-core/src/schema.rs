@@ -1128,6 +1128,17 @@ pub enum ProviderEvent {
         request_id: String,
         tool_call_id: String,
     },
+    /// The browser call on `tool_call_id` is waiting before it opens a page
+    /// on `host`: its pace, or the site asked it to slow down (`slow_down`).
+    /// `seconds` is 0 when the wait is over. Not saved to the turn's log.
+    BrowserPausing {
+        request_id: String,
+        tool_call_id: String,
+        host: String,
+        #[ts(type = "number")]
+        seconds: u64,
+        slow_down: bool,
+    },
     /// The browser call on `tool_call_id` downloaded a file the person
     /// allowed; it is saved as an attachment of the conversation.
     BrowserFileSaved {

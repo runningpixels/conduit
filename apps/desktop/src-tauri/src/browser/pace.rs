@@ -20,7 +20,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// How fast the agent's browser goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Pace {
     /// Machine speed: no added waits (back-off from a site that objects still applies).
     Fast,
@@ -272,11 +273,39 @@ impl PaceState {
     }
 }
 
+/// A wait before a page load long enough to show the person, so the call
+/// doesn't look stuck.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pause {
+    pub host: String,
+    /// Whole seconds, rounded up.
+    pub seconds: u64,
+    /// The site said it was getting requests too fast.
+    pub slow_down: bool,
+}
+
+/// Told `Some` when a shown wait starts and `None` when it ends.
+pub type OnPause<'a> = dyn Fn(Option<Pause>) + Send + Sync + 'a;
+
+/// Load waits shorter than this aren't shown.
+pub const SHOWN_PAUSE: Duration = Duration::from_secs(2);
+
+/// What to show for a wait of `wait` before loading a page on `host`;
+/// nothing when it is short.
+pub fn shown_pause(wait: Duration, host: &str, slow_down: bool) -> Option<Pause> {
+    (wait >= SHOWN_PAUSE).then(|| Pause {
+        host: host.to_string(),
+        seconds: wait.as_millis().div_ceil(1000) as u64,
+        slow_down,
+    })
+}
+
 /// A run's pace and its record, for one tool call.
 #[derive(Clone, Copy)]
 pub struct Pacer<'a> {
     pub pace: Pace,
     pub state: &'a Mutex<PaceState>,
+    pub on_pause: Option<&'a OnPause<'a>>,
 }
 
 fn random() -> f64 {
@@ -319,16 +348,30 @@ impl Pacer<'_> {
         self.wait(dwell(self.pace, text_chars, &mut random)).await;
     }
 
-    /// Wait until a page on `host` may load, then record that it does.
+    /// Wait until a page on `host` may load, then record that it does. A
+    /// long wait is shown while it lasts.
     pub async fn before_load(&self, host: &str) {
-        let wait = match self.state.lock() {
+        let (wait, slow_down) = match self.state.lock() {
             Ok(mut state) => {
                 let now = state.now();
-                state.load_wait(self.pace, host, now, &mut random)
+                let objecting = state.strikes.contains_key(host);
+                (
+                    state.load_wait(self.pace, host, now, &mut random),
+                    objecting,
+                )
             }
-            Err(_) => Duration::ZERO,
+            Err(_) => (Duration::ZERO, false),
         };
+        let shown = self
+            .on_pause
+            .and_then(|on_pause| shown_pause(wait, host, slow_down).map(|p| (on_pause, p)));
+        if let Some((on_pause, pause)) = &shown {
+            on_pause(Some(pause.clone()));
+        }
         self.wait(wait).await;
+        if let Some((on_pause, _)) = shown {
+            on_pause(None);
+        }
         if let Ok(mut state) = self.state.lock() {
             let now = state.now();
             state.record_load(host, now);
@@ -366,6 +409,39 @@ mod tests {
 
     fn fixed(r: f64) -> impl FnMut() -> f64 {
         move || r
+    }
+
+    #[test]
+    fn only_long_load_waits_are_shown_in_whole_seconds() {
+        assert_eq!(
+            shown_pause(Duration::from_millis(1999), "a.com", false),
+            None
+        );
+        assert_eq!(
+            shown_pause(Duration::from_millis(4200), "a.com", false),
+            Some(Pause {
+                host: "a.com".into(),
+                seconds: 5,
+                slow_down: false
+            })
+        );
+        assert_eq!(
+            shown_pause(BACKOFF_FIRST, "a.com", true),
+            Some(Pause {
+                host: "a.com".into(),
+                seconds: 15,
+                slow_down: true
+            })
+        );
+    }
+
+    #[test]
+    fn the_pace_is_stored_as_a_lowercase_word() {
+        assert_eq!(serde_json::to_value(Pace::Fast).unwrap(), "fast");
+        assert_eq!(
+            serde_json::from_value::<Pace>("human".into()).unwrap(),
+            Pace::Human
+        );
     }
 
     #[test]

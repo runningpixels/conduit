@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { WorkflowDefinition, WorkflowStep } from '../ipc/contracts';
 import {
   allStepIds,
+  usesBrowser,
+  withBrowserPace,
   clampFeedMinutes,
   newTrigger,
   triggerNeedsFolder,
@@ -433,5 +435,30 @@ describe('the branch step and removing steps', () => {
       { id: 'c', type: 'template', template: '', after: ['b'] },
     ];
     expect(removeStep(steps, [1]).map((s) => s.after)).toEqual([undefined, undefined]);
+  });
+});
+
+describe('browser pace', () => {
+  const browsing: WorkflowDefinition = {
+    steps: [{ id: 'a', type: 'agent', prompt: 'Go', tools: ['browser'] } as WorkflowStep],
+  };
+
+  it('knows when an agent uses the browser, in loops and helpers too', () => {
+    expect(usesBrowser(browsing)).toBe(true);
+    expect(usesBrowser({ steps: [{ id: 'a', type: 'agent', prompt: 'Go' } as WorkflowStep] })).toBe(false);
+    expect(
+      usesBrowser({
+        steps: [{ id: 'l', type: 'for_each', items: 'x', steps: [browsing.steps[0]] } as unknown as WorkflowStep],
+      }),
+    ).toBe(true);
+    expect(
+      usesBrowser({ steps: [], agents: [{ id: 'h', name: 'H', instructions: 'Help', tools: ['browser'] }] } as unknown as WorkflowDefinition),
+    ).toBe(true);
+  });
+
+  it('sets the pace and removes it with null', () => {
+    const fast = withBrowserPace(browsing, 'fast');
+    expect(fast.browserPace).toBe('fast');
+    expect('browserPace' in withBrowserPace(fast, null)).toBe(false);
   });
 });

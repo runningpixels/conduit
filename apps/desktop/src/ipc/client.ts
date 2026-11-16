@@ -144,6 +144,7 @@ import type {
   BrowserStreamEvent,
   ConversationBrowser,
   BrowserRemember,
+  BrowserPace,
 } from './contracts';
 import type { ToolDefinition } from '@conduit/config-schema';
 
@@ -2572,6 +2573,11 @@ export async function getConversationBrowser(conversationId: string): Promise<Co
 /** Turn a chat's browser ticks on or off. */
 export async function setConversationBrowser(conversationId: string, use: boolean, act: boolean): Promise<void> {
   await invokeCommand('set_conversation_browser', { conversationId, use, act });
+}
+
+/** Set a chat's own browser pace; null follows Settings. */
+export async function setConversationBrowserPace(conversationId: string, pace: BrowserPace | null): Promise<void> {
+  await invokeCommand('set_conversation_browser_pace', { conversationId, pace });
 }
 
 /** Replace the sites a chat may act on without asking (`[]` clears them). */

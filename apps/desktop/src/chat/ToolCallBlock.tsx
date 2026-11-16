@@ -48,6 +48,13 @@ function callLabel(toolCall: ToolCallState): string {
   return toolCall.toolCallId.slice(0, 8);
 }
 
+/** What a browser call waiting before a page load says, so it doesn't look stuck. */
+export function browserPauseText(pause: NonNullable<ToolCallState['browserPause']>, t: Translate): string {
+  return pause.slowDown
+    ? t('chat.toolCall.status.browserSlowDown', { host: pause.host, seconds: pause.seconds })
+    : t('chat.toolCall.status.browserPausing', { host: pause.host });
+}
+
 function callTone(toolCall: ToolCallState): 'ok' | 'fail' | 'run' {
   if (toolCall.status === 'failed' || toolCall.status === 'cancelled') return 'fail';
   if (toolCall.complete) return 'ok';
@@ -169,13 +176,18 @@ export function ToolCallBlock({
   // as opposed to the tool running on arguments it already has.
   const writing =
     !group && toolCall.documentWrite !== undefined && toolCall.arguments === undefined && anyRunning;
+  // The browser waiting before a page load says so, so it doesn't look stuck
+  // (the stream clears the pause when the wait or the call ends).
+  const pause = activeCalls.find((c) => c.browserPause)?.browserPause;
   const statusSuffix = anyFailed
     ? t('chat.toolCall.status.failed')
     : writing
       ? t('chat.toolCall.status.writing')
-      : anyRunning
-        ? t('chat.toolCall.status.running')
-        : '';
+      : pause
+        ? browserPauseText(pause, t)
+        : anyRunning
+          ? t('chat.toolCall.status.running')
+          : '';
 
   const totalMs = activeCalls.reduce((acc, c) => {
     if (c.startedAt == null || c.endedAt == null) return acc;

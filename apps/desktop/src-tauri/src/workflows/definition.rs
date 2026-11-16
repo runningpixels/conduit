@@ -49,6 +49,10 @@ pub struct WorkflowDefinition {
     /// commands and file changes in the workflow's `folder`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub computer: Option<super::computer::ComputerConfig>,
+    /// How fast its agents' browser goes (`"fast"` or `"human"`). Absent:
+    /// Human when nobody is watching the run, else the pace in Settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser_pace: Option<crate::browser::pace::Pace>,
     pub steps: Vec<Step>,
 }
 
@@ -2234,6 +2238,22 @@ mod tests {
             "steps": [{ "id": "a", "type": "agent", "prompt": "Go", "tools": ["computer"] }]
         });
         assert!(validate(&def(computing)).is_err());
+    }
+
+    #[test]
+    fn the_browser_pace_is_optional_and_round_trips() {
+        let plain = def(json!({ "steps": [{ "id": "a", "type": "agent", "prompt": "Go" }] }));
+        assert_eq!(plain.browser_pace, None);
+        assert!(serde_json::to_value(&plain)
+            .unwrap()
+            .get("browserPace")
+            .is_none());
+        let fast = def(json!({
+            "browserPace": "fast",
+            "steps": [{ "id": "a", "type": "agent", "prompt": "Go", "tools": ["browser"] }]
+        }));
+        assert_eq!(fast.browser_pace, Some(crate::browser::pace::Pace::Fast));
+        assert_eq!(serde_json::to_value(&fast).unwrap()["browserPace"], "fast");
     }
 
     #[test]

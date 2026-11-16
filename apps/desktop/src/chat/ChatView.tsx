@@ -46,6 +46,7 @@ import {
   browserToolDefinitions,
   getConversationBrowser,
   setConversationBrowser,
+  setConversationBrowserPace,
   setConversationBrowserSites,
   startConnector,
   startChatStream,
@@ -207,7 +208,7 @@ import {
   dedupeToolsByName,
   type DocumentToolActivity,
 } from './agentTools';
-import type { ConversationBrowser, DeckDetail, DraftDetail, ResearchMaterial } from '../ipc/contracts';
+import type { BrowserPace, ConversationBrowser, DeckDetail, DraftDetail, ResearchMaterial } from '../ipc/contracts';
 import { appPromptBody, appPromptLabel } from './appPrompt';
 import { AppNote } from './AppNote';
 import { deckDeveloperPrompt, deckSystemAppendix } from '../slides/deckPrompt';
@@ -3221,9 +3222,22 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     if (!conversationId) return;
     const nextAct = use && act;
     const previous = chatBrowser;
-    setChatBrowser({ use, act: nextAct, sites: previous?.sites ?? [] });
+    setChatBrowser({ ...(previous ?? { sites: [] }), use, act: nextAct });
     try {
       await setConversationBrowser(conversationId, use, nextAct);
+    } catch (error) {
+      setChatBrowser(previous);
+      onStatus(error instanceof Error ? error.message : t('chat.browser.saveFailed'));
+    }
+  }
+
+  /** Save this chat's own browser pace; null follows Settings. */
+  async function handleBrowserPaceChange(pace: BrowserPace | null) {
+    if (!conversationId || !chatBrowser) return;
+    const previous = chatBrowser;
+    setChatBrowser({ ...previous, pace });
+    try {
+      await setConversationBrowserPace(conversationId, pace);
     } catch (error) {
       setChatBrowser(previous);
       onStatus(error instanceof Error ? error.message : t('chat.browser.saveFailed'));
@@ -4555,6 +4569,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
         onOpenSettings={onOpenSettings}
         browser={deck || draft ? undefined : chatBrowser ?? { use: false, act: false, sites: [] }}
         onBrowserChange={deck || draft ? undefined : (use, act) => void handleBrowserChange(use, act)}
+        onBrowserPaceChange={deck || draft ? undefined : (pace) => void handleBrowserPaceChange(pace)}
         onBrowserClearSites={deck || draft ? undefined : () => void handleBrowserClearSites()}
         usage={accumulatedUsage}
         contextTokens={contextTokens}

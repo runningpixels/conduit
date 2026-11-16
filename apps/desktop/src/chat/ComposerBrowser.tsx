@@ -1,4 +1,4 @@
-import type { ConversationBrowser } from '../ipc/contracts';
+import type { BrowserPace, ConversationBrowser } from '../ipc/contracts';
 import { useT } from '../i18n';
 import { fitPopover } from './fitPopover';
 
@@ -14,6 +14,8 @@ interface ComposerBrowserProps {
   localOnly: boolean;
   onClose: () => void;
   onChange: (use: boolean, act: boolean) => void;
+  /** Set the chat's own pace; null follows Settings. Without it, no pace choice. */
+  onPaceChange?: (pace: BrowserPace | null) => void;
   onClearSites?: () => void;
   onOpenComputerSettings?: () => void;
 }
@@ -27,6 +29,7 @@ export function ComposerBrowser({
   localOnly,
   onClose,
   onChange,
+  onPaceChange,
   onClearSites,
   onOpenComputerSettings,
 }: ComposerBrowserProps) {
@@ -89,6 +92,21 @@ export function ComposerBrowser({
           </span>
         </li>
       </ul>
+      {onPaceChange ? (
+        <label className="composer-browser-pace">
+          <span>{t('chat.browser.pace.label')}</span>
+          <select
+            className="sel"
+            value={browser.pace ?? ''}
+            disabled={!available || !use}
+            onChange={(e) => onPaceChange(e.target.value === 'fast' || e.target.value === 'human' ? e.target.value : null)}
+          >
+            <option value="">{t('chat.browser.pace.settings')}</option>
+            <option value="human">{t('settings.computer.pace.human')}</option>
+            <option value="fast">{t('settings.computer.pace.fast')}</option>
+          </select>
+        </label>
+      ) : null}
       {anySite || named.length > 0 ? (
         <div className="composer-browser-sites">
           <p className="chat-settings-pop-lead">

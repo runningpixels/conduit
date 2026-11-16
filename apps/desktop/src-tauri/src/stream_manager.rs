@@ -3581,7 +3581,10 @@ impl StreamManager {
             return Err("The browser is turned off for this chat.".to_string());
         }
         let mut chosen = chat::chat_browser_choice(computer.browser.as_deref())?;
-        chosen.pace = crate::browser::pace::Pace::from_setting(computer.pace.as_deref());
+        // The chat's own pace wins over the one in Settings.
+        chosen.pace = chat_browser
+            .pace
+            .unwrap_or_else(|| crate::browser::pace::Pace::from_setting(computer.pace.as_deref()));
         let profile = crate::browser::launch::profile_dir(&state.paths.root);
 
         let prompt = BrowserPromptCtx {
@@ -3654,18 +3657,38 @@ impl StreamManager {
             read_before: None,
         });
 
+        // A long wait before a page load shows on the tool's row, so the
+        // call doesn't look stuck; the row clears it when the wait ends.
+        let on_pause = |pause: Option<crate::browser::pace::Pause>| {
+            let Some(channel) = provider_channel else {
+                return;
+            };
+            let (host, seconds, slow_down) = match pause {
+                Some(p) => (p.host, p.seconds, p.slow_down),
+                None => (String::new(), 0, false),
+            };
+            let _ = channel.send(ProviderEvent::BrowserPausing {
+                request_id: request_id.to_string(),
+                tool_call_id: tool_call_id.to_string(),
+                host,
+                seconds,
+                slow_down,
+            });
+        };
+
         self.browsers.start_sweeper();
         let browser = self.browsers.checkout(conversation_id);
         let result = tokio::select! {
             biased;
             _ = cancel.cancelled() => Err("Stopped: the user stopped this browser call.".to_string()),
-            result = browser.run(
+            result = browser.run_showing_pauses(
                 name,
                 arguments,
                 &chosen,
                 &profile,
                 Some(&ask as &tools::AskFn<'_>),
                 act_ctx.as_ref(),
+                Some(&on_pause as &crate::browser::pace::OnPause<'_>),
             ) => result.map_err(|e| e.for_model()),
         };
         // Pauses the pace asked for are the browser's, not the agent's: they

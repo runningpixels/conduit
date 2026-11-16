@@ -7,11 +7,11 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ChatProse } from './ChatProse';
 import type { AssistantStreamState, ContentBlockState, ToolCallState, TurnSegment, UserNote } from './streamState';
-import { toolCallAwaitsReader } from './streamState';
+import { allToolCalls, toolCallAwaitsReader } from './streamState';
 import type { Artifact, FileState } from '../ipc/contracts';
 import type { ArtifactCandidate } from './artifactCandidates';
 import { ChevronRight } from '../icons';
-import { ToolCallBlock } from './ToolCallBlock';
+import { ToolCallBlock, browserPauseText } from './ToolCallBlock';
 import { SavedFileCards } from './SavedFileCards';
 import { HandoffLine, HandoffWaitingLabel } from './HandoffLine';
 import { AskUserBlock } from './AskUserBlock';
@@ -306,6 +306,15 @@ export function TurnBody({
   // behind the summary line, which opens the full activity. Errors are
   // excluded, as in the summary: they already show inline.
   const shownSteps = useMemo(() => ownSteps.slice(0, INLINE_STEP_ROWS), [ownSteps]);
+  // A browser call waiting before a page load says so on its row (a step's
+  // id is its tool call's), so a long wait doesn't look stuck.
+  const pauses = useMemo(
+    () =>
+      new Map(
+        allToolCalls(state).flatMap((tc) => (tc.browserPause ? [[tc.toolCallId, tc.browserPause] as const] : [])),
+      ),
+    [state],
+  );
   const text = state.blocks
     .filter((b) => b.blockKind !== 'thinking' && b.blockKind !== 'reasoning')
     .map((b) => b.content)
@@ -370,8 +379,12 @@ export function TurnBody({
   }
 
   const lineStatus = stepLineStatus(activity);
+  // A wait on a step past the rows shown says so on the summary line instead.
+  const shownIds = new Set(shownSteps.map((step) => step.id));
+  const hiddenPause = [...pauses].find(([id]) => !shownIds.has(id))?.[1];
   const stepLineText = [
     t('chat.activity.steps', { count: activity.steps }),
+    hiddenPause ? browserPauseText(hiddenPause, t) : '',
     activity.sites > 0 ? t('chat.activity.sites', { count: activity.sites }) : '',
     activity.failed > 0 ? t('chat.activity.failed', { count: activity.failed }) : '',
     activity.needsYou ? t('chat.activity.needsYou') : '',
@@ -405,7 +418,8 @@ export function TurnBody({
     <div key="turn-steps-block" className="turn-step-block">
       <ol className="turn-step-rows">
         {shownSteps.map((step) => {
-          const detail = stepDetail(step, t, fmt);
+          const pause = pauses.get(step.id);
+          const detail = pause ? browserPauseText(pause, t) : stepDetail(step, t, fmt);
           return (
             <li key={step.id}>
               <button

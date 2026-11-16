@@ -279,6 +279,7 @@ fn main() {
             get_conversation_browser,
             set_conversation_browser,
             set_conversation_browser_sites,
+            set_conversation_browser_pace,
             answer_browser_action,
             answer_browser_question,
             dictation_status,

@@ -56,3 +56,50 @@ describe('a downloaded file in a finished reply', () => {
     expect(cards()).toHaveLength(1);
   });
 });
+
+describe('a browser call waiting before a page load', () => {
+  const opening: ToolCallState = {
+    toolCallId: 'o1',
+    toolId: 'open_page',
+    name: 'open_page',
+    argumentsText: '{"url":"https://news.ycombinator.com/"}',
+    arguments: { url: 'https://news.ycombinator.com/' },
+    complete: true,
+    startedAt: 1,
+    status: 'running',
+    browserPause: { host: 'news.ycombinator.com', seconds: 30, slowDown: true },
+  };
+  const streaming: AssistantStreamState = {
+    ...createAssistantStreamState('req-2'),
+    streaming: true,
+    toolCalls: [opening],
+    segments: [{ kind: 'tool', toolCallId: 'o1' }],
+  };
+
+  it('says so on its step row', () => {
+    render(<AssistantMessage state={streaming} provider="openrouter" />);
+    const row = document.querySelector('.turn-step-row');
+    expect(row?.textContent).toContain('news.ycombinator.com asked to slow down, waiting 30 s');
+  });
+
+  it('says so on the summary line when its step is past the rows shown', () => {
+    const done = (n: number): ToolCallState => ({
+      ...opening,
+      toolCallId: `d${n}`,
+      status: 'completed',
+      endedAt: 2,
+      browserPause: undefined,
+    });
+    const many: AssistantStreamState = {
+      ...streaming,
+      toolCalls: [done(1), done(2), done(3), done(4), opening],
+      segments: ['d1', 'd2', 'd3', 'd4', 'o1'].map((toolCallId) => ({ kind: 'tool' as const, toolCallId })),
+    };
+    render(<AssistantMessage state={many} provider="openrouter" />);
+    const rows = [...document.querySelectorAll('.turn-step-row')].map((r) => r.textContent ?? '');
+    expect(rows.some((r) => r.includes('slow down'))).toBe(false);
+    expect(document.querySelector('.turn-steps-label')?.textContent).toContain(
+      'news.ycombinator.com asked to slow down, waiting 30 s',
+    );
+  });
+});

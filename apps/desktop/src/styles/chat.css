@@ -2438,6 +2438,7 @@ html[data-reduce-motion="on"] .turn-doc-line.live .live-dot { animation: none; }
 /* The chat's browser ticks: "Let it click and type" sits under "Use the browser". */
 .composer-browser-list .composer-browser-nested { padding-left: 22px; }
 .composer-browser-off { color: var(--ink-2); }
+.composer-browser-pace { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 8px; font-size: var(--fs-xl); }
 .composer-browser-sites { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .composer-browser-sites .chat-settings-pop-lead { margin: 0; flex: 1 1 auto; }
 

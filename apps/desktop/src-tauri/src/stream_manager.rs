@@ -3644,10 +3644,12 @@ impl StreamManager {
             })
         };
         let secrets = || crate::browser::secrets::saved_secrets(state);
+        let logins = || crate::browser::signins::logins(state);
         let act_ctx = chat_browser.act.then(|| act::ActContext {
             approve: &approve,
             sites: chat_browser.sites.clone(),
             secrets: &secrets,
+            logins: &logins,
             read_before: None,
         });
 

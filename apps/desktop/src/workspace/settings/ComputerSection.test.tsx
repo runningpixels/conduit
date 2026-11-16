@@ -10,6 +10,9 @@ const ipc = vi.hoisted(() => ({
   listBrowsers: vi.fn(),
   resetBrowserProfile: vi.fn(),
   browserRememberedSites: vi.fn(),
+  listBrowserSignIns: vi.fn(),
+  saveBrowserSignIn: vi.fn(),
+  deleteBrowserSignIn: vi.fn(),
 }));
 vi.mock('../../ipc/client', () => ipc);
 
@@ -26,6 +29,7 @@ beforeEach(() => {
   ]);
   ipc.resetBrowserProfile.mockResolvedValue(undefined);
   ipc.browserRememberedSites.mockResolvedValue([]);
+  ipc.listBrowserSignIns.mockResolvedValue([]);
   ipc.previewCommandRule.mockResolvedValue({ error: null, covers: ['rm -rf x'], doesNotCover: ['rm file'] });
   ipc.updateSettings.mockImplementation(async (patch: Partial<AppSettings>) => patch as AppSettings);
 });

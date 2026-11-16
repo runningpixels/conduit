@@ -16,6 +16,7 @@ pub mod launch;
 pub mod look;
 pub mod rules;
 pub mod secrets;
+pub mod signins;
 #[cfg(windows)]
 mod spawn_windows;
 pub mod tools;

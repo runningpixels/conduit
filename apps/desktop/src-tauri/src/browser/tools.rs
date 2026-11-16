@@ -418,6 +418,12 @@ impl RunBrowser {
                 .await;
             }
         }
+        // A saved sign-in's password never reaches the model, even when a
+        // page shows it back.
+        if let (Some(ctx), Ok(page)) = (act, result.as_mut()) {
+            let passwords: Vec<String> = (ctx.logins)().into_iter().map(|l| l.password).collect();
+            super::signins::hide_passwords(page, &passwords);
+        }
         // A browser that went away takes its tab with it: the next call starts afresh.
         if slot.as_ref().is_some_and(|tab| tab.cdp.is_closed()) {
             if let Some(tab) = slot.take() {
@@ -1678,6 +1684,41 @@ mod tests {
                         )
                     } else if first.starts_with("GET /prices.csv ") {
                         ("200 OK", "item,price\nsoap,2\n")
+                    } else if first.starts_with("GET /signin ") {
+                        // A sign-in form with both fields, below a search form.
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Sign in</title></head><body><main><h1>Sign in</h1>\
+                             <form action=\"/search\" method=\"get\"><input name=\"q\" aria-label=\"Search\"></form>\
+                             <form action=\"/signed-in\" method=\"get\"><input name=\"user\" autocomplete=\"username\" aria-label=\"Email\"><input type=\"password\" name=\"pw\" aria-label=\"Password\"><button>Sign in</button></form></main></body></html>",
+                        )
+                    } else if first.starts_with("GET /signin-step ") {
+                        // The username first, then the password on the next page.
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Sign in</title></head><body><main><h1>Sign in</h1>\
+                             <form action=\"/signin-step2\" method=\"get\"><input type=\"email\" name=\"user\" aria-label=\"Email address\"><button>Next</button></form></main></body></html>",
+                        )
+                    } else if first.starts_with("GET /signin-step2?") {
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Password</title></head><body><main><h1>Enter your password</h1>\
+                             <form action=\"/signed-in\" method=\"get\"><input type=\"hidden\" name=\"user\" value=\"me@example.com\"><input type=\"password\" name=\"pw\" aria-label=\"Password\"><button>Sign in</button></form></main></body></html>",
+                        )
+                    } else if first
+                        .starts_with("GET /signed-in?user=me%40example.com&pw=right-password-123 ")
+                    {
+                        // Signed in; the page shows the password back.
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Welcome</title></head><body><main><h1>Welcome back</h1><p>You signed in with right-password-123.</p></main></body></html>",
+                        )
+                    } else if first.starts_with("GET /signed-in?") {
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Sign in</title></head><body><main><h1>Wrong password</h1>\
+                             <form action=\"/signed-in\" method=\"get\"><input name=\"user\" autocomplete=\"username\" aria-label=\"Email\"><input type=\"password\" name=\"pw\" aria-label=\"Password\"><button>Sign in</button></form></main></body></html>",
+                        )
                     } else if first.starts_with("GET /results?q=") {
                         (
                             "200 OK",
@@ -2108,6 +2149,7 @@ mod tests {
             approve: &approve,
             sites: Vec::new(),
             secrets: &secrets,
+            logins: &|| Vec::new(),
             read_before: Some("a web page".to_string()),
         };
         let run = RunBrowser::default();
@@ -2416,6 +2458,154 @@ soap,2
             );
         }
 
+        run.close().await;
+    }
+
+    /// Signs in with a saved sign-in on local pages in the installed browser:
+    /// both fields at once, a username step then a password step, a wrong
+    /// password handed to the person, and a run nobody watches. Run by hand:
+    /// `CONDUIT_BROWSER_ALLOW_LOOPBACK=1 cargo test -p conduit-desktop --lib browser::tools::tests::signs_in -- --ignored --nocapture --test-threads=1`
+    #[tokio::test]
+    #[ignore = "launches the installed browser"]
+    async fn signs_in_with_a_saved_sign_in() {
+        use crate::browser::act::{ActContext, Approval, ApproveFuture, SIGN_IN_TOOL};
+        use crate::browser::signins::{SavedLogin, SavedSignIn, HIDDEN};
+        use crate::workflows::actions::{BrowserAskReason, BrowserRequest};
+
+        assert!(
+            crate::browser::guard::loopback_allowed(),
+            "set CONDUIT_BROWSER_ALLOW_LOOPBACK=1"
+        );
+        let Some((browser, exe)) = crate::browser::detect::installed_now().into_iter().next()
+        else {
+            panic!("no browser installed");
+        };
+        let profile = tempfile::tempdir().unwrap();
+        let profile = profile.path().join("browser-profile");
+        let port = serve_js_only_page().await;
+        let chosen = Chosen { browser, exe };
+
+        let asked: Arc<Mutex<Vec<BrowserRequest>>> = Arc::default();
+        let log = asked.clone();
+        let approve = move |request: BrowserRequest| -> ApproveFuture<'_> {
+            let log = log.clone();
+            Box::pin(async move {
+                log.lock().unwrap().push(request);
+                Approval::Go { remember: false }
+            })
+        };
+        let password = Arc::new(Mutex::new("right-password-123".to_string()));
+        let pw = password.clone();
+        let logins = move || {
+            vec![SavedLogin {
+                entry: SavedSignIn {
+                    site: "127.0.0.1".to_string(),
+                    username: "me@example.com".to_string(),
+                    include_subdomains: false,
+                    unattended: false,
+                },
+                password: pw.lock().unwrap().clone(),
+            }]
+        };
+        let secrets = Vec::new;
+        let ctx = ActContext {
+            approve: &approve,
+            sites: Vec::new(),
+            secrets: &secrets,
+            logins: &logins,
+            read_before: None,
+        };
+        let questions: Arc<Mutex<Vec<String>>> = Arc::default();
+        let heard = questions.clone();
+        let ask = move |question: BrowserAsk, _decline: &'static str| -> AskFuture<'_> {
+            let heard = heard.clone();
+            Box::pin(async move {
+                heard.lock().unwrap().push(question.text);
+                true
+            })
+        };
+        let run = RunBrowser::default();
+        let call = |name: &'static str, args: Value, attended: bool| {
+            let run = &run;
+            let chosen = &chosen;
+            let profile = &profile;
+            let ctx = &ctx;
+            let ask = &ask;
+            async move {
+                run.run(
+                    name,
+                    &args,
+                    chosen,
+                    profile,
+                    attended.then_some(ask as &AskFn<'_>),
+                    Some(ctx),
+                )
+                .await
+            }
+        };
+        let open = |path: &str| json!({ "url": format!("http://127.0.0.1:{port}{path}") });
+        let sign_in = json!({ "why": "to see the account" });
+
+        // Both fields on one page: asks first, fills, and the password the
+        // page shows back is hidden.
+        call(OPEN_PAGE_TOOL, open("/signin"), true)
+            .await
+            .expect("opens");
+        let page = call(SIGN_IN_TOOL, sign_in.clone(), true)
+            .await
+            .expect("signs in");
+        assert_eq!(page["title"], "Welcome", "{page}");
+        assert!(page["signedIn"]
+            .as_str()
+            .unwrap()
+            .contains("me@example.com"));
+        let text = page.to_string();
+        assert!(!text.contains("right-password-123"), "{text}");
+        assert!(text.contains(HIDDEN), "{text}");
+        {
+            let asked = asked.lock().unwrap();
+            assert_eq!(asked.len(), 1);
+            assert_eq!(asked[0].action, "sign_in");
+            assert_eq!(asked[0].reason, BrowserAskReason::SignIn);
+            assert_eq!(asked[0].element_name.as_deref(), Some("me@example.com"));
+            assert!(asked[0].offer_site.is_none());
+        }
+        assert!(questions.lock().unwrap().is_empty());
+
+        // A username page, then a password page.
+        call(OPEN_PAGE_TOOL, open("/signin-step"), true)
+            .await
+            .expect("opens");
+        let page = call(SIGN_IN_TOOL, sign_in.clone(), true)
+            .await
+            .expect("signs in in two steps");
+        assert_eq!(page["title"], "Welcome", "{page}");
+
+        // Nobody watching, and the sign-in doesn't allow that: refused.
+        call(OPEN_PAGE_TOOL, open("/signin"), false)
+            .await
+            .expect("opens");
+        let refused = call(SIGN_IN_TOOL, sign_in.clone(), false)
+            .await
+            .unwrap_err()
+            .for_model();
+        assert!(refused.contains("isn't allowed"), "{refused}");
+
+        // A wrong password: the person is asked to finish.
+        *password.lock().unwrap() = "wrong-password-456".to_string();
+        call(OPEN_PAGE_TOOL, open("/signin"), true)
+            .await
+            .expect("opens");
+        let page = call(SIGN_IN_TOOL, sign_in, true).await.expect("hands over");
+        assert!(page.get("signedIn").is_none(), "{page}");
+        let questions = questions.lock().unwrap().clone();
+        assert_eq!(questions.len(), 1);
+        assert!(
+            questions[0].contains("didn't get through"),
+            "{}",
+            questions[0]
+        );
+        assert!(!page.to_string().contains("wrong-password-456"));
         run.close().await;
     }
 }

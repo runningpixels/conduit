@@ -1015,6 +1015,7 @@ impl ConnectorTools<'_, '_> {
                 Box::pin(self.approve_browser(request))
             };
             let secrets = || crate::browser::secrets::saved_secrets(exec.runner.state);
+            let logins = || crate::browser::signins::logins(exec.runner.state);
             let act = if self.browser_act {
                 let state = exec.runner.state;
                 let sites = repo::get_action_rules(&state.db, &state.encryption, exec.workflow_id)
@@ -1025,6 +1026,7 @@ impl ConnectorTools<'_, '_> {
                     approve: &approve,
                     sites,
                     secrets: &secrets,
+                    logins: &logins,
                     read_before: self.taint.describe(),
                 })
             } else {

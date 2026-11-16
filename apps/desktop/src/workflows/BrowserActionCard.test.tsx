@@ -148,6 +148,13 @@ describe('ActionCard for a browser action', () => {
     expect(screen.getByText('On “Search · GitHub” · github.com')).toBeInTheDocument();
   });
 
+  it('asks to use a saved sign-in by username, never with a password', () => {
+    setup({ ...base, action: 'sign_in', elementName: 'me@example.com', why: 'See the invoices', reason: 'signIn' });
+    expect(screen.getByText('Sign in as “me@example.com” with the saved sign-in')).toBeInTheDocument();
+    expect(screen.getByText(/Saved sign-ins always ask first/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Always on/ })).toBeNull();
+  });
+
   it('lists what the step did so far', () => {
     setup({
       ...newSite,

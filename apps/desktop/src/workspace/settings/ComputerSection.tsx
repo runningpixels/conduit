@@ -14,6 +14,7 @@ import { useT } from '../../i18n';
 import { CommandRuleList, rejectionText } from '../../workflows/CommandRuleList';
 import { usesComputer } from '../../workflows/editorModel';
 import { folderName } from '../../workflows/WorkflowViewParts';
+import { SavedSignIns } from './SavedSignIns';
 
 interface ComputerWorkflow {
   id: string;
@@ -226,6 +227,7 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
           {browserNote.text}
         </p>
       ) : null}
+      <SavedSignIns />
       <CommandRuleList
         label={t('settings.computer.deny.label')}
         hint={t('settings.computer.deny.hint')}

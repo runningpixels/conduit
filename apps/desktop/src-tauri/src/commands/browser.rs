@@ -294,3 +294,30 @@ mod chat_tests {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Saved sign-ins (Settings → Computer)
+// ---------------------------------------------------------------------------
+
+/// The saved sign-ins: sites, usernames and switches, never passwords.
+#[tauri::command]
+pub fn list_browser_sign_ins(state: State<'_, AppState>) -> Vec<browser::signins::SavedSignIn> {
+    browser::signins::list(&state.paths.root)
+}
+
+/// Save or replace a sign-in. An empty password keeps the saved one.
+/// Rejects with `error.browser.badSite`, `error.browser.signInNoUsername`,
+/// `error.browser.signInNoPassword` or `error.browser.signInSaveFailed`.
+#[tauri::command]
+pub fn save_browser_sign_in(
+    state: State<'_, AppState>,
+    sign_in: browser::signins::SignInInput,
+) -> Result<browser::signins::SavedSignIn, AppError> {
+    browser::signins::save(&state, sign_in)
+}
+
+/// Delete a sign-in and its password.
+#[tauri::command]
+pub fn delete_browser_sign_in(state: State<'_, AppState>, site: String) -> Result<(), AppError> {
+    browser::signins::delete(&state, &site)
+}

@@ -56,3 +56,29 @@ describe('a downloaded file in a finished reply', () => {
     expect(cards()).toHaveLength(1);
   });
 });
+
+describe('a browser call waiting before a page load', () => {
+  const opening: ToolCallState = {
+    toolCallId: 'o1',
+    toolId: 'open_page',
+    name: 'open_page',
+    argumentsText: '{"url":"https://news.ycombinator.com/"}',
+    arguments: { url: 'https://news.ycombinator.com/' },
+    complete: true,
+    startedAt: 1,
+    status: 'running',
+    browserPause: { host: 'news.ycombinator.com', seconds: 30, slowDown: true },
+  };
+  const streaming: AssistantStreamState = {
+    ...createAssistantStreamState('req-2'),
+    streaming: true,
+    toolCalls: [opening],
+    segments: [{ kind: 'tool', toolCallId: 'o1' }],
+  };
+
+  it('says so on its step row', () => {
+    render(<AssistantMessage state={streaming} provider="openrouter" />);
+    const row = document.querySelector('.turn-step-row');
+    expect(row?.textContent).toContain('news.ycombinator.com asked to slow down, waiting 30 s');
+  });
+});

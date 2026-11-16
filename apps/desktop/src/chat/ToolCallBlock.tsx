@@ -48,6 +48,13 @@ function callLabel(toolCall: ToolCallState): string {
   return toolCall.toolCallId.slice(0, 8);
 }
 
+/** What a browser call waiting before a page load says, so it doesn't look stuck. */
+export function browserPauseText(pause: NonNullable<ToolCallState['browserPause']>, t: Translate): string {
+  return pause.slowDown
+    ? t('chat.toolCall.status.browserSlowDown', { host: pause.host, seconds: pause.seconds })
+    : t('chat.toolCall.status.browserPausing', { host: pause.host });
+}
+
 function callTone(toolCall: ToolCallState): 'ok' | 'fail' | 'run' {
   if (toolCall.status === 'failed' || toolCall.status === 'cancelled') return 'fail';
   if (toolCall.complete) return 'ok';
@@ -177,9 +184,7 @@ export function ToolCallBlock({
     : writing
       ? t('chat.toolCall.status.writing')
       : pause
-        ? pause.slowDown
-          ? t('chat.toolCall.status.browserSlowDown', { host: pause.host, seconds: pause.seconds })
-          : t('chat.toolCall.status.browserPausing', { host: pause.host })
+        ? browserPauseText(pause, t)
         : anyRunning
           ? t('chat.toolCall.status.running')
           : '';

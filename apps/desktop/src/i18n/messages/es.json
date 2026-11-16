@@ -3865,7 +3865,7 @@
   "chat.toolCall.browser.chose": "Opción elegida",
   "chat.toolCall.browser.scrolled": "Desplazado",
   "chat.toolCall.browser.wentBack": "Volvió atrás",
-  "chat.toolCall.browser.askedSignIn": "Te pidió que iniciaras sesión",
+  "chat.toolCall.browser.askedSignIn": "Inicio de sesión",
   "chat.toolCall.file.save": "Guardar como…",
   "chat.toolCall.file.saveAria": "Guardar {name} como…",
   "chat.toolCall.file.saveFailed": "No se pudo guardar el archivo: {error}",

@@ -3865,7 +3865,7 @@
   "chat.toolCall.browser.chose": "Chose",
   "chat.toolCall.browser.scrolled": "Scrolled",
   "chat.toolCall.browser.wentBack": "Went back",
-  "chat.toolCall.browser.askedSignIn": "Asked you to sign in",
+  "chat.toolCall.browser.askedSignIn": "Sign in",
   "chat.toolCall.file.save": "Save as…",
   "chat.toolCall.file.saveAria": "Save {name} as…",
   "chat.toolCall.file.saveFailed": "Couldn’t save the file: {error}",

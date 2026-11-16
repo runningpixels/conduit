@@ -1692,6 +1692,17 @@ mod tests {
                              <form action=\"/search\" method=\"get\"><input name=\"q\" aria-label=\"Search\"></form>\
                              <form action=\"/signed-in\" method=\"get\"><input name=\"user\" autocomplete=\"username\" aria-label=\"Email\"><input type=\"password\" name=\"pw\" aria-label=\"Password\"><button>Sign in</button></form></main></body></html>",
                         )
+                    } else if first.starts_with("GET /signin-script ") {
+                        // No form: only a click on the button signs in (Enter does nothing).
+                        (
+                            "200 OK",
+                            "<!doctype html><html><head><title>Sign in</title></head><body><main><h1>Sign in</h1>\
+                             <div><input id=\"u\" name=\"username\"><input id=\"p\" type=\"password\" name=\"password\">\
+                             <button id=\"forgot\">Forgot password?</button><button id=\"go\">Submit</button></div>\
+                             <script>document.getElementById('go').addEventListener('click', () => { location.href = '/signed-in?user=' \
+                             + encodeURIComponent(document.getElementById('u').value) + '&pw=' + encodeURIComponent(document.getElementById('p').value); });</script>\
+                             </main></body></html>",
+                        )
                     } else if first.starts_with("GET /signin-step ") {
                         // The username first, then the password on the next page.
                         (
@@ -2579,6 +2590,15 @@ soap,2
         let page = call(SIGN_IN_TOOL, sign_in.clone(), true)
             .await
             .expect("signs in in two steps");
+        assert_eq!(page["title"], "Welcome", "{page}");
+
+        // No form, only a button with a click handler: the button is clicked.
+        call(OPEN_PAGE_TOOL, open("/signin-script"), true)
+            .await
+            .expect("opens");
+        let page = call(SIGN_IN_TOOL, sign_in.clone(), true)
+            .await
+            .expect("signs in with the button");
         assert_eq!(page["title"], "Welcome", "{page}");
 
         // Nobody watching, and the sign-in doesn't allow that: refused.

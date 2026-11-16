@@ -3865,7 +3865,7 @@
   "chat.toolCall.browser.chose": "선택함",
   "chat.toolCall.browser.scrolled": "스크롤함",
   "chat.toolCall.browser.wentBack": "뒤로 감",
-  "chat.toolCall.browser.askedSignIn": "로그인을 요청함",
+  "chat.toolCall.browser.askedSignIn": "로그인",
   "chat.toolCall.file.save": "다른 이름으로 저장…",
   "chat.toolCall.file.saveAria": "{name}을(를) 다른 이름으로 저장…",
   "chat.toolCall.file.saveFailed": "파일을 저장하지 못했습니다: {error}",

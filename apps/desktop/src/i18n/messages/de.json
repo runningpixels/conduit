@@ -3865,7 +3865,7 @@
   "chat.toolCall.browser.chose": "Ausgewählt",
   "chat.toolCall.browser.scrolled": "Gescrollt",
   "chat.toolCall.browser.wentBack": "Zurückgegangen",
-  "chat.toolCall.browser.askedSignIn": "Hat dich gebeten, dich anzumelden",
+  "chat.toolCall.browser.askedSignIn": "Anmeldung",
   "chat.toolCall.file.save": "Speichern unter …",
   "chat.toolCall.file.saveAria": "{name} speichern unter …",
   "chat.toolCall.file.saveFailed": "Die Datei konnte nicht gespeichert werden: {error}",

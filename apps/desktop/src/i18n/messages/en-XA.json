@@ -3858,7 +3858,7 @@
   "chat.toolCall.browser.chose": "[Çĥöšé ——]",
   "chat.toolCall.browser.scrolled": "[Šçŕöļļéḍ ————]",
   "chat.toolCall.browser.wentBack": "[Ŵéñť ḅàçķ ————]",
-  "chat.toolCall.browser.askedSignIn": "[Àšķéḍ ýöü ťö šîĝñ îñ —————— ——]",
+  "chat.toolCall.browser.askedSignIn": "[Šîĝñ îñ ———]",
   "chat.toolCall.file.save": "[Šàṽé àš… ————]",
   "chat.toolCall.file.saveAria": "[Šàṽé {name} àš… ————]",
   "chat.toolCall.file.saveFailed": "[Çöüļḍñ’ť šàṽé ťĥé ḟîļé: {error} —————— ————]",

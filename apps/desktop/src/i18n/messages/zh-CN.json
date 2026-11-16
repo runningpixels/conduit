@@ -3865,7 +3865,7 @@
   "chat.toolCall.browser.chose": "已选择",
   "chat.toolCall.browser.scrolled": "已滚动",
   "chat.toolCall.browser.wentBack": "已返回",
-  "chat.toolCall.browser.askedSignIn": "已请你登录",
+  "chat.toolCall.browser.askedSignIn": "登录",
   "chat.toolCall.file.save": "另存为…",
   "chat.toolCall.file.saveAria": "将 {name} 另存为…",
   "chat.toolCall.file.saveFailed": "无法保存文件：{error}",

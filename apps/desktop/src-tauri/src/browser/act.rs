@@ -614,6 +614,8 @@ struct LoginForm {
     host: String,
     user: bool,
     pass: bool,
+    /// A sign-in button was found next to the fields (marked `send`).
+    send: bool,
 }
 
 /// How filling in a saved sign-in went.
@@ -651,7 +653,28 @@ const LOGIN_SCRIPT: &str = r#"(() => { try {
   }
   if (user) user.setAttribute('data-conduit-login', 'user');
   if (pass) pass.setAttribute('data-conduit-login', 'pass');
-  return JSON.stringify({ https: location.protocol === 'https:', host: location.hostname, user: !!user, pass: !!pass });
+  const last = pass || user;
+  let send = null;
+  if (last) {
+    const label = (b) => (b.innerText || b.value || b.getAttribute('aria-label') || '').trim();
+    const other = /forgot|reset|show|hide|reveal|google|apple|facebook|github|microsoft|twitter|passkey|sign ?up|register|create|cancel|back/i;
+    const shownEl = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.disabled; };
+    if (last.form) {
+      send = [...last.form.querySelectorAll('button, input[type=submit], input[type=image]')]
+        .filter((b) => shownEl(b) && (b.tagName !== 'BUTTON' || (b.getAttribute('type') || 'submit').toLowerCase() === 'submit') && !other.test(label(b)))[0] || null;
+    } else {
+      const named = /sign ?in|log ?in|submit|continue|next|anmelden|einloggen|weiter|connexion|se connecter|continuer|suivant|iniciar|entrar|continuar|siguiente|ログイン|次へ|로그인|다음|登录|下一步/i;
+      for (let box = last.parentElement, up = 0; box && box !== document.body && up < 6; box = box.parentElement, up++) {
+        const after = [...box.querySelectorAll('button, input[type=submit], input[type=button], [role=button]')]
+          .filter((b) => shownEl(b) && (last.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) && !other.test(label(b)));
+        send = after.find((b) => named.test(label(b))) || (after.length === 1 ? after[0] : null);
+        if (send || after.length > 1) break;
+      }
+    }
+    if (send) send.setAttribute('data-conduit-login', 'send');
+  }
+  return JSON.stringify({ https: location.protocol === 'https:', host: location.hostname, user: !!user, pass: !!pass, send: !!send });
 } catch (e) { return '{}'; } })()"#;
 
 async fn find_login(tab: &Tab) -> Result<LoginForm, BrowserError> {
@@ -662,7 +685,53 @@ async fn find_login(tab: &Tab) -> Result<LoginForm, BrowserError> {
         host,
         user: raw["user"].as_bool().unwrap_or(false),
         pass: raw["pass"].as_bool().unwrap_or(false),
+        send: raw["send"].as_bool().unwrap_or(false),
     })
+}
+
+/// Where the marked sign-in button is, scrolled into view, while the page is
+/// still on `host` over https.
+fn locate_send_script(host: &str) -> String {
+    let secure = if plain_http_allowed(host) {
+        "true"
+    } else {
+        "location.protocol === 'https:'"
+    };
+    let host = serde_json::to_string(host).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        r#"(() => {{
+  if (!({secure}) || location.hostname !== {host}) return '{{}}';
+  const el = document.querySelector('[data-conduit-login="send"]');
+  if (!el || !el.isConnected) return '{{}}';
+  el.scrollIntoView({{ block: 'center', inline: 'center' }});
+  const r = el.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return '{{}}';
+  return JSON.stringify({{ x: r.left + r.width / 2, y: r.top + r.height / 2 }});
+}})()"#
+    )
+}
+
+/// Send the filled-in fields: click the sign-in button found next to them,
+/// or press Enter when there is none (or it went).
+async fn send_login(tab: &Tab, form: &LoginForm) -> Result<(), BrowserError> {
+    if form.send {
+        let at: Value =
+            serde_json::from_str(&evaluate(tab, &locate_send_script(&form.host)).await?)
+                .unwrap_or_default();
+        if let (Some(x), Some(y)) = (at["x"].as_f64(), at["y"].as_f64()) {
+            let mouse = |kind: &str| json!({ "type": kind, "x": x, "y": y, "button": "left", "buttons": 1, "clickCount": 1 });
+            input(
+                tab,
+                "Input.dispatchMouseEvent",
+                json!({ "type": "mouseMoved", "x": x, "y": y }),
+            )
+            .await?;
+            input(tab, "Input.dispatchMouseEvent", mouse("mousePressed")).await?;
+            input(tab, "Input.dispatchMouseEvent", mouse("mouseReleased")).await?;
+            return after_action(tab).await;
+        }
+    }
+    press_enter_key(tab).await
 }
 
 /// Plain http for a sign-in only on the integration test's loopback server
@@ -737,7 +806,7 @@ async fn fill_saved(tab: &Tab, login: &super::signins::SavedLogin) -> Result<Fil
             if !fill_field(tab, "pass", &host, &login.password).await? {
                 return Ok(Filled::NoForm);
             }
-            press_enter_key(tab).await?;
+            send_login(tab, &form).await?;
             let after = find_login(tab).await?;
             return Ok(if after.pass && login.entry.covers(&after.host) {
                 Filled::NotThrough
@@ -746,7 +815,7 @@ async fn fill_saved(tab: &Tab, login: &super::signins::SavedLogin) -> Result<Fil
             });
         }
         // A username step: send it and look for the password step.
-        press_enter_key(tab).await?;
+        send_login(tab, &form).await?;
         form = find_login(tab).await?;
         if !form.pass {
             return Ok(Filled::NotThrough);

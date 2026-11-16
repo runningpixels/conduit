@@ -3865,7 +3865,7 @@
   "chat.toolCall.browser.chose": "選択しました",
   "chat.toolCall.browser.scrolled": "スクロールしました",
   "chat.toolCall.browser.wentBack": "前のページに戻りました",
-  "chat.toolCall.browser.askedSignIn": "サインインを依頼しました",
+  "chat.toolCall.browser.askedSignIn": "サインイン",
   "chat.toolCall.file.save": "名前を付けて保存…",
   "chat.toolCall.file.saveAria": "{name} を名前を付けて保存…",
   "chat.toolCall.file.saveFailed": "ファイルを保存できませんでした: {error}",

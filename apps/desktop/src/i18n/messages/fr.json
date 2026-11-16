@@ -3814,13 +3814,9 @@
   "onboarding.provider.dictationLater": "La saisie vocale nécessite une clé OpenAI, OpenRouter ou Groq. Vous pourrez en ajouter une plus tard dans Paramètres → Voix.",
   "settings.computer.browser.label": "Navigateur",
   "settings.computer.browser.help": "Les agents utilisent ce navigateur avec son propre profil, séparé de votre navigation habituelle et connecté à rien. Automatique pose la question la première fois si plusieurs sont installés.",
-
   "settings.computer.pace.label": "Rythme de navigation",
-
   "settings.computer.pace.help": "Humain marque des pauses entre les étapes, tape quelques lettres à la fois et espace le chargement des pages : les sites voient un visiteur poli et vous pouvez suivre. Rapide va à la vitesse de la machine. Dans les deux cas, le navigateur ralentit quand un site le demande. Les exécutions que personne ne surveille utilisent toujours Humain.",
-
   "settings.computer.pace.human": "Humain",
-
   "settings.computer.pace.fast": "Rapide",
   "settings.computer.browser.automatic": "Automatique",
   "settings.computer.browser.none": "Aucun navigateur trouvé. Les agents ont besoin de Microsoft Edge, Google Chrome, Brave ou Chromium pour lire les pages qui nécessitent des scripts.",

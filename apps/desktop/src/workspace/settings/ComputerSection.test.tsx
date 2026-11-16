@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { AppSettings } from "../../ipc/contracts";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { AppSettings } from '../../ipc/contracts';
 
 const ipc = vi.hoisted(() => ({
   updateSettings: vi.fn(),
@@ -14,477 +14,221 @@ const ipc = vi.hoisted(() => ({
   saveBrowserSignIn: vi.fn(),
   deleteBrowserSignIn: vi.fn(),
 }));
-vi.mock("../../ipc/client", () => ipc);
+vi.mock('../../ipc/client', () => ipc);
 
-import { ComputerSection } from "./ComputerSection";
+import { ComputerSection } from './ComputerSection';
 
-const settings = (workflowComputer?: {
-  enabled: boolean;
-  deny: string[];
-  browser?: string;
-  pace?: string;
-}) => ({ workflowComputer }) as unknown as AppSettings;
+const settings = (workflowComputer?: { enabled: boolean; deny: string[]; browser?: string; pace?: string }) => ({ workflowComputer }) as unknown as AppSettings;
 
 beforeEach(() => {
   vi.resetAllMocks();
   ipc.listWorkflows.mockResolvedValue([]);
   ipc.listBrowsers.mockResolvedValue([
-    { id: "edge", name: "Microsoft Edge" },
-    { id: "chrome", name: "Google Chrome" },
+    { id: 'edge', name: 'Microsoft Edge' },
+    { id: 'chrome', name: 'Google Chrome' },
   ]);
   ipc.resetBrowserProfile.mockResolvedValue(undefined);
   ipc.browserRememberedSites.mockResolvedValue([]);
   ipc.listBrowserSignIns.mockResolvedValue([]);
-  ipc.previewCommandRule.mockResolvedValue({
-    error: null,
-    covers: ["rm -rf x"],
-    doesNotCover: ["rm file"],
-  });
-  ipc.updateSettings.mockImplementation(
-    async (patch: Partial<AppSettings>) => patch as AppSettings,
-  );
+  ipc.previewCommandRule.mockResolvedValue({ error: null, covers: ['rm -rf x'], doesNotCover: ['rm file'] });
+  ipc.updateSettings.mockImplementation(async (patch: Partial<AppSettings>) => patch as AppSettings);
 });
 
-describe("ComputerSection", () => {
-  it("explains the limits and is off when nothing is saved", () => {
+describe('ComputerSection', () => {
+  it('explains the limits and is off when nothing is saved', () => {
     render(<ComputerSection settings={settings()} onUpdate={vi.fn()} />);
-    expect(
-      screen.getByRole("checkbox", { name: "Let workflows use this computer" }),
-    ).not.toBeChecked();
-    expect(
-      screen.getByText("Agents work in a workflow’s folder."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Commands ask first, unless a rule allows them."),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Let workflows use this computer' })).not.toBeChecked();
+    expect(screen.getByText('Agents work in a workflow’s folder.')).toBeInTheDocument();
+    expect(screen.getByText('Commands ask first, unless a rule allows them.')).toBeInTheDocument();
     expect(screen.getByText(/Some commands always ask/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/kept inside the workflow’s folder/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/kept inside the workflow’s folder/)).toBeInTheDocument();
   });
 
-  it("calls the global list “Always ask first” and suggests a rule worth asking about", () => {
-    render(
-      <ComputerSection
-        settings={settings({ enabled: true, deny: [] })}
-        onUpdate={vi.fn()}
-      />,
-    );
-    expect(
-      screen.getByRole("group", { name: "Always ask first (all workflows)" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/asks every time in every workflow/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("textbox", { name: /New rule for/ }),
-    ).toHaveAttribute("placeholder", "git push *");
+  it('calls the global list “Always ask first” and suggests a rule worth asking about', () => {
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    expect(screen.getByRole('group', { name: 'Always ask first (all workflows)' })).toBeInTheDocument();
+    expect(screen.getByText(/asks every time in every workflow/)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /New rule for/ })).toHaveAttribute('placeholder', 'git push *');
     expect(screen.queryByText(/never run/i)).toBeNull();
   });
 
-  it("lists the workflows that use the computer, with their folders", async () => {
-    const agent = {
-      id: "a",
-      type: "agent" as const,
-      prompt: "p",
-      tools: ["computer"],
-    };
-    ipc.listWorkflows.mockResolvedValue([
-      { id: "w1" },
-      { id: "w2" },
-      { id: "w3" },
-    ]);
+  it('lists the workflows that use the computer, with their folders', async () => {
+    const agent = { id: 'a', type: 'agent' as const, prompt: 'p', tools: ['computer'] };
+    ipc.listWorkflows.mockResolvedValue([{ id: 'w1' }, { id: 'w2' }, { id: 'w3' }]);
     ipc.getWorkflow.mockImplementation(async (id: string) =>
-      id === "w1"
-        ? {
-            id,
-            name: "Fix the shop",
-            definition: { folder: "C:/work/demo-shop", steps: [agent] },
-          }
-        : id === "w2"
-          ? {
-              id,
-              name: "Briefing",
-              definition: {
-                steps: [{ id: "t", type: "template", template: "x" }],
-              },
-            }
-          : { id, name: "No folder yet", definition: { steps: [agent] } },
+      id === 'w1'
+        ? { id, name: 'Fix the shop', definition: { folder: 'C:/work/demo-shop', steps: [agent] } }
+        : id === 'w2'
+          ? { id, name: 'Briefing', definition: { steps: [{ id: 't', type: 'template', template: 'x' }] } }
+          : { id, name: 'No folder yet', definition: { steps: [agent] } },
     );
-    render(
-      <ComputerSection
-        settings={settings({ enabled: true, deny: [] })}
-        onUpdate={vi.fn()}
-      />,
-    );
-    expect(
-      await screen.findByText("Fix the shop · demo-shop"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("No folder yet · no folder yet"),
-    ).toBeInTheDocument();
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    expect(await screen.findByText('Fix the shop · demo-shop')).toBeInTheDocument();
+    expect(screen.getByText('No folder yet · no folder yet')).toBeInTheDocument();
     expect(screen.queryByText(/Briefing/)).toBeNull();
   });
 
-  it("says when no workflow uses the computer", async () => {
-    render(
-      <ComputerSection
-        settings={settings({ enabled: true, deny: [] })}
-        onUpdate={vi.fn()}
-      />,
-    );
-    expect(
-      await screen.findByText("No workflow uses the computer yet."),
-    ).toBeInTheDocument();
+  it('says when no workflow uses the computer', async () => {
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    expect(await screen.findByText('No workflow uses the computer yet.')).toBeInTheDocument();
   });
 
-  it("turns the switch on and keeps the deny rules", async () => {
+  it('turns the switch on and keeps the deny rules', async () => {
     const onUpdate = vi.fn();
-    render(
-      <ComputerSection
-        settings={settings({ enabled: false, deny: ["rm *"] })}
-        onUpdate={onUpdate}
-      />,
-    );
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "Let workflows use this computer" }),
-    );
+    render(<ComputerSection settings={settings({ enabled: false, deny: ['rm *'] })} onUpdate={onUpdate} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Let workflows use this computer' }));
     await waitFor(() =>
-      expect(ipc.updateSettings).toHaveBeenCalledWith({
-        workflowComputer: { enabled: true, deny: ["rm *"], pace: "human" },
-      }),
+      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['rm *'], pace: 'human' } }),
     );
     await waitFor(() => expect(onUpdate).toHaveBeenCalled());
   });
 
-  it("previews a deny rule while typing, then adds it", async () => {
-    render(
-      <ComputerSection
-        settings={settings({ enabled: true, deny: [] })}
-        onUpdate={vi.fn()}
-      />,
-    );
-    const box = screen.getByRole("textbox", { name: /New rule for/ });
-    fireEvent.change(box, { target: { value: "rm -rf *" } });
-    expect(await screen.findByText("rm -rf x")).toBeInTheDocument();
-    expect(screen.getByText("rm file")).toBeInTheDocument();
-    expect(ipc.previewCommandRule).toHaveBeenCalledWith("rm -rf *");
-    fireEvent.click(screen.getByRole("button", { name: /Add a rule to/ }));
+  it('previews a deny rule while typing, then adds it', async () => {
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    const box = screen.getByRole('textbox', { name: /New rule for/ });
+    fireEvent.change(box, { target: { value: 'rm -rf *' } });
+    expect(await screen.findByText('rm -rf x')).toBeInTheDocument();
+    expect(screen.getByText('rm file')).toBeInTheDocument();
+    expect(ipc.previewCommandRule).toHaveBeenCalledWith('rm -rf *');
+    fireEvent.click(screen.getByRole('button', { name: /Add a rule to/ }));
     await waitFor(() =>
-      expect(ipc.updateSettings).toHaveBeenCalledWith({
-        workflowComputer: { enabled: true, deny: ["rm -rf *"], pace: "human" },
-      }),
+      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['rm -rf *'], pace: 'human' } }),
     );
   });
 
-  it("shows an unparseable rule inline and will not add it", async () => {
-    ipc.previewCommandRule.mockResolvedValue({
-      error: "A * may only end a rule",
-      covers: [],
-      doesNotCover: [],
-    });
-    render(
-      <ComputerSection
-        settings={settings({ enabled: true, deny: [] })}
-        onUpdate={vi.fn()}
-      />,
-    );
-    fireEvent.change(screen.getByRole("textbox", { name: /New rule for/ }), {
-      target: { value: "a * b" },
-    });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "A * may only end a rule",
-    );
-    expect(
-      screen.getByRole("button", { name: /Add a rule to/ }),
-    ).toBeDisabled();
+  it('shows an unparseable rule inline and will not add it', async () => {
+    ipc.previewCommandRule.mockResolvedValue({ error: 'A * may only end a rule', covers: [], doesNotCover: [] });
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    fireEvent.change(screen.getByRole('textbox', { name: /New rule for/ }), { target: { value: 'a * b' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent('A * may only end a rule');
+    expect(screen.getByRole('button', { name: /Add a rule to/ })).toBeDisabled();
   });
 
-  it("shows the backend error when a save is refused, and keeps the typed rule", async () => {
-    ipc.updateSettings.mockRejectedValue({
-      message: 'Rule "x" does not parse',
-    });
-    render(
-      <ComputerSection
-        settings={settings({ enabled: true, deny: [] })}
-        onUpdate={vi.fn()}
-      />,
-    );
-    const box = screen.getByRole("textbox", { name: /New rule for/ });
-    fireEvent.change(box, { target: { value: "x" } });
-    await screen.findByText("rm -rf x");
-    fireEvent.click(screen.getByRole("button", { name: /Add a rule to/ }));
-    expect(
-      await screen.findByText('Rule "x" does not parse'),
-    ).toBeInTheDocument();
-    expect(box).toHaveValue("x");
+  it('shows the backend error when a save is refused, and keeps the typed rule', async () => {
+    ipc.updateSettings.mockRejectedValue({ message: 'Rule "x" does not parse' });
+    render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+    const box = screen.getByRole('textbox', { name: /New rule for/ });
+    fireEvent.change(box, { target: { value: 'x' } });
+    await screen.findByText('rm -rf x');
+    fireEvent.click(screen.getByRole('button', { name: /Add a rule to/ }));
+    expect(await screen.findByText('Rule "x" does not parse')).toBeInTheDocument();
+    expect(box).toHaveValue('x');
   });
 
-  it("removes a rule", async () => {
-    render(
-      <ComputerSection
-        settings={settings({ enabled: true, deny: ["rm *", "sudo *"] })}
-        onUpdate={vi.fn()}
-      />,
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove the rule rm *" }),
-    );
+  it('removes a rule', async () => {
+    render(<ComputerSection settings={settings({ enabled: true, deny: ['rm *', 'sudo *'] })} onUpdate={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the rule rm *' }));
     await waitFor(() =>
-      expect(ipc.updateSettings).toHaveBeenCalledWith({
-        workflowComputer: { enabled: true, deny: ["sudo *"], pace: "human" },
-      }),
+      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['sudo *'], pace: 'human' } }),
     );
   });
 
-  describe("browser", () => {
-    it("offers Automatic and the installed browsers, on Automatic by default", async () => {
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      const select = screen.getByRole("combobox", { name: "Browser" });
-      expect(
-        await screen.findByRole("option", { name: "Microsoft Edge" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("option", { name: "Google Chrome" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("option", { name: "Automatic" }),
-      ).toBeInTheDocument();
-      expect(select).toHaveValue("");
+  describe('browser', () => {
+    it('offers Automatic and the installed browsers, on Automatic by default', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      const select = screen.getByRole('combobox', { name: 'Browser' });
+      expect(await screen.findByRole('option', { name: 'Microsoft Edge' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Google Chrome' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Automatic' })).toBeInTheDocument();
+      expect(select).toHaveValue('');
       expect(screen.queryByText(/No browser found/)).toBeNull();
     });
 
-    it("saves the chosen browser with the switch and the rules", async () => {
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: ["rm *"] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      await screen.findByRole("option", { name: "Google Chrome" });
-      fireEvent.change(screen.getByRole("combobox", { name: "Browser" }), {
-        target: { value: "chrome" },
-      });
+    it('saves the chosen browser with the switch and the rules', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: ['rm *'] })} onUpdate={vi.fn()} />);
+      await screen.findByRole('option', { name: 'Google Chrome' });
+      fireEvent.change(screen.getByRole('combobox', { name: 'Browser' }), { target: { value: 'chrome' } });
       await waitFor(() =>
         expect(ipc.updateSettings).toHaveBeenCalledWith({
-          workflowComputer: {
-            enabled: true,
-            deny: ["rm *"],
-            browser: "chrome",
-            pace: "human",
-          },
+          workflowComputer: { enabled: true, deny: ['rm *'], browser: 'chrome', pace: 'human' },
         }),
       );
     });
 
-    it("going back to Automatic leaves the browser out", async () => {
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [], browser: "edge" })}
-          onUpdate={vi.fn()}
-        />,
+    it('going back to Automatic leaves the browser out', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: [], browser: 'edge' })} onUpdate={vi.fn()} />);
+      await screen.findByRole('option', { name: 'Microsoft Edge' });
+      expect(screen.getByRole('combobox', { name: 'Browser' })).toHaveValue('edge');
+      fireEvent.change(screen.getByRole('combobox', { name: 'Browser' }), { target: { value: '' } });
+      await waitFor(() =>
+        expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: [], pace: 'human' } }),
       );
-      await screen.findByRole("option", { name: "Microsoft Edge" });
-      expect(screen.getByRole("combobox", { name: "Browser" })).toHaveValue(
-        "edge",
-      );
-      fireEvent.change(screen.getByRole("combobox", { name: "Browser" }), {
-        target: { value: "" },
-      });
+    });
+
+    it('keeps the browser when the switch is toggled', async () => {
+      render(<ComputerSection settings={settings({ enabled: false, deny: ['rm *'], browser: 'edge' })} onUpdate={vi.fn()} />);
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Let workflows use this computer' }));
       await waitFor(() =>
         expect(ipc.updateSettings).toHaveBeenCalledWith({
-          workflowComputer: { enabled: true, deny: [], pace: "human" },
+          workflowComputer: { enabled: true, deny: ['rm *'], browser: 'edge', pace: 'human' },
         }),
       );
     });
 
-    it("keeps the browser when the switch is toggled", async () => {
-      render(
-        <ComputerSection
-          settings={settings({
-            enabled: false,
-            deny: ["rm *"],
-            browser: "edge",
-          })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      fireEvent.click(
-        screen.getByRole("checkbox", {
-          name: "Let workflows use this computer",
-        }),
-      );
+    it('goes at Human pace unless set to Fast, and keeps the pace when other settings change', async () => {
+      const { unmount } = render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      const pace = screen.getByRole('combobox', { name: 'Browsing pace' });
+      expect(pace).toHaveValue('human');
+      fireEvent.change(pace, { target: { value: 'fast' } });
       await waitFor(() =>
-        expect(ipc.updateSettings).toHaveBeenCalledWith({
-          workflowComputer: {
-            enabled: true,
-            deny: ["rm *"],
-            browser: "edge",
-            pace: "human",
-          },
-        }),
-      );
-    });
-
-    it("goes at Human pace unless set to Fast, and keeps the pace when other settings change", async () => {
-      const { unmount } = render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      const pace = screen.getByRole("combobox", { name: "Browsing pace" });
-      expect(pace).toHaveValue("human");
-      fireEvent.change(pace, { target: { value: "fast" } });
-      await waitFor(() =>
-        expect(ipc.updateSettings).toHaveBeenCalledWith({
-          workflowComputer: { enabled: true, deny: [], pace: "fast" },
-        }),
+        expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: [], pace: 'fast' } }),
       );
       unmount();
-      render(
-        <ComputerSection
-          settings={settings({ enabled: false, deny: [], pace: "fast" })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      expect(
-        screen.getByRole("combobox", { name: "Browsing pace" }),
-      ).toHaveValue("fast");
-      fireEvent.click(
-        screen.getByRole("checkbox", {
-          name: "Let workflows use this computer",
-        }),
-      );
+      render(<ComputerSection settings={settings({ enabled: false, deny: [], pace: 'fast' })} onUpdate={vi.fn()} />);
+      expect(screen.getByRole('combobox', { name: 'Browsing pace' })).toHaveValue('fast');
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Let workflows use this computer' }));
       await waitFor(() =>
-        expect(ipc.updateSettings).toHaveBeenCalledWith({
-          workflowComputer: { enabled: true, deny: [], pace: "fast" },
-        }),
+        expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: [], pace: 'fast' } }),
       );
     });
 
-    it("says which browsers agents need when none is found", async () => {
+    it('says which browsers agents need when none is found', async () => {
       ipc.listBrowsers.mockResolvedValue([]);
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      expect(
-        await screen.findByText(
-          /Microsoft Edge, Google Chrome, Brave or Chromium/,
-        ),
-      ).toBeInTheDocument();
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      expect(await screen.findByText(/Microsoft Edge, Google Chrome, Brave or Chromium/)).toBeInTheDocument();
     });
 
-    it("resets the profile and says so", async () => {
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Reset browser profile" }),
-      );
-      expect(
-        await screen.findByText("Browser profile reset."),
-      ).toBeInTheDocument();
+    it('resets the profile and says so', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Reset browser profile' }));
+      expect(await screen.findByText('Browser profile reset.')).toBeInTheDocument();
       expect(ipc.resetBrowserProfile).toHaveBeenCalledTimes(1);
     });
 
-    it("lists the sites the agents’ browser remembers", async () => {
-      ipc.browserRememberedSites.mockResolvedValue([
-        "github.com",
-        "example.org",
-      ]);
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      expect(
-        await screen.findByText(
-          "Signed in or remembered on: github.com, example.org",
-        ),
-      ).toBeInTheDocument();
+    it('lists the sites the agents’ browser remembers', async () => {
+      ipc.browserRememberedSites.mockResolvedValue(['github.com', 'example.org']);
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      expect(await screen.findByText('Signed in or remembered on: github.com, example.org')).toBeInTheDocument();
     });
 
-    it("hides the sites line when there are none", async () => {
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      await waitFor(() =>
-        expect(ipc.browserRememberedSites).toHaveBeenCalled(),
-      );
+    it('hides the sites line when there are none', async () => {
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      await waitFor(() => expect(ipc.browserRememberedSites).toHaveBeenCalled());
       expect(screen.queryByText(/Signed in or remembered on/)).toBeNull();
     });
 
-    it("hides the sites line when reading them fails", async () => {
-      ipc.browserRememberedSites.mockRejectedValue({ message: "no profile" });
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      await waitFor(() =>
-        expect(ipc.browserRememberedSites).toHaveBeenCalled(),
-      );
+    it('hides the sites line when reading them fails', async () => {
+      ipc.browserRememberedSites.mockRejectedValue({ message: 'no profile' });
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      await waitFor(() => expect(ipc.browserRememberedSites).toHaveBeenCalled());
       expect(screen.queryByText(/Signed in or remembered on/)).toBeNull();
     });
 
-    it("reads the sites again after a reset", async () => {
-      ipc.browserRememberedSites
-        .mockResolvedValueOnce(["github.com"])
-        .mockResolvedValue([]);
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      expect(
-        await screen.findByText("Signed in or remembered on: github.com"),
-      ).toBeInTheDocument();
-      fireEvent.click(
-        screen.getByRole("button", { name: "Reset browser profile" }),
-      );
-      await screen.findByText("Browser profile reset.");
-      await waitFor(() =>
-        expect(screen.queryByText(/Signed in or remembered on/)).toBeNull(),
-      );
+    it('reads the sites again after a reset', async () => {
+      ipc.browserRememberedSites.mockResolvedValueOnce(['github.com']).mockResolvedValue([]);
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      expect(await screen.findByText('Signed in or remembered on: github.com')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Reset browser profile' }));
+      await screen.findByText('Browser profile reset.');
+      await waitFor(() => expect(screen.queryByText(/Signed in or remembered on/)).toBeNull());
       expect(ipc.browserRememberedSites).toHaveBeenCalledTimes(2);
     });
 
-    it("shows the translated error when the profile is in use", async () => {
-      ipc.resetBrowserProfile.mockRejectedValue({
-        code: "error.browser.inUse",
-        params: {},
-        fallback: "in use",
-      });
-      render(
-        <ComputerSection
-          settings={settings({ enabled: true, deny: [] })}
-          onUpdate={vi.fn()}
-        />,
-      );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Reset browser profile" }),
-      );
-      expect(
-        await screen.findByText(/being used by a workflow/),
-      ).toBeInTheDocument();
+    it('shows the translated error when the profile is in use', async () => {
+      ipc.resetBrowserProfile.mockRejectedValue({ code: 'error.browser.inUse', params: {}, fallback: 'in use' });
+      render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Reset browser profile' }));
+      expect(await screen.findByText(/being used by a workflow/)).toBeInTheDocument();
     });
   });
 });

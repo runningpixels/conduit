@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { AppSettings } from "../../ipc/contracts";
+import { useEffect, useState } from 'react';
+import type { AppSettings } from '../../ipc/contracts';
 import {
   browserRememberedSites,
   getWorkflow,
@@ -8,16 +8,13 @@ import {
   resetBrowserProfile,
   updateSettings,
   type BrowserInfo,
-} from "../../ipc/client";
-import { translateError } from "../../ipc/errors";
-import { useT } from "../../i18n";
-import {
-  CommandRuleList,
-  rejectionText,
-} from "../../workflows/CommandRuleList";
-import { usesComputer } from "../../workflows/editorModel";
-import { folderName } from "../../workflows/WorkflowViewParts";
-import { SavedSignIns } from "./SavedSignIns";
+} from '../../ipc/client';
+import { translateError } from '../../ipc/errors';
+import { useT } from '../../i18n';
+import { CommandRuleList, rejectionText } from '../../workflows/CommandRuleList';
+import { usesComputer } from '../../workflows/editorModel';
+import { folderName } from '../../workflows/WorkflowViewParts';
+import { SavedSignIns } from './SavedSignIns';
 
 interface ComputerWorkflow {
   id: string;
@@ -43,16 +40,13 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
   const deny = settings.workflowComputer?.deny ?? [];
   const browser = settings.workflowComputer?.browser;
   /// How fast the agents' browser goes; absent means Human.
-  const pace = settings.workflowComputer?.pace === "fast" ? "fast" : "human";
+  const pace = settings.workflowComputer?.pace === 'fast' ? 'fast' : 'human';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /// The browsers found on this machine; null until read.
   const [browsers, setBrowsers] = useState<BrowserInfo[] | null>(null);
   const [resetting, setResetting] = useState(false);
-  const [browserNote, setBrowserNote] = useState<{
-    text: string;
-    failed: boolean;
-  } | null>(null);
+  const [browserNote, setBrowserNote] = useState<{ text: string; failed: boolean } | null>(null);
   /// Hosts the agents' browser has cookies for; empty when none or when they can't be read.
   const [sites, setSites] = useState<string[]>([]);
   /// Bumped after a profile reset so the sites are read again.
@@ -64,30 +58,14 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
     let cancelled = false;
     Promise.resolve()
       .then(() => listWorkflows())
-      .then((list) =>
-        Promise.all(
-          list.map((w) =>
-            getWorkflow(w.id).then(
-              (r) => r,
-              () => null,
-            ),
-          ),
-        ),
-      )
+      .then((list) => Promise.all(list.map((w) => getWorkflow(w.id).then((r) => r, () => null))))
       .then(
         (records) => {
           if (cancelled) return;
           setWorkflows(
             records
-              .filter(
-                (r): r is NonNullable<typeof r> =>
-                  r !== null && usesComputer(r.definition),
-              )
-              .map((r) => ({
-                id: r.id,
-                name: r.name,
-                folder: folderName(r.definition.folder),
-              })),
+              .filter((r): r is NonNullable<typeof r> => r !== null && usesComputer(r.definition))
+              .map((r) => ({ id: r.id, name: r.name, folder: folderName(r.definition.folder) })),
           );
         },
         () => {
@@ -140,7 +118,7 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
     enabled: boolean;
     deny: string[];
     browser?: string | null;
-    pace?: "fast" | "human";
+    pace?: 'fast' | 'human';
   }): Promise<boolean> {
     setSaving(true);
     setError(null);
@@ -167,10 +145,7 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
     setBrowserNote(null);
     try {
       await resetBrowserProfile();
-      setBrowserNote({
-        text: t("settings.computer.browser.resetDone"),
-        failed: false,
-      });
+      setBrowserNote({ text: t('settings.computer.browser.resetDone'), failed: false });
     } catch (e) {
       setBrowserNote({ text: translateError(e, t), failed: true });
     } finally {
@@ -181,37 +156,16 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
 
   return (
     <div className="settings-section">
-      <p
-        style={{
-          marginBottom: 12,
-          fontSize: "var(--fs-xl)",
-          color: "var(--ink-2)",
-        }}
-      >
-        {t("settings.computer.intro")}
-      </p>
-      <ul
-        style={{
-          margin: "0 0 12px",
-          paddingLeft: 18,
-          fontSize: "var(--fs-xl)",
-          color: "var(--ink-2)",
-        }}
-      >
-        <li>{t("settings.computer.point.folder")}</li>
-        <li>{t("settings.computer.point.asks")}</li>
-        <li>{t("settings.computer.point.alwaysAsks")}</li>
-        <li>{t("settings.computer.point.reach")}</li>
+      <p style={{ marginBottom: 12, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>{t('settings.computer.intro')}</p>
+      <ul style={{ margin: '0 0 12px', paddingLeft: 18, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
+        <li>{t('settings.computer.point.folder')}</li>
+        <li>{t('settings.computer.point.asks')}</li>
+        <li>{t('settings.computer.point.alwaysAsks')}</li>
+        <li>{t('settings.computer.point.reach')}</li>
       </ul>
       <label
         htmlFor="workflow-computer-enabled"
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          fontSize: "var(--fs-3xl)",
-          marginBottom: 12,
-        }}
+        style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--fs-3xl)', marginBottom: 12 }}
       >
         <input
           id="workflow-computer-enabled"
@@ -220,28 +174,18 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
           disabled={saving}
           onChange={(e) => void save({ enabled: e.target.checked, deny })}
         />
-        <span>{t("settings.computer.enabled.label")}</span>
+        <span>{t('settings.computer.enabled.label')}</span>
       </label>
       {workflows ? (
-        <div
-          className="settings-computer-workflows"
-          style={{
-            marginBottom: 12,
-            fontSize: "var(--fs-xl)",
-            color: "var(--ink-2)",
-          }}
-        >
-          <p style={{ margin: "0 0 4px", color: "var(--ink)" }}>
-            {t("settings.computer.workflows.label")}
-          </p>
+        <div className="settings-computer-workflows" style={{ marginBottom: 12, fontSize: 'var(--fs-xl)', color: 'var(--ink-2)' }}>
+          <p style={{ margin: '0 0 4px', color: 'var(--ink)' }}>{t('settings.computer.workflows.label')}</p>
           {workflows.length === 0 ? (
-            <p style={{ margin: 0 }}>{t("settings.computer.workflows.none")}</p>
+            <p style={{ margin: 0 }}>{t('settings.computer.workflows.none')}</p>
           ) : (
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               {workflows.map((w) => (
                 <li key={w.id}>
-                  {w.name} ·{" "}
-                  {w.folder ?? t("settings.computer.workflows.noFolder")}
+                  {w.name} · {w.folder ?? t('settings.computer.workflows.noFolder')}
                 </li>
               ))}
             </ul>
@@ -250,98 +194,78 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
       ) : null}
       <div className="srow">
         <span className="srow-text">
-          <b>{t("settings.computer.browser.label")}</b>
-          <small>{t("settings.computer.browser.help")}</small>
+          <b>{t('settings.computer.browser.label')}</b>
+          <small>{t('settings.computer.browser.help')}</small>
         </span>
         <select
           className="sel"
-          aria-label={t("settings.computer.browser.label")}
-          value={browser ?? ""}
+          aria-label={t('settings.computer.browser.label')}
+          value={browser ?? ''}
           disabled={saving}
-          onChange={(e) =>
-            void save({ enabled, deny, browser: e.target.value || null })
-          }
+          onChange={(e) => void save({ enabled, deny, browser: e.target.value || null })}
         >
-          <option value="">{t("settings.computer.browser.automatic")}</option>
+          <option value="">{t('settings.computer.browser.automatic')}</option>
           {(browsers ?? []).map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
             </option>
           ))}
-          {browser && !(browsers ?? []).some((b) => b.id === browser) ? (
-            <option value={browser}>{browser}</option>
-          ) : null}
+          {browser && !(browsers ?? []).some((b) => b.id === browser) ? <option value={browser}>{browser}</option> : null}
         </select>
       </div>
       <div className="srow">
         <span className="srow-text">
-          <b>{t("settings.computer.pace.label")}</b>
-          <small>{t("settings.computer.pace.help")}</small>
+          <b>{t('settings.computer.pace.label')}</b>
+          <small>{t('settings.computer.pace.help')}</small>
         </span>
         <select
           className="sel"
-          aria-label={t("settings.computer.pace.label")}
+          aria-label={t('settings.computer.pace.label')}
           value={pace}
           disabled={saving}
-          onChange={(e) =>
-            void save({
-              enabled,
-              deny,
-              pace: e.target.value === "fast" ? "fast" : "human",
-            })
-          }
+          onChange={(e) => void save({ enabled, deny, pace: e.target.value === 'fast' ? 'fast' : 'human' })}
         >
-          <option value="human">{t("settings.computer.pace.human")}</option>
-          <option value="fast">{t("settings.computer.pace.fast")}</option>
+          <option value="human">{t('settings.computer.pace.human')}</option>
+          <option value="fast">{t('settings.computer.pace.fast')}</option>
         </select>
       </div>
       {browsers && browsers.length === 0 ? (
-        <p className="wf-muted" style={{ margin: "0 0 12px" }}>
-          {t("settings.computer.browser.none")}
+        <p className="wf-muted" style={{ margin: '0 0 12px' }}>
+          {t('settings.computer.browser.none')}
         </p>
       ) : null}
       {sites.length > 0 ? (
-        <p
-          className="wf-muted settings-browser-sites"
-          style={{ margin: "0 0 12px" }}
-        >
-          {t("settings.computer.browser.sites", { sites: sites.join(", ") })}
+        <p className="wf-muted settings-browser-sites" style={{ margin: '0 0 12px' }}>
+          {t('settings.computer.browser.sites', { sites: sites.join(', ') })}
         </p>
       ) : null}
       <div className="srow">
         <span className="srow-text">
-          <small>{t("settings.computer.browser.resetHelp")}</small>
+          <small>{t('settings.computer.browser.resetHelp')}</small>
         </span>
-        <button
-          type="button"
-          className="btn ghost"
-          disabled={resetting}
-          onClick={() => void resetProfile()}
-        >
-          {t("settings.computer.browser.reset")}
+        <button type="button" className="btn ghost" disabled={resetting} onClick={() => void resetProfile()}>
+          {t('settings.computer.browser.reset')}
         </button>
       </div>
       {browserNote ? (
         <p
           role="status"
-          className={browserNote.failed ? "wf-error" : "wf-muted"}
-          style={{ margin: "0 0 12px" }}
+          className={browserNote.failed ? 'wf-error' : 'wf-muted'}
+          style={{ margin: '0 0 12px' }}
         >
           {browserNote.text}
         </p>
       ) : null}
       <SavedSignIns />
       <CommandRuleList
-        label={t("settings.computer.deny.label")}
-        hint={t("settings.computer.deny.hint")}
-        placeholder={t("settings.computer.deny.placeholder")}
+        label={t('settings.computer.deny.label')}
+        hint={t('settings.computer.deny.hint')}
+        placeholder={t('settings.computer.deny.placeholder')}
         rules={deny}
         busy={saving}
         error={error}
         onAdd={(rule) => save({ enabled, deny: [...deny, rule] })}
-        onRemove={(rule) =>
-          void save({ enabled, deny: deny.filter((r) => r !== rule) })
-        }
+        onRemove={(rule) => void save({ enabled, deny: deny.filter((r) => r !== rule) })}
       />
     </div>
   );

@@ -3814,13 +3814,9 @@
   "onboarding.provider.dictationLater": "Voice typing needs an OpenAI, OpenRouter or Groq key. You can add one later in Settings → Voice.",
   "settings.computer.browser.label": "Browser",
   "settings.computer.browser.help": "Agents use this browser with its own profile, separate from your normal browsing and signed in to nothing. Automatic asks the first time when more than one is installed.",
-
   "settings.computer.pace.label": "Browsing pace",
-
   "settings.computer.pace.help": "Human pauses between steps, types a few letters at a time and spaces out page loads, so sites see a polite visitor and you can follow along. Fast goes at machine speed. Either way, the browser slows down when a site asks it to. Runs nobody is watching always use Human.",
-
   "settings.computer.pace.human": "Human",
-
   "settings.computer.pace.fast": "Fast",
   "settings.computer.browser.automatic": "Automatic",
   "settings.computer.browser.none": "No browser found. Agents need Microsoft Edge, Google Chrome, Brave or Chromium to read pages that need scripts.",

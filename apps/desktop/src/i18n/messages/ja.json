@@ -3814,13 +3814,9 @@
   "onboarding.provider.dictationLater": "音声入力には OpenAI、OpenRouter、または Groq のキーが必要です。あとで 設定 → 音声 から追加できます。",
   "settings.computer.browser.label": "ブラウザー",
   "settings.computer.browser.help": "エージェントは、通常のブラウズとは別の専用プロファイルでこのブラウザーを使います。どこにもサインインしていません。「自動」は、複数インストールされている場合に初回だけ確認します。",
-
   "settings.computer.pace.label": "ブラウズの速さ",
-
   "settings.computer.pace.help": "「人間らしく」はステップの間に間を置き、数文字ずつ入力し、ページの読み込みに間隔をあけます。サイトには礼儀正しい訪問者に見え、あなたも動きを追えます。「高速」は機械の速さで進みます。どちらの場合も、サイトに求められればブラウザは速度を落とします。誰も見ていない実行では常に「人間らしく」を使います。",
-
   "settings.computer.pace.human": "人間らしく",
-
   "settings.computer.pace.fast": "高速",
   "settings.computer.browser.automatic": "自動",
   "settings.computer.browser.none": "ブラウザーが見つかりません。スクリプトが必要なページを読むには、Microsoft Edge、Google Chrome、Brave、Chromium のいずれかが必要です。",

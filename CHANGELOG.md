@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.33] - 2026-11-15
+
+The agent's browser can sign in with a password you saved, without the model
+ever seeing it.
+
+### Added
+
+- **Saved sign-ins** (#344). Settings → Computer → Saved sign-ins keeps a
+  site, a username and a password. The password goes to your system's
+  keychain; the list shows only sites and usernames. When the agent needs to
+  sign in to that site, a card asks you first, then the app fills in the
+  form itself, on one page or a username page followed by a password page.
+  The model never gets the password: it can't type it, and wherever a page
+  shows it, the model reads "(saved password hidden)". If the saved sign-in
+  doesn't get through, you're asked to finish. Workflows that run while
+  nobody is watching can use a sign-in only if you turn on its switch, which
+  is off by default.
+
 ## [1.0.0-rc.32] - 2026-11-15
 
 The agent's browser can download files you allow, and can look at the page.

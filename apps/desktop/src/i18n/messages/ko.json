@@ -3814,6 +3814,14 @@
   "onboarding.provider.dictationLater": "음성 입력에는 OpenAI, OpenRouter 또는 Groq 키가 필요합니다. 나중에 설정 → 음성에서 추가할 수 있습니다.",
   "settings.computer.browser.label": "브라우저",
   "settings.computer.browser.help": "에이전트는 평소 사용하는 브라우저와 분리된 전용 프로필로 이 브라우저를 사용하며, 어디에도 로그인되어 있지 않습니다. 자동은 둘 이상 설치되어 있으면 처음 한 번 물어봅니다.",
+
+  "settings.computer.pace.label": "탐색 속도",
+
+  "settings.computer.pace.help": "사람처럼은 단계 사이에 잠시 멈추고, 몇 글자씩 입력하며, 페이지를 간격을 두고 엽니다. 사이트에는 예의 바른 방문자로 보이고, 사용자는 진행을 따라갈 수 있습니다. 빠르게는 기계 속도로 진행합니다. 어느 쪽이든 사이트가 요청하면 브라우저가 속도를 늦춥니다. 아무도 지켜보지 않는 실행은 항상 사람처럼을 사용합니다.",
+
+  "settings.computer.pace.human": "사람처럼",
+
+  "settings.computer.pace.fast": "빠르게",
   "settings.computer.browser.automatic": "자동",
   "settings.computer.browser.none": "브라우저를 찾을 수 없습니다. 스크립트가 필요한 페이지를 읽으려면 에이전트에 Microsoft Edge, Google Chrome, Brave 또는 Chromium이 필요합니다.",
   "settings.computer.browser.reset": "브라우저 프로필 초기화",

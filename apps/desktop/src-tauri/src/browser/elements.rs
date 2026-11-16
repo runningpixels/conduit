@@ -257,10 +257,10 @@ pub fn choose_script(reference: &str, option: &str) -> String {
     )
 }
 
-/// Scrolls one screen down or up.
-pub fn scroll_script(down: bool) -> String {
+/// Scroll by `share` of the window height, down or up.
+pub fn scroll_script(down: bool, share: f64) -> String {
     let sign = if down { "" } else { "-" };
-    format!("(() => {{ window.scrollBy(0, {sign}Math.round(innerHeight * 0.9)); return String(scrollY); }})()")
+    format!("(() => {{ window.scrollBy(0, {sign}Math.round(innerHeight * {share})); return String(scrollY); }})()")
 }
 
 #[cfg(test)]

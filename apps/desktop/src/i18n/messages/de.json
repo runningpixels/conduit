@@ -3814,6 +3814,14 @@
   "onboarding.provider.dictationLater": "Für die Spracheingabe brauchst du einen Schlüssel von OpenAI, OpenRouter oder Groq. Du kannst ihn später unter Einstellungen → Sprache hinzufügen.",
   "settings.computer.browser.label": "Browser",
   "settings.computer.browser.help": "Agenten nutzen diesen Browser mit einem eigenen Profil, getrennt von deinem normalen Surfen und bei nichts angemeldet. „Automatisch“ fragt beim ersten Mal nach, wenn mehr als einer installiert ist.",
+
+  "settings.computer.pace.label": "Surftempo",
+
+  "settings.computer.pace.help": "Menschlich pausiert zwischen den Schritten, tippt wenige Zeichen auf einmal und lädt Seiten mit Abstand, damit Websites einen höflichen Besucher sehen und du mitverfolgen kannst. Schnell arbeitet mit Maschinentempo. In beiden Fällen wird der Browser langsamer, wenn eine Website darum bittet. Läufe, die niemand beobachtet, nutzen immer Menschlich.",
+
+  "settings.computer.pace.human": "Menschlich",
+
+  "settings.computer.pace.fast": "Schnell",
   "settings.computer.browser.automatic": "Automatisch",
   "settings.computer.browser.none": "Kein Browser gefunden. Agenten brauchen Microsoft Edge, Google Chrome, Brave oder Chromium, um Seiten zu lesen, die Skripte brauchen.",
   "settings.computer.browser.reset": "Browserprofil zurücksetzen",

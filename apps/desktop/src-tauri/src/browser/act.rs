@@ -19,6 +19,7 @@ use serde_json::{json, Value};
 use tokio::time::Instant;
 
 use super::elements::{self, Element};
+use super::pace::Pacer;
 use super::rules::{self, Act, Decision, Site};
 use super::tools::{
     bring_to_front, cdp_error, evaluate, read_checked, settle, AskFn, BrowserAsk, ReadOpts, Tab,
@@ -195,6 +196,7 @@ pub(super) async fn act<'a>(
     ask: Option<&'a AskFn<'a>>,
     ctx: &ActContext<'_>,
     state: &std::sync::Mutex<ActState>,
+    pacer: Pacer<'_>,
 ) -> Result<Value, BrowserError> {
     let why = arguments["why"]
         .as_str()
@@ -205,17 +207,24 @@ pub(super) async fn act<'a>(
     match name {
         SCROLL_TOOL => {
             let down = arguments["direction"].as_str() != Some("up");
-            evaluate(tab, &elements::scroll_script(down)).await?;
+            pacer.before_action().await;
+            for (share, wait) in pacer.scroll_steps() {
+                pacer.wait(wait).await;
+                evaluate(tab, &elements::scroll_script(down, share)).await?;
+            }
             settle(tab).await?;
         }
-        GO_BACK_TOOL => go_back(tab).await?,
+        GO_BACK_TOOL => {
+            pacer.before_action().await;
+            go_back(tab).await?
+        }
         SIGN_IN_TOOL => {
             if let Some(note) = sign_in(tab, ask, why.as_deref(), ctx, state).await? {
                 done["signedIn"] = json!(note);
             }
         }
         CLICK_TOOL | TYPE_TOOL | CHOOSE_TOOL => {
-            let element = on_element(tab, name, arguments, why.clone(), ctx, state).await?;
+            let element = on_element(tab, name, arguments, why.clone(), ctx, state, pacer).await?;
             done["elementName"] = json!(element.name);
             done["elementRole"] = json!(element.role);
         }
@@ -225,6 +234,7 @@ pub(super) async fn act<'a>(
             )))
         }
     }
+    pacer.after_action().await;
     let mut result = read_checked(
         tab,
         ask,
@@ -254,6 +264,7 @@ async fn on_element(
     why: Option<String>,
     ctx: &ActContext<'_>,
     state: &std::sync::Mutex<ActState>,
+    pacer: Pacer<'_>,
 ) -> Result<Element, BrowserError> {
     let reference = arguments["ref"].as_str().unwrap_or_default().trim();
     if !elements::valid_ref(reference) {
@@ -353,9 +364,12 @@ async fn on_element(
         }
     }
 
+    pacer.before_action().await;
     match act {
-        Act::Click => click(tab, reference).await?,
-        Act::Type { text, press_enter } => type_into(tab, reference, text, press_enter).await?,
+        Act::Click => click(tab, reference, pacer).await?,
+        Act::Type { text, press_enter } => {
+            type_into(tab, reference, text, press_enter, pacer).await?
+        }
         _ => choose(tab, reference, option).await?,
     }
     Ok(element)
@@ -369,7 +383,7 @@ async fn input(tab: &Tab, method: &str, params: Value) -> Result<(), BrowserErro
         .map_err(cdp_error)
 }
 
-async fn click(tab: &Tab, reference: &str) -> Result<(), BrowserError> {
+async fn click(tab: &Tab, reference: &str, pacer: Pacer<'_>) -> Result<(), BrowserError> {
     let at: Value =
         serde_json::from_str(&evaluate(tab, &elements::locate_script(reference)).await?)
             .unwrap_or_default();
@@ -393,6 +407,7 @@ async fn click(tab: &Tab, reference: &str) -> Result<(), BrowserError> {
         json!({ "type": "mouseMoved", "x": x, "y": y }),
     )
     .await?;
+    pacer.hover().await;
     input(tab, "Input.dispatchMouseEvent", mouse("mousePressed")).await?;
     input(tab, "Input.dispatchMouseEvent", mouse("mouseReleased")).await?;
     after_action(tab).await
@@ -403,6 +418,7 @@ async fn type_into(
     reference: &str,
     text: &str,
     press_enter: bool,
+    pacer: Pacer<'_>,
 ) -> Result<(), BrowserError> {
     match evaluate(tab, &elements::clear_script(reference))
         .await?
@@ -417,8 +433,13 @@ async fn type_into(
         }
         _ => return Err(BrowserError::Other(PAGE_CHANGED.to_string())),
     }
+    // A few characters at a time at Human pace (insertText still: no key
+    // events, any language).
     if !text.is_empty() {
-        input(tab, "Input.insertText", json!({ "text": text })).await?;
+        for (piece, wait) in pacer.typing(text) {
+            pacer.wait(wait).await;
+            input(tab, "Input.insertText", json!({ "text": piece })).await?;
+        }
     }
     if press_enter {
         press_enter_key(tab).await?;

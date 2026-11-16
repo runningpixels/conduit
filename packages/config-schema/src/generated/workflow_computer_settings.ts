@@ -15,4 +15,9 @@ deny: Array<string>,
  * `chromium`. Absent means Automatic (asked on first use when more than
  * one is installed).
  */
-browser?: string, };
+browser?: string, 
+/**
+ * How fast the agents' browser goes: `fast` (machine speed) or `human`
+ * (pauses and spacing like a careful person). Absent means Human.
+ */
+pace?: string, };

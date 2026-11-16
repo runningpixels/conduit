@@ -14,6 +14,7 @@ pub mod elements;
 pub mod guard;
 pub mod launch;
 pub mod look;
+pub mod pace;
 pub mod rules;
 pub mod secrets;
 pub mod signins;

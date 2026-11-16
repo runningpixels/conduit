@@ -39,6 +39,8 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
   const enabled = settings.workflowComputer?.enabled ?? false;
   const deny = settings.workflowComputer?.deny ?? [];
   const browser = settings.workflowComputer?.browser;
+  /// How fast the agents' browser goes; absent means Human.
+  const pace = settings.workflowComputer?.pace === 'fast' ? 'fast' : 'human';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /// The browsers found on this machine; null until read.
@@ -111,12 +113,23 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
 
   /// Saves the computer settings. The browser choice rides along unless `next` names a new one
   /// (`null` for Automatic), so changing the switch or the rules never drops it.
-  async function save(next: { enabled: boolean; deny: string[]; browser?: string | null }): Promise<boolean> {
+  /// The pace rides along the same way.
+  async function save(next: {
+    enabled: boolean;
+    deny: string[];
+    browser?: string | null;
+    pace?: 'fast' | 'human';
+  }): Promise<boolean> {
     setSaving(true);
     setError(null);
     try {
       const chosen = next.browser === undefined ? browser : next.browser;
-      const workflowComputer = { enabled: next.enabled, deny: next.deny, ...(chosen ? { browser: chosen } : {}) };
+      const workflowComputer = {
+        enabled: next.enabled,
+        deny: next.deny,
+        ...(chosen ? { browser: chosen } : {}),
+        pace: next.pace ?? pace,
+      };
       onUpdate(await updateSettings({ workflowComputer }));
       return true;
     } catch (e) {
@@ -198,6 +211,22 @@ export function ComputerSection({ settings, onUpdate }: ComputerSectionProps) {
             </option>
           ))}
           {browser && !(browsers ?? []).some((b) => b.id === browser) ? <option value={browser}>{browser}</option> : null}
+        </select>
+      </div>
+      <div className="srow">
+        <span className="srow-text">
+          <b>{t('settings.computer.pace.label')}</b>
+          <small>{t('settings.computer.pace.help')}</small>
+        </span>
+        <select
+          className="sel"
+          aria-label={t('settings.computer.pace.label')}
+          value={pace}
+          disabled={saving}
+          onChange={(e) => void save({ enabled, deny, pace: e.target.value === 'fast' ? 'fast' : 'human' })}
+        >
+          <option value="human">{t('settings.computer.pace.human')}</option>
+          <option value="fast">{t('settings.computer.pace.fast')}</option>
         </select>
       </div>
       {browsers && browsers.length === 0 ? (

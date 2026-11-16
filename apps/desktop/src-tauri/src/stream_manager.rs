@@ -3580,7 +3580,8 @@ impl StreamManager {
         if !chat_browser.use_browser {
             return Err("The browser is turned off for this chat.".to_string());
         }
-        let chosen = chat::chat_browser_choice(computer.browser.as_deref())?;
+        let mut chosen = chat::chat_browser_choice(computer.browser.as_deref())?;
+        chosen.pace = crate::browser::pace::Pace::from_setting(computer.pace.as_deref());
         let profile = crate::browser::launch::profile_dir(&state.paths.root);
 
         let prompt = BrowserPromptCtx {
@@ -3667,6 +3668,12 @@ impl StreamManager {
                 act_ctx.as_ref(),
             ) => result.map_err(|e| e.for_model()),
         };
+        // Pauses the pace asked for are the browser's, not the agent's: they
+        // don't count against the turn's time limit.
+        user_wait_ms.fetch_add(
+            browser.take_paced().as_millis() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         drop(browser);
         self.browsers.touch(conversation_id);
         let mut page = result?;

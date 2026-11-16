@@ -170,7 +170,11 @@ fn pick_browser(
     }
     if let Some(wanted) = setting.and_then(Browser::from_id) {
         return match installed.into_iter().find(|(b, _)| *b == wanted) {
-            Some((browser, exe)) => Ok(Chosen { browser, exe }),
+            Some((browser, exe)) => Ok(Chosen {
+                browser,
+                exe,
+                pace: super::pace::Pace::default(),
+            }),
             None => Err(format!(
                 "browser error: {} is chosen in Settings, under Computer, but isn't installed.",
                 wanted.name()
@@ -178,7 +182,11 @@ fn pick_browser(
         };
     }
     let (browser, exe) = installed.into_iter().next().expect("not empty");
-    Ok(Chosen { browser, exe })
+    Ok(Chosen {
+        browser,
+        exe,
+        pace: super::pace::Pace::default(),
+    })
 }
 
 /// The person's answer to a browser prompt in the chat.

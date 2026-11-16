@@ -18,7 +18,7 @@ vi.mock('../../ipc/client', () => ipc);
 
 import { ComputerSection } from './ComputerSection';
 
-const settings = (workflowComputer?: { enabled: boolean; deny: string[]; browser?: string }) => ({ workflowComputer }) as unknown as AppSettings;
+const settings = (workflowComputer?: { enabled: boolean; deny: string[]; browser?: string; pace?: string }) => ({ workflowComputer }) as unknown as AppSettings;
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -78,7 +78,7 @@ describe('ComputerSection', () => {
     render(<ComputerSection settings={settings({ enabled: false, deny: ['rm *'] })} onUpdate={onUpdate} />);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Let workflows use this computer' }));
     await waitFor(() =>
-      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['rm *'] } }),
+      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['rm *'], pace: 'human' } }),
     );
     await waitFor(() => expect(onUpdate).toHaveBeenCalled());
   });
@@ -92,7 +92,7 @@ describe('ComputerSection', () => {
     expect(ipc.previewCommandRule).toHaveBeenCalledWith('rm -rf *');
     fireEvent.click(screen.getByRole('button', { name: /Add a rule to/ }));
     await waitFor(() =>
-      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['rm -rf *'] } }),
+      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['rm -rf *'], pace: 'human' } }),
     );
   });
 
@@ -119,7 +119,7 @@ describe('ComputerSection', () => {
     render(<ComputerSection settings={settings({ enabled: true, deny: ['rm *', 'sudo *'] })} onUpdate={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Remove the rule rm *' }));
     await waitFor(() =>
-      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['sudo *'] } }),
+      expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: ['sudo *'], pace: 'human' } }),
     );
   });
 
@@ -140,7 +140,7 @@ describe('ComputerSection', () => {
       fireEvent.change(screen.getByRole('combobox', { name: 'Browser' }), { target: { value: 'chrome' } });
       await waitFor(() =>
         expect(ipc.updateSettings).toHaveBeenCalledWith({
-          workflowComputer: { enabled: true, deny: ['rm *'], browser: 'chrome' },
+          workflowComputer: { enabled: true, deny: ['rm *'], browser: 'chrome', pace: 'human' },
         }),
       );
     });
@@ -151,7 +151,7 @@ describe('ComputerSection', () => {
       expect(screen.getByRole('combobox', { name: 'Browser' })).toHaveValue('edge');
       fireEvent.change(screen.getByRole('combobox', { name: 'Browser' }), { target: { value: '' } });
       await waitFor(() =>
-        expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: [] } }),
+        expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: [], pace: 'human' } }),
       );
     });
 
@@ -160,8 +160,25 @@ describe('ComputerSection', () => {
       fireEvent.click(screen.getByRole('checkbox', { name: 'Let workflows use this computer' }));
       await waitFor(() =>
         expect(ipc.updateSettings).toHaveBeenCalledWith({
-          workflowComputer: { enabled: true, deny: ['rm *'], browser: 'edge' },
+          workflowComputer: { enabled: true, deny: ['rm *'], browser: 'edge', pace: 'human' },
         }),
+      );
+    });
+
+    it('goes at Human pace unless set to Fast, and keeps the pace when other settings change', async () => {
+      const { unmount } = render(<ComputerSection settings={settings({ enabled: true, deny: [] })} onUpdate={vi.fn()} />);
+      const pace = screen.getByRole('combobox', { name: 'Browsing pace' });
+      expect(pace).toHaveValue('human');
+      fireEvent.change(pace, { target: { value: 'fast' } });
+      await waitFor(() =>
+        expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: [], pace: 'fast' } }),
+      );
+      unmount();
+      render(<ComputerSection settings={settings({ enabled: false, deny: [], pace: 'fast' })} onUpdate={vi.fn()} />);
+      expect(screen.getByRole('combobox', { name: 'Browsing pace' })).toHaveValue('fast');
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Let workflows use this computer' }));
+      await waitFor(() =>
+        expect(ipc.updateSettings).toHaveBeenCalledWith({ workflowComputer: { enabled: true, deny: [], pace: 'fast' } }),
       );
     });
 

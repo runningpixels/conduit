@@ -8351,6 +8351,7 @@ fn computer_on(h: &Harness, deny: &[&str]) {
         enabled: true,
         deny: deny.iter().map(|d| d.to_string()).collect(),
         browser: None,
+        pace: None,
     });
     h.state.update_settings(patch).unwrap();
 }

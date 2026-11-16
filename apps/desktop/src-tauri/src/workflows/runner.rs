@@ -1065,7 +1065,8 @@ impl ConnectorTools<'_, '_> {
             result = exec.unless_stopped(work) => result,
             () = stopped(self.stop.as_ref()) => Err(handoff::STOPPED_BY_YOU.to_string()),
         };
-        (result, Duration::ZERO)
+        // Pauses the pace asked for don't count against the run's time.
+        (result, exec.browser.take_paced())
     }
 
     /// Ask the person about a browser action (the browser card) and wait. A
@@ -3284,8 +3285,15 @@ impl Exec<'_> {
                 let state = self.runner.state;
                 let settings = state.settings()?.workflow_computer.unwrap_or_default();
                 let installed = crate::browser::detect::installed_now();
+                // A run nobody is watching always goes at Human pace: nobody
+                // needs it faster, and a site that turns it away fails it.
+                let pace = if self.runner.unattended.is_some() {
+                    crate::browser::pace::Pace::Human
+                } else {
+                    crate::browser::pace::Pace::from_setting(settings.pace.as_deref())
+                };
                 let chosen = |(browser, exe): (Browser, std::path::PathBuf)| {
-                    crate::browser::tools::Chosen { browser, exe }
+                    crate::browser::tools::Chosen { browser, exe, pace }
                 };
                 if installed.is_empty() {
                     return Err(BrowserError::NotInstalled.for_model());

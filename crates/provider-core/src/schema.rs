@@ -534,6 +534,11 @@ pub struct WorkflowComputerSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub browser: Option<String>,
+    /// How fast the agents' browser goes: `fast` (machine speed) or `human`
+    /// (pauses and spacing like a careful person). Absent means Human.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pace: Option<String>,
 }
 
 /// Agent loop guardrails stored on `AppSettings`. Enforced by

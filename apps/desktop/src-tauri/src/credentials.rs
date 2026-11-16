@@ -203,6 +203,36 @@ impl CredentialStore {
         }
     }
 
+    /// Remove a secret. Removing one that isn't there is not an error.
+    pub fn delete_secret(&self, id: &str) -> Result<(), AppError> {
+        match self.mode {
+            KeychainMode::Os => {
+                let entry = Entry::new(&self.service_name, id).map_err(|error| {
+                    AppError::new(
+                        "error.keychain.access",
+                        format!("Failed to access keychain: {error}"),
+                    )
+                    .with("detail", error.to_string())
+                })?;
+                match entry.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                    Err(error) => Err(AppError::new(
+                        "error.keychain.delete",
+                        format!("Failed to delete the secret: {error}"),
+                    )
+                    .with("detail", error.to_string())),
+                }
+            }
+            KeychainMode::File => {
+                let mut map = self.read_file_store()?;
+                if map.remove(id).is_some() {
+                    self.write_file_store(&map)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
     // --- file backend ------------------------------------------------------
 
     fn store_path(&self) -> Result<PathBuf, AppError> {
@@ -396,6 +426,21 @@ mod tests {
                 .unwrap();
             assert!(store.has_provider_secret("anthropic"));
             assert_eq!(store.get_secret("anthropic").unwrap(), "sk-test-123");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn file_mode_deletes_a_secret_and_tolerates_a_missing_one() {
+        let dir = temp_dir("delete");
+        with_key(Some(&test_key()), || {
+            let store = file_store(&dir);
+            store.save_provider_secret("a", "one").unwrap();
+            store.save_provider_secret("b", "two").unwrap();
+            store.delete_secret("a").unwrap();
+            assert!(!store.has_provider_secret("a"));
+            assert_eq!(store.get_secret("b").unwrap(), "two");
+            store.delete_secret("never-saved").unwrap();
         });
         let _ = std::fs::remove_dir_all(&dir);
     }

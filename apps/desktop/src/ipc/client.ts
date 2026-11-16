@@ -706,6 +706,30 @@ export async function resetBrowserProfile(): Promise<void> {
   return invokeCommand<void>('reset_browser_profile');
 }
 
+/** A saved sign-in for the agents' browser, without its password (which is write-only). */
+export interface BrowserSignIn {
+  site: string;
+  username: string;
+  includeSubdomains: boolean;
+  /** Workflows may use it when nobody is watching the run. */
+  unattended: boolean;
+}
+
+/** The saved sign-ins, sorted by site. */
+export async function listBrowserSignIns(): Promise<BrowserSignIn[]> {
+  return invokeCommand<BrowserSignIn[]>('list_browser_sign_ins');
+}
+
+/** Saves or replaces the sign-in for `signIn.site`. An empty password keeps the saved one. */
+export async function saveBrowserSignIn(signIn: BrowserSignIn & { password: string }): Promise<BrowserSignIn> {
+  return invokeCommand<BrowserSignIn>('save_browser_sign_in', { signIn });
+}
+
+/** Deletes a sign-in and its password. */
+export async function deleteBrowserSignIn(site: string): Promise<void> {
+  return invokeCommand<void>('delete_browser_sign_in', { site });
+}
+
 /** The hosts the agents' browser profile has saved cookies for (signed in or remembered). */
 export async function browserRememberedSites(): Promise<string[]> {
   return invokeCommand<string[]>('browser_remembered_sites');

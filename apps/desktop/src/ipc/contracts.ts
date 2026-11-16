@@ -1290,11 +1290,11 @@ export interface WorkflowAction {
 }
 
 /** Why a browser action asks (Rust `actions::BrowserAskReason`). */
-export type BrowserAskReason = 'submit' | 'risky' | 'newSite' | 'download';
+export type BrowserAskReason = 'submit' | 'risky' | 'newSite' | 'download' | 'signIn';
 
 /** A click, typing or choice in the agent's browser waiting for the user (Rust `actions::BrowserRequest`). */
 export interface BrowserRequest {
-  /** `click`, `type_text`, `choose_option`, `scroll`, `go_back` or `download`. */
+  /** `click`, `type_text`, `choose_option`, `scroll`, `go_back`, `download` or `sign_in`. */
   action: string;
   host: string;
   pageUrl: string;

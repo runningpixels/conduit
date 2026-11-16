@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Emilio Olivares
 
-//! The person's saved API keys, which an agent is never let type into a page
-//! (workflows and chat both check them before `type_text`).
+//! The person's saved API keys and sign-in passwords, which an agent is never
+//! let type into a page (workflows and chat both check them before `type_text`).
 
 use crate::state::AppState;
 
@@ -28,8 +28,8 @@ pub const KEYED_PROVIDERS: &[&str] = &[
     "zai",
 ];
 
-/// The person's saved API keys, to refuse typing them into a page. Read from
-/// the keychain each time; never logged or sent.
+/// The person's saved API keys and saved sign-in passwords, to refuse typing
+/// them into a page. Read from the keychain each time; never logged or sent.
 pub fn saved_secrets(state: &AppState) -> Vec<String> {
     let mut ids: Vec<String> = KEYED_PROVIDERS.iter().map(|s| s.to_string()).collect();
     if let Ok(settings) = state.settings() {
@@ -39,8 +39,15 @@ pub fn saved_secrets(state: &AppState) -> Vec<String> {
     ids.sort();
     ids.dedup();
     let store = state.credential_store();
-    ids.iter()
+    let mut secrets: Vec<String> = ids
+        .iter()
         .filter_map(|id| store.get_secret(id).ok())
         .filter(|s| !s.trim().is_empty())
-        .collect()
+        .collect();
+    secrets.extend(
+        super::signins::logins(state)
+            .into_iter()
+            .map(|l| l.password),
+    );
+    secrets
 }

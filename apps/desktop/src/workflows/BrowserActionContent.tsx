@@ -74,6 +74,8 @@ export function browserActionText(
       return t('workspace.workflows.browser.do.scroll');
     case 'go_back':
       return t('workspace.workflows.browser.do.goBack');
+    case 'sign_in':
+      return t('workspace.workflows.browser.do.signIn', { name: name ?? '' });
     case 'download': {
       const file = text(request.fileName);
       if (!file) return t('workspace.workflows.browser.do.downloadPlain');
@@ -102,6 +104,8 @@ function reasonText(request: BrowserRequest, t: Translate, inChat: boolean): str
         : t('workspace.workflows.browser.reason.newSite', { host: request.host });
     case 'download':
       return t('workspace.workflows.browser.reason.download');
+    case 'signIn':
+      return t('workspace.workflows.browser.reason.signIn');
     default:
       return '';
   }

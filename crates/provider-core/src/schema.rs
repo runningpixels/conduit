@@ -1165,6 +1165,9 @@ pub enum BrowserAskReason {
     NewSite,
     /// A page started a download (`action` is `download`).
     Download,
+    /// The agent asks to use a saved sign-in (`action` is `sign_in`; the
+    /// username is in `element_name`, never the password).
+    SignIn,
 }
 
 /// A click, typing or choice in the agent's browser waiting for the user, as

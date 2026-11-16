@@ -84,6 +84,7 @@ const QUESTION_KEYS = new Set([
   'chat.browser.question.humanCheck',
   'chat.browser.question.signIn',
   'chat.browser.question.signInWhy',
+  'chat.browser.question.signInRetry',
 ]);
 
 export function BrowserQuestionGate({

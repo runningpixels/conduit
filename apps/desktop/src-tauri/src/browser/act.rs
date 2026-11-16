@@ -66,6 +66,8 @@ pub type ApproveFuture<'a> = Pin<Box<dyn Future<Output = Approval> + Send + 'a>>
 pub type ApproveFn<'a> = dyn Fn(BrowserRequest) -> ApproveFuture<'a> + Send + Sync + 'a;
 /// The person's saved API keys, read only when text is about to be typed.
 pub type SecretsFn<'a> = dyn Fn() -> Vec<String> + Send + Sync + 'a;
+/// The person's saved sign-ins, passwords included, read only when needed.
+pub type LoginsFn<'a> = dyn Fn() -> Vec<super::signins::SavedLogin> + Send + Sync + 'a;
 
 /// What an agent that may act brings to a browser call.
 pub struct ActContext<'a> {
@@ -73,6 +75,8 @@ pub struct ActContext<'a> {
     /// The workflow's site list.
     pub sites: Vec<String>,
     pub secrets: &'a SecretsFn<'a>,
+    /// The saved sign-ins `ask_to_sign_in` may use.
+    pub logins: &'a LoginsFn<'a>,
     /// What the agent read from outside before, for the card.
     pub read_before: Option<String>,
 }
@@ -159,7 +163,7 @@ pub fn tool_definitions() -> Vec<provider_core::schema::ToolDefinition> {
         ),
         tool(
             SIGN_IN_TOOL,
-            "Ask the person to sign in to the open site themselves, in the browser window. Use it when a page needs an account. You never see or type their password. Give `why`. Returns the page once they're done.",
+            "Sign in to the open site when a page needs an account. If the person saved a sign-in for this site, the app fills it in itself (asking them first); otherwise the person signs in themselves in the browser window. You never see or type their password. Give `why`. Returns the page once signed in. If the page then asks for a code or a check, call it again so the person can finish.",
             json!({ "type": "object", "properties": { "why": why }, "required": ["why"] }),
         ),
     ]
@@ -205,7 +209,11 @@ pub(super) async fn act<'a>(
             settle(tab).await?;
         }
         GO_BACK_TOOL => go_back(tab).await?,
-        SIGN_IN_TOOL => sign_in(tab, ask, why.as_deref()).await?,
+        SIGN_IN_TOOL => {
+            if let Some(note) = sign_in(tab, ask, why.as_deref(), ctx, state).await? {
+                done["signedIn"] = json!(note);
+            }
+        }
         CLICK_TOOL | TYPE_TOOL | CHOOSE_TOOL => {
             let element = on_element(tab, name, arguments, why.clone(), ctx, state).await?;
             done["elementName"] = json!(element.name);
@@ -227,6 +235,9 @@ pub(super) async fn act<'a>(
     )
     .await?;
     with_elements(tab, &mut result, state).await?;
+    if let Some(note) = done.get("signedIn").cloned() {
+        result["signedIn"] = note;
+    }
     done["url"] = result["url"].clone();
     if let Ok(mut state) = state.lock() {
         state.so_far.push(done);
@@ -410,17 +421,7 @@ async fn type_into(
         input(tab, "Input.insertText", json!({ "text": text })).await?;
     }
     if press_enter {
-        let key = |kind: &str| {
-            json!({
-                "type": kind, "key": "Enter", "code": "Enter",
-                "windowsVirtualKeyCode": 13, "nativeVirtualKeyCode": 13, "text": "\r"
-            })
-        };
-        input(tab, "Input.dispatchKeyEvent", key("keyDown")).await?;
-        let mut up = key("keyUp");
-        up.as_object_mut().map(|o| o.remove("text"));
-        input(tab, "Input.dispatchKeyEvent", up).await?;
-        after_action(tab).await?;
+        press_enter_key(tab).await?;
     }
     Ok(())
 }
@@ -479,25 +480,111 @@ async fn go_back(tab: &Tab) -> Result<(), BrowserError> {
     after_action(tab).await
 }
 
-/// The sign-in hand-over: the person signs in in the window; nothing reads
-/// the page meanwhile.
+/// `ask_to_sign_in`: with a saved sign-in for the page's site, the app fills
+/// it in itself (asking first when someone is there; when nobody is, only if
+/// the sign-in allows it). Otherwise, or when that doesn't get through, the
+/// person signs in in the window and nothing reads the page meanwhile. Some
+/// note comes back for the model when the saved sign-in was used.
 async fn sign_in<'a>(
     tab: &Tab,
     ask: Option<&'a AskFn<'a>>,
     why: Option<&str>,
+    ctx: &ActContext<'_>,
+    state: &std::sync::Mutex<ActState>,
+) -> Result<Option<String>, BrowserError> {
+    let found = find_login(tab).await?;
+    let site = if found.host.is_empty() {
+        "the site".to_string()
+    } else {
+        rules::site_to_offer(&found.host)
+    };
+    let saved = if found.https && (found.user || found.pass) {
+        super::signins::for_host((ctx.logins)(), &found.host)
+    } else {
+        None
+    };
+    let mut saved_failed = false;
+    if let Some(login) = saved {
+        if ask.is_none() && !login.entry.unattended {
+            return Err(BrowserError::Other(format!(
+                "Signing in to {site} needs the person: their saved sign-in for it isn't allowed in runs nobody is watching. Carry on without signing in, or stop."
+            )));
+        }
+        if ask.is_some() {
+            let page: Value = serde_json::from_str(
+                &evaluate(tab, "JSON.stringify({u: location.href, t: document.title})").await?,
+            )
+            .unwrap_or_default();
+            let request = BrowserRequest {
+                action: "sign_in".to_string(),
+                host: found.host.clone(),
+                page_url: page["u"].as_str().unwrap_or_default().to_string(),
+                page_title: page["t"].as_str().unwrap_or_default().to_string(),
+                element_role: None,
+                element_name: Some(login.entry.username.clone()),
+                text: None,
+                option: None,
+                why: why.map(str::to_string),
+                reason: provider_core::schema::BrowserAskReason::SignIn,
+                risky_word: None,
+                read_before: ctx.read_before.clone(),
+                so_far: state.lock().map(|s| s.so_far.clone()).unwrap_or_default(),
+                offer_site: None,
+                file_name: None,
+                file_size: None,
+            };
+            if let Approval::No(why) = (ctx.approve)(request).await {
+                return Err(BrowserError::Other(why));
+            }
+        }
+        match fill_saved(tab, &login).await? {
+            Filled::SignedIn => {
+                return Ok(Some(format!(
+                    "Signed in to {site} as {} with the person's saved sign-in.",
+                    login.entry.username
+                )))
+            }
+            Filled::NotThrough | Filled::NoForm if ask.is_none() => {
+                return Err(BrowserError::Other(format!(
+                    "The saved sign-in for {site} didn't get through (the site may want a code or a check, or the password changed), and nobody is watching this run to finish it. Carry on without signing in, or stop."
+                )));
+            }
+            Filled::NotThrough | Filled::NoForm => {
+                saved_failed = true;
+            }
+        }
+    }
+    hand_over(tab, ask, why, &site, saved_failed).await?;
+    Ok(None)
+}
+
+/// The person signs in in the window; nothing reads the page meanwhile.
+async fn hand_over<'a>(
+    tab: &Tab,
+    ask: Option<&'a AskFn<'a>>,
+    why: Option<&str>,
+    site: &str,
+    after_saved_failed: bool,
 ) -> Result<(), BrowserError> {
     let Some(ask) = ask else {
         return Err(BrowserError::Other(
             "Signing in needs a person, and nobody is watching this run. Carry on without signing in, or stop.".to_string(),
         ));
     };
-    let host = evaluate(tab, "location.hostname").await.unwrap_or_default();
-    let site = if host.is_empty() {
-        "the site".to_string()
-    } else {
-        rules::site_to_offer(&host)
-    };
     bring_to_front(tab).await;
+    if after_saved_failed {
+        let text = format!(
+            "The saved sign-in for {site} didn't get through. Finish signing in in the agent's browser window, then choose Continue."
+        );
+        let question =
+            BrowserAsk::new(text, "chat.browser.question.signInRetry", &[("site", site)]);
+        if !ask(question, DONT_SIGN_IN).await {
+            return Err(BrowserError::Other(
+                "The person didn't sign in. Carry on without it, or stop.".to_string(),
+            ));
+        }
+        return settle(tab).await;
+    }
     let mut text = format!(
         "Sign in to {site} in the agent's browser window, then choose Continue. The agent doesn't see what you type."
     );
@@ -508,9 +595,9 @@ async fn sign_in<'a>(
         Some(why) => BrowserAsk::new(
             text,
             "chat.browser.question.signInWhy",
-            &[("site", &site), ("why", why)],
+            &[("site", site), ("why", why)],
         ),
-        None => BrowserAsk::new(text, "chat.browser.question.signIn", &[("site", &site)]),
+        None => BrowserAsk::new(text, "chat.browser.question.signIn", &[("site", site)]),
     };
     if !ask(question, DONT_SIGN_IN).await {
         return Err(BrowserError::Other(
@@ -518,6 +605,223 @@ async fn sign_in<'a>(
         ));
     }
     settle(tab).await
+}
+
+/// The sign-in fields of the open page, as [`LOGIN_SCRIPT`] found them.
+#[derive(Debug, Default)]
+struct LoginForm {
+    https: bool,
+    host: String,
+    user: bool,
+    pass: bool,
+    /// A sign-in button was found next to the fields (marked `send`).
+    send: bool,
+}
+
+/// How filling in a saved sign-in went.
+#[derive(Debug, PartialEq, Eq)]
+enum Filled {
+    SignedIn,
+    /// A password field is still there afterwards.
+    NotThrough,
+    /// No sign-in form on the page (or it moved to another site).
+    NoForm,
+}
+
+/// Finds the visible password field of the top page and the username field
+/// that goes with it (by `autocomplete`, else the text field before it in its
+/// form), or a lone username field on a first step, and marks them
+/// `data-conduit-login`. Frames are never looked into.
+const LOGIN_SCRIPT: &str = r#"(() => { try {
+  const shown = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.disabled && !el.readOnly; };
+  document.querySelectorAll('[data-conduit-login]').forEach((e) => e.removeAttribute('data-conduit-login'));
+  const inputs = [...document.querySelectorAll('input')].filter(shown);
+  const kind = (i) => (i.type || 'text').toLowerCase();
+  const ac = (i) => (i.getAttribute('autocomplete') || '').toLowerCase();
+  const texty = (i) => ['text', 'email', 'tel'].includes(kind(i));
+  const words = (i) => [i.name, i.id, i.getAttribute('aria-label'), i.placeholder].join(' ');
+  const pass = inputs.find((i) => kind(i) === 'password' && !ac(i).includes('new-password'));
+  let user = inputs.find((i) => texty(i) && /\b(username|email)\b/.test(ac(i)) && (!pass || !pass.form || i.form === pass.form));
+  if (!user && pass) {
+    const before = inputs.filter((i) => texty(i) && (!pass.form || i.form === pass.form)
+      && (i.compareDocumentPosition(pass) & Node.DOCUMENT_POSITION_FOLLOWING));
+    user = before[before.length - 1];
+  }
+  if (!user && !pass) {
+    user = inputs.find((i) => texty(i) && /user|login|identifier|e-?mail|account/i.test(words(i)) && !/search|newsletter|subscribe/i.test(words(i)));
+  }
+  if (user) user.setAttribute('data-conduit-login', 'user');
+  if (pass) pass.setAttribute('data-conduit-login', 'pass');
+  const last = pass || user;
+  let send = null;
+  if (last) {
+    const label = (b) => (b.innerText || b.value || b.getAttribute('aria-label') || '').trim();
+    const other = /forgot|reset|show|hide|reveal|google|apple|facebook|github|microsoft|twitter|passkey|sign ?up|register|create|cancel|back/i;
+    const shownEl = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.disabled; };
+    if (last.form) {
+      send = [...last.form.querySelectorAll('button, input[type=submit], input[type=image]')]
+        .filter((b) => shownEl(b) && (b.tagName !== 'BUTTON' || (b.getAttribute('type') || 'submit').toLowerCase() === 'submit') && !other.test(label(b)))[0] || null;
+    } else {
+      const named = /sign ?in|log ?in|submit|continue|next|anmelden|einloggen|weiter|connexion|se connecter|continuer|suivant|iniciar|entrar|continuar|siguiente|ログイン|次へ|로그인|다음|登录|下一步/i;
+      for (let box = last.parentElement, up = 0; box && box !== document.body && up < 6; box = box.parentElement, up++) {
+        const after = [...box.querySelectorAll('button, input[type=submit], input[type=button], [role=button]')]
+          .filter((b) => shownEl(b) && (last.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) && !other.test(label(b)));
+        send = after.find((b) => named.test(label(b))) || (after.length === 1 ? after[0] : null);
+        if (send || after.length > 1) break;
+      }
+    }
+    if (send) send.setAttribute('data-conduit-login', 'send');
+  }
+  return JSON.stringify({ https: location.protocol === 'https:', host: location.hostname, user: !!user, pass: !!pass, send: !!send });
+} catch (e) { return '{}'; } })()"#;
+
+async fn find_login(tab: &Tab) -> Result<LoginForm, BrowserError> {
+    let raw: Value = serde_json::from_str(&evaluate(tab, LOGIN_SCRIPT).await?).unwrap_or_default();
+    let host = raw["host"].as_str().unwrap_or_default().to_lowercase();
+    Ok(LoginForm {
+        https: raw["https"].as_bool().unwrap_or(false) || plain_http_allowed(&host),
+        host,
+        user: raw["user"].as_bool().unwrap_or(false),
+        pass: raw["pass"].as_bool().unwrap_or(false),
+        send: raw["send"].as_bool().unwrap_or(false),
+    })
+}
+
+/// Where the marked sign-in button is, scrolled into view, while the page is
+/// still on `host` over https.
+fn locate_send_script(host: &str) -> String {
+    let secure = if plain_http_allowed(host) {
+        "true"
+    } else {
+        "location.protocol === 'https:'"
+    };
+    let host = serde_json::to_string(host).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        r#"(() => {{
+  if (!({secure}) || location.hostname !== {host}) return '{{}}';
+  const el = document.querySelector('[data-conduit-login="send"]');
+  if (!el || !el.isConnected) return '{{}}';
+  el.scrollIntoView({{ block: 'center', inline: 'center' }});
+  const r = el.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return '{{}}';
+  return JSON.stringify({{ x: r.left + r.width / 2, y: r.top + r.height / 2 }});
+}})()"#
+    )
+}
+
+/// Send the filled-in fields: click the sign-in button found next to them,
+/// or press Enter when there is none (or it went).
+async fn send_login(tab: &Tab, form: &LoginForm) -> Result<(), BrowserError> {
+    if form.send {
+        let at: Value =
+            serde_json::from_str(&evaluate(tab, &locate_send_script(&form.host)).await?)
+                .unwrap_or_default();
+        if let (Some(x), Some(y)) = (at["x"].as_f64(), at["y"].as_f64()) {
+            let mouse = |kind: &str| json!({ "type": kind, "x": x, "y": y, "button": "left", "buttons": 1, "clickCount": 1 });
+            input(
+                tab,
+                "Input.dispatchMouseEvent",
+                json!({ "type": "mouseMoved", "x": x, "y": y }),
+            )
+            .await?;
+            input(tab, "Input.dispatchMouseEvent", mouse("mousePressed")).await?;
+            input(tab, "Input.dispatchMouseEvent", mouse("mouseReleased")).await?;
+            return after_action(tab).await;
+        }
+    }
+    press_enter_key(tab).await
+}
+
+/// Plain http for a sign-in only on the integration test's loopback server
+/// (debug builds with the loopback switch on); everywhere else, https.
+fn plain_http_allowed(host: &str) -> bool {
+    super::guard::loopback_allowed() && host == "127.0.0.1"
+}
+
+/// Focuses and empties the marked field, but only while the page is still
+/// on `host` over https.
+fn focus_login_script(kind: &str, host: &str) -> String {
+    let secure = if plain_http_allowed(host) {
+        "true"
+    } else {
+        "location.protocol === 'https:'"
+    };
+    let host = serde_json::to_string(host).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        r#"(() => {{
+  if (!({secure}) || location.hostname !== {host}) return 'moved';
+  const el = document.querySelector('[data-conduit-login="{kind}"]');
+  if (!el || !el.isConnected) return 'gone';
+  el.focus();
+  if (el.value !== '') {{
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
+    if (setter && setter.set) setter.set.call(el, ''); else el.value = '';
+    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+  }}
+  return document.activeElement === el ? 'ok' : 'gone';
+}})()"#
+    )
+}
+
+/// Type `value` into the marked field; `false` when the page moved on or
+/// the field went.
+async fn fill_field(tab: &Tab, kind: &str, host: &str, value: &str) -> Result<bool, BrowserError> {
+    if evaluate(tab, &focus_login_script(kind, host)).await? != "ok" {
+        return Ok(false);
+    }
+    input(tab, "Input.insertText", json!({ "text": value })).await?;
+    Ok(true)
+}
+
+async fn press_enter_key(tab: &Tab) -> Result<(), BrowserError> {
+    let key = |kind: &str| {
+        json!({
+            "type": kind, "key": "Enter", "code": "Enter",
+            "windowsVirtualKeyCode": 13, "nativeVirtualKeyCode": 13, "text": "\r"
+        })
+    };
+    input(tab, "Input.dispatchKeyEvent", key("keyDown")).await?;
+    let mut up = key("keyUp");
+    up.as_object_mut().map(|o| o.remove("text"));
+    input(tab, "Input.dispatchKeyEvent", up).await?;
+    after_action(tab).await
+}
+
+/// Fill in and send a saved sign-in: username and password together, or a
+/// username step and then a password step. Every field is checked to be on
+/// the saved site, over https, right before it is typed into.
+async fn fill_saved(tab: &Tab, login: &super::signins::SavedLogin) -> Result<Filled, BrowserError> {
+    let mut form = find_login(tab).await?;
+    for _step in 0..2 {
+        if !form.https || !login.entry.covers(&form.host) || !(form.user || form.pass) {
+            return Ok(Filled::NoForm);
+        }
+        let host = form.host.clone();
+        if form.user && !fill_field(tab, "user", &host, &login.entry.username).await? {
+            return Ok(Filled::NoForm);
+        }
+        if form.pass {
+            if !fill_field(tab, "pass", &host, &login.password).await? {
+                return Ok(Filled::NoForm);
+            }
+            send_login(tab, &form).await?;
+            let after = find_login(tab).await?;
+            return Ok(if after.pass && login.entry.covers(&after.host) {
+                Filled::NotThrough
+            } else {
+                Filled::SignedIn
+            });
+        }
+        // A username step: send it and look for the password step.
+        send_login(tab, &form).await?;
+        form = find_login(tab).await?;
+        if !form.pass {
+            return Ok(Filled::NotThrough);
+        }
+    }
+    Ok(Filled::NotThrough)
 }
 
 /// After an input event: give the page a moment, wait out any navigation it

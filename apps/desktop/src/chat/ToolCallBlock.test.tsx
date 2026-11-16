@@ -87,7 +87,7 @@ describe('ToolCallBlock browser pages', () => {
     ['choose_option', 'Chose'],
     ['scroll', 'Scrolled'],
     ['go_back', 'Went back'],
-    ['ask_to_sign_in', 'Asked you to sign in'],
+    ['ask_to_sign_in', 'Sign in'],
   ])('labels %s as %s and leads with why', (name, label) => {
     const { container } = render(
       <ToolCallBlock toolCall={call(name, { ref: 'e7', why: 'Open the pricing page' })} defaultCollapsed />,

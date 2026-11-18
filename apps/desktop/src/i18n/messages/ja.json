@@ -3853,6 +3853,7 @@
   "error.browser.launchFailed": "ブラウザーを起動できませんでした。インストールされているか確認して、もう一度お試しください。",
   "error.browser.blocked": "{url} は開けません。エージェントが読めるのは公開 Web ページだけです。",
   "error.browser.timeout": "ページの読み込みに時間がかかりすぎました。",
+  "error.browser.off": "エージェントのブラウザーはオフです。設定の「コンピューター」でオンにしてください。",
   "error.browser.badSite": "「{site}」はサイトではありません。example.com や *.example.com のようなホストを入力してください。",
   "error.browser.signInBadSite": "「{site}」はサイトではありません。example.com のようなホストを入力してください。",
   "error.browser.signInNoUsername": "サインインに使うユーザー名またはメールを入力してください。",
@@ -3942,6 +3943,10 @@
   "chat.browser.reason.newSite": "このチャットで {host} に対する最初の操作です",
   "chat.browser.question.humanCheck": "{host} が人間かどうかの確認を求めています（{what}）。ブラウザーのウィンドウで確認を済ませてから「続行」を選んでください。",
   "chat.browser.question.signIn": "エージェントのブラウザーのウィンドウで {site} にサインインしてから「続行」を選んでください。入力内容はエージェントには見えません。",
+  "chat.linkMenu.label": "リンク",
+  "chat.linkMenu.open": "自分のブラウザーで開く",
+  "chat.linkMenu.openInAgentBrowser": "エージェントのブラウザーで開く",
+  "chat.linkMenu.copy": "リンクをコピー",
   "chat.browser.question.signInRetry": "{site} の保存したサインインはうまくいきませんでした。エージェントのブラウザーのウィンドウでサインインを済ませてから「続行」を選んでください。",
   "chat.browser.question.signInWhy": "エージェントのブラウザーのウィンドウで {site} にサインインしてから「続行」を選んでください。入力内容はエージェントには見えません。理由：{why}"
 }

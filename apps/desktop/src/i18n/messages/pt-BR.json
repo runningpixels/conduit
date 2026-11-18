@@ -3853,6 +3853,7 @@
   "error.browser.launchFailed": "Não foi possível iniciar o navegador. Verifique se ele está instalado e tente novamente.",
   "error.browser.blocked": "Não é possível abrir {url}: os agentes só podem ler páginas da web públicas.",
   "error.browser.timeout": "A página demorou demais para carregar.",
+  "error.browser.off": "O navegador do agente está desligado. Ligue-o em Configurações, em Computador.",
   "error.browser.badSite": "“{site}” não é um site. Escreva um host como example.com ou *.example.com.",
   "error.browser.signInBadSite": "“{site}” não é um site. Escreva um host como example.com.",
   "error.browser.signInNoUsername": "Informe o usuário ou e-mail com que você entra.",
@@ -3942,6 +3943,10 @@
   "chat.browser.reason.newSite": "Primeira ação em {host} neste chat",
   "chat.browser.question.humanCheck": "{host} quer verificar se você é uma pessoa ({what}). Conclua a verificação na janela do navegador e escolha Continuar.",
   "chat.browser.question.signIn": "Entre em {site} na janela do navegador do agente e escolha Continuar. O agente não vê o que você digita.",
+  "chat.linkMenu.label": "Link",
+  "chat.linkMenu.open": "Abrir no seu navegador",
+  "chat.linkMenu.openInAgentBrowser": "Abrir no navegador do agente",
+  "chat.linkMenu.copy": "Copiar link",
   "chat.browser.question.signInRetry": "O login salvo de {site} não funcionou. Termine de entrar na janela do navegador do agente e escolha Continuar.",
   "chat.browser.question.signInWhy": "Entre em {site} na janela do navegador do agente e escolha Continuar. O agente não vê o que você digita. Ele diz: {why}"
 }

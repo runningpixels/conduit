@@ -4,6 +4,7 @@ import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
 import { useUpdateScheduler } from './updates/useUpdateScheduler';
 import { ToastStack } from './workspace/ToastStack';
+import { LinkMenu } from './chat/LinkMenu';
 import { useSpendAlert } from './workspace/useSpendAlert';
 import { useTurnFinishSignals } from './workspace/useTurnFinishSignals';
 import { makeStatus, fromString, STATUS_DISMISS_MS, TOAST_DISMISS_MS, TOAST_STATUS_KINDS, toastDismissMs, workflowRunStatus } from './chat/statusTypes';
@@ -4485,6 +4486,7 @@ export default function App() {
       )}
 
       <ShortcutsSheet open={shortcutsOpen} onClose={closeShortcuts} />
+      <LinkMenu onStatus={setStatusMessage} />
       {projectSettingsFolder ? (
         <ProjectSettingsDialog
           folder={projectSettingsFolder}

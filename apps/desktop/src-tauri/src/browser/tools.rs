@@ -557,6 +557,67 @@ impl Drop for RunBrowser {
     }
 }
 
+/// Open `url` for the person in a new tab of the agent's browser (its own
+/// profile), to sign in or pass a check where the agent will need it later.
+/// The tab is guarded like the agent's (no local or private addresses), and
+/// holds the browser open until the person closes it.
+pub async fn open_for_person(
+    chosen: &Chosen,
+    profile: &Path,
+    url: &str,
+) -> Result<(), BrowserError> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(BrowserError::Other(
+            "only http and https addresses can be opened".to_string(),
+        ));
+    }
+    if let Decision::Block(why) = Guard::default().check(url).await {
+        return Err(BrowserError::Blocked {
+            url: url.to_string(),
+            why,
+        });
+    }
+    let tab = new_tab(chosen, profile).await?;
+    // Listen before the person can close it.
+    let mut events = tab.cdp.subscribe();
+    let navigated = tab
+        .cdp
+        .call("Page.navigate", json!({ "url": url }), Some(&tab.session))
+        .await;
+    if let Err(error) = navigated {
+        tab.close().await;
+        return Err(cdp_error(error));
+    }
+    let _ = tab
+        .cdp
+        .call(
+            "Target.activateTarget",
+            json!({ "targetId": tab.target_id }),
+            None,
+        )
+        .await;
+    tokio::spawn(async move {
+        loop {
+            match events.recv().await {
+                Ok(event) if closes(&event, &tab.session, &tab.target_id) => break,
+                Ok(_) | Err(RecvError::Lagged(_)) => {}
+                Err(RecvError::Closed) => break,
+            }
+        }
+        tab.close().await;
+    });
+    Ok(())
+}
+
+/// Whether `event` says the tab (its `session`, its `target`) is gone.
+fn closes(event: &super::cdp::Event, session: &str, target: &str) -> bool {
+    match event.method.as_str() {
+        "Target.detachedFromTarget" => event.params["sessionId"].as_str() == Some(session),
+        "Target.targetDestroyed" => event.params["targetId"].as_str() == Some(target),
+        _ => false,
+    }
+}
+
 fn launch_error(error: LaunchError) -> BrowserError {
     match error {
         LaunchError::NotInstalled => BrowserError::NotInstalled,
@@ -1253,6 +1314,23 @@ async fn read(tab: &Tab, opts: ReadOpts) -> Result<Value, BrowserError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_persons_tab_ends_when_it_is_closed_and_not_before() {
+        let event = |method: &str, params: Value| super::super::cdp::Event {
+            method: method.to_string(),
+            params,
+            session_id: None,
+        };
+        let detached = event("Target.detachedFromTarget", json!({ "sessionId": "s1" }));
+        let destroyed = event("Target.targetDestroyed", json!({ "targetId": "t1" }));
+        let other = event("Target.detachedFromTarget", json!({ "sessionId": "s2" }));
+        let load = event("Page.loadEventFired", json!({}));
+        assert!(closes(&detached, "s1", "t1"));
+        assert!(closes(&destroyed, "s1", "t1"));
+        assert!(!closes(&other, "s1", "t1"));
+        assert!(!closes(&load, "s1", "t1"));
+    }
 
     #[test]
     fn settle_needs_two_quiet_polls_and_a_second() {

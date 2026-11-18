@@ -55,6 +55,12 @@ ignore = [
     # libsqlite3-sys ^0.30.1 and even sqlx 0.9.0 caps it below 0.38. Drop this
     # when sqlx allows libsqlite3-sys >= 0.39 and we move to it.
     "RUSTSEC-2026-0459",
+    # chrono: marked unmaintained (no vulnerability), every version affected,
+    # no fixed release. We use it directly for timestamps, and it also arrives
+    # through sqlx and ironcalc (chrono-tz), so dropping our own use would not
+    # remove it from the tree. Drop this when we move to jiff or time and
+    # sqlx and ironcalc no longer pull chrono in.
+    "RUSTSEC-2026-0543",
 ]
 
 [licenses]

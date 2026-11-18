@@ -10,6 +10,66 @@ use conduit_desktop::{
 };
 use serde_json::json;
 
+/// Malformed arguments must end the call as failed, with the parse error as its
+/// result. They used to return early and leave the call "running", so the model
+/// was told only "Tool call did not complete" and repeated the same bad call
+/// (add_slide without `layout`) until the turn ran out of steps.
+#[tokio::test]
+async fn invalid_arguments_fail_the_call_with_the_reason() {
+    use conduit_desktop::db::repository::tool_calls;
+    use provider_core::schema::ToolCallStatus;
+
+    let pool = common::setup_pool().await;
+    let enc = common::setup_encryption();
+    let artifacts_dir = tempfile::tempdir().unwrap();
+    let exports_dir = tempfile::tempdir().unwrap();
+    let conv = conversations::create(&pool, None).await.unwrap();
+    let ctx = AgentToolContext {
+        headless: false,
+        db: &pool,
+        artifacts_dir: artifacts_dir.path(),
+        exports_dir: exports_dir.path(),
+        encryption: &enc,
+        conversation_id: &conv.id,
+        source_message_id: None,
+        workspace: None,
+        search: Default::default(),
+        image: None,
+    };
+
+    for (id, tool, args, reason) in [
+        (
+            "bad-slide",
+            agent_tools::ADD_SLIDE_TOOL,
+            json!({ "headline": "Four years of growth" }),
+            "layout",
+        ),
+        (
+            "bad-random",
+            agent_tools::RANDOM_TOOL,
+            json!({ "min": 5, "max": 1 }),
+            "min must be less than max",
+        ),
+    ] {
+        let exec = agent_tools::execute_builtin_tool(&ctx, id, "req-1", tool, &args)
+            .await
+            .expect("a bad call is a failed tool result, not an error");
+        assert!(exec.is_error, "{tool}");
+        let error = exec
+            .output
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or_default();
+        assert!(error.contains(reason), "{tool}: {error}");
+
+        let stored = tool_calls::get_tool_call(&pool, &enc, id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.status, ToolCallStatus::Failed, "{tool}");
+    }
+}
+
 #[tokio::test]
 async fn write_html_document_creates_artifact() {
     let pool = common::setup_pool().await;
@@ -408,7 +468,10 @@ async fn write_brand_theme_rejects_missing_light_palette() {
     )
     .await;
 
-    let err = result.expect_err("missing required `light` should fail argument parsing");
+    // A parse failure is a failed tool result the model can read and fix.
+    let exec = result.expect("argument errors come back as a failed tool result");
+    assert!(exec.is_error);
+    let err = exec.output["error"].as_str().unwrap_or_default();
     assert!(
         err.contains("light"),
         "error should name the missing field: {err}"

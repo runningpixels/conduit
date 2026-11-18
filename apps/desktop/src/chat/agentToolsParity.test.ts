@@ -11,7 +11,7 @@
  * (`ChatView.tsx`'s `selectBuiltinDocumentTools`/`selectBuiltinBrandTools`,
  * both sourced from `builtinToolDefinitions()`), and the real execution
  * authority is the `match tool_name { ... }` dispatch inside
- * `execute_builtin_tool` (`src-tauri/src/agent_tools.rs`) — every arm there
+ * `dispatch_builtin_tool` (`src-tauri/src/agent_tools.rs`) — every arm there
  * is a tool Rust can actually run; the wildcard arm
  * (`_ => Err("Unknown builtin tool: ...")`) is what happens to everything
  * else.
@@ -21,7 +21,7 @@
  * production caller — it is referenced only from `#[cfg(test)]` code in the
  * same file. So the direction that actually protects a user from a failed
  * tool call is: every tool TS can advertise to the model must have a
- * dispatch arm in `execute_builtin_tool`. The reverse (Rust dispatches
+ * dispatch arm in `dispatch_builtin_tool`. The reverse (Rust dispatches
  * something TS never advertises) is dead code, not a user-facing failure —
  * worth noticing, not worth failing a build over.
  *
@@ -73,7 +73,7 @@ function parseConstMap(src: string): Map<string, string> {
 }
 
 /**
- * Every tool name with a dispatch arm in `execute_builtin_tool`'s
+ * Every tool name with a dispatch arm in `dispatch_builtin_tool`'s
  * `match tool_name { ... }` — the actual execution authority (see module
  * comment). Extracted as "every `IDENT =>` between the match's opening and
  * its `_ => Err("Unknown builtin tool ...")` wildcard arm, resolved through
@@ -84,7 +84,9 @@ function parseConstMap(src: string): Map<string, string> {
  * top-level `SOME_TOOL_CONST =>` arms survive.
  */
 function parseDispatchedTools(src: string, constMap: Map<string, string>): Set<string> {
-  const matchStart = src.indexOf('let result = match tool_name {');
+  const fnStart = src.indexOf('async fn dispatch_builtin_tool(');
+  if (fnStart === -1) return new Set();
+  const matchStart = src.indexOf('match tool_name {', fnStart);
   if (matchStart === -1) return new Set();
   const wildcardMarker = 'Err(format!("Unknown builtin tool';
   const wildcardIndex = src.indexOf(wildcardMarker, matchStart);
@@ -145,7 +147,7 @@ describe('TS builtin tools stay executable: every TS tool has a Rust dispatch ar
     expect(dispatched.size).toBeGreaterThan(0);
   });
 
-  it('every tool TS can advertise to the model has a matching arm in execute_builtin_tool', () => {
+  it('every tool TS can advertise to the model has a matching arm in dispatch_builtin_tool', () => {
     // This is the direction that protects a user: TS tells the model a tool
     // exists, the model calls it, and Rust's `match tool_name` has nowhere to
     // route it -- the call fails with "Unknown builtin tool". The reverse
@@ -155,7 +157,7 @@ describe('TS builtin tools stay executable: every TS tool has a Rust dispatch ar
     const undispatched = tsNames.filter((name) => !dispatched.has(name));
     expect(
       undispatched,
-      `TS advertises tool(s) with no dispatch arm in execute_builtin_tool -- the model could call ` +
+      `TS advertises tool(s) with no dispatch arm in dispatch_builtin_tool -- the model could call ` +
         `these and get "Unknown builtin tool": ${undispatched.join(', ')}`,
     ).toEqual([]);
   });

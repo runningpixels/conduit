@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **A slide, draft or spreadsheet call with bad arguments no longer stalls a
+  turn.** When the model left out a required field (a slide without its
+  layout, say), the call stayed "running" and the model was told only "Tool
+  call did not complete", so it repeated the same call until the turn ran out
+  of steps. Now the call fails with the reason, for example "missing field
+  `layout`", and the model fixes it on the next try.
+
 ## [1.0.0-rc.33] - 2026-11-15
 
 The agent's browser can sign in with a password you saved, without the model

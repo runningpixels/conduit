@@ -1100,7 +1100,50 @@ pub async fn execute_builtin_tool(
         .await
         .map_err(|e| e.to_string())?;
 
-    let result = match tool_name {
+    // Dispatch lives in its own function so that a `?` on bad arguments ends
+    // in the failure path below, instead of returning early with the call
+    // still "running": the model was then told only "Tool call did not
+    // complete" and repeated the same malformed call until it ran out of
+    // steps (add_slide without `layout`).
+    let result = dispatch_builtin_tool(ctx, tool_name, arguments).await;
+
+    match result {
+        Ok(output) => {
+            let is_error = output.get("ok") == Some(&Value::Bool(false));
+            finalize_tool_call(
+                ctx,
+                tool_call_id,
+                request_id,
+                tool_name,
+                arguments,
+                output,
+                is_error,
+            )
+            .await
+        }
+        Err(error) => {
+            finalize_tool_call(
+                ctx,
+                tool_call_id,
+                request_id,
+                tool_name,
+                arguments,
+                serde_json::json!({ "ok": false, "error": error }),
+                true,
+            )
+            .await
+        }
+    }
+}
+
+/// Run one builtin tool. Any `Err`, including unparseable arguments, is
+/// recorded by the caller as a failed call the model can read.
+async fn dispatch_builtin_tool(
+    ctx: &AgentToolContext<'_>,
+    tool_name: &str,
+    arguments: &Value,
+) -> Result<Value, String> {
+    match tool_name {
         WRITE_HTML_TOOL => {
             let input: WriteHtmlInput = parse_args(tool_name, arguments)?;
             let title = resolve_title(input.title, input.filename);
@@ -1470,34 +1513,6 @@ pub async fn execute_builtin_tool(
             read_spreadsheet(ctx, input).await
         }
         _ => Err(format!("Unknown builtin tool: {tool_name}")),
-    };
-
-    match result {
-        Ok(output) => {
-            let is_error = output.get("ok") == Some(&Value::Bool(false));
-            finalize_tool_call(
-                ctx,
-                tool_call_id,
-                request_id,
-                tool_name,
-                arguments,
-                output,
-                is_error,
-            )
-            .await
-        }
-        Err(error) => {
-            finalize_tool_call(
-                ctx,
-                tool_call_id,
-                request_id,
-                tool_name,
-                arguments,
-                serde_json::json!({ "ok": false, "error": error }),
-                true,
-            )
-            .await
-        }
     }
 }
 

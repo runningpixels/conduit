@@ -65,6 +65,8 @@ pub struct AppState {
     listed_image_input: Arc<Mutex<HashMap<(String, String), bool>>>,
     /// Where agent calls announce that they started or ended.
     pub agent_calls: Arc<crate::agents::calls::AgentCalls>,
+    /// The page-load waits workflow runs are in now, for the run page.
+    pub browser_pauses: Arc<crate::browser::pace::ShownPauses>,
 }
 
 impl AppState {
@@ -345,6 +347,7 @@ impl AppState {
             live_prices: Arc::new(Mutex::new(HashMap::new())),
             listed_file_input: Arc::new(Mutex::new(HashMap::new())),
             listed_image_input: Arc::new(Mutex::new(HashMap::new())),
+            browser_pauses: Arc::default(),
             agent_calls: Arc::default(),
         })
     }
@@ -373,6 +376,7 @@ impl AppState {
             live_prices: Arc::new(Mutex::new(HashMap::new())),
             listed_file_input: Arc::new(Mutex::new(HashMap::new())),
             listed_image_input: Arc::new(Mutex::new(HashMap::new())),
+            browser_pauses: Arc::default(),
             agent_calls: Arc::default(),
         }
     }

@@ -121,6 +121,10 @@ pub struct WorkflowRunStep {
     /// A running step that is waiting for the user (an approval or an answer).
     #[serde(default)]
     pub waiting: bool,
+    /// A running step whose browser call is waiting before it loads a page
+    /// (its pace). Not stored: filled in from memory when the run is read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser_pause: Option<crate::browser::pace::Pause>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -799,6 +803,7 @@ pub async fn get_run(
             started_at,
             finished_at,
             waiting,
+            browser_pause: None,
         });
     }
     let mut run = run_from(row);

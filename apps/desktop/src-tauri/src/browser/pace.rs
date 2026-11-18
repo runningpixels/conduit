@@ -275,7 +275,8 @@ impl PaceState {
 
 /// A wait before a page load long enough to show the person, so the call
 /// doesn't look stuck.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Pause {
     pub host: String,
     /// Whole seconds, rounded up.
@@ -286,6 +287,37 @@ pub struct Pause {
 
 /// Told `Some` when a shown wait starts and `None` when it ends.
 pub type OnPause<'a> = dyn Fn(Option<Pause>) + Send + Sync + 'a;
+
+/// The waits workflow runs are in now, by (run id, step id), for the run
+/// page, which reads a run again every few seconds rather than following its
+/// events. In memory: a wait lasts seconds and ends with the call.
+#[derive(Default)]
+pub struct ShownPauses(Mutex<HashMap<(String, String), Pause>>);
+
+impl ShownPauses {
+    /// Note that a step's browser call started (`Some`) or ended a wait.
+    pub fn set(&self, run_id: &str, step_id: &str, pause: Option<Pause>) {
+        if let Ok(mut pauses) = self.0.lock() {
+            let key = (run_id.to_string(), step_id.to_string());
+            match pause {
+                Some(p) => {
+                    pauses.insert(key, p);
+                }
+                None => {
+                    pauses.remove(&key);
+                }
+            }
+        }
+    }
+
+    /// The wait a run's step is in, if any.
+    pub fn get(&self, run_id: &str, step_id: &str) -> Option<Pause> {
+        let pauses = self.0.lock().ok()?;
+        pauses
+            .get(&(run_id.to_string(), step_id.to_string()))
+            .cloned()
+    }
+}
 
 /// Load waits shorter than this aren't shown.
 pub const SHOWN_PAUSE: Duration = Duration::from_secs(2);
@@ -432,6 +464,35 @@ mod tests {
                 seconds: 15,
                 slow_down: true
             })
+        );
+    }
+
+    #[test]
+    fn a_workflow_steps_wait_is_kept_until_it_ends() {
+        let pauses = ShownPauses::default();
+        let wait = Pause {
+            host: "a.com".into(),
+            seconds: 7,
+            slow_down: false,
+        };
+        pauses.set("run", "fetch", Some(wait.clone()));
+        assert_eq!(pauses.get("run", "fetch"), Some(wait));
+        assert_eq!(pauses.get("run", "other"), None);
+        assert_eq!(pauses.get("other", "fetch"), None);
+        pauses.set("run", "fetch", None);
+        assert_eq!(pauses.get("run", "fetch"), None);
+    }
+
+    #[test]
+    fn a_wait_reaches_the_run_page_in_camel_case() {
+        let wait = Pause {
+            host: "a.com".into(),
+            seconds: 7,
+            slow_down: true,
+        };
+        assert_eq!(
+            serde_json::to_value(&wait).unwrap(),
+            serde_json::json!({ "host": "a.com", "seconds": 7, "slowDown": true })
         );
     }
 

@@ -1016,6 +1016,22 @@ describe('WorkflowsPage', () => {
       expect(words).toEqual(['Waiting for you', 'Running…']);
     });
 
+    it("says when a step's browser waits before opening a page", async () => {
+      const step = { ...finishedRun.steps[0], runId: 'r5', status: 'running' as const, error: null, finishedAt: null };
+      ipc.listWorkflowRuns.mockResolvedValue([live]);
+      ipc.getWorkflowRun.mockResolvedValue({
+        run: live,
+        steps: [
+          { ...step, id: 's1', stepId: 'fetch', browserPause: { host: 'news.ycombinator.com', seconds: 17, slowDown: false } },
+          { ...step, id: 's2', stepId: 'summary', input: { type: 'summarize' }, status: 'completed' as const, browserPause: { host: 'old.example', seconds: 3, slowDown: false } },
+        ],
+      });
+      render(<WorkflowsPage onStatus={vi.fn()} />);
+      const detail = await runDetail();
+      const notes = [...detail.querySelectorAll('.wf-step-pause')].map((el) => el.textContent);
+      expect(notes).toEqual(['waiting before opening news.ycombinator.com…']);
+    });
+
     it('follows the run until it ends, then offers Run now again', async () => {
       ipc.listWorkflowRuns.mockResolvedValue([live]);
       ipc.getWorkflowRun.mockResolvedValue(liveDetail);

@@ -1033,17 +1033,26 @@ impl ConnectorTools<'_, '_> {
             } else {
                 None
             };
-            exec.browser
-                .run(
+            // A long wait before a page load shows on the run page.
+            let pauses = &exec.runner.state.browser_pauses;
+            let on_pause = |pause: Option<crate::browser::pace::Pause>| {
+                pauses.set(exec.run_id, step_id, pause);
+            };
+            let result = exec
+                .browser
+                .run_showing_pauses(
                     name,
                     arguments,
                     chosen,
                     &profile,
                     askable.then_some(&ask as &crate::browser::tools::AskFn<'_>),
                     act.as_ref(),
+                    Some(&on_pause as &crate::browser::pace::OnPause<'_>),
                 )
                 .await
-                .map_err(|e| e.for_model())
+                .map_err(|e| e.for_model());
+            pauses.set(exec.run_id, step_id, None);
+            result
         };
         let work = async {
             let mut page = work.await?;

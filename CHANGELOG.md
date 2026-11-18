@@ -7,10 +7,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.34] - 2026-11-17
+
+The agent's browser now browses at a human pace, so sites are less likely to
+turn it away.
+
+### Changed
+
+- **Human pace by default** (#346). The agent's browser now pauses to read
+  each page, opens at most six pages a minute on one site, and backs off when
+  a site asks it to slow down. This applies to everyone, including people who
+  used the browser before this release. Fast pace is still available in
+  Settings → Computer. Time spent waiting doesn't count against a turn's time
+  limit.
+
+### Added
+
+- **Pace per chat and per workflow** (#347). A chat's browser menu has a Pace
+  choice (As in Settings, Human or Fast), and a workflow's Start panel has
+  Browsing pace. Workflows that run while nobody is watching use Human pace
+  unless the workflow picks its own. When a page load waits 2 seconds or
+  more, the chat says so, for example "waiting before opening
+  news.ycombinator.com…", even when that step is folded into the turn's
+  summary line.
+
 ### Fixed
 
 - **A slide, draft or spreadsheet call with bad arguments no longer stalls a
-  turn.** When the model left out a required field (a slide without its
+  turn** (#348). When the model left out a required field (a slide without its
   layout, say), the call stayed "running" and the model was told only "Tool
   call did not complete", so it repeated the same call until the turn ran out
   of steps. Now the call fails with the reason, for example "missing field

@@ -3345,6 +3345,7 @@
   "workspace.workflows.runDetail.computer.outcome.timedOut": "Tiempo agotado",
   "workspace.workflows.runDetail.computer.output": "Salida",
   "workspace.workflows.runDetail.computer.outside": "fuera de la carpeta",
+  "workspace.workflows.runDetail.computer.downloaded": "descargado por el navegador",
   "workspace.workflows.runDetail.computer.showChanges": "Mostrar cambios",
   "workspace.workflows.runDetail.computer.title": "En este ordenador",
   "workspace.workflows.runDetail.connectorItems": "{count, plural, one {# elemento} other {# elementos}}",

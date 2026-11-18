@@ -3345,6 +3345,7 @@
   "workspace.workflows.runDetail.computer.outcome.timedOut": "Tempo esgotado",
   "workspace.workflows.runDetail.computer.output": "Saída",
   "workspace.workflows.runDetail.computer.outside": "fora da pasta",
+  "workspace.workflows.runDetail.computer.downloaded": "baixado pelo navegador",
   "workspace.workflows.runDetail.computer.showChanges": "Mostrar alterações",
   "workspace.workflows.runDetail.computer.title": "Neste computador",
   "workspace.workflows.runDetail.connectorItems": "{count, plural, one {# item} other {# itens}}",

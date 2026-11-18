@@ -1049,16 +1049,34 @@ impl ConnectorTools<'_, '_> {
             let mut page = work.await?;
             crate::browser::look::store_screenshot(exec.runner.state, self.conversation, &mut page)
                 .await?;
-            if let Err(error) = crate::browser::download::store_download(
+            // A workflow with a folder also gets the file there.
+            let folder = exec.folder.map(std::path::Path::new);
+            match crate::browser::download::store_download(
                 exec.runner.state,
                 self.conversation,
                 &mut page,
+                folder,
             )
             .await
             {
-                page["download"] = Value::String(format!(
-                    "The download finished but {error}, so nothing was kept."
-                ));
+                Ok(Some(file)) => {
+                    let kept = page[crate::browser::download::IN_FOLDER_KEY].as_str();
+                    if let Some(path) = kept {
+                        self.team.note_computer(json!({
+                            "kind": "write",
+                            "path": path,
+                            "approvedBy": "",
+                            "outcome": "changed",
+                            "downloaded": file.name,
+                        }));
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    page["download"] = Value::String(format!(
+                        "The download finished but {error}, so nothing was kept."
+                    ));
+                }
             }
             Ok(page)
         };

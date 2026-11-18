@@ -3345,6 +3345,7 @@
   "workspace.workflows.runDetail.computer.outcome.timedOut": "タイムアウト",
   "workspace.workflows.runDetail.computer.output": "出力",
   "workspace.workflows.runDetail.computer.outside": "フォルダーの外",
+  "workspace.workflows.runDetail.computer.downloaded": "ブラウザーでダウンロード",
   "workspace.workflows.runDetail.computer.showChanges": "変更を表示",
   "workspace.workflows.runDetail.computer.title": "このコンピューターで",
   "workspace.workflows.runDetail.connectorItems": "{count, plural, other {# 件}}",

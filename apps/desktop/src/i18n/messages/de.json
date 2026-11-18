@@ -3345,6 +3345,7 @@
   "workspace.workflows.runDetail.computer.outcome.timedOut": "Zeitüberschreitung",
   "workspace.workflows.runDetail.computer.output": "Ausgabe",
   "workspace.workflows.runDetail.computer.outside": "außerhalb des Ordners",
+  "workspace.workflows.runDetail.computer.downloaded": "vom Browser heruntergeladen",
   "workspace.workflows.runDetail.computer.showChanges": "Änderungen anzeigen",
   "workspace.workflows.runDetail.computer.title": "Auf diesem Computer",
   "workspace.workflows.runDetail.connectorItems": "{count, plural, one {# Eintrag} other {# Einträge}}",

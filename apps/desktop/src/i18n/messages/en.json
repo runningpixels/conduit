@@ -3345,6 +3345,7 @@
   "workspace.workflows.runDetail.computer.outcome.timedOut": "Timed out",
   "workspace.workflows.runDetail.computer.output": "Output",
   "workspace.workflows.runDetail.computer.outside": "outside the folder",
+  "workspace.workflows.runDetail.computer.downloaded": "downloaded by the browser",
   "workspace.workflows.runDetail.computer.showChanges": "Show changes",
   "workspace.workflows.runDetail.computer.title": "On this computer",
   "workspace.workflows.runDetail.connectorItems": "{count, plural, one {# item} other {# items}}",

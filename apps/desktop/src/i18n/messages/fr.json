@@ -3345,6 +3345,7 @@
   "workspace.workflows.runDetail.computer.outcome.timedOut": "Délai dépassé",
   "workspace.workflows.runDetail.computer.output": "Sortie",
   "workspace.workflows.runDetail.computer.outside": "hors du dossier",
+  "workspace.workflows.runDetail.computer.downloaded": "téléchargé par le navigateur",
   "workspace.workflows.runDetail.computer.showChanges": "Afficher les modifications",
   "workspace.workflows.runDetail.computer.title": "Sur cet ordinateur",
   "workspace.workflows.runDetail.connectorItems": "{count, plural, one {# élément} other {# éléments}}",

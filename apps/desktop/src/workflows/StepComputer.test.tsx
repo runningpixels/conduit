@@ -114,4 +114,19 @@ describe('StepComputer details', () => {
     expect(items[0]).not.toHaveTextContent('outside the folder');
     expect(items[1]).toHaveTextContent('You approved it · outside the folder');
   });
+
+  it('says when the browser downloaded a file into the folder', () => {
+    render(
+      <StepComputer
+        output={{
+          computer: [
+            { kind: 'write', path: 'downloads/data.csv', approvedBy: '', outcome: 'changed', downloaded: 'data.csv' },
+          ],
+        }}
+      />,
+    );
+    const item = screen.getByRole('listitem');
+    expect(item).toHaveTextContent('downloads/data.csv');
+    expect(item).toHaveTextContent('downloaded by the browser');
+  });
 });

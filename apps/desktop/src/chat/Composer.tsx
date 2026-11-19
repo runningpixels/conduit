@@ -304,7 +304,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // for the picking keystroke still carries it, and must not reopen the menu.
   const slashPickedTextRef = useRef<string | null>(null);
   // The composer is narrow (a docked panel, a small window): the Web and
-  // Research toggles show their icons only.
+  // Research toggles show their icons only, the model picker drops the
+  // vendor prefix, the folder chip drops "(default)" and the status line
+  // drops what the picker already shows.
   const [narrow, setNarrow] = useState(false);
   // True while an IME composition is in progress (D12): the trigger and the
   // Enter-to-send guard both go quiet until it ends.
@@ -1094,9 +1096,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   if (onWorkspacePick && workspaceBound) {
     chips.push({
       id: 'workspace',
-      label: workspaceFromSettings
-        ? t('chat.composer.workspace.defaultChipLabel', { label: workspaceLabel! })
-        : workspaceLabel!,
+      // Narrow, the label drops "(default)": the folder's name is the part
+      // worth the room, and the tooltip ("Default folder from Settings: …")
+      // and the popover still say it is the default.
+      label:
+        workspaceFromSettings && !narrow
+          ? t('chat.composer.workspace.defaultChipLabel', { label: workspaceLabel! })
+          : workspaceLabel!,
       icon: <FolderIcon />,
       title: workspaceTitle!,
       onOpen: conversationId ? () => togglePop('workspace') : undefined,
@@ -1716,6 +1722,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             settings={settings}
             onSelectModel={onSelectModel}
             disabled={streaming}
+            compact={narrow}
           />
           {settings.dictationButton !== false ? (
             <DictationButton
@@ -1770,6 +1777,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         credentialMode={credentialMode}
         credentialRef={credentialRef ?? ''}
         agentModel={statusAgentModel}
+        compact={narrow}
         modelMenuOpen={() => modelPickerRef.current?.open()}
       />
       {starterIds.length > 0 ? (

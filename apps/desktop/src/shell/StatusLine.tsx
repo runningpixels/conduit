@@ -47,6 +47,12 @@ interface StatusLineProps {
   agentModel?: { name: string; provider: string; model: string } | null;
   /** Open the composer model picker. */
   modelMenuOpen: () => void;
+  /** A narrow composer: the line keeps to one row by leaving out what is
+   *  shown elsewhere or is only the usual state. The chat's own model is
+   *  already on the picker beside it (an agent's model still shows, since the
+   *  picker does not name it), and "online" is the default posture ("local
+   *  only" still shows). Both stay in the popover. */
+  compact?: boolean;
 }
 
 export function StatusLine({
@@ -59,6 +65,7 @@ export function StatusLine({
   credentialRef,
   agentModel = null,
   modelMenuOpen,
+  compact = false,
 }: StatusLineProps) {
   const t = useT();
   const fmt = useFormatters();
@@ -117,6 +124,8 @@ export function StatusLine({
    * which is what §2.2 promised the toggle would do.
    */
   const expanded = readExpandedStatus() === 'on';
+  const showModel = !compact || expanded || agentModel != null;
+  const showPosture = !compact || expanded || settings.localOnly;
 
 
   return (
@@ -127,20 +136,25 @@ export function StatusLine({
         className="status"
         data-expanded={expanded ? 'true' : undefined}
         data-context-warn={nearLimit ? 'true' : undefined}
+        data-compact={compact && !expanded ? 'true' : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         title={t('shell.statusLine.chatDetails')}
         onClick={() => setOpen((v) => !v)}
       >
-        <i className="pdot" aria-hidden="true" />
-        <span>{agentModel ? `${agentModel.name} · ${agentModel.model}` : settings.activeModel}</span>
+        {showModel && (
+          <>
+            <i className="pdot" aria-hidden="true" />
+            <span>{agentModel ? `${agentModel.name} · ${agentModel.model}` : settings.activeModel}</span>
+          </>
+        )}
         {expanded && keyResolved && !keyMissing && (
           <>
             {sep}
             <span>{keyLabel}</span>
           </>
         )}
-        {sep}
+        {showModel && sep}
         {contextWindow != null && (
           <span
             className="ctx-meter"
@@ -168,10 +182,14 @@ export function StatusLine({
             <span className="warn">{notConfiguredLabel}</span>
           </>
         )}
-        {sep}
-        <span className={settings.localOnly ? 'local' : undefined}>
-          {settings.localOnly ? t('shell.statusLine.localOnly') : t('shell.statusLine.online')}
-        </span>
+        {showPosture && (
+          <>
+            {sep}
+            <span className={settings.localOnly ? 'local' : undefined}>
+              {settings.localOnly ? t('shell.statusLine.localOnly') : t('shell.statusLine.online')}
+            </span>
+          </>
+        )}
       </button>
 
       <Menu

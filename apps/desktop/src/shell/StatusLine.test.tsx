@@ -188,6 +188,31 @@ describe('StatusLine — the sentence', () => {
     expect(screen.getByTitle('Chat details')).toHaveTextContent('not configured');
   });
 
+  it('compact, leaves out the model (on the picker) and "online", and no separator leads', () => {
+    render(<StatusLine {...baseProps} compact settings={{ ...settings, localOnly: false }} contextTokens={3200} />);
+    const line = screen.getByTitle('Chat details');
+    expect(line).not.toHaveTextContent('claude-sonnet-4');
+    expect(line).not.toHaveTextContent('online');
+    expect(line).toHaveTextContent(/^2% of 200K$/);
+    expect(line.firstElementChild).toHaveClass('ctx-meter');
+    // Both still one click away.
+    openDetails();
+    expect(screen.getByRole('menuitem', { name: /claude-sonnet-4/ })).toBeInTheDocument();
+  });
+
+  it('compact, still says "local only" and an agent\'s model', () => {
+    render(
+      <StatusLine
+        {...baseProps}
+        compact
+        agentModel={{ name: 'Scout', provider: 'anthropic', model: 'claude-haiku-4' }}
+      />,
+    );
+    const line = screen.getByTitle('Chat details');
+    expect(line).toHaveTextContent('Scout · claude-haiku-4');
+    expect(line).toHaveTextContent('local only');
+  });
+
   it('says nothing about the key while the posture is still resolving', () => {
     render(<StatusLine {...baseProps} credentialMode="loading" credentialRef="" />);
     expect(screen.getByTitle('Chat details')).not.toHaveTextContent('not configured');

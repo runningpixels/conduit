@@ -101,6 +101,16 @@ interface ComposerModelPickerProps {
   variant?: 'composer' | 'reply';
   /** The model marked as current in the list; the chat's by default. */
   current?: { provider: string; model: string };
+  /** A narrow composer: the trigger names the model without its vendor
+   *  prefix (`z-ai/glm-5.3-flash` → `glm-5.3-flash`), the part that tells
+   *  models apart; the full id moves to the tooltip. */
+  compact?: boolean;
+}
+
+/** `vendor/model` → `model`; an id with no slash is returned as is. */
+export function shortModelLabel(model: string): string {
+  const cut = model.lastIndexOf('/');
+  return cut >= 0 && cut < model.length - 1 ? model.slice(cut + 1) : model;
 }
 
 export interface ComposerModelPickerHandle {
@@ -197,7 +207,7 @@ export function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<
 
 export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, ComposerModelPickerProps>(
   function ComposerModelPicker(
-    { settings, onSelectModel, disabled = false, variant = 'composer', current },
+    { settings, onSelectModel, disabled = false, variant = 'composer', current, compact = false },
     ref,
   ) {
     const reply = variant === 'reply';
@@ -366,14 +376,14 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
             ref={triggerRef}
             className="cbtn model"
             type="button"
-            title={t('chat.modelPicker.switchModel')}
+            title={compact ? settings.activeModel : t('chat.modelPicker.switchModel')}
             aria-haspopup="menu"
             aria-expanded={open}
             disabled={disabled}
             onClick={() => setOpen((v) => !v)}
           >
             <i className="pdot" aria-hidden="true" />
-            <span className="model-label">{settings.activeModel}</span>
+            <span className="model-label">{compact ? shortModelLabel(settings.activeModel) : settings.activeModel}</span>
             <ChevronDown />
           </button>
         )}

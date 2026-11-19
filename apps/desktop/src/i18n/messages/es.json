@@ -3950,7 +3950,7 @@
   "chat.linkMenu.copy": "Copiar enlace",
   "chat.browser.question.signInRetry": "El inicio de sesión guardado de {site} no funcionó. Termina de iniciar sesión en la ventana del navegador del agente y elige Continuar.",
   "chat.browser.question.signInWhy": "Inicia sesión en {site} en la ventana del navegador del agente y elige Continuar. El agente no ve lo que escribes. Dice: {why}",
-  "app.whatsNew.updated": "Conduit se ha actualizado a la versión {version}.",
+  "app.whatsNew.updated": "{appName} se ha actualizado a la versión {version}.",
   "app.whatsNew.open": "Novedades",
   "settings.about.releaseNotes.label": "Notas de la versión"
 }

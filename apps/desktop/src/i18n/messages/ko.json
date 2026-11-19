@@ -3950,7 +3950,7 @@
   "chat.linkMenu.copy": "링크 복사",
   "chat.browser.question.signInRetry": "{site}의 저장된 로그인이 통과되지 않았습니다. 에이전트의 브라우저 창에서 로그인을 마친 다음 계속을 선택하세요.",
   "chat.browser.question.signInWhy": "에이전트의 브라우저 창에서 {site}에 로그인한 다음 계속을 선택하세요. 입력한 내용은 에이전트에게 보이지 않습니다. 이유: {why}",
-  "app.whatsNew.updated": "Conduit가 {version}(으)로 업데이트되었습니다.",
+  "app.whatsNew.updated": "{appName}이(가) {version}(으)로 업데이트되었습니다.",
   "app.whatsNew.open": "새로운 기능",
   "settings.about.releaseNotes.label": "릴리스 노트"
 }

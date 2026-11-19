@@ -3950,7 +3950,7 @@
   "chat.linkMenu.copy": "リンクをコピー",
   "chat.browser.question.signInRetry": "{site} の保存したサインインはうまくいきませんでした。エージェントのブラウザーのウィンドウでサインインを済ませてから「続行」を選んでください。",
   "chat.browser.question.signInWhy": "エージェントのブラウザーのウィンドウで {site} にサインインしてから「続行」を選んでください。入力内容はエージェントには見えません。理由：{why}",
-  "app.whatsNew.updated": "Conduit を {version} に更新しました。",
+  "app.whatsNew.updated": "{appName} を {version} に更新しました。",
   "app.whatsNew.open": "新機能",
   "settings.about.releaseNotes.label": "リリースノート"
 }

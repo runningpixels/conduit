@@ -3950,7 +3950,7 @@
   "chat.linkMenu.copy": "Copiar link",
   "chat.browser.question.signInRetry": "O login salvo de {site} não funcionou. Termine de entrar na janela do navegador do agente e escolha Continuar.",
   "chat.browser.question.signInWhy": "Entre em {site} na janela do navegador do agente e escolha Continuar. O agente não vê o que você digita. Ele diz: {why}",
-  "app.whatsNew.updated": "O Conduit foi atualizado para a versão {version}.",
+  "app.whatsNew.updated": "O {appName} foi atualizado para a versão {version}.",
   "app.whatsNew.open": "Novidades",
   "settings.about.releaseNotes.label": "Notas da versão"
 }

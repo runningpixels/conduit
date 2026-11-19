@@ -7,6 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.35] - 2026-11-18
+
+A workflow can keep its own browsing pace again, and after an update the app
+now says what changed.
+
+### Fixed
+
+- **Saving a workflow with its own browsing pace** (#351). Choosing a pace on
+  a workflow's Start panel failed with `Unknown setting "browserPace"`, so
+  that choice from rc.34 could not be kept. It saves now.
+
+### Added
+
+- **The run page shows the browser's wait** (#351). While a workflow step's
+  browser waits before opening a page, the step says so, for example
+  "waiting before opening news.ycombinator.com…", as a chat already does.
+- **A workflow's downloads go into its folder** (#352). A file the agent's
+  browser downloads during a workflow run is also saved to `downloads/` in
+  the workflow's folder, listed with the run's results, and never replaces a
+  file already there (a second copy becomes `name (2)`).
+- **Open a link in the agent's browser** (#353). Right-clicking a link in a
+  chat reply or a source list offers Open in your browser, Open in the
+  agent's browser and Copy link. The second opens the page with the agent's
+  own browser profile, so you can sign in or pass a check there before the
+  agent needs it. It needs Settings → Computer on.
+- **What's new after an update** (#354). The first launch after an update
+  says "Conduit was updated to …" once, with a What's new button that opens
+  that release's notes on the site. Settings → Updates and Settings → About
+  link to the notes too, and the GitHub release page now carries the notes
+  themselves.
+
 ## [1.0.0-rc.34] - 2026-11-17
 
 The agent's browser now browses at a human pace, so sites are less likely to

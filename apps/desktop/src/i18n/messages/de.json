@@ -3854,6 +3854,7 @@
   "error.browser.launchFailed": "Der Browser konnte nicht gestartet werden. Prüfe, ob er installiert ist, und versuche es erneut.",
   "error.browser.blocked": "{url} kann nicht geöffnet werden: Agenten dürfen nur öffentliche Webseiten lesen.",
   "error.browser.timeout": "Das Laden der Seite hat zu lange gedauert.",
+  "error.browser.off": "Der Browser des Agenten ist aus. Schalte ihn in den Einstellungen unter „Computer“ ein.",
   "error.browser.badSite": "„{site}“ ist keine Website. Gib einen Host wie example.com oder *.example.com an.",
   "error.browser.signInBadSite": "„{site}“ ist keine Website. Gib einen Host wie example.com ein.",
   "error.browser.signInNoUsername": "Gib den Benutzernamen oder die E-Mail ein, mit der du dich anmeldest.",
@@ -3943,6 +3944,10 @@
   "chat.browser.reason.newSite": "Erste Aktion auf {host} in diesem Chat",
   "chat.browser.question.humanCheck": "{host} möchte prüfen, ob du ein Mensch bist ({what}). Schließe die Prüfung im Browserfenster ab und wähle dann „Weiter“.",
   "chat.browser.question.signIn": "Melde dich im Browserfenster des Agenten bei {site} an und wähle dann „Weiter“. Der Agent sieht nicht, was du eingibst.",
+  "chat.linkMenu.label": "Link",
+  "chat.linkMenu.open": "Im eigenen Browser öffnen",
+  "chat.linkMenu.openInAgentBrowser": "Im Browser des Agenten öffnen",
+  "chat.linkMenu.copy": "Link kopieren",
   "chat.browser.question.signInRetry": "Die gespeicherte Anmeldung für {site} hat nicht geklappt. Schließ die Anmeldung im Browserfenster des Agenten ab und wähle dann „Weiter“.",
   "chat.browser.question.signInWhy": "Melde dich im Browserfenster des Agenten bei {site} an und wähle dann „Weiter“. Der Agent sieht nicht, was du eingibst. Er schreibt: {why}"
 }

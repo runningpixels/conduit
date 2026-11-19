@@ -100,6 +100,36 @@ pub async fn reset_browser_profile(state: State<'_, AppState>) -> Result<(), App
         })
 }
 
+/// Open a web link from a chat reply in the agent's browser, for the person:
+/// to sign in or pass a check there, in the profile the agent uses. Needs
+/// Settings → Computer on.
+#[tauri::command]
+pub async fn open_in_agent_browser(
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<(), AppError> {
+    let computer = state
+        .settings()
+        .map_err(AppError::from)?
+        .workflow_computer
+        .unwrap_or_default();
+    if !computer.enabled {
+        return Err(AppError::new(
+            "error.browser.off",
+            "The agent's browser is off. Turn it on in Settings, under Computer.",
+        ));
+    }
+    if browser::detect::installed_now().is_empty() {
+        return Err(BrowserError::NotInstalled.to_app_error());
+    }
+    let chosen =
+        browser::chat::chat_browser_choice(computer.browser.as_deref()).map_err(AppError::from)?;
+    let profile = browser::launch::profile_dir(&state.paths.root);
+    browser::tools::open_for_person(&chosen, &profile, &url)
+        .await
+        .map_err(|e| e.to_app_error())
+}
+
 // ---------------------------------------------------------------------------
 // The browser in chat
 // ---------------------------------------------------------------------------

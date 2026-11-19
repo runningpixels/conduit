@@ -802,6 +802,11 @@ export async function openExternalUrl(url: string): Promise<void> {
   await invokeCommand('open_external_url', { url });
 }
 
+/** Open a web link in the agent's browser, for the person (to sign in or pass a check there). */
+export async function openInAgentBrowser(url: string): Promise<void> {
+  await invokeCommand('open_in_agent_browser', { url });
+}
+
 // =============================================================================
 // Artifact network access (ADR-010)
 // =============================================================================

@@ -3854,6 +3854,7 @@
   "error.browser.launchFailed": "The browser couldn’t be started. Check that it’s installed and try again.",
   "error.browser.blocked": "{url} can’t be opened: agents may only read public web pages.",
   "error.browser.timeout": "The page took too long to load.",
+  "error.browser.off": "The agent’s browser is off. Turn it on in Settings, under Computer.",
   "error.browser.badSite": "“{site}” isn’t a site. Write a host such as example.com or *.example.com.",
   "error.browser.signInBadSite": "“{site}” isn’t a site. Write a host such as example.com.",
   "error.browser.signInNoUsername": "Give the username or email you sign in with.",
@@ -3943,6 +3944,10 @@
   "chat.browser.reason.newSite": "First action on {host} in this chat",
   "chat.browser.question.humanCheck": "{host} wants to check you’re a person ({what}). Finish the check in the browser window, then choose Continue.",
   "chat.browser.question.signIn": "Sign in to {site} in the agent’s browser window, then choose Continue. The agent doesn’t see what you type.",
+  "chat.linkMenu.label": "Link",
+  "chat.linkMenu.open": "Open in your browser",
+  "chat.linkMenu.openInAgentBrowser": "Open in the agent’s browser",
+  "chat.linkMenu.copy": "Copy link",
   "chat.browser.question.signInRetry": "The saved sign-in for {site} didn’t get through. Finish signing in in the agent’s browser window, then choose Continue.",
   "chat.browser.question.signInWhy": "Sign in to {site} in the agent’s browser window, then choose Continue. The agent doesn’t see what you type. It says: {why}"
 }

@@ -271,6 +271,7 @@ fn main() {
             export_deck_pptx,
             list_browsers,
             reset_browser_profile,
+            open_in_agent_browser,
             browser_remembered_sites,
             list_browser_sign_ins,
             save_browser_sign_in,

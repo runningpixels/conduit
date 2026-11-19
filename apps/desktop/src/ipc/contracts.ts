@@ -1155,6 +1155,8 @@ export interface WorkflowRunStep {
   finishedAt: string | null;
   /** A running step that is waiting for you (an approval or an answer). */
   waiting?: boolean;
+  /** A running step whose browser call waits before loading a page (its pace). */
+  browserPause?: { host: string; seconds: number; slowDown: boolean };
 }
 
 export interface WorkflowRunDetail {

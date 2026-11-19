@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ConfirmDialog } from '@conduit/ui';
 import { workflowRunStatus, type StatusState } from '../chat/statusTypes';
+import { browserPauseText } from '../chat/ToolCallBlock';
 import { useLocale, useT } from '../i18n';
 import { withInterfaceLanguage } from '../workflows/starterLanguage';
 import { useExampleItems } from '../examples/useExampleItems';
@@ -2178,6 +2179,9 @@ function RunStepRow({
             {conditionText(step) ? <span className="wf-muted wf-step-reason">{conditionText(step)}</span> : null}
             {dataSummary ? <span className="wf-muted wf-step-reason">{dataSummary}</span> : null}
             {edit ? <span className="wf-muted wf-step-reason">{edit.text}</span> : null}
+            {step.browserPause && step.status === 'running' ? (
+              <span className="wf-muted wf-step-reason wf-step-pause">{browserPauseText(step.browserPause, t)}</span>
+            ) : null}
             {stepActionsSummary(step.output, t) ? (
               <span className="wf-muted wf-step-reason">{stepActionsSummary(step.output, t)}</span>
             ) : null}

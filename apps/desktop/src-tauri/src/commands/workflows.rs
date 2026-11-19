@@ -355,10 +355,17 @@ pub async fn get_workflow_run(
     state: State<'_, AppState>,
     run_id: String,
 ) -> Result<WorkflowRunDetail, String> {
-    repo::get_run(&state.db, &state.encryption, &run_id)
+    let mut detail = repo::get_run(&state.db, &state.encryption, &run_id)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "That run no longer exists.".to_string())
+        .ok_or_else(|| "That run no longer exists.".to_string())?;
+    // A running step's browser wait, so the run doesn't look stuck.
+    for step in &mut detail.steps {
+        if step.status == "running" {
+            step.browser_pause = state.browser_pauses.get(&run_id, &step.step_id);
+        }
+    }
+    Ok(detail)
 }
 
 #[tauri::command]

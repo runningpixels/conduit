@@ -674,7 +674,14 @@ fn plain_parse_error(message: &str) -> String {
 }
 
 const DEFINITION_KEYS: &[&str] = &[
-    "inputs", "model", "folder", "trigger", "agents", "computer", "steps",
+    "inputs",
+    "model",
+    "folder",
+    "trigger",
+    "agents",
+    "computer",
+    "browserPace",
+    "steps",
 ];
 const COMPUTER_KEYS: &[&str] = &[
     "editMode",
@@ -2254,6 +2261,15 @@ mod tests {
         }));
         assert_eq!(fast.browser_pace, Some(crate::browser::pace::Pace::Fast));
         assert_eq!(serde_json::to_value(&fast).unwrap()["browserPace"], "fast");
+    }
+
+    #[test]
+    fn a_workflow_with_its_own_browser_pace_can_be_saved() {
+        let raw = json!({
+            "browserPace": "human",
+            "steps": [{ "id": "a", "type": "agent", "prompt": "Go", "tools": ["browser"] }]
+        });
+        assert!(unknown_settings(&raw).is_empty());
     }
 
     #[test]

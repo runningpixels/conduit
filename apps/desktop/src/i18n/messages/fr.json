@@ -3949,5 +3949,8 @@
   "chat.linkMenu.openInAgentBrowser": "Ouvrir dans le navigateur de l’agent",
   "chat.linkMenu.copy": "Copier le lien",
   "chat.browser.question.signInRetry": "La connexion enregistrée pour {site} n’a pas abouti. Terminez la connexion dans la fenêtre du navigateur de l’agent, puis choisissez Continuer.",
-  "chat.browser.question.signInWhy": "Connectez-vous à {site} dans la fenêtre du navigateur de l’agent, puis choisissez Continuer. L’agent ne voit pas ce que vous tapez. Il indique : {why}"
+  "chat.browser.question.signInWhy": "Connectez-vous à {site} dans la fenêtre du navigateur de l’agent, puis choisissez Continuer. L’agent ne voit pas ce que vous tapez. Il indique : {why}",
+  "app.whatsNew.updated": "{appName} a été mis à jour vers la version {version}.",
+  "app.whatsNew.open": "Nouveautés",
+  "settings.about.releaseNotes.label": "Notes de version"
 }

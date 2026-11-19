@@ -90,6 +90,12 @@ updateCheckEnabled: boolean,
  */
 updatePolicy: UpdatePolicy, 
 /**
+ * The app version this profile last ran, so the first launch after an
+ * update can say so once, with a link to what's new. Unset on profiles
+ * from before it existed (rc.34 and older).
+ */
+lastSeenVersion?: string, 
+/**
  * Phase 6: first-run onboarding completion flag. `false` until the user
  * finishes the BYOK gate; `App.tsx` renders `<Onboarding>` instead of the
  * workspace while false (and while no provider credential is configured).

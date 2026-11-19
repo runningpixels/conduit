@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppSettings, RolloutChannel, UpdateInfo, UpdatePolicy, UpdateStatus } from '../../ipc/contracts';
-import { checkForUpdate, downloadAndInstallUpdate, getUpdateStatus } from '../../ipc/client';
+import { checkForUpdate, downloadAndInstallUpdate, getUpdateStatus, openExternalUrl } from '../../ipc/client';
+import { changelogLink } from '../../updates/whatsNew';
 import { useT } from '../../i18n';
 
 interface UpdatesSectionProps {
@@ -154,6 +155,16 @@ export function UpdatesSection({ settings, onUpdate, onStatus, bare = false }: U
                 {update.notes}
               </pre>
             )}
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ display: 'block', marginTop: 6 }}
+              onClick={() =>
+                void openExternalUrl(changelogLink(update.version)).catch((e: unknown) => onStatus(String(e)))
+              }
+            >
+              {t('app.whatsNew.open')}
+            </button>
           </div>
         )}
         {remote?.staged && (

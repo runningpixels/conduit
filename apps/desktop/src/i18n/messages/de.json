@@ -3949,5 +3949,8 @@
   "chat.linkMenu.openInAgentBrowser": "Im Browser des Agenten öffnen",
   "chat.linkMenu.copy": "Link kopieren",
   "chat.browser.question.signInRetry": "Die gespeicherte Anmeldung für {site} hat nicht geklappt. Schließ die Anmeldung im Browserfenster des Agenten ab und wähle dann „Weiter“.",
-  "chat.browser.question.signInWhy": "Melde dich im Browserfenster des Agenten bei {site} an und wähle dann „Weiter“. Der Agent sieht nicht, was du eingibst. Er schreibt: {why}"
+  "chat.browser.question.signInWhy": "Melde dich im Browserfenster des Agenten bei {site} an und wähle dann „Weiter“. Der Agent sieht nicht, was du eingibst. Er schreibt: {why}",
+  "app.whatsNew.updated": "Conduit wurde auf {version} aktualisiert.",
+  "app.whatsNew.open": "Was ist neu",
+  "settings.about.releaseNotes.label": "Versionshinweise"
 }

@@ -3949,5 +3949,8 @@
   "chat.linkMenu.openInAgentBrowser": "Open in the agent’s browser",
   "chat.linkMenu.copy": "Copy link",
   "chat.browser.question.signInRetry": "The saved sign-in for {site} didn’t get through. Finish signing in in the agent’s browser window, then choose Continue.",
-  "chat.browser.question.signInWhy": "Sign in to {site} in the agent’s browser window, then choose Continue. The agent doesn’t see what you type. It says: {why}"
+  "chat.browser.question.signInWhy": "Sign in to {site} in the agent’s browser window, then choose Continue. The agent doesn’t see what you type. It says: {why}",
+  "app.whatsNew.updated": "Conduit was updated to {version}.",
+  "app.whatsNew.open": "What’s new",
+  "settings.about.releaseNotes.label": "Release notes"
 }

@@ -3949,5 +3949,8 @@
   "chat.linkMenu.openInAgentBrowser": "在代理的浏览器中打开",
   "chat.linkMenu.copy": "复制链接",
   "chat.browser.question.signInRetry": "{site} 的已保存登录未能成功。请在代理的浏览器窗口中完成登录，然后选择“继续”。",
-  "chat.browser.question.signInWhy": "请在代理的浏览器窗口中登录 {site}，然后选择“继续”。代理看不到你输入的内容。原因：{why}"
+  "chat.browser.question.signInWhy": "请在代理的浏览器窗口中登录 {site}，然后选择“继续”。代理看不到你输入的内容。原因：{why}",
+  "app.whatsNew.updated": "Conduit 已更新到 {version}。",
+  "app.whatsNew.open": "新功能",
+  "settings.about.releaseNotes.label": "发行说明"
 }

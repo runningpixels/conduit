@@ -138,7 +138,7 @@ const IPC_EXPORTS = [
   'deleteAllConversations',
   'exportDiagnostics', 'getDiagnosticsDisclosureAcknowledged',
   'acknowledgeDiagnosticsDisclosure', 'revealPath', 'revealArtifactsDir',
-  'revealArtifact', 'checkForUpdate', 'downloadAndInstallUpdate',
+  'revealArtifact', 'openExternalUrl', 'checkForUpdate', 'downloadAndInstallUpdate',
   'getOnboardingState', 'startMockStream', 'cancelMockStream',
   'listConnectorDefinitions', 'listConnectorVersions', 'listConnectorGrants',
   'listConnectorCapabilities', 'getConnectorRuntimeStates', 'startConnector',
@@ -187,7 +187,11 @@ const IPC_EXPORTS = [
 afterEach(() => {
   // Shared across tests by reference: the IPC mock reads it at call time.
   settings.language = 'system';
+  delete settings.lastSeenVersion;
 });
+
+// Outside the app (every other test here) there is no version to read.
+vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn(async () => Promise.reject(new Error('no app'))) }));
 
 vi.mock('./ipc/client', () => {
   const mod: Record<string, unknown> = {};
@@ -357,5 +361,22 @@ describe('App shell', { timeout: 20_000 }, () => {
       vi.mocked(getSettings).mock.calls.length,
       'App re-mounted — the locale key is flapping',
     ).toBeLessThanOrEqual(2);
+  });
+
+  it('says once that the app was updated, with a link to what is new', async () => {
+    settings.lastSeenVersion = '1.0.0-rc.34';
+    const { getVersion } = await import('@tauri-apps/api/app');
+    vi.mocked(getVersion).mockResolvedValueOnce('1.0.0-rc.35');
+    const client = await import('./ipc/client');
+    vi.mocked(client.updateSettings).mockClear();
+
+    const { default: App } = await import('./App');
+    render(<App />);
+
+    const toast = await screen.findByText('Conduit was updated to 1.0.0-rc.35.');
+    expect(client.updateSettings).toHaveBeenCalledWith({ lastSeenVersion: '1.0.0-rc.35' });
+    const item = toast.closest('[role="status"], [role="alert"], .toast') ?? document.body;
+    fireEvent.click(within(item as HTMLElement).getByRole('button', { name: 'What’s new' }));
+    expect(client.openExternalUrl).toHaveBeenCalledWith('https://conduitllm.com/changelog#v1-rc-35');
   });
 });

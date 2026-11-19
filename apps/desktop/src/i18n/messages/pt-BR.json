@@ -3949,5 +3949,8 @@
   "chat.linkMenu.openInAgentBrowser": "Abrir no navegador do agente",
   "chat.linkMenu.copy": "Copiar link",
   "chat.browser.question.signInRetry": "O login salvo de {site} não funcionou. Termine de entrar na janela do navegador do agente e escolha Continuar.",
-  "chat.browser.question.signInWhy": "Entre em {site} na janela do navegador do agente e escolha Continuar. O agente não vê o que você digita. Ele diz: {why}"
+  "chat.browser.question.signInWhy": "Entre em {site} na janela do navegador do agente e escolha Continuar. O agente não vê o que você digita. Ele diz: {why}",
+  "app.whatsNew.updated": "O Conduit foi atualizado para a versão {version}.",
+  "app.whatsNew.open": "Novidades",
+  "settings.about.releaseNotes.label": "Notas da versão"
 }

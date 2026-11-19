@@ -3501,6 +3501,12 @@ pub struct AppSettings {
     /// meaningful while `update_check_enabled` is true.
     #[serde(default)]
     pub update_policy: UpdatePolicy,
+    /// The app version this profile last ran, so the first launch after an
+    /// update can say so once, with a link to what's new. Unset on profiles
+    /// from before it existed (rc.34 and older).
+    #[serde(default)]
+    #[ts(optional)]
+    pub last_seen_version: Option<String>,
     /// Phase 6: first-run onboarding completion flag. `false` until the user
     /// finishes the BYOK gate; `App.tsx` renders `<Onboarding>` instead of the
     /// workspace while false (and while no provider credential is configured).
@@ -3696,6 +3702,7 @@ impl Default for AppSettings {
             update_channel: RolloutChannel::Stable,
             update_check_enabled: true,
             update_policy: UpdatePolicy::Manual,
+            last_seen_version: None,
             onboarding_completed: false,
             examples_seeded: false,
             web_search_enabled: false,
@@ -3784,6 +3791,8 @@ pub struct SettingsPatch {
     pub update_check_enabled: Option<bool>,
     #[ts(optional)]
     pub update_policy: Option<UpdatePolicy>,
+    #[ts(optional)]
+    pub last_seen_version: Option<String>,
     #[ts(optional)]
     pub onboarding_completed: Option<bool>,
     #[ts(optional)]

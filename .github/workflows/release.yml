@@ -108,12 +108,21 @@ jobs:
             echo "tag=${TAG}"
           } >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            CHANGELOG.md
+            scripts/release-notes.mjs
+          sparse-checkout-cone-mode: false
+
       # Create the draft release once, before the matrix. GitHub allows several
       # drafts per tag, so four legs each creating their own could split the
       # assets between them; with one draft in place tauri-action finds it and
       # every leg uploads there. A release that is already published (nightly,
       # or a re-run) is left alone and the legs upload to it as before:
       # tauri-action in draft mode would skip it and make a second release.
+      # Its text is that version's CHANGELOG section plus a link to the site
+      # changelog (scripts/release-notes.mjs, hence the checkout).
       - name: Create the draft release
         id: draft
         env:
@@ -130,9 +139,10 @@ jobs:
           FLAGS=()
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then FLAGS+=(--verify-tag); fi
           if [ "${{ steps.meta.outputs.channel }}" = beta ]; then FLAGS+=(--prerelease); fi
+          node scripts/release-notes.mjs --version "${{ steps.meta.outputs.version }}" --out "$RUNNER_TEMP/notes.md"
           gh release create "$TAG" --draft "${FLAGS[@]}" \
             --title "Conduit $TAG" \
-            --notes 'See release notes. OS bundles are unsigned (first-run Gatekeeper/SmartScreen prompt expected); updater payloads are signature-verified.'
+            --notes-file "$RUNNER_TEMP/notes.md"
           echo "draft=true" >> "$GITHUB_OUTPUT"
 
   # Build per-platform with tauri-action: compiles, updater-signs each bundle
@@ -232,7 +242,9 @@ jobs:
           tauriScript: pnpm exec tauri
           tagName: ${{ needs.meta.outputs.tag }}
           releaseName: 'Conduit ${{ needs.meta.outputs.tag }}'
-          releaseBody: 'See release notes. OS bundles are unsigned (first-run Gatekeeper/SmartScreen prompt expected); updater payloads are signature-verified.'
+          # Only used if tauri-action has to create the release itself; the
+          # meta job normally creates it with the CHANGELOG notes.
+          releaseBody: 'Release notes: https://conduitllm.com/changelog. OS bundles are unsigned (first-run Gatekeeper/SmartScreen prompt expected); updater payloads are signature-verified.'
           # Draft until the manifest job has attached everything. A published
           # stable release becomes "latest" the moment the first leg uploads,
           # and the site's releases/latest/download/ links then 404 until the
@@ -324,14 +336,17 @@ jobs:
         env:
           # Standard GH Releases asset URL: .../releases/download/<tag>/<filename>.
           DOWNLOAD_BASE: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ needs.meta.outputs.tag }}
+        # The notes are what Settings -> Updates shows under "version X is
+        # available": one line plus the site changelog link for this version.
         run: |
+          LINK="$(node scripts/release-notes.mjs --version "${{ needs.meta.outputs.version }}" --link)"
           node scripts/generate-update-manifest.mjs \
             --artifacts-dir flat \
             --download-base "$DOWNLOAD_BASE" \
             --version "${{ needs.meta.outputs.version }}" \
             --channel "${{ needs.meta.outputs.channel }}" \
             --out-dir manifest-out \
-            --notes "Conduit ${{ needs.meta.outputs.tag }} (${{ needs.meta.outputs.channel }} channel)."
+            --notes "Conduit ${{ needs.meta.outputs.tag }} (${{ needs.meta.outputs.channel }} channel). What's new: $LINK"
 
       # Three defects in this workflow produced a green run and a manifest
       # missing platforms: no updater artifacts, an upload glob matching

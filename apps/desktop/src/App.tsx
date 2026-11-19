@@ -3,6 +3,8 @@ import type { AppPaths, AppSettings, Artifact, ArtifactContent, BrandConfig, Con
 import type { ArtifactCandidate } from './chat/artifactCandidates';
 import type { StatusState } from './chat/statusTypes';
 import { useUpdateScheduler } from './updates/useUpdateScheduler';
+import { changelogLink, whatsNewDecision } from './updates/whatsNew';
+import { getVersion } from '@tauri-apps/api/app';
 import { ToastStack } from './workspace/ToastStack';
 import { LinkMenu } from './chat/LinkMenu';
 import { useSpendAlert } from './workspace/useSpendAlert';
@@ -41,6 +43,7 @@ import {
   renameConversationFolder,
   deleteConversationFolder,
   updateSettings,
+  openExternalUrl,
   countUnreadWorkflowResults,
   listWorkflowActions,
   listWorkflowQuestions,
@@ -898,6 +901,40 @@ export default function App() {
     onStatus: setStatusMessage,
     t,
   });
+
+  // First launch after an update: say so once, with a link to the release's
+  // notes on the site changelog (whatsNew.ts decides; a new install or a dev
+  // build says nothing).
+  const whatsNewCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!settingsLoaded || whatsNewCheckedRef.current) return;
+    whatsNewCheckedRef.current = true;
+    void (async () => {
+      let current: string;
+      try {
+        current = await getVersion();
+      } catch {
+        return; // not running inside the app (tests, plain browser)
+      }
+      const decision = whatsNewDecision({
+        current,
+        lastSeen: settings.lastSeenVersion,
+        onboardingCompleted: settings.onboardingCompleted,
+      });
+      if (decision.record) {
+        void updateSettings({ lastSeenVersion: decision.record })
+          .then((saved) => setSettings((prev) => ({ ...prev, lastSeenVersion: saved.lastSeenVersion })))
+          .catch(() => {});
+      }
+      if (!decision.show) return;
+      const link = changelogLink(current);
+      const toast = makeStatus(t('app.whatsNew.updated', { version: current }), 'success');
+      toast.action = { label: t('app.whatsNew.open'), run: () => void openExternalUrl(link).catch(() => {}) };
+      setToasts((list) => [...list.slice(-4), toast]);
+    })();
+    // Once per launch, when settings first arrive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded]);
 
   // Auto-dismiss timer for transient status kinds (idle).
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

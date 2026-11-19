@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import type { AppPaths } from '../../ipc/contracts';
 import { openExternalUrl } from '../../ipc/client';
+import { changelogLink } from '../../updates/whatsNew';
 import { useT } from '../../i18n';
 
 interface AboutSectionProps {
@@ -46,6 +47,9 @@ export function AboutSection({ paths, onStatus }: AboutSectionProps) {
 
   const links = [
     { label: t('settings.about.website.label'), text: 'conduitllm.com', url: WEBSITE },
+    ...(version
+      ? [{ label: t('settings.about.releaseNotes.label'), text: t('app.whatsNew.open'), url: changelogLink(version) }]
+      : []),
     { label: t('settings.about.source.label'), text: 'github.com/runningpixels/conduit', url: REPO },
     { label: t('settings.about.issues.label'), text: t('settings.about.issues.link'), url: `${REPO}/issues` },
     { label: t('settings.about.license.label'), text: LICENSE_NAME, url: `${REPO}/blob/main/LICENSE` },

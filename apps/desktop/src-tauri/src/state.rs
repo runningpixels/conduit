@@ -587,6 +587,12 @@ impl AppState {
         if let Some(value) = patch.examples_seeded {
             settings.examples_seeded = value;
         }
+        if let Some(value) = patch.last_seen_version {
+            // Only ever a version string; anything longer is not one.
+            if value.len() <= 64 {
+                settings.last_seen_version = Some(value);
+            }
+        }
 
         // Phase 7 / M-WebSearch: master toggle and persistent defaults. Domain
         // lists are validated for shape (bare host, no http(s) prefix, ≤253

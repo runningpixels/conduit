@@ -177,6 +177,7 @@ async fn settings_and_db_survive_in_place_reopen() {
         update_channel: None,
         update_check_enabled: None,
         update_policy: None,
+        last_seen_version: None,
         onboarding_completed: None,
         examples_seeded: None,
         web_search_enabled: None,

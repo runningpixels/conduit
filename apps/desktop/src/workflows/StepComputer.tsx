@@ -79,6 +79,7 @@ export function StepComputer({ output }: { output: unknown }) {
                 {[
                   approved,
                   r.kind === 'command' && r.outside ? t('workspace.workflows.runDetail.computer.outside') : null,
+                  r.kind !== 'command' && r.downloaded ? t('workspace.workflows.runDetail.computer.downloaded') : null,
                   r.kind === 'command' && r.cwd && r.cwd !== '.' ? t('workspace.workflows.runDetail.computer.in', { cwd: r.cwd }) : null,
                   r.kind === 'command' && r.exitCode !== undefined ? (
                     <span key="exit" className={badExit ? 'cc-exit' : undefined}>

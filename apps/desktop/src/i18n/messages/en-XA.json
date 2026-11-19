@@ -3338,6 +3338,7 @@
   "workspace.workflows.runDetail.computer.outcome.timedOut": "[Ťîḿéḍ öüť ————]",
   "workspace.workflows.runDetail.computer.output": "[Öüťṕüť ———]",
   "workspace.workflows.runDetail.computer.outside": "[öüťšîḍé ťĥé ḟöļḍéŕ —————— ——]",
+  "workspace.workflows.runDetail.computer.downloaded": "[ḍöŵñļöàḍéḍ ḅý ťĥé ḅŕöŵšéŕ —————— ————]",
   "workspace.workflows.runDetail.computer.showChanges": "[Šĥöŵ çĥàñĝéš —————]",
   "workspace.workflows.runDetail.computer.title": "[Öñ ťĥîš çöḿṕüťéŕ —————— —]",
   "workspace.workflows.runDetail.connectorItems": "[{count, plural, one {# îťéḿ} other {# îťéḿš}} —————]",

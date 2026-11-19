@@ -3701,7 +3701,9 @@ impl StreamManager {
         self.browsers.touch(conversation_id);
         let mut page = result?;
         crate::browser::look::store_screenshot(state, conversation_id, &mut page).await?;
-        match crate::browser::download::store_download(state, conversation_id, &mut page).await {
+        match crate::browser::download::store_download(state, conversation_id, &mut page, None)
+            .await
+        {
             Ok(Some(file)) => {
                 let event = ProviderEvent::BrowserFileSaved {
                     request_id: request_id.to_string(),

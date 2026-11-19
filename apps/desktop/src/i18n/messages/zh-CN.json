@@ -3345,6 +3345,7 @@
   "workspace.workflows.runDetail.computer.outcome.timedOut": "已超时",
   "workspace.workflows.runDetail.computer.output": "输出",
   "workspace.workflows.runDetail.computer.outside": "在文件夹外",
+  "workspace.workflows.runDetail.computer.downloaded": "由浏览器下载",
   "workspace.workflows.runDetail.computer.showChanges": "显示更改",
   "workspace.workflows.runDetail.computer.title": "在这台电脑上",
   "workspace.workflows.runDetail.connectorItems": "{count, plural, other {# 项}}",

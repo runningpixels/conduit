@@ -11,7 +11,9 @@
 //! and never asked about. An allowed file is checked again by its first
 //! bytes, then saved as an attachment of the conversation, and the model
 //! gets it as an attachment right after the tool results, like a file the
-//! person attached. Conduit never opens or runs a downloaded file.
+//! person attached. In a workflow that has a folder, the file is also
+//! written into its `downloads` subfolder under a name of its own, never
+//! over another file. Conduit never opens or runs a downloaded file.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -36,6 +38,16 @@ pub const MAX_BYTES: u64 = 100 * 1024 * 1024;
 
 /// Most files kept in one run (or one chat's browser session).
 pub const MAX_PER_RUN: usize = 5;
+
+/// The subfolder of a workflow's folder downloads go into.
+pub const FOLDER_DOWNLOADS: &str = "downloads";
+
+/// On a tool result: where in the workflow's folder the file was written,
+/// relative to the folder (the model reads it there with the file tools).
+pub const IN_FOLDER_KEY: &str = "savedInFolder";
+
+/// On a tool result: why the file couldn't also go into the folder.
+const NOT_IN_FOLDER_KEY: &str = "notSavedInFolder";
 
 /// How long an allowed download may take to finish.
 const FINISH_WAIT: Duration = Duration::from_secs(180);
@@ -429,11 +441,14 @@ async fn finish(
 
 /// Save an allowed download as an attachment of the conversation: the hidden
 /// file note leaves the result, the attachment id goes in its place, and the
-/// file in the holding folder is deleted. The saved file, for its card.
+/// file in the holding folder is deleted. With `folder` (a workflow's), the
+/// file is also written into its downloads subfolder. The saved file, for
+/// its card.
 pub async fn store_download(
     state: &crate::state::AppState,
     conversation_id: &str,
     result: &mut Value,
+    folder: Option<&Path>,
 ) -> Result<Option<SavedFile>, String> {
     let Some(pending) = result.as_object_mut().and_then(|o| o.remove(PENDING_KEY)) else {
         return Ok(None);
@@ -464,12 +479,89 @@ pub async fn store_download(
         "mime": mime,
         "url": pending["url"],
     });
+    if let Some(folder) = folder {
+        match keep_in_folder(folder, &name, &bytes) {
+            Ok(relative) => result[IN_FOLDER_KEY] = Value::String(relative),
+            Err(why) => {
+                result[NOT_IN_FOLDER_KEY] = Value::String(format!(
+                    "It couldn't also be saved in the workflow's folder: {why}."
+                ))
+            }
+        }
+    }
     Ok(Some(SavedFile {
         attachment_id: saved.id,
         name,
         mime,
         size: bytes.len() as u64,
     }))
+}
+
+/// A download's name as a plain file name: no folders, nothing Windows
+/// refuses in a name, and `download` when nothing is left.
+fn safe_file_name(name: &str) -> String {
+    let last = name.rsplit(['/', '\\']).next().unwrap_or_default();
+    let cleaned: String = last
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    let shortened: String = trimmed.chars().take(120).collect();
+    if shortened.is_empty() {
+        "download".to_string()
+    } else {
+        shortened
+    }
+}
+
+/// Write `bytes` into the workflow's `folder`, in its downloads subfolder,
+/// under `name` or `name (2)` and so on: never over a file that is there.
+/// Where it went, relative to the folder.
+pub fn keep_in_folder(folder: &Path, name: &str, bytes: &[u8]) -> Result<String, String> {
+    use crate::workspace_tools::{resolve_for_write, WorkspaceRoot};
+    use std::io::Write;
+
+    let root = WorkspaceRoot::try_new(folder).map_err(|e| e.message())?;
+    let name = safe_file_name(name);
+    let (stem, extension) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem.to_string(), format!(".{ext}")),
+        _ => (name.clone(), String::new()),
+    };
+    for n in 1..=99 {
+        let file = if n == 1 {
+            name.clone()
+        } else {
+            format!("{stem} ({n}){extension}")
+        };
+        let relative = format!("{FOLDER_DOWNLOADS}/{file}");
+        let target = resolve_for_write(&root, &relative).map_err(|e| e.message())?;
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|_| "its downloads folder couldn't be made")?;
+        }
+        let created = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target);
+        match created {
+            Ok(mut out) => {
+                if out.write_all(bytes).is_err() {
+                    drop(out);
+                    let _ = std::fs::remove_file(&target);
+                    return Err("it couldn't be written".to_string());
+                }
+                return Ok(relative);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err("it couldn't be written".to_string()),
+        }
+    }
+    Err("too many files there already have that name".to_string())
 }
 
 /// A saved download, for the message that hands it to the model.
@@ -625,6 +717,31 @@ mod tests {
         assert_eq!(mime_of(b"{\"a\":1}", "x.json"), "application/json");
         assert_eq!(size_text(500), "500 bytes");
         assert_eq!(size_text(2_400_000), "2.3 MB");
+    }
+
+    #[test]
+    fn a_download_name_is_a_plain_file_name() {
+        assert_eq!(safe_file_name("report.csv"), "report.csv");
+        assert_eq!(safe_file_name("../../evil.csv"), "evil.csv");
+        assert_eq!(safe_file_name("a\\b\\c.txt"), "c.txt");
+        assert_eq!(safe_file_name("what?.pdf"), "what_.pdf");
+        assert_eq!(safe_file_name(".."), "download");
+        assert_eq!(safe_file_name("  "), "download");
+    }
+
+    #[test]
+    fn a_download_goes_into_the_folder_without_replacing_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = keep_in_folder(dir.path(), "data.csv", b"a,b").unwrap();
+        assert_eq!(first, "downloads/data.csv");
+        let second = keep_in_folder(dir.path(), "data.csv", b"c,d").unwrap();
+        assert_eq!(second, "downloads/data (2).csv");
+        let folder = dir.path().join("downloads");
+        assert_eq!(std::fs::read(folder.join("data.csv")).unwrap(), b"a,b");
+        assert_eq!(std::fs::read(folder.join("data (2).csv")).unwrap(), b"c,d");
+        let odd = keep_in_folder(dir.path(), "../outside.txt", b"x").unwrap();
+        assert_eq!(odd, "downloads/outside.txt");
+        assert!(!dir.path().join("outside.txt").exists());
     }
 
     #[test]

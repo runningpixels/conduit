@@ -1471,6 +1471,8 @@ export type ComputerRecord =
       /** A change that went through: the file before and after, when both are under 20,000 characters. */
       previous?: string;
       content?: string;
+      /** A file the agent's browser downloaded, written into the folder: its name as downloaded. */
+      downloaded?: string;
     };
 
 /** How an outside action ended, in a step's output (`action` or `actions[]`). */

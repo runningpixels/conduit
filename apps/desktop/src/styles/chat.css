@@ -1333,7 +1333,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 160px;
+  /* Room for a folder name plus "(default)" — 160px cut "Chrome Downloads
+     (default)" even in a wide composer — while one long skill name still
+     cannot take the whole row. */
+  max-width: 240px;
 }
 .composer-context-remove {
   border: 0;

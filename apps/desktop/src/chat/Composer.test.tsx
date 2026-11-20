@@ -1083,6 +1083,46 @@ describe('Composer Web and Research toggles', () => {
       globalThis.ResizeObserver = original;
     }
   });
+
+  it('narrow, names the model without its vendor and the folder without "(default)"', () => {
+    const original = globalThis.ResizeObserver;
+    class NarrowObserver {
+      private readonly callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        this.callback(
+          [{ target, contentRect: { width: 400 } } as unknown as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    globalThis.ResizeObserver = NarrowObserver as unknown as typeof ResizeObserver;
+    try {
+      renderComposer({
+        settings: { ...ready, activeModel: 'z-ai/glm-5.3-flash' },
+        onWorkspacePick: vi.fn(),
+        onWorkspaceClear: vi.fn(),
+        workspaceRoot: 'D:/Desktop/Chrome Downloads',
+        workspaceFromSettings: true,
+      });
+      const picker = document.querySelector('.cbtn.model')!;
+      expect(picker.querySelector('.model-label')).toHaveTextContent(/^glm-5\.3-flash$/);
+      expect(picker).toHaveAttribute('title', 'z-ai/glm-5.3-flash');
+      const chip = screen.getByRole('group', { name: 'Active in this chat' }).querySelector('.composer-context-chip')!;
+      expect(chip).toHaveTextContent(/^Chrome Downloads×$/);
+      expect(chip).toHaveAttribute('title', 'Default folder from Settings: D:/Desktop/Chrome Downloads');
+      // The status line leaves the model to the picker and "online" unsaid.
+      const line = screen.getByTitle('Chat details');
+      expect(line).not.toHaveTextContent('glm-5.3-flash');
+      expect(line).not.toHaveTextContent('online');
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
+  });
 });
 
 describe('Composer starter chips', () => {

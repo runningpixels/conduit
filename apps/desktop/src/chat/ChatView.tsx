@@ -4121,10 +4121,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                             type="button"
                             className="act"
                             disabled={!!activeRequestId || editBusy}
+                            title={t('common.actions.edit')}
                             onClick={() => handleEditUserTurn(turn)}
                           >
                             <PencilIcon />
-                            {t('common.actions.edit')}
+                            <span className="act-label">{t('common.actions.edit')}</span>
                           </button>
                           <button
                             type="button"
@@ -4133,15 +4134,16 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                             title={t('chat.view.aria.forkAtMessage')}
                           >
                             <ForkIcon />
-                            {t('common.actions.fork')}
+                            <span className="act-label">{t('common.actions.fork')}</span>
                           </button>
                           <button
                             type="button"
                             className="act"
+                            title={t('common.actions.copy')}
                             onClick={() => void handleCopyText(turn.content)}
                           >
                             <CopyIcon />
-                            {t('common.actions.copy')}
+                            <span className="act-label">{t('common.actions.copy')}</span>
                           </button>
                         </div>
                       </>
@@ -4267,10 +4269,11 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                     <button
                       type="button"
                       className="act"
+                      title={t('common.actions.copy')}
                       onClick={() => void handleCopyText(turn.content)}
                     >
                       <CopyIcon />
-                      {t('common.actions.copy')}
+                      <span className="act-label">{t('common.actions.copy')}</span>
                     </button>
                     {/* Retry re-runs the *last* question, so it is offered on
                         the last reply only (it used to show on every reply
@@ -4283,17 +4286,18 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
                         onClick={() => void retryLastPrompt()}
                       >
                         <RetryIcon />
-                        {t('common.actions.retry')}
+                        <span className="act-label">{t('common.actions.retry')}</span>
                       </button>
                     )}
                     {turn.id === visibleTurns[visibleTurns.length - 1]?.id && !activeRequestId && retryModelPicker(turn.id)}
                     <button
                       type="button"
                       className="act"
+                      title={t('chat.view.aria.forkAtMessage')}
                       onClick={() => onForkConversation?.(conversationId ?? '', turn.id)}
                     >
                       <ForkIcon />
-                      {t('common.actions.fork')}
+                      <span className="act-label">{t('common.actions.fork')}</span>
                     </button>
                     {(() => {
                       const asked = scheduleOf.get(turn.id);

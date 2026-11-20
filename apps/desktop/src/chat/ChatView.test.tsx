@@ -988,7 +988,7 @@ describe('ChatView: Retry re-sends the last question', () => {
     const { onSelectModel } = renderChatView();
     await screen.findByText('The first answer.');
     fireEvent.click(screen.getByRole('button', { name: 'Retry with another model' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /DeepSeek V4 Flash/ }));
+    fireEvent.click(await screen.findByRole('option', { name: /DeepSeek V4 Flash/ }));
 
     await waitFor(() => expect(startChatStream).toHaveBeenCalled());
     expect(captured!.modelId).toBe('deepseek/deepseek-v4-flash');

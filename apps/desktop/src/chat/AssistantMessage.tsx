@@ -16,6 +16,7 @@ import { useT } from '../i18n';
 import { TurnBody, proseCarriesCaret } from './TurnBody';
 import { ScheduleThisButton } from './ScheduleThisButton';
 import { ReadAloudButton } from './ReadAloudButton';
+import { TurnMoreMenu } from './TurnMoreMenu';
 import { turnDocumentInProgress, turnDocumentOutcomes } from './turnDocumentOutcome';
 
 export { groupToolCalls, synthesizeSegments, toolCallStaysInline } from './TurnBody';
@@ -440,7 +441,7 @@ export function AssistantMessage({
             onClick={onCopy}
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
-            {t('common.actions.copy')}
+            <span className="act-label">{t('common.actions.copy')}</span>
           </button>
         ) : (
           <button
@@ -452,10 +453,15 @@ export function AssistantMessage({
             disabled={!text}
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
-            {t('common.actions.copy')}
+            <span className="act-label">{t('common.actions.copy')}</span>
           </button>
         )}
-        {messageId && !state.streaming && <ReadAloudButton id={messageId} text={text} />}
+        {/* `act-fold`: folded into the ⋯ menu in a narrow thread. */}
+        {messageId && !state.streaming && (
+          <span className="act-fold">
+            <ReadAloudButton id={messageId} text={text} />
+          </span>
+        )}
         {showActions && onRetry && (
           <button
             type="button"
@@ -465,36 +471,46 @@ export function AssistantMessage({
             onClick={onRetry}
           >
             <RetryIcon />
-            {t('common.actions.retry')}
+            <span className="act-label">{t('common.actions.retry')}</span>
           </button>
         )}
         {showActions && onRetry && retryWithModel}
         {onFork && (
           <button
             type="button"
-            className="act"
+            className="act act-fold"
             aria-label={t('chat.assistant.actions.forkLabel')}
             title={t('chat.assistant.actions.forkLabel')}
             onClick={onFork}
           >
             <ForkIcon />
-            {t('common.actions.fork')}
+            <span className="act-label">{t('common.actions.fork')}</span>
           </button>
         )}
         {onSchedule ? <ScheduleThisButton name={onSchedule.name} onClick={onSchedule.run} /> : null}
         {showActions && onDelete && (
           <button
             type="button"
-            className="act"
+            className="act act-fold"
             aria-label={t('common.actions.delete')}
             title={t('chat.assistant.actions.deleteTitle')}
             onClick={onDelete}
           >
             <TrashIcon />
-            {t('common.actions.delete')}
+            <span className="act-label">{t('common.actions.delete')}</span>
           </button>
         )}
-        <UsageSummary usage={state.usage} searchCost={state.searchCost} />
+        <span className="act-fold">
+          <UsageSummary usage={state.usage} searchCost={state.searchCost} />
+        </span>
+        <TurnMoreMenu
+          messageId={messageId}
+          text={text}
+          readable={!state.streaming}
+          onFork={onFork}
+          onDelete={showActions ? onDelete : undefined}
+          usage={state.usage}
+        />
       </div>
       )}
     </article>

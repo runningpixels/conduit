@@ -492,7 +492,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
                   aria-pressed={only === null}
                   onClick={() => setOnly(null)}
                 >
-                  <span className="model-dialog-provider-name">{t('chat.modelPicker.allProviders')}</span>
+                  <span className="model-dialog-provider-name" title={t('chat.modelPicker.allProviders')}>{t('chat.modelPicker.allProviders')}</span>
                 </button>
                 {sortedProviders.map(({ provider, pending, models }) => (
                   <button
@@ -504,7 +504,7 @@ export const ComposerModelPicker = forwardRef<ComposerModelPickerHandle, Compose
                     onClick={() => setOnly((was) => (was === provider.id ? null : provider.id))}
                   >
                     <i className="pdot" aria-hidden="true" />
-                    <span className="model-dialog-provider-name">{provider.displayName}</span>
+                    <span className="model-dialog-provider-name" title={provider.displayName}>{provider.displayName}</span>
                     <span className="model-dialog-provider-count">{pending ? '…' : fmt.count(models.length)}</span>
                   </button>
                 ))}

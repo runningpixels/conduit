@@ -7,6 +7,45 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.37] - 2026-11-21
+
+Everything you have made is on one Artifacts page, Home starts with what you
+want to make, and the rail is shorter: Inbox, Agents and Workflows are one
+Agents item.
+
+### Added
+
+- **An Artifacts page** (#361). Every page, app, deck, document, sheet, image
+  and code file you have made, from every chat, in one place under Chats on
+  the rail. Tabs by kind (All, Pages, Decks, Documents, Sheets, Images) with
+  counts, a search field, sort by Recent or Name, and a grid or list view.
+  Opening one takes you to it: a deck to Slides, a draft to Writing, an app to
+  Apps, anything else to its chat.
+- **Make tiles on Home** (#361). Home asks "What are we making?" above six
+  tiles: Page, App, Deck, Document, Sheet and Image. Pick one, describe it, and
+  the chat starts already knowing what to make (a deck opens Slides, a
+  document opens Writing). Pick up has an "All artifacts" link.
+
+### Changed
+
+- **One Agents item on the rail** (#361). Inbox, Agents and Workflows are
+  tabs of a single Agents button: Needs you, Agents and Workflows. It opens on
+  Needs you when something is waiting, otherwise on the tab you used last; its
+  badge shows how many agents are running, or a dot when something waits or a
+  workflow has new results. Ctrl+6/7/8 and the command palette still go
+  straight to each page.
+- **A shorter rail** (#361). Home · Chats, Artifacts, Slides, Writing · Apps ·
+  Agents · Context · Settings. Manage moved into Apps. On a phone-sized window
+  the tab bar is Home, Chats, Artifacts and Agents; the rest is under More.
+- **Tabs that look like tabs** (#361). The Context and Agents tab strips show
+  each page's icon, sit on a baseline, and underline the open tab in the
+  accent.
+
+### Removed
+
+- **Areas and Try ideas on Home** (#361). The make tiles replace them; ideas
+  stay one step away in the command palette's Ideas gallery.
+
 ## [1.0.0-rc.36] - 2026-11-20
 
 Chat fits a narrow window, and picking a model is a dialog you can sort by

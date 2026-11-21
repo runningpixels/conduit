@@ -18,9 +18,11 @@ export interface PickUpProps {
   onOpenDeck: (deckId: string) => void;
   onOpenDraft?: (draftId: string) => void;
   onOpenApp: (appId: string) => void;
+  /** "All artifacts", beside the heading: the Artifacts page. */
+  onAllArtifacts?: () => void;
 }
 
-export function PickUp({ items, onOpenChat, onOpenDeck, onOpenDraft, onOpenApp }: PickUpProps) {
+export function PickUp({ items, onOpenChat, onOpenDeck, onOpenDraft, onOpenApp, onAllArtifacts }: PickUpProps) {
   const t = useT();
   const fmt = useFormatters();
   const labelId = useId();
@@ -28,9 +30,16 @@ export function PickUp({ items, onOpenChat, onOpenDeck, onOpenDraft, onOpenApp }
   if (items.length === 0) return null;
   return (
     <section className="home-section" aria-labelledby={labelId}>
-      <h3 id={labelId} className="home-section-title">
-        {t('home.pickUp.title')}
-      </h3>
+      <div className="home-pickup-head">
+        <h3 id={labelId} className="home-section-title">
+          {t('home.pickUp.title')}
+        </h3>
+        {onAllArtifacts && (
+          <button type="button" className="home-pickup-all" onClick={onAllArtifacts}>
+            {t('home.pickUp.allArtifacts')}
+          </button>
+        )}
+      </div>
       <ul className="home-pickup">
         {items.map((item) => {
           const title = item.kind === 'chat' ? (item.title ?? t('chat.title.untitled')) : item.title;

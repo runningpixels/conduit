@@ -36,7 +36,7 @@
 }
 .home-section > .home-section-title,
 .home-section > .home-section-heading { margin-bottom: var(--sp-4); }
-.home-section-sub { margin: var(--sp-1) 0 0; color: var(--ink-2); font-weight: var(--muted-weight); font-size: var(--fs-2xl); line-height: 1.5; }
+
 .home-section-tools { display: flex; align-items: center; gap: var(--sp-4); flex: none; }
 .home-link {
   padding: var(--sp-1) var(--sp-2);
@@ -59,18 +59,6 @@
 }
 .home-card:hover { border-color: var(--accent-line); background: var(--card-hi); }
 
-/* The tinted square that carries an area's icon. */
-.home-icon-tile {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--tile, var(--accent)) 13%, transparent);
-  color: var(--tile, var(--accent));
-}
-.home-icon-tile svg { width: 20px; height: 20px; }
 /* One colour per area (--area-*): icon tile, eyebrow and count carry it, so an
  * item's area reads at a glance. The accent stays for actions and selection. */
 [data-area="chats"] { --tile: var(--area-chats); }
@@ -78,42 +66,13 @@
 [data-area="writing"] { --tile: var(--area-writing); }
 [data-area="apps"] { --tile: var(--area-apps); }
 [data-area="workflows"] { --tile: var(--area-workflows); }
-[data-area="connectors"] .home-icon-tile { --tile: var(--signal); }
-[data-area="documents"] .home-icon-tile,
-[data-area="memory"] .home-icon-tile { --tile: var(--ok); }
-[data-area="library"] .home-icon-tile { --tile: var(--ink-2); }
-
-.home-tag {
-  margin-left: auto;
-  padding: 2px var(--sp-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  color: var(--ink-3);
-  font-size: var(--fs-md);
-  font-weight: 500;
-  white-space: nowrap;
-}
-.home-tag-new {
-  margin-left: var(--sp-2);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  vertical-align: middle;
-}
 
 .home-chip:focus-visible,
 .home-link:focus-visible,
 .home-ask-send:focus-visible,
-.home-pickup-card:focus-visible,
-.home-tile-action:focus-visible,
-.home-tile-try:focus-visible,
-.home-idea-card:focus-visible {
+.home-pickup-card:focus-visible {
   outline: var(--ring-width) solid var(--ring-color);
   outline-offset: var(--ring-offset);
-}
-.home-tile-main:focus-visible {
-  outline: var(--ring-width) solid var(--ring-color);
-  outline-offset: calc(var(--ring-offset) * -1);
 }
 
 /* ── Greeting and the ask box ─────────────────────────────────────────── */
@@ -201,8 +160,7 @@
 .home-needs-text { flex: 1; min-width: 0; font-size: var(--fs-4xl); }
 .home-needs-button { flex: none; }
 
-.home-pickup-item,
-.home-ideas-item { min-width: 0; }
+.home-pickup-item { min-width: 0; }
 
 /* ── Pick up ──────────────────────────────────────────────────────────── */
 .home-pickup {
@@ -268,81 +226,6 @@
 .home-pickup-action::after { content: " →"; }
 .home-pickup-card:hover .home-pickup-action { color: var(--accent-text); }
 
-/* ── Areas: one tile per area ─────────────────────────────────────────── */
-.home-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
-  gap: var(--sp-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.home-tile { display: flex; flex-direction: column; overflow: hidden; }
-.home-tile-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-  padding: var(--sp-4) var(--sp-4) var(--sp-3);
-  border: 0;
-  background: none;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-}
-.home-tile-main > .home-icon-tile { margin-bottom: var(--sp-2); }
-.home-tile-name { font-size: var(--fs-8xl); font-weight: 650; letter-spacing: -.01em; }
-.home-tile-count { color: var(--tile, var(--accent-text)); font-size: var(--fs-xl); font-weight: 600; }
-.home-tile-desc { margin-top: var(--sp-1); color: var(--ink-2); font-size: var(--fs-xl); line-height: 1.5; }
-/* An empty area's example. A button when the ask box can run it. */
-.home-tile-try {
-  margin: 0 var(--sp-4) var(--sp-3);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
-  background: var(--field-bg);
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-}
-button.home-tile-try { cursor: pointer; transition: border-color var(--tap), background var(--tap); }
-button.home-tile-try:hover { border-color: var(--accent-line); background: var(--accent-soft); }
-.home-tile-try-label {
-  color: var(--ink-2);
-  font: 600 var(--fs-md)/1.4 var(--font-ui);
-  letter-spacing: .01em;
-  text-transform: none;
-}
-.home-tile-try-text { font: var(--fs-xl)/1.45 var(--font-mono); overflow-wrap: anywhere; }
-.home-tile-action {
-  padding: var(--sp-3) var(--sp-4);
-  border: 0;
-  border-top: 1px solid var(--line-soft);
-  background: none;
-  color: var(--ink-2);
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--tap), color var(--tap);
-}
-.home-tile-action:hover { background: var(--accent-soft); color: var(--accent-text); }
-
-/* ── Try something new ────────────────────────────────────────────────── */
-.home-ideas {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
-  gap: var(--sp-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.home-idea-card { padding: var(--sp-4); }
-.home-idea-card:hover { transform: none; }
-
 @media (max-width: 640px) {
   .home-content { padding-left: var(--sp-4); padding-right: var(--sp-4); }
   .home-ask-hint { display: none; }
@@ -401,3 +284,120 @@ button.home-tile-try:hover { border-color: var(--accent-line); background: var(-
   .home-chip { padding: 10px var(--sp-4); }
   .home-link { padding: var(--sp-2) var(--sp-3); }
 }
+
+/* ── Make something new ───────────────────────────────────────────────────
+ * One tile per kind (--kind, set in pages-artifacts.css). Picking one readies
+ * the ask box: its chip shows there and the box's edge takes the kind's colour. */
+.home-make { --shadow-make-ring: 3px; container-type: inline-size; margin-top: calc(var(--sp-6) * -0.75); }
+.home-make-heading {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink-3);
+  font-size: var(--fs-md);
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.home-make-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.home-make-grid > li { min-width: 0; }
+/* Six across, else three by two, else two by three: never one tile left alone. */
+@container (max-width: 940px) { .home-make-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (max-width: 480px) { .home-make-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.home-make-tile {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  border: 1px solid color-mix(in srgb, var(--kind) 26%, var(--line));
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--kind) 7%, var(--card));
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--tap), background var(--tap), box-shadow var(--tap);
+}
+.home-make-tile:hover { border-color: color-mix(in srgb, var(--kind) 55%, var(--line)); background: color-mix(in srgb, var(--kind) 12%, var(--card)); }
+.home-make-tile[aria-pressed="true"] {
+  border-color: var(--kind);
+  background: color-mix(in srgb, var(--kind) 16%, var(--card));
+  box-shadow: 0 0 0 var(--shadow-make-ring) color-mix(in srgb, var(--kind) 22%, transparent);
+}
+.home-make-tile:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+.home-make-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--kind) 18%, transparent);
+  color: var(--kind);
+}
+.home-make-icon svg { width: 22px; height: 22px; }
+.home-make-name { font-size: var(--fs-6xl); font-weight: 650; }
+.home-make-hint { color: var(--ink-2); font-size: var(--fs-2xl); line-height: 1.4; }
+
+/* The ask box readied for a kind. */
+.home-ask[data-kind] { border-color: color-mix(in srgb, var(--kind) 60%, var(--line-hi)); }
+.home-ask-kind {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px var(--sp-1) 3px var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--kind) 45%, transparent);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--kind) 14%, transparent);
+  color: var(--ink);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+}
+.home-ask-kind-icon { display: inline-grid; color: var(--kind); }
+.home-ask-kind-icon svg { width: 14px; height: 14px; }
+.home-ask-kind-clear {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.home-ask-kind-clear:hover { background: color-mix(in srgb, var(--kind) 20%, transparent); color: var(--ink); }
+.home-ask-kind-clear:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+.home-ask-kind-clear svg { width: 12px; height: 12px; }
+
+/* Pick up: the heading with "All artifacts" at its end. */
+.home-pickup-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.home-pickup-all {
+  flex: none;
+  padding: var(--sp-1) var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--accent-text);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  cursor: pointer;
+}
+.home-pickup-all:hover { background: var(--accent-soft); }
+.home-pickup-all:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }

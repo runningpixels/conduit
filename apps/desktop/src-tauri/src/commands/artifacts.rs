@@ -311,6 +311,14 @@ pub async fn list_artifacts(
         .map_err(|e| e.to_string())
 }
 
+/// Every chat's artifacts, newest-first, without inline content (the Artifacts page).
+#[tauri::command]
+pub async fn list_all_artifacts(state: State<'_, AppState>) -> Result<Vec<Artifact>, String> {
+    artifacts::list_all(&state.db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn get_artifact(
     state: State<'_, AppState>,

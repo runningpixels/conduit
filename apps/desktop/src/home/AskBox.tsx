@@ -1,18 +1,15 @@
 /// Home's one ask box: describe what you want and the shell decides where it
 /// goes (a deck request opens Slides, anything else becomes a new chat).
-/// Enter sends, Shift+Enter starts a new line.
+/// A maker tile picked below readies it for one kind of thing: its chip shows
+/// above the text, the placeholder says what to describe, and sending makes
+/// that kind. Enter sends, Shift+Enter starts a new line.
 
 import { useEffect, useId, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { useT } from '../i18n';
-import { SendIcon } from '../icons';
+import { CloseIcon, SendIcon } from '../icons';
 import type { HomeAction } from './areaInfo';
-
-const CHIPS: ReadonlyArray<{ action: HomeAction; labelId: string }> = [
-  { action: 'new-chat', labelId: 'home.ask.chip.chat' },
-  { action: 'start-deck', labelId: 'home.ask.chip.deck' },
-  { action: 'browse-apps', labelId: 'home.ask.chip.app' },
-  { action: 'add-documents', labelId: 'home.ask.chip.documents' },
-];
+import { madeInChat, type MakeKind } from './makeKinds';
+import { MAKE_ICONS } from './MakeTiles';
 
 /// The tallest the box grows before it scrolls, in pixels.
 const MAX_HEIGHT = 240;
@@ -26,19 +23,30 @@ export interface AskBoxProps {
   onAsk: (text: string) => void;
   /** The Research chip: send this text as a Research run in a fresh chat. */
   onResearch: (text: string) => void;
-  /** The Write chip: start a draft from this text (Writing opens on its own
-   *  page when the box is empty). */
-  onWrite?: (text: string) => void;
-  /** The deck chip: start a deck from this text (Slides opens on its list
-   *  when the box is empty). */
-  onStartDeck?: (text: string) => void;
   /** The Automate chip: describe a workflow from this text (the Workflows
    *  page opens on its picker when the box is empty). */
   onAutomate?: (text: string) => void;
   onAction: (action: HomeAction) => void;
+  /** The maker tile picked below, if any. */
+  kind?: MakeKind | null;
+  onClearKind?: () => void;
+  /** Send for the picked kind: the text, with the kind's lead-in when a chat makes it. */
+  onMake?: (kind: MakeKind, text: string) => void;
 }
 
-export function AskBox({ placeholder, value: text, onChange: setText, inputRef, onAsk, onResearch, onWrite, onStartDeck, onAutomate, onAction }: AskBoxProps) {
+export function AskBox({
+  placeholder,
+  value: text,
+  onChange: setText,
+  inputRef,
+  onAsk,
+  onResearch,
+  onAutomate,
+  onAction,
+  kind = null,
+  onClearKind,
+  onMake,
+}: AskBoxProps) {
   const t = useT();
   const hintId = useId();
 
@@ -57,36 +65,24 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
 
   const submit = () => {
     const value = text.trim();
+    if (kind && onMake) {
+      // A deck or a document opens its studio even with nothing typed.
+      if (value === '' && madeInChat(kind)) return;
+      setText('');
+      onMake(kind, value === '' ? '' : madeInChat(kind) ? t(`home.make.${kind}.prefix`, { text: value }) : value);
+      return;
+    }
     if (value === '') return;
     setText('');
     onAsk(value);
   };
+  const canSend = text.trim() !== '' || (kind != null && !madeInChat(kind));
 
   const research = () => {
     const value = text.trim();
     if (value === '') return;
     setText('');
     onResearch(value);
-  };
-
-  const write = () => {
-    const value = text.trim();
-    if (value === '' || !onWrite) {
-      onAction('start-draft');
-      return;
-    }
-    setText('');
-    onWrite(value);
-  };
-
-  const startDeck = () => {
-    const value = text.trim();
-    if (value === '' || !onStartDeck) {
-      onAction('start-deck');
-      return;
-    }
-    setText('');
-    onStartDeck(value);
   };
 
   const automate = () => {
@@ -109,17 +105,38 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
     <div className="home-ask-wrap">
       <form
         className="home-ask"
+        data-kind={kind ?? undefined}
         onSubmit={(event: FormEvent) => {
           event.preventDefault();
           submit();
         }}
       >
+        {kind && (
+          <span className="home-ask-kind" data-kind={kind}>
+            <span className="home-ask-kind-icon" aria-hidden="true">
+              {MAKE_ICONS[kind]}
+            </span>
+            {t(`home.make.${kind}.name`)}
+            <button
+              type="button"
+              className="home-ask-kind-clear"
+              aria-label={t('home.make.clear', { kind: t(`home.make.${kind}.name`) })}
+              title={t('home.make.clear', { kind: t(`home.make.${kind}.name`) })}
+              onClick={() => {
+                onClearKind?.();
+                inputRef.current?.focus();
+              }}
+            >
+              <CloseIcon />
+            </button>
+          </span>
+        )}
         <textarea
           ref={inputRef}
           className="home-ask-input"
           rows={2}
           value={text}
-          placeholder={placeholder}
+          placeholder={kind ? t(`home.make.${kind}.placeholder`) : placeholder}
           aria-label={t('home.ask.label')}
           aria-describedby={hintId}
           onChange={(event) => setText(event.target.value)}
@@ -129,21 +146,16 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
           <span id={hintId} className="home-ask-hint">
             {t('home.ask.hint')}
           </span>
-          <button type="submit" className="home-ask-send" disabled={text.trim() === ''}>
+          <button type="submit" className="home-ask-send" disabled={!canSend}>
             <span>{t('home.ask.send')}</span>
             <SendIcon />
           </button>
         </div>
       </form>
       <div className="home-chips" role="group" aria-label={t('home.ask.chipsAria')}>
-        {CHIPS.map((chip) => (
-          <button key={chip.action} type="button" className="home-chip" onClick={() => (chip.action === 'start-deck' ? startDeck() : onAction(chip.action))}>
-            {t(chip.labelId)}
-          </button>
-        ))}
-        {/* With text, Write starts a draft from it; without, it opens Writing. */}
-        <button type="button" className="home-chip" onClick={write}>
-          {t('home.ask.chip.write')}
+        {/* Making things is the tiles below; these are the other ways in. */}
+        <button type="button" className="home-chip" onClick={() => onAction('new-chat')}>
+          {t('home.ask.chip.chat')}
         </button>
         {/* With text, Automate drafts a workflow from it; without, it opens the picker. */}
         <button type="button" className="home-chip" onClick={automate}>
@@ -158,6 +170,9 @@ export function AskBox({ placeholder, value: text, onChange: setText, inputRef, 
           onClick={research}
         >
           {t('home.ask.chip.research')}
+        </button>
+        <button type="button" className="home-chip" onClick={() => onAction('add-documents')}>
+          {t('home.ask.chip.documents')}
         </button>
       </div>
     </div>

@@ -133,7 +133,7 @@ describe('CommandPalette navigation', () => {
     renderPalette({ onNavigate });
     type('>go to');
     const labels = screen.getAllByRole('option').map((o) => o.textContent ?? '');
-    for (const name of ['Home', 'Chats', 'Slides', 'Writing', 'Apps', 'Manage apps', 'Inbox', 'Workflows', 'Agents', 'Context', 'Documents', 'Library', 'Connectors', 'Memory', 'Settings']) {
+    for (const name of ['Home', 'Chats', 'Artifacts', 'Slides', 'Writing', 'Apps', 'Manage apps', 'Inbox', 'Workflows', 'Agents', 'Context', 'Documents', 'Library', 'Connectors', 'Memory', 'Settings']) {
       expect(labels.some((l) => l.includes(`Go to ${name}`)), name).toBe(true);
     }
     fireEvent.click(screen.getByRole('option', { name: /Go to Memory/ }));

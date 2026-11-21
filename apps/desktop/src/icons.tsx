@@ -524,3 +524,49 @@ export const AgentsIcon = (p: IconProps) => (
     <path d="M17.5 14.5 18.3 16.7 20.5 17.5 18.3 18.3 17.5 20.5 16.7 18.3 14.5 17.5 16.7 16.7Z" />
   </Svg>
 );
+/** Artifacts: the things you made, a square, a circle and a triangle. */
+export const ArtifactsIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.8" />
+    <circle cx="17" cy="7.25" r="3.75" />
+    <path d="M7.25 13.5 11 20.5H3.5l3.75-7Z" />
+    <rect x="13.25" y="13.5" width="7.25" height="7" rx="3.5" />
+  </Svg>
+);
+export const ArtifactsSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect fill="currentColor" x="3.5" y="3.5" width="7.5" height="7.5" rx="1.8" />
+    <circle fill="currentColor" cx="17" cy="7.25" r="3.75" />
+    <path fill="currentColor" d="M7.25 13.5 11 20.5H3.5l3.75-7Z" />
+    <rect fill="currentColor" x="13.25" y="13.5" width="7.25" height="7" rx="3.5" />
+  </Svg>
+);
+/** A spreadsheet: a grid with a header row. */
+export const SheetIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4" width="17" height="16" rx="2" />
+    <path d="M3.5 9.5h17M3.5 14.75h17M9.5 4v16" />
+  </Svg>
+);
+/** An image: a frame with a sun and a hill. */
+export const ImageIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <circle cx="9" cy="10" r="1.6" />
+    <path d="m20.5 16-5-5-8.5 8.5" />
+  </Svg>
+);
+/** An app window: a frame with a title bar. */
+export const WindowIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <path d="M3.5 9h17M7.5 13h4" />
+  </Svg>
+);
+
+/** A close mark: two crossed strokes. */
+export const CloseIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Svg>
+);

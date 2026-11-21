@@ -378,6 +378,9 @@ interface ChatViewProps {
   onPendingSendConsumed?: () => void;
   /// The pending text starts a Research run (Home's Research chip).
   pendingSendResearch?: boolean;
+  /// What the pending text asks to make (Home's maker tiles): `create` gives
+  /// the turn the document tools, `image` the image tools, in any language.
+  pendingSendMake?: 'create' | 'image' | null;
   /// An agent to pick in the composer (an agent card's "Ask"), once.
   pendingAgent?: { id: string; name: string } | null;
   /// Clear `pendingAgent` after it has been picked.
@@ -963,6 +966,8 @@ interface HandleSendOverride {
   /** Start a Research run with this text instead of a normal reply. Only an
    *  explicit choice (the composer's Research toggle, Home's chip) sets this. */
   research?: boolean;
+  /** The turn asks for an image whatever its wording (Home's Image tile). */
+  image?: boolean;
   /** Write this reply further instead of answering a new message: the last
    *  reply, cut off at the output limit. `text` is then the question it
    *  answers (it picks the turn's tools), and no user turn is added. */
@@ -1016,6 +1021,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     pendingSendText = null,
     onPendingSendConsumed,
     pendingSendResearch = false,
+    pendingSendMake = null,
     pendingAgent = null,
     onPendingAgentConsumed,
     onConversationChanged,
@@ -1132,7 +1138,13 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     text: string;
     kind: 'tip' | 'fork';
   } | null>(null);
-  const [autoSend, setAutoSend] = useState<{ text: string; history: ChatTurn[]; research?: boolean } | null>(null);
+  const [autoSend, setAutoSend] = useState<{
+    text: string;
+    history: ChatTurn[];
+    research?: boolean;
+    intent?: DocumentTurnIntent;
+    image?: boolean;
+  } | null>(null);
   /** Set when the load consumed `pendingSendText` for this conversation. */
   const pendingConsumedForRef = useRef<string | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1146,6 +1158,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const [researchOn, setResearchOn] = useState(false);
   const pendingSendResearchRef = useRef(pendingSendResearch);
   pendingSendResearchRef.current = pendingSendResearch;
+  const pendingSendMakeRef = useRef(pendingSendMake);
+  pendingSendMakeRef.current = pendingSendMake;
   // Phase 7 / M-WebSearch: consent dialog for first-time chat-bar toggle.
   // If the user has already acknowledged via Settings, this never shows.
   // Session-only dismissal (same UX as diagnostics disclosure M6.5).
@@ -1589,6 +1603,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
               text: pending,
               history: visible,
               ...(pendingSendResearchRef.current ? { research: true } : {}),
+              ...(pendingSendMakeRef.current === 'create' ? { intent: 'create' as const } : {}),
+              ...(pendingSendMakeRef.current === 'image' ? { image: true } : {}),
             });
           }
         }
@@ -2543,7 +2559,7 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
       trimmed,
       searchBackend,
       documentScope.toolIntent,
-      pickedIdea?.needs.includes('imageGen'),
+      override?.image || pickedIdea?.needs.includes('imageGen'),
       Boolean(agent),
       turnSettings,
     );

@@ -33,9 +33,9 @@ describe('Rail', () => {
       items: [...band.querySelectorAll('.rail-btn')].map((el) => el.getAttribute('data-destination')),
     }));
     expect(bands).toEqual([
-      { id: 'make', items: ['chats', 'slides', 'writing'] },
-      { id: 'apps', items: ['apps', 'manage'] },
-      { id: 'automate', items: ['workflows', 'inbox', 'agents'] },
+      { id: 'make', items: ['chats', 'artifacts', 'slides', 'writing'] },
+      { id: 'apps', items: ['apps'] },
+      { id: 'automate', items: ['work'] },
       { id: 'context', items: ['context'] },
     ]);
     expect(container.querySelector('.rail-band [data-destination="settings"]')).toBeNull();
@@ -51,24 +51,31 @@ describe('Rail', () => {
   it('fills the icon of the current destination only', () => {
     const { container, rerender } = renderRail({ destination: 'workflows' });
     const filled = () => [...container.querySelectorAll('.rail-icon[data-filled]')].map((el) => el.closest('.rail-btn')?.getAttribute('data-destination'));
-    expect(filled()).toEqual(['workflows']);
+    // Workflows is a tab of Agents: the Agents button is the one lit.
+    expect(filled()).toEqual(['work']);
     rerender(<Rail destination="memory" onNavigate={() => {}} />);
     expect(filled()).toEqual(['context']);
   });
 
-  it('names Manage in full for assistive tech, and keeps the short label on screen', () => {
+  it('leaves Manage to the Apps page, and lights Apps while Manage shows', () => {
+    renderRail({ destination: 'manage' });
+    expect(screen.queryByRole('button', { name: 'Manage apps' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Apps' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('puts Artifacts right after Chats and goes there on click', () => {
     const onNavigate = vi.fn();
-    renderRail({ onNavigate });
-    const manage = screen.getByRole('button', { name: 'Manage apps' });
-    expect(manage.querySelector('.rail-label')?.textContent).toBe('Manage');
-    fireEvent.click(manage);
-    expect(onNavigate).toHaveBeenCalledWith('manage');
+    const { container } = renderRail({ onNavigate });
+    const order = [...container.querySelectorAll('.rail-btn')].map((el) => el.getAttribute('data-destination'));
+    expect(order.indexOf('artifacts')).toBe(order.indexOf('chats') + 1);
+    fireEvent.click(screen.getByRole('button', { name: 'Artifacts' }));
+    expect(onNavigate).toHaveBeenCalledWith('artifacts');
   });
 
   it('labels every destination, and leaves Ideas to the new-chat screen', () => {
     const { container } = renderRail();
     const labels = [...container.querySelectorAll('.rail-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['Home', 'Chats', 'Slides', 'Writing', 'Apps', 'Manage', 'Workflows', 'Inbox', 'Agents', 'Context', 'Settings', 'More']);
+    expect(labels).toEqual(['Home', 'Chats', 'Artifacts', 'Slides', 'Writing', 'Apps', 'Agents', 'Context', 'Settings', 'More']);
     expect(screen.queryByRole('button', { name: 'Ideas' })).toBeNull();
   });
 
@@ -96,39 +103,39 @@ describe('Rail', () => {
   it('is one tab stop, moved with the arrow keys', () => {
     renderRail();
     const chats = screen.getByRole('button', { name: 'Chats' });
-    const slides = screen.getByRole('button', { name: 'Slides' });
+    const artifacts = screen.getByRole('button', { name: 'Artifacts' });
     const settings = screen.getByRole('button', { name: 'Settings' });
     expect(chats.tabIndex).toBe(0);
-    expect(slides.tabIndex).toBe(-1);
+    expect(artifacts.tabIndex).toBe(-1);
     chats.focus();
     fireEvent.keyDown(chats, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(slides);
-    fireEvent.keyDown(slides, { key: 'End' });
+    expect(document.activeElement).toBe(artifacts);
+    fireEvent.keyDown(artifacts, { key: 'End' });
     expect(document.activeElement).toBe(settings);
     fireEvent.keyDown(settings, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Home' }));
   });
 
   it('announces something new or running on a destination', () => {
-    renderRail({ dots: { workflows: true } });
-    expect(screen.getByRole('button', { name: 'Workflows (new)' })).toBeTruthy();
+    renderRail({ dots: { work: true } });
+    expect(screen.getByRole('button', { name: 'Agents (new)' })).toBeTruthy();
   });
 
   it('counts what runs on a destination in a pill, in place of the dot', () => {
-    const { container, rerender } = renderRail({ counts: { agents: 3 }, dots: { agents: true } });
+    const { container, rerender } = renderRail({ counts: { work: 3 }, dots: { work: true } });
     const agents = screen.getByRole('button', { name: 'Agents (3 running)' });
     expect(agents.querySelector('.rail-count')?.textContent).toBe('3');
     expect(agents.querySelector('.rail-dot')).toBeNull();
     // Down to zero: no pill.
-    rerender(<Rail destination="chats" onNavigate={() => {}} counts={{ agents: 0 }} />);
+    rerender(<Rail destination="chats" onNavigate={() => {}} counts={{ work: 0 }} />);
     expect(screen.getByRole('button', { name: 'Agents' })).toBeTruthy();
     expect(container.querySelector('.rail-count')).toBeNull();
   });
 
   it('leaves out hidden destinations', () => {
-    renderRail({ hidden: ['agents'] });
-    expect(screen.queryByRole('button', { name: 'Agents' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Inbox' })).toBeTruthy();
+    renderRail({ hidden: ['context'] });
+    expect(screen.queryByRole('button', { name: 'Context' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Agents' })).toBeTruthy();
   });
 
   it('has no theme toggle: that lives in the title bar', () => {
@@ -183,23 +190,26 @@ describe('Rail on a phone', () => {
   it('opens a dialog of the other destinations, navigates and closes', () => {
     phone();
     const onNavigate = vi.fn();
-    renderRail({ onNavigate, dots: { workflows: true }, onToggleTheme: () => {} });
+    renderRail({ onNavigate, dots: { context: true }, onToggleTheme: () => {} });
     expect(screen.getByRole('button', { name: 'More (new)' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'More (new)' }));
     const dialog = screen.getByRole('dialog', { name: 'More' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    expect(dialog.querySelectorAll('.more-row')).toHaveLength(8);
+    // Slides, Writing, Apps, Context, Settings, and the light/dark row.
+    expect(dialog.querySelectorAll('.more-row')).toHaveLength(6);
     fireEvent.click(screen.getAllByRole('button', { name: 'Writing' }).find((b) => b.classList.contains('more-row'))!);
     expect(onNavigate).toHaveBeenCalledWith('writing');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('shows the running count in the More sheet, and marks More', () => {
+  it('makes Home, Chats, Artifacts and Agents the tabs, with the running count on Agents', () => {
     phone();
-    renderRail({ counts: { agents: 2 } });
-    fireEvent.click(screen.getByRole('button', { name: 'More (new)' }));
-    const row = screen.getAllByRole('button', { name: 'Agents (2 running)' }).find((b) => b.classList.contains('more-row'))!;
-    expect(row.querySelector('.rail-count')?.textContent).toBe('2');
+    const { container } = renderRail({ counts: { work: 2 } });
+    const tabs = [...container.querySelectorAll('.rail-btn[data-phone="tab"]')].map((el) => el.getAttribute('data-destination'));
+    expect(tabs).toEqual(['home', 'chats', 'artifacts', 'work']);
+    const agents = screen.getByRole('button', { name: 'Agents (2 running)' });
+    expect(agents.querySelector('.rail-count')?.textContent).toBe('2');
+    expect(screen.getByRole('button', { name: 'More' })).toBeTruthy();
   });
 
   it('closes on Escape and returns focus to More', () => {

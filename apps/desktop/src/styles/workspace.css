@@ -1212,13 +1212,16 @@ html[data-panel-overlay="open"] .body > .doc-panel {
 .context-tabs {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 2px;
+  align-items: stretch;
+  gap: var(--sp-1);
   padding: var(--sp-3) var(--sp-6) 0;
-  /* Part of the header band (.page-head) below it. */
+  /* Part of the header band (.page-head) below it; the line is the tab bar's
+   * baseline, which the open tab's underline sits on. */
   background: var(--bg-side);
+  border-bottom: 1px solid var(--line);
 }
 .context-tabs-label {
+  align-self: center;
   margin-right: var(--sp-2);
   font-size: var(--fs-sm);
   font-weight: 600;
@@ -1226,17 +1229,54 @@ html[data-panel-overlay="open"] .body > .doc-panel {
   text-transform: none;
   color: var(--ink-2);
 }
+/* Tabs that look like tabs: an icon and a label, a hover fill, and an accent
+ * underline on the open one, so the strip reads as something to click. */
 .context-tab {
-  padding: 5px 12px;
-  border-radius: var(--r-sm);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px 14px 11px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
   font-size: var(--fs-xl);
   font-weight: 500;
-  color: var(--ink-3);
+  color: var(--ink-2);
+  cursor: pointer;
   transition: background var(--tap), color var(--tap);
 }
+.context-tab::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: transparent;
+  transition: background var(--tap);
+}
+.context-tab-icon { display: grid; place-items: center; color: var(--ink-3); transition: color var(--tap); }
+.context-tab-icon svg { width: 18px; height: 18px; }
 .context-tab:hover { color: var(--ink); background: var(--card-hi); }
-.context-tab[aria-current="page"] { color: var(--ink); background: var(--card-hi); font-weight: 700; }
-.context-tab:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.context-tab:hover .context-tab-icon { color: var(--ink-2); }
+.context-tab:hover::after { background: var(--line-hi); }
+.context-tab[aria-current="page"] { color: var(--ink); font-weight: 650; }
+.context-tab[aria-current="page"] .context-tab-icon { color: var(--accent); }
+.context-tab[aria-current="page"]::after { background: var(--accent); }
+.context-tab:focus-visible { outline: 2px solid var(--hue); outline-offset: -2px; }
+/* Agents' tabs: how many things wait under Needs you. */
+.context-tab-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .rail-btn {
   width: 76px;
   /* A variable so the density and height steps compose rather than fight:

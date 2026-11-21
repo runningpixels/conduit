@@ -55,6 +55,7 @@
 
 /* Home: the front door (home/*.tsx) */
 @import './styles/pages-home.css';
+@import './styles/pages-artifacts.css';
 
 /* Slides page and the deck workspace: pages/SlidesPage.tsx, slides/*.tsx */
 @import './styles/pages-slides.css';

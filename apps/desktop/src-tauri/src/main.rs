@@ -197,6 +197,7 @@ fn main() {
             save_attachment_as,
             create_artifact,
             list_artifacts,
+            list_all_artifacts,
             get_message_id_by_request,
             get_artifact,
             set_artifact_content,

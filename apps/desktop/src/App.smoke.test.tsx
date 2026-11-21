@@ -233,23 +233,29 @@ describe('App shell', { timeout: 20_000 }, () => {
     expect(document.querySelector('.dest-page[data-destination="home"]')).not.toBeNull();
   });
 
-  it('walks the grouped rail: Apps and Manage, the placeholders, and Context with its tabs', async () => {
+  it('walks the grouped rail: Apps (and Manage from it), the placeholders, and Context with its tabs', async () => {
     const { default: App } = await import('./App');
     render(<App />);
     await waitFor(() => expect(document.querySelector('.dest-page[data-destination="home"]')).not.toBeNull());
 
-    // Apps is the home screen; Manage is the Apps page as it was.
+    // Apps is the home screen; Manage, the Apps page as it was, opens from it
+    // and keeps Apps lit on the rail.
     fireEvent.click(screen.getByRole('button', { name: 'Apps' }));
     expect(await screen.findByText('No apps yet')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Manage apps' }));
+    expect(screen.queryByRole('button', { name: 'Manage apps' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
     expect(await screen.findByText('No personal apps yet')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Manage apps' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Apps' })).toHaveAttribute('aria-current', 'page');
 
-    // Inbox shows what waits; Agents lists the agents your workflows use.
-    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
-    expect(await screen.findByText('Nothing is waiting for you')).toBeInTheDocument();
+    // Agents holds Needs you, Agents and Workflows as tabs. With nothing
+    // waiting it opens on Agents; Needs you shows that nothing waits.
     fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
     expect(await screen.findByText(/You haven’t made an agent yet/)).toBeInTheDocument();
+    const agentTabs = await screen.findByRole('navigation', { name: 'Agents pages' });
+    expect(within(agentTabs).getByRole('button', { name: 'Agents' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(within(agentTabs).getByRole('button', { name: 'Needs you' }));
+    expect(await screen.findByText('Nothing is waiting for you')).toBeInTheDocument();
+    expect(document.querySelector('.rail-btn[data-destination="work"]')).toHaveAttribute('aria-current', 'page');
 
     // Context opens on Documents, with its tabs; the rail marks Context.
     fireEvent.click(screen.getByRole('button', { name: 'Context' }));

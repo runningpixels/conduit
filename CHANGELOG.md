@@ -7,6 +7,43 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.36] - 2026-11-20
+
+Chat fits a narrow window, and picking a model is a dialog you can sort by
+price.
+
+### Added
+
+- **A model picker dialog** (#357). The model picker opens a dialog with a
+  search field, a provider list down the side, and Model, Input and Output
+  columns showing each model's price per 1M tokens. Sort by Name or Price
+  (click again to flip); sorted by price, every provider's models merge into
+  one list. Refresh list asks the providers again. Retry ▾ opens the same
+  dialog.
+
+### Changed
+
+- **The model list is kept for the session** (#357). Every picker shares one
+  list, so reopening it is instant, and each provider's models appear as soon
+  as that provider answers instead of waiting for the slowest. Only providers
+  you can use are listed: one with a saved key, a running local server, or the
+  one the chat already uses. Providers without a key are no longer asked for
+  models.
+- **Chat in a narrow window** (#356, #357). Under 520px wide, Web, Research
+  and Browser move into the "+" menu as switches (one that is on shows as a
+  chip above the input), the microphone and Send share one spot, and a reply's
+  actions are Copy, Retry and a ⋯ menu holding Read aloud, Fork, Delete and
+  the token usage. The model picker shows the model without its vendor prefix,
+  the default folder chip drops "(default)", and the status line leaves out
+  the chat's model and "online" so it stays on one row; the full details stay
+  in tooltips and popovers.
+
+### Fixed
+
+- **Folder and skill chips are cut less** (#356). A chip name now has room for
+  a folder name plus "(default)", where "Chrome Downloads (default)" used to
+  end in "(defa…".
+
 ## [1.0.0-rc.35] - 2026-11-18
 
 A workflow can keep its own browsing pace again, and after an update the app

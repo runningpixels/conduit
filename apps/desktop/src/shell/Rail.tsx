@@ -7,10 +7,11 @@
 /// first-time user finds their way around, so nothing here is icon-only.
 ///
 /// The buttons sit in groups, split by hairlines, by what they are for: making things
-/// (Chats, Slides, Writing), apps (the home screen, and Manage), what runs
-/// without you (Inbox, Workflows, Agents), and Context — the one place for
-/// what the model knows and can use (Documents, Library, Connectors, Memory),
-/// which open as tabs of a single page. Icons are outlines; the current
+/// (Chats, Artifacts, Slides, Writing), Apps (Manage opens from its page and
+/// lights Apps while it shows), Agents — what runs without you (Needs you,
+/// Agents, Workflows) — and Context, the one place for what the model knows
+/// and can use (Documents, Library, Connectors, Memory). Agents and Context
+/// each open as tabs of a single page. Icons are outlines; the current
 /// destination's turns solid inside its accent pill.
 ///
 /// The destinations scroll rather than squeeze when the window is short;
@@ -33,6 +34,8 @@ import {
   AgentsIcon,
   AgentsSolidIcon,
   AppsSolidIcon,
+  ArtifactsIcon,
+  ArtifactsSolidIcon,
   ChatSolidIcon,
   HomeSolidIcon,
   InboxSolidIcon,
@@ -65,12 +68,17 @@ import {
 export type Destination =
   | 'home'
   | 'chats'
+  /** Artifacts: everything made in chats, Slides, Writing and Apps, in one place. */
+  | 'artifacts'
   | 'slides'
   | 'writing'
   /** Apps: the home screen of your apps, to open and use them. */
   | 'apps'
   /** Manage: the apps list with details, network access and starters. */
   | 'manage'
+  /** Agents on the rail: Needs you, Agents and Workflows as tabs. Navigating
+   *  to it opens Needs you when something waits, else the last tab. */
+  | 'work'
   | 'inbox'
   | 'workflows'
   | 'agents'
@@ -92,8 +100,20 @@ export function isContextTab(d: Destination): d is ContextTab {
   return (CONTEXT_TABS as readonly Destination[]).includes(d);
 }
 
-/** The rail button that stands for `d`: Context for its tabs, else `d`. */
+/** The pages Agents holds, in tab order. Each is still a destination of its
+ *  own (deep links, Ctrl+6…8 and the palette land on the right tab). */
+export const AGENT_TABS = ['inbox', 'agents', 'workflows'] as const satisfies readonly Destination[];
+export type AgentTab = (typeof AGENT_TABS)[number];
+
+export function isAgentTab(d: Destination): d is AgentTab {
+  return (AGENT_TABS as readonly Destination[]).includes(d);
+}
+
+/** The rail button that stands for `d`: Context or Agents for their tabs,
+ *  Apps for Manage (opened from the Apps page), else `d`. */
 export function railItemFor(d: Destination): Destination {
+  if (d === 'manage') return 'apps';
+  if (isAgentTab(d)) return 'work';
   return isContextTab(d) ? 'context' : d;
 }
 
@@ -101,9 +121,9 @@ export function railItemFor(d: Destination): Destination {
  *  is not on the rail: it lives in the new-chat screen ("More ideas"). */
 export const RAIL_BANDS: ReadonlyArray<{ id: string; items: readonly Destination[] }> = [
   { id: 'top', items: ['home'] },
-  { id: 'make', items: ['chats', 'slides', 'writing'] },
-  { id: 'apps', items: ['apps', 'manage'] },
-  { id: 'automate', items: ['workflows', 'inbox', 'agents'] },
+  { id: 'make', items: ['chats', 'artifacts', 'slides', 'writing'] },
+  { id: 'apps', items: ['apps'] },
+  { id: 'automate', items: ['work'] },
   { id: 'context', items: ['context'] },
 ];
 
@@ -113,10 +133,12 @@ export const DESTINATIONS: readonly Destination[] = [...RAIL_BANDS.flatMap((band
 const ICONS: Record<Destination, ReactNode> = {
   home: <HomeIcon />,
   chats: <ChatIcon />,
+  artifacts: <ArtifactsIcon />,
   slides: <SlidesIcon />,
   writing: <WritingIcon />,
   apps: <AppsIcon />,
   manage: <SlidersIcon />,
+  work: <AgentsIcon />,
   inbox: <InboxIcon />,
   workflows: <WorkflowIcon />,
   agents: <AgentsIcon />,
@@ -138,10 +160,12 @@ export function destinationIcon(d: Destination): ReactNode {
 const SOLID_ICONS: Partial<Record<Destination, ReactNode>> = {
   home: <HomeSolidIcon />,
   chats: <ChatSolidIcon />,
+  artifacts: <ArtifactsSolidIcon />,
   slides: <SlidesSolidIcon />,
   writing: <WritingSolidIcon />,
   apps: <AppsSolidIcon />,
   manage: <SlidersSolidIcon />,
+  work: <AgentsSolidIcon />,
   inbox: <InboxSolidIcon />,
   workflows: <WorkflowSolidIcon />,
   agents: <AgentsSolidIcon />,
@@ -150,7 +174,7 @@ const SOLID_ICONS: Partial<Record<Destination, ReactNode>> = {
 };
 
 /** The destinations that are tabs in the phone tab bar; the rest sit in More. */
-export const PHONE_TABS: readonly Destination[] = ['home', 'chats', 'apps', 'inbox'];
+export const PHONE_TABS: readonly Destination[] = ['home', 'chats', 'artifacts', 'work'];
 
 /** The phone layout's breakpoint; mirrors `@media (max-width: 720px)` in workspace.css. */
 export const PHONE_BREAKPOINT = 720;

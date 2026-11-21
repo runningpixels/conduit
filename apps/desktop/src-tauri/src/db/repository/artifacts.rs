@@ -289,8 +289,26 @@ pub async fn list(pool: &SqlitePool, conversation_id: &str) -> Result<Vec<Artifa
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
+    Ok(list_rows_to_artifacts(rows))
+}
+
+/// Every artifact in every chat, newest-first, without inline content: the
+/// Artifacts page.
+pub async fn list_all(pool: &SqlitePool) -> Result<Vec<Artifact>, DbError> {
+    let rows: Vec<ArtifactListRow> = sqlx::query_as(
+        "SELECT id, conversation_id, kind, title, source_message_id, cloud_share_id, \
+                metadata, created_at, updated_at, mime_type, content_path, content_hash, \
+                size_bytes \
+         FROM artifacts \
+         ORDER BY COALESCE(updated_at, created_at) DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(list_rows_to_artifacts(rows))
+}
+
+fn list_rows_to_artifacts(rows: Vec<ArtifactListRow>) -> Vec<Artifact> {
+    rows.into_iter()
         .map(
             |(
                 id,
@@ -324,7 +342,7 @@ pub async fn list(pool: &SqlitePool, conversation_id: &str) -> Result<Vec<Artifa
                 size_bytes,
             },
         )
-        .collect())
+        .collect()
 }
 
 /// Load a single artifact with **decrypted** inline content. Returns `None` if

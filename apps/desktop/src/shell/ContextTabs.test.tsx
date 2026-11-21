@@ -13,6 +13,16 @@ describe('ContextTabs', () => {
     expect(screen.getByRole('button', { name: 'Memory' })).not.toHaveAttribute('aria-current');
   });
 
+  it('lists Agents’ pages, with how many things wait under Needs you', () => {
+    const onNavigate = vi.fn();
+    render(<ContextTabs group="work" current="agents" onNavigate={onNavigate} counts={{ inbox: 3 }} />);
+    const nav = screen.getByRole('navigation', { name: 'Agents pages' });
+    expect([...nav.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Needs you3', 'Agents', 'Workflows']);
+    expect(screen.getByRole('button', { name: 'Agents' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(screen.getByRole('button', { name: 'Needs you (3)' }));
+    expect(onNavigate).toHaveBeenCalledWith('inbox');
+  });
+
   it('goes to a tab as a destination of its own', () => {
     const onNavigate = vi.fn();
     render(<ContextTabs current="documents" onNavigate={onNavigate} />);

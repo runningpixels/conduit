@@ -13,7 +13,7 @@ import { useModelPrices } from '../lib/useModelPrices';
 import { modShiftShortcutHint, modShortcutHint } from '../lib/shortcuts';
 import { organizationBadge } from '../lib/conversationOrganization';
 import { useFocusTrap } from '../shell/useFocusTrap';
-import { CONTEXT_TABS, DESTINATIONS, type Destination } from '../shell/Rail';
+import { AGENT_TABS, CONTEXT_TABS, DESTINATIONS, type Destination } from '../shell/Rail';
 import { HOTKEYS } from './useHotkeys';
 import { allowUserBranding } from '../brand/buildFlags';
 import { useT } from '../i18n';
@@ -247,7 +247,9 @@ export function CommandPalette({
   const navItems = useCallback(
     (group: string): PaletteItem[] =>
       onNavigate
-        ? [...DESTINATIONS, ...CONTEXT_TABS].map((destination) => ({
+        ? // Manage left the rail for the Apps page, and Agents groups Inbox, Agents
+          // and Workflows as tabs; the palette goes to each page directly.
+          [...DESTINATIONS.filter((d) => d !== 'work'), 'manage' as const, ...AGENT_TABS, ...CONTEXT_TABS].map((destination) => ({
             id: `go-${destination}`,
             group,
             kind: 'cmd' as const,

@@ -1,0 +1,202 @@
+/* ── Artifacts page ────────────────────────────────────────────────────────
+ * Everything made, by kind. One colour per kind (--kind), from the area
+ * palette: thumbnail, icon and the selected tab's count carry it. */
+
+.artifacts-page [data-kind="page"],
+.home-page [data-kind="page"] { --kind: var(--area-research); }
+.artifacts-page [data-kind="app"],
+.home-page [data-kind="app"] { --kind: var(--area-apps); }
+.artifacts-page [data-kind="deck"],
+.home-page [data-kind="deck"] { --kind: var(--area-slides); }
+.artifacts-page [data-kind="document"],
+.home-page [data-kind="document"] { --kind: var(--area-writing); }
+.artifacts-page [data-kind="sheet"],
+.home-page [data-kind="sheet"] { --kind: var(--area-workflows); }
+.artifacts-page [data-kind="image"],
+.home-page [data-kind="image"] { --kind: var(--area-chats); }
+.artifacts-page [data-kind="code"] { --kind: var(--ink-2); }
+
+/* Tabs: a row of pills that scrolls sideways when it does not fit. */
+.art-tabs {
+  display: flex;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-4);
+  padding-bottom: var(--sp-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line-soft);
+}
+.art-tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-2);
+  font: 600 var(--fs-5xl) var(--font-ui);
+  cursor: pointer;
+  transition: background var(--tap), color var(--tap);
+}
+.art-tab:hover { background: var(--card-hi); color: var(--ink); }
+.art-tab[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-text); }
+.art-tab:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: calc(var(--ring-offset) * -1); }
+.art-tab-count { color: var(--ink-3); font-size: var(--fs-md); font-weight: 500; font-variant-numeric: tabular-nums; }
+.art-tab[aria-selected="true"] .art-tab-count { color: inherit; }
+
+/* Search, sort and view on one row; they wrap on a narrow page. */
+.art-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.art-search {
+  flex: 1 1 220px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 38px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--field-bg);
+  color: var(--ink-3);
+}
+.art-search:focus-within { border-color: var(--accent-line); }
+.art-search svg { flex: none; width: 16px; height: 16px; }
+.art-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--ink);
+  font: var(--fs-5xl) var(--font-ui);
+}
+.art-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.art-seg-label { padding: 0 var(--sp-2) 0 var(--sp-1); color: var(--ink-3); font-size: var(--fs-md); }
+.art-seg-btn {
+  min-height: 30px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--ink-2);
+  font: 600 var(--fs-xl) var(--font-ui);
+  cursor: pointer;
+  transition: background var(--tap), color var(--tap);
+}
+.art-seg-btn:hover { color: var(--ink); }
+.art-seg-btn[aria-pressed="true"] { background: var(--card-hi); color: var(--ink); }
+.art-seg-btn:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+
+.art-none { margin: var(--sp-6) 0; color: var(--ink-3); text-align: center; }
+
+/* Grid: cards with a thumbnail on top. List: one row each. */
+.art-grid,
+.art-list { margin: 0; padding: 0; list-style: none; }
+.art-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: var(--sp-3);
+}
+.art-list { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+.art-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--tap), background var(--tap);
+}
+.art-card:hover { border-color: color-mix(in srgb, var(--kind) 45%, var(--line)); background: var(--card-hi); }
+.art-card:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: var(--ring-offset); }
+.art-list .art-card { flex-direction: row; align-items: center; gap: var(--sp-3); padding: var(--sp-2); border-radius: var(--r-sm); }
+
+.art-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  background:
+    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--kind) 22%, transparent), transparent 60%),
+    color-mix(in srgb, var(--kind) 8%, var(--card));
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--kind);
+}
+.art-list .art-thumb { flex: none; width: 44px; aspect-ratio: 1; border: 0; border-radius: var(--r-sm); }
+/* A hint of what the kind looks like inside: lines of text, a slide, a grid. */
+.art-thumb-art {
+  position: absolute;
+  inset: 18% 16%;
+  border-radius: var(--r-xs);
+  opacity: .5;
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--kind) 35%, transparent) 0 3px,
+    transparent 3px 11px
+  );
+  mask-image: linear-gradient(to right, black 70%, transparent);
+}
+.art-card[data-kind="deck"] .art-thumb-art {
+  inset: 20% 22%;
+  background: color-mix(in srgb, var(--kind) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kind) 40%, transparent);
+  mask-image: none;
+}
+.art-card[data-kind="sheet"] .art-thumb-art {
+  background:
+    repeating-linear-gradient(to right, color-mix(in srgb, var(--kind) 35%, transparent) 0 1px, transparent 1px 22%),
+    repeating-linear-gradient(to bottom, color-mix(in srgb, var(--kind) 35%, transparent) 0 1px, transparent 1px 18%);
+  mask-image: none;
+}
+.art-card[data-kind="image"] .art-thumb-art,
+.art-card[data-kind="app"] .art-thumb-art { display: none; }
+.art-list .art-thumb-art { display: none; }
+.art-thumb-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--kind) 16%, var(--card));
+}
+.art-thumb-icon svg { width: 22px; height: 22px; }
+.art-list .art-thumb-icon { width: 100%; height: 100%; background: none; }
+
+.art-text { display: grid; gap: 2px; min-width: 0; padding: var(--sp-3); }
+.art-list .art-text { padding: 0; }
+.art-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-6xl);
+  font-weight: 650;
+}
+.art-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+}

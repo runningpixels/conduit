@@ -81,7 +81,7 @@ import { Sidebar } from './shell/Sidebar';
 import { EXAMPLES_CHANGED_EVENT } from './examples/useExampleItems';
 import { SettingsSheet, type SettingsSection } from './shell/SettingsSheet';
 import { DocumentsSheet } from './shell/DocumentsSheet';
-import { Rail, isContextTab, type ContextTab, type Destination } from './shell/Rail';
+import { Rail, isAgentTab, isContextTab, type AgentTab, type ContextTab, type Destination } from './shell/Rail';
 import { ContextTabs } from './shell/ContextTabs';
 import { HomePage, type HomeAction, type WorkflowTarget } from './home/HomePage';
 import { researchUnavailableReasonId } from './chat/researchAvailability';
@@ -152,6 +152,9 @@ import { readDevRoute } from './devRoute';
 import { ConfirmDialog } from '@conduit/ui';
 import { AppsPage } from './pages/AppsPage';
 import { AppsHomePage } from './pages/AppsHomePage';
+import { ArtifactsPage } from './pages/ArtifactsPage';
+import type { ArtifactOpen } from './artifacts/artifactItems';
+import type { MakeKind } from './home/makeKinds';
 import { AgentsPage } from './pages/AgentsPage';
 import { useRunningAgentCalls } from './agents/runningAgentCalls';
 import { announceAgentCall, isWatchingAgentCall } from './agents/agentCallNotices';
@@ -417,6 +420,11 @@ export default function App() {
   useEffect(() => {
     if (isContextTab(destination)) setContextTab(destination);
   }, [destination]);
+  // Agents on the rail holds Needs you, Agents and Workflows the same way.
+  const [agentTab, setAgentTab] = useState<AgentTab>('agents');
+  useEffect(() => {
+    if (isAgentTab(destination)) setAgentTab(destination);
+  }, [destination]);
   // Home's "New workflow" opens the Workflows page on its picker.
   const [workflowsStartNew, setWorkflowsStartNew] = useState(false);
   // Home's "Answer"/"Review" opens the Workflows page on the waiting workflow.
@@ -543,9 +551,12 @@ export default function App() {
   const [pendingSendText, setPendingSendText] = useState<string | null>(null);
   // The pending text starts a Research run (Home's Research chip), not a reply.
   const [pendingSendResearch, setPendingSendResearch] = useState(false);
+  // What the pending text asks to make (Home's maker tiles), in any language.
+  const [pendingSendMake, setPendingSendMake] = useState<'create' | 'image' | null>(null);
   const consumePendingSend = useCallback(() => {
     setPendingSendText(null);
     setPendingSendResearch(false);
+    setPendingSendMake(null);
   }, []);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   /** The chat "Make a skill from this chat" is drafting from; null when closed. */
@@ -3431,6 +3442,8 @@ export default function App() {
     (d: Destination) => {
       if (d === 'settings') openSettings();
       else if (d === 'context') setDestination(contextTab);
+      // Agents opens on what waits for you, else on the tab used last.
+      else if (d === 'work') setDestination(waitingCount > 0 ? 'inbox' : agentTab);
       else if (d === 'slides' && studio) setStudioDeckId(null);
       else if (d === 'writing' && writingStudio) setStudioDraftId(null);
       else {
@@ -3440,7 +3453,7 @@ export default function App() {
         setDestination(d);
       }
     },
-    [openSettings, studio, writingStudio, activeDeck, activeDraft, leaveDeckChat, contextTab],
+    [openSettings, studio, writingStudio, activeDeck, activeDraft, leaveDeckChat, contextTab, agentTab, waitingCount],
   );
 
   /** An agent card's "Ask": a fresh chat (or the empty one on screen) with that agent picked. */
@@ -3597,14 +3610,6 @@ export default function App() {
     await openFreshChat();
     requestAnimationFrame(() => chatViewRef.current?.insertPrompt(t('apps.launcher.newAppPrompt')));
   }, [openFreshChat, t]);
-  const handleHomeNavigate = useCallback(
-    (area: Destination) => {
-      if (area === 'slides') openSlidesList();
-      else if (area === 'writing') openWritingList();
-      else navigateTo(area);
-    },
-    [navigateTo, openSlidesList, openWritingList],
-  );
   const handleHomeAction = useCallback(
     (action: HomeAction, target?: WorkflowTarget) => {
       switch (action) {
@@ -3647,6 +3652,53 @@ export default function App() {
       }
     },
     [openFreshChat, openSlidesList, openWritingList, openSavedApp],
+  );
+
+  /** Home's maker tiles: a deck opens Slides, a document Writing, anything
+   *  else a fresh chat whose first turn is told what to make. */
+  const handleHomeMake = useCallback(
+    (kind: MakeKind, text: string) => {
+      if (kind === 'deck') {
+        if (text) handleHomeStartDeck(text);
+        else openSlidesList();
+        return;
+      }
+      if (kind === 'document') {
+        if (text) handleHomeWrite(text);
+        else openWritingList();
+        return;
+      }
+      if (!text) return;
+      setPendingSendMake(kind === 'image' ? 'image' : 'create');
+      void openFreshChat(text);
+    },
+    [handleHomeStartDeck, handleHomeWrite, openSlidesList, openWritingList, openFreshChat],
+  );
+  /** An item on the Artifacts page opens where it lives. */
+  const openFromArtifacts = useCallback(
+    (target: ArtifactOpen) => {
+      switch (target.type) {
+        case 'deck':
+          void handleOpenDeck(target.id);
+          break;
+        case 'draft':
+          void handleOpenDraft(target.id);
+          break;
+        case 'app':
+          openSavedApp(target.id);
+          break;
+        case 'artifact':
+          if (activeDeckRef.current || activeDraftRef.current) {
+            setActiveDeck(null);
+            setStudioDeckId(null);
+            setActiveDraft(null);
+            setStudioDraftId(null);
+          }
+          openWorkflowDocument(target.conversationId, target.artifactId);
+          break;
+      }
+    },
+    [handleOpenDeck, handleOpenDraft, openSavedApp, openWorkflowDocument],
   );
 
   const openPalette = useCallback(() => {
@@ -3910,8 +3962,8 @@ export default function App() {
       <Rail
         destination={destination}
         onNavigate={navigateTo}
-        dots={{ workflows: workflowsUnread && destination !== 'workflows', inbox: waitingCount > 0 && destination !== 'inbox' }}
-        counts={{ agents: runningAgents.filter((call) => !call.waiting).length }}
+        dots={{ work: (workflowsUnread || waitingCount > 0) && !isAgentTab(destination) }}
+        counts={{ work: runningAgents.filter((call) => !call.waiting).length }}
         logoSrc={brandLogo ?? undefined}
         effectiveTheme={effectiveTheme}
         onToggleTheme={handleToggleTheme}
@@ -4133,6 +4185,7 @@ export default function App() {
             onEditForked={handleEditForked}
             pendingSendText={pendingSendText}
             pendingSendResearch={pendingSendResearch}
+            pendingSendMake={pendingSendMake}
             onPendingSendConsumed={consumePendingSend}
             pendingAgent={pendingAgent}
             onPendingAgentConsumed={() => setPendingAgent(null)}
@@ -4171,29 +4224,43 @@ export default function App() {
         {/* Rail destinations other than Chats: a page over the body. The chat
             stays mounted underneath, so a turn in progress keeps running. */}
         {destination !== 'chats' && !anyStudio && (
-          <div className="dest-page" data-destination={destination} data-context={isContextTab(destination) ? '' : undefined}>
+          <div
+            className="dest-page"
+            data-destination={destination}
+            data-context={isContextTab(destination) || isAgentTab(destination) ? '' : undefined}
+          >
             {isContextTab(destination) && <ContextTabs current={destination} onNavigate={navigateTo} />}
+            {isAgentTab(destination) && (
+              <ContextTabs
+                group="work"
+                current={destination}
+                onNavigate={navigateTo}
+                counts={{ inbox: waitingCount, agents: runningAgents.filter((call) => !call.waiting).length }}
+              />
+            )}
             {destination === 'home' && (
               <HomePage
                 conversations={conversations}
                 savedApps={savedApps}
-                ideaCaps={ideaCaps}
-                ideaState={ideaState}
-                collectionCount={collectionCount}
                 onAsk={handleHomeAsk}
                 onResearch={handleHomeResearch}
-                onWrite={handleHomeWrite}
-                onStartDeck={handleHomeStartDeck}
                 onAutomate={handleHomeAutomate}
                 onOpenChat={handleHomeOpenChat}
                 onOpenDeck={(id) => void handleOpenDeck(id)}
                 onOpenDraft={(id) => void handleOpenDraft(id)}
                 onOpenApp={openSavedApp}
-                onNavigate={handleHomeNavigate}
+                onMake={handleHomeMake}
+                onAllArtifacts={() => navigateTo('artifacts')}
                 onAction={handleHomeAction}
                 refreshKey={workflowRunsVersion}
-                onTryIdea={(idea) => void tryIdea(idea)}
-                onMoreIdeas={openIdeas}
+              />
+            )}
+            {destination === 'artifacts' && (
+              <ArtifactsPage
+                conversations={conversations}
+                savedApps={savedApps}
+                onOpen={openFromArtifacts}
+                onMakeNew={() => navigateTo('home')}
               />
             )}
             {destination === 'settings' && (

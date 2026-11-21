@@ -1,5 +1,6 @@
-/// Home: the app's front door. One ask box to start anything, what needs you,
-/// where you left off, every area explained once, and a few ideas.
+/// Home: the app's front door. One ask box to start anything, the tiles that
+/// ready it to make one kind of thing (a page, an app, a deck...), what needs
+/// you, and where you left off, with the way to everything you have made.
 ///
 /// The shell hands over what it already holds (chats, apps, idea state) and
 /// the callbacks that route; the page reads its own lists through the IPC
@@ -8,30 +9,23 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import {
-  getConnectorRuntimeStates,
   listDecks,
   listDrafts,
   listMemoryItems,
-  listPrompts,
   listWorkflowActions,
   listWorkflowQuestions,
   listWorkflowResults,
   listWorkflowReviews,
-  listWorkflows,
 } from '../ipc/client';
 import type { AppSummary, ConversationSummary, DeckSummary, DraftSummary, WorkflowResult } from '../ipc/contracts';
-import type { Capabilities } from '../ideas/capabilities';
-import type { Idea } from '../ideas/catalog';
-import type { IdeaState } from '../ideas/ideaState';
-import type { Destination } from '../shell/Rail';
-import { Areas } from './Areas';
 import { AskBox } from './AskBox';
-import { EMPTY_COUNTS, type AreaCounts, type HomeAction } from './areaInfo';
+import type { HomeAction } from './areaInfo';
 import { FreshResults } from './FreshResults';
+import { MakeTiles } from './MakeTiles';
+import type { MakeKind } from './makeKinds';
 import { NO_NEEDS, NeedsYou, hasNeeds, type NeedsYouState, type WorkflowTarget } from './NeedsYou';
 import { PickUp } from './PickUp';
-import { TryIdeas } from './TryIdeas';
-import { buildPickUp, isStartedChat } from './pickUpItems';
+import { buildPickUp } from './pickUpItems';
 
 export type { HomeAction } from './areaInfo';
 export type { WorkflowTarget } from './NeedsYou';
@@ -40,27 +34,22 @@ export interface HomePageProps {
   /** The shell's chat list (ordinary chats only; deck chats are left out). */
   conversations: ConversationSummary[];
   savedApps: AppSummary[];
-  ideaCaps: Capabilities;
-  ideaState: IdeaState;
-  collectionCount: number | null;
   /** Routing happens in the shell: a deck request starts a deck, anything else a chat. */
   onAsk: (text: string) => void;
   /** The ask box's Research chip, with the box's text. */
   onResearch: (text: string) => void;
-  /** The ask box's Write chip, with the box's text: a new draft from that brief. */
-  onWrite?: (brief: string) => void;
-  /** The deck chip with text: start a deck from it. */
-  onStartDeck?: (text: string) => void;
+  /** Send for a picked maker tile: a deck or document opens its studio, the
+   *  rest start a chat that makes that kind. */
+  onMake: (kind: MakeKind, text: string) => void;
+  /** "All artifacts": the Artifacts page. */
+  onAllArtifacts: () => void;
   /** The Automate chip with text: describe a workflow from it. */
   onAutomate?: (text: string) => void;
   onOpenChat: (conversationId: string) => void;
   onOpenDeck: (deckId: string) => void;
   onOpenDraft?: (draftId: string) => void;
   onOpenApp: (appId: string) => void;
-  onNavigate: (area: Destination) => void;
   onAction: (action: HomeAction, target?: WorkflowTarget) => void;
-  onTryIdea: (idea: Idea) => void;
-  onMoreIdeas: () => void;
   /** The hour (0-23) for the greeting; the clock by default. For tests. */
   hour?: number;
   /** Changes when a workflow run finishes; fresh results are re-read. */
@@ -100,22 +89,16 @@ async function listOr<T>(read: () => Promise<T[]>): Promise<T[] | null> {
 export function HomePage({
   conversations,
   savedApps,
-  ideaCaps,
-  ideaState,
-  collectionCount,
   onAsk,
   onResearch,
-  onWrite,
-  onStartDeck,
+  onMake,
+  onAllArtifacts,
   onAutomate,
   onOpenChat,
   onOpenDeck,
   onOpenDraft,
   onOpenApp,
-  onNavigate,
   onAction,
-  onTryIdea,
-  onMoreIdeas,
   hour,
   refreshKey,
 }: HomePageProps) {
@@ -127,27 +110,20 @@ export function HomePage({
     askDraft = text;
     setAskState(text);
   }, []);
-  const tryExample = useCallback(
-    (text: string) => {
-      setAsk(text);
-      const input = askRef.current;
-      if (!input) return;
-      input.focus({ preventScroll: true });
-      input.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-    },
-    [setAsk],
-  );
+  // The maker tile picked; it readies the ask box, so the box takes focus.
+  const [kind, setKindState] = useState<MakeKind | null>(null);
+  const setKind = useCallback((next: MakeKind | null) => {
+    setKindState(next);
+    const input = askRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    input.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, []);
   const [placeholderId] = useState(() => PLACEHOLDERS[opens++ % PLACEHOLDERS.length]);
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [needs, setNeeds] = useState<NeedsYouState>(NO_NEEDS);
   const [fresh, setFresh] = useState<WorkflowResult[]>([]);
-  const [lists, setLists] = useState<{ workflows: number | null; prompts: number | null; connectors: number | null; memories: number | null }>({
-    workflows: null,
-    prompts: null,
-    connectors: null,
-    memories: null,
-  });
 
   const loadNeeds = useCallback(async () => {
     const [reviews, questions, actions, pending] = await Promise.all([
@@ -165,24 +141,8 @@ export function HomePage({
   }, []);
 
   const loadLists = useCallback(async () => {
-    const [d, dr, workflows, prompts, connectors, memories] = await Promise.all([
-      listOr(listDecks),
-      listOr(listDrafts),
-      listOr(listWorkflows),
-      listOr(() => listPrompts()),
-      listOr(getConnectorRuntimeStates),
-      listOr(() => listMemoryItems('active')),
-    ]);
-    return {
-      decks: d ?? [],
-      drafts: dr ?? [],
-      counts: {
-        workflows: workflows?.length ?? null,
-        prompts: prompts?.length ?? null,
-        connectors: connectors?.length ?? null,
-        memories: memories?.length ?? null,
-      },
-    };
+    const [d, dr] = await Promise.all([listOr(listDecks), listOr(listDrafts)]);
+    return { decks: d ?? [], drafts: dr ?? [] };
   }, []);
 
   // Everything once on open, and again when the window regains focus; "needs
@@ -203,7 +163,6 @@ export function HomePage({
         if (cancelled) return;
         setDecks(next.decks);
         setDrafts(next.drafts);
-        setLists(next.counts);
       });
     };
     refreshAll();
@@ -221,19 +180,6 @@ export function HomePage({
     () => buildPickUp(conversations, decks, savedApps, undefined, drafts),
     [conversations, decks, savedApps, drafts],
   );
-  const counts: AreaCounts = useMemo(
-    () => ({
-      ...EMPTY_COUNTS,
-      // A fresh install opens on an empty chat; it is not one of yours yet.
-      chats: conversations.filter(isStartedChat).length,
-      decks: decks.length,
-      drafts: drafts.length,
-      apps: savedApps.length,
-      collections: collectionCount,
-      ...lists,
-    }),
-    [conversations, decks.length, drafts.length, savedApps.length, collectionCount, lists],
-  );
 
   const greeting = t(greetingId(hour ?? new Date().getHours()));
 
@@ -244,7 +190,7 @@ export function HomePage({
           <header>
             <p className="home-greeting">{greeting}</p>
             <h2 id={headingId} className="home-title">
-              {t('chat.view.welcomeTitle')}
+              {t('home.make.title')}
             </h2>
             <AskBox
               placeholder={t(placeholderId)}
@@ -253,12 +199,17 @@ export function HomePage({
               inputRef={askRef}
               onAsk={onAsk}
               onResearch={onResearch}
-              onWrite={onWrite}
-              onStartDeck={onStartDeck}
               onAutomate={onAutomate}
               onAction={onAction}
+              kind={kind}
+              onClearKind={() => setKind(null)}
+              onMake={(k, text) => {
+                setKindState(null);
+                onMake(k, text);
+              }}
             />
           </header>
+          <MakeTiles picked={kind} onPick={setKind} />
           {hasNeeds(needs) && <NeedsYou needs={needs} onAction={onAction} />}
           <FreshResults results={fresh} onAction={onAction} />
           <PickUp
@@ -267,9 +218,8 @@ export function HomePage({
             onOpenDeck={onOpenDeck}
             onOpenDraft={onOpenDraft}
             onOpenApp={onOpenApp}
+            onAllArtifacts={onAllArtifacts}
           />
-          <Areas counts={counts} onNavigate={onNavigate} onAction={onAction} onTryExample={tryExample} />
-          <TryIdeas caps={ideaCaps} state={ideaState} onTryIdea={onTryIdea} onMoreIdeas={onMoreIdeas} />
         </div>
       </div>
     </section>

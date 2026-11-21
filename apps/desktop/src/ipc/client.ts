@@ -1407,6 +1407,11 @@ export async function listArtifacts(conversationId: string): Promise<Artifact[]>
   return invokeCommand<Artifact[]>('list_artifacts', { conversationId });
 }
 
+/// Every chat's artifacts, newest-first, without inline content (the Artifacts page).
+export async function listAllArtifacts(): Promise<Artifact[]> {
+  return invokeCommand<Artifact[]>('list_all_artifacts');
+}
+
 /// Resolve the persisted message row id for a chat stream `requestId`.
 export async function getMessageIdByRequest(requestId: string): Promise<string | null> {
   return invokeCommand<string | null>('get_message_id_by_request', { requestId });

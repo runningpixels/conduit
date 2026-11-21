@@ -5,10 +5,10 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { createRef } from 'react';
 import type { AppSettings } from '@conduit/config-schema';
-import { ComposerModelPicker, menuCeiling, type ComposerModelPickerHandle } from './ComposerModelPicker';
+import { ComposerModelPicker, type ComposerModelPickerHandle } from './ComposerModelPicker';
 
 const settings = {
   activeProvider: 'anthropic',
@@ -42,6 +42,12 @@ const DESCRIPTORS = [
 vi.mock('../ipc/client', () => ({
   listProviderDescriptors: vi.fn(),
   listProviderModels: vi.fn(),
+  // Every provider has a key unless a test says otherwise.
+  loadProviderCredentialReference: vi.fn(async (providerId: string) => ({
+    providerId,
+    credentialRef: '',
+    storedInKeychain: true,
+  })),
   // The backend's price resolution, reduced to the one model these tests price.
   resolveModelPrices: vi.fn(async (_provider: string, modelIds: string[]) =>
     modelIds.map((id) =>
@@ -93,15 +99,15 @@ describe('ComposerModelPicker', () => {
 
   it('opens through the imperative handle, which the status line uses', async () => {
     const { ref } = renderPicker();
-    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     ref.current?.open();
-    expect(await screen.findByRole('menu')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('stays shut through the handle while disabled', () => {
     const { ref } = renderPicker({ disabled: true });
     ref.current?.open();
-    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('labels a no-key provider by its posture, not a price', async () => {
@@ -109,7 +115,7 @@ describe('ComposerModelPicker', () => {
     fireEvent.click(screen.getByTitle('Switch model'));
     expect(await screen.findByText('Ollama · no key needed')).toBeInTheDocument();
     // qwen3:14b has no bundled price, so the tail reports what it is instead.
-    expect(screen.getByRole('menuitem', { name: /qwen3:14b/ })).toHaveTextContent('local');
+    expect(screen.getByRole('option', { name: /qwen3:14b/ })).toHaveTextContent('local');
   });
 
   it('does not call a cloud preset self-hosted because it has a default base url', async () => {
@@ -132,23 +138,23 @@ describe('ComposerModelPicker', () => {
     );
     renderPicker();
     fireEvent.click(screen.getByTitle('Switch model'));
-    const row = await screen.findByRole('menuitem', { name: /grok-unpriced/ });
+    const row = await screen.findByRole('option', { name: /grok-unpriced/ });
     expect(row).not.toHaveTextContent(/self-?hosted|local/i);
   });
 
   it('passes the descriptor default base url so an unconfigured provider is seeded', async () => {
     const { onSelectModel } = renderPicker();
     fireEvent.click(screen.getByTitle('Switch model'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /qwen3:14b/ }));
+    fireEvent.click(await screen.findByRole('option', { name: /qwen3:14b/ }));
     expect(onSelectModel).toHaveBeenCalledWith('ollama', 'qwen3:14b', 'http://localhost:11434');
   });
 
   it('closes on Escape', async () => {
     renderPicker();
     fireEvent.click(screen.getByTitle('Switch model'));
-    expect(await screen.findByRole('menu')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('fetches the catalogue on open, not on mount', async () => {
@@ -163,11 +169,141 @@ describe('ComposerModelPicker', () => {
     const { listProviderDescriptors } = await mocks();
     renderPicker();
     fireEvent.click(screen.getByTitle('Switch model'));
-    await screen.findByRole('menu');
+    await screen.findByRole('dialog');
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByTitle('Switch model'));
-    await screen.findByRole('menu');
+    await screen.findByRole('dialog');
     expect(listProviderDescriptors).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares the catalogue between pickers: a second one lists nothing again', async () => {
+    const { listProviderDescriptors, listProviderModels } = await mocks();
+    const first = render(<ComposerModelPicker settings={settings} onSelectModel={vi.fn()} />);
+    fireEvent.click(screen.getByTitle('Switch model'));
+    await screen.findByText('Claude Sonnet 4');
+    first.unmount();
+    // A new chat's composer, say: it opens straight onto the cached rows.
+    render(<ComposerModelPicker settings={settings} onSelectModel={vi.fn()} />);
+    fireEvent.click(screen.getByTitle('Switch model'));
+    expect(await screen.findByText('Claude Sonnet 4')).toBeInTheDocument();
+    expect(listProviderDescriptors).toHaveBeenCalledTimes(1);
+    expect(listProviderModels).toHaveBeenCalledTimes(2);
+  });
+
+  it('draws each group as it answers, with a loading line for the rest', async () => {
+    const { listProviderModels } = await mocks();
+    vi.mocked(listProviderModels).mockImplementation((id: string) =>
+      id === 'ollama'
+        ? (Promise.resolve([{ id: 'qwen3:14b', displayName: 'qwen3:14b' }]) as never)
+        : (new Promise(() => {}) as never),
+    );
+    renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    expect(await screen.findByText('qwen3:14b')).toBeInTheDocument();
+    expect(screen.getByText('Anthropic · keychain')).toBeInTheDocument();
+    expect(screen.getByText('Loading models…')).toBeInTheDocument();
+  });
+
+  it('narrows to one provider from the side list, and back to all', async () => {
+    renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    await screen.findByText('Claude Sonnet 4');
+    await screen.findByText('qwen3:14b');
+    const providers = screen.getByRole('group', { name: 'Show models from' });
+    fireEvent.click(within(providers).getByRole('button', { name: /Ollama/ }));
+    expect(screen.queryByText('Claude Sonnet 4')).toBeNull();
+    expect(screen.getByRole('option', { name: /qwen3:14b/ })).toBeInTheDocument();
+    fireEvent.click(within(providers).getByRole('button', { name: 'All providers' }));
+    expect(screen.getByText('Claude Sonnet 4')).toBeInTheDocument();
+  });
+
+  it('sorts by price across providers, unpriced models last', async () => {
+    const { resolveModelPrices, listProviderModels } = await mocks();
+    vi.mocked(listProviderModels).mockImplementation(async (id: string) =>
+      id === 'anthropic'
+        ? ([
+            { id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4' },
+            { id: 'claude-haiku-4', displayName: 'Claude Haiku 4' },
+          ] as never)
+        : ([{ id: 'qwen3:14b', displayName: 'qwen3:14b' }] as never),
+    );
+    vi.mocked(resolveModelPrices).mockImplementation(async (_provider: string, ids: string[]) =>
+      ids.map((id) =>
+        id === 'claude-sonnet-4'
+          ? { price: { inputPerMtok: 3, outputPerMtok: 15 }, source: 'snapshot' }
+          : id === 'claude-haiku-4'
+            ? { price: { inputPerMtok: 1, outputPerMtok: 5 }, source: 'snapshot' }
+            : null,
+      ) as never,
+    );
+    renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    await screen.findByText('qwen3:14b');
+    await waitFor(() => expect(screen.getByRole('option', { name: /Claude Haiku 4/ })).toHaveTextContent('$1$5'));
+    const names = () => screen.getAllByRole('option').map((row) => row.querySelector('.model-row-name')!.textContent);
+
+    expect(screen.getByRole('button', { name: 'Sort by name, A to Z' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by price, lowest first' }));
+    expect(names()).toEqual(['Claude Haiku 4', 'Claude Sonnet 4', 'qwen3:14b']);
+    // Out from under its caption, a row names its provider.
+    expect(screen.getByRole('option', { name: /Claude Haiku 4/ })).toHaveTextContent('Anthropic · claude-haiku-4');
+
+    // A second click on the active key flips it.
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by price, lowest first' }));
+    expect(names()).toEqual(['Claude Sonnet 4', 'Claude Haiku 4', 'qwen3:14b']);
+    expect(screen.getByRole('button', { name: 'Sort by price, highest first' })).toHaveAttribute('aria-pressed', 'true');
+
+    // Name, flipped: Z to A within each provider.
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by name, A to Z' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by name, A to Z' }));
+    expect(names()).toEqual(['Claude Sonnet 4', 'Claude Haiku 4', 'qwen3:14b']);
+    expect(screen.getByRole('button', { name: 'Sort by name, Z to A' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('lists every provider again on Refresh', async () => {
+    const { listProviderDescriptors, listProviderModels } = await mocks();
+    renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    await screen.findByText('Claude Sonnet 4');
+    vi.mocked(listProviderModels).mockImplementation(async (id: string) =>
+      id === 'anthropic'
+        ? ([{ id: 'claude-opus-5', displayName: 'Claude Opus 5' }] as never)
+        : ([] as never),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh list' }));
+    expect(await screen.findByText('Claude Opus 5')).toBeInTheDocument();
+    expect(screen.queryByText('Claude Sonnet 4')).toBeNull();
+    expect(listProviderDescriptors).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves out a provider with no key, and a local server that lists nothing', async () => {
+    const { listProviderDescriptors, listProviderModels, loadProviderCredentialReference } = await mocks();
+    vi.mocked(listProviderDescriptors).mockResolvedValue([
+      ...DESCRIPTORS,
+      { ...DESCRIPTORS[0], id: 'groq', displayName: 'Groq', tier: 0 },
+      { ...DESCRIPTORS[0], id: 'openrouter', displayName: 'OpenRouter', tier: 0 },
+    ] as never);
+    vi.mocked(loadProviderCredentialReference).mockImplementation(async (providerId: string) => ({
+      providerId,
+      credentialRef: '',
+      storedInKeychain: providerId === 'openrouter',
+    }));
+    vi.mocked(listProviderModels).mockImplementation(async (id: string) =>
+      id === 'openrouter'
+        ? ([{ id: 'z-ai/glm-5.3-flash', displayName: 'GLM 5.3 Flash' }] as never)
+        : id === 'anthropic'
+          ? ([{ id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4' }] as never)
+          : ([] as never), // Ollama: not running
+    );
+    renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    expect(await screen.findByText('GLM 5.3 Flash')).toBeInTheDocument();
+    // Anthropic has no key but is the provider in use, so it stays.
+    expect(await screen.findByText('Claude Sonnet 4')).toBeInTheDocument();
+    expect(screen.queryByText(/^Groq/)).toBeNull();
+    expect(screen.queryByText(/^Ollama/)).toBeNull();
+    // A provider without a key is never asked for its models.
+    expect(listProviderModels).not.toHaveBeenCalledWith('groq');
   });
 
   /**
@@ -194,10 +330,9 @@ describe('ComposerModelPicker', () => {
     // The reachable provider's rows are there…
     expect(await screen.findByText('Anthropic · keychain')).toBeInTheDocument();
     expect(screen.getByText('Claude Sonnet 4')).toBeInTheDocument();
-    // …and the hung one still appears, degraded to the typing affordance rather
-    // than vanishing. A provider you cannot see is a provider you cannot pick.
-    expect(screen.getByText('Ollama · no key needed')).toBeInTheDocument();
-    expect(screen.getByLabelText('Model id for Ollama')).toBeInTheDocument();
+    // …and the hung local server, which listed nothing and is not the one in
+    // use, stays out of the menu rather than showing an empty group.
+    expect(screen.queryByText('Ollama · no key needed')).toBeNull();
   });
 });
 
@@ -230,7 +365,7 @@ describe('ComposerModelPicker — ordering and search', () => {
     return { ...result, search: screen.getByLabelText('Search models') };
   }
 
-  const rowNames = () => screen.getAllByRole('menuitem').map((row) => row.textContent);
+  const rowNames = () => screen.getAllByRole('option').map((row) => row.textContent);
 
   it('lists each group alphabetically, whatever order the provider returned', async () => {
     await openPicker();
@@ -274,40 +409,41 @@ describe('ComposerModelPicker — ordering and search', () => {
     fireEvent.change(search, { target: { value: 'opus' } });
     fireEvent.keyDown(search, { key: 'Enter' });
     expect(onSelectModel).toHaveBeenCalledWith('anthropic', 'claude-opus-4', null);
-    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('steps from the search into the list on ArrowDown', async () => {
     const { search } = await openPicker();
     fireEvent.change(search, { target: { value: 'sonnet' } });
     fireEvent.keyDown(search, { key: 'ArrowDown' });
-    expect(screen.getByRole('menuitem', { name: /Claude Sonnet 4/ })).toHaveFocus();
+    expect(screen.getByRole('option', { name: /Claude Sonnet 4/ })).toHaveFocus();
   });
 
   it('says so when nothing matches', async () => {
     const { search } = await openPicker();
     fireEvent.change(search, { target: { value: 'gemini' } });
-    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
     expect(screen.getByText('No models match “gemini”')).toBeInTheDocument();
   });
 
-  it('clears a search on Escape before closing the menu', async () => {
+  it('clears a search on Escape before closing the dialog', async () => {
     const { search } = await openPicker();
     fireEvent.change(search, { target: { value: 'opus' } });
     fireEvent.keyDown(search, { key: 'Escape' });
     expect(search).toHaveValue('');
-    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.keyDown(search, { key: 'Escape' });
-    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('starts each opening from the whole catalogue', async () => {
     const { search } = await openPicker();
     fireEvent.change(search, { target: { value: 'opus' } });
-    fireEvent.click(screen.getByTitle('Switch model'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.click(screen.getByTitle('Switch model'));
     expect(await screen.findByLabelText('Search models')).toHaveValue('');
-    expect(screen.getAllByRole('menuitem')).toHaveLength(6);
+    expect(screen.getAllByRole('option')).toHaveLength(6);
   });
 });
 
@@ -320,6 +456,20 @@ describe('ComposerModelPicker — ordering and search', () => {
  * These pin the relocation.
  */
 describe('ComposerModelPicker — providers that list no models', () => {
+  // A provider that lists nothing shows only while it is the one in use (a
+  // self-hosted endpoint with no listing route): there its typing row is how
+  // you name a model.
+  const renderOllamaCurrent = () => {
+    const onSelectModel = vi.fn();
+    render(
+      <ComposerModelPicker
+        settings={{ ...settings, activeProvider: 'ollama', activeModel: '' } as AppSettings}
+        onSelectModel={onSelectModel}
+      />,
+    );
+    return { onSelectModel };
+  };
+
   beforeEach(async () => {
     const { listProviderModels } = await mocks();
     vi.mocked(listProviderModels).mockImplementation(async (id: string) =>
@@ -329,14 +479,21 @@ describe('ComposerModelPicker — providers that list no models', () => {
     );
   });
 
-  it('still renders the provider, so it stays selectable', async () => {
-    renderPicker();
+  it('still renders the provider in use, so it stays selectable', async () => {
+    renderOllamaCurrent();
     fireEvent.click(screen.getByTitle('Switch model'));
     expect(await screen.findByText('Ollama · no key needed')).toBeInTheDocument();
   });
 
-  it('keeps the typing row reachable by searching the provider name', async () => {
+  it('leaves out one that lists nothing and is not in use', async () => {
     renderPicker();
+    fireEvent.click(screen.getByTitle('Switch model'));
+    expect(await screen.findByText('Claude Sonnet 4')).toBeInTheDocument();
+    expect(screen.queryByText('Ollama · no key needed')).toBeNull();
+  });
+
+  it('keeps the typing row reachable by searching the provider name', async () => {
+    renderOllamaCurrent();
     fireEvent.click(screen.getByTitle('Switch model'));
     const search = await screen.findByLabelText('Search models');
     await screen.findByLabelText('Model id for Ollama');
@@ -347,7 +504,7 @@ describe('ComposerModelPicker — providers that list no models', () => {
   });
 
   it('accepts a typed model id and writes it with its provider', async () => {
-    const { onSelectModel } = renderPicker();
+    const { onSelectModel } = renderOllamaCurrent();
     fireEvent.click(screen.getByTitle('Switch model'));
 
     const input = await screen.findByLabelText('Model id for Ollama');
@@ -358,7 +515,7 @@ describe('ComposerModelPicker — providers that list no models', () => {
   });
 
   it('ignores an empty id rather than writing a blank model', async () => {
-    const { onSelectModel } = renderPicker();
+    const { onSelectModel } = renderOllamaCurrent();
     fireEvent.click(screen.getByTitle('Switch model'));
 
     const input = await screen.findByLabelText('Model id for Ollama');
@@ -378,29 +535,5 @@ describe('ComposerModelPicker — providers that list no models', () => {
     );
     fireEvent.click(screen.getByTitle('Switch model'));
     expect(await screen.findByLabelText('Model id for Ollama')).toHaveValue('qwen3:14b');
-  });
-});
-
-describe('menuCeiling', () => {
-  function box(el: HTMLElement, top: number) {
-    el.getBoundingClientRect = () => ({ top, bottom: top + 40 }) as DOMRect;
-  }
-
-  afterEach(() => {
-    document.body.innerHTML = '';
-  });
-
-  it('stops the menu at a clipping pane below the title bar, not at the title bar', () => {
-    document.body.innerHTML =
-      '<div class="titlebar"></div><section style="overflow-y:auto"><div><button></button></div></section>';
-    box(document.querySelector<HTMLElement>('.titlebar')!, -8);
-    box(document.querySelector<HTMLElement>('section')!, 78);
-    expect(menuCeiling(document.querySelector('button')!)).toBe(78);
-  });
-
-  it('falls back to the title bar when nothing above the trigger clips', () => {
-    document.body.innerHTML = '<div class="titlebar"></div><div><button></button></div>';
-    box(document.querySelector<HTMLElement>('.titlebar')!, -8);
-    expect(menuCeiling(document.querySelector('button')!)).toBe(32);
   });
 });

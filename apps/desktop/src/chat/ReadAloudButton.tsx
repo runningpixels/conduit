@@ -35,7 +35,7 @@ export function ReadAloudButton({ id, text }: { id: string; text: string }) {
         onClick={stopReadAloud}
       >
         <StopIcon />
-        {t('chat.assistant.actions.stopReading')}
+        <span className="act-label">{t('chat.assistant.actions.stopReading')}</span>
       </button>
     );
   }
@@ -55,7 +55,7 @@ export function ReadAloudButton({ id, text }: { id: string; text: string }) {
       onClick={() => readAloud(id, text, lang)}
     >
       <SpeakerIcon />
-      {t('chat.assistant.actions.readAloud')}
+      <span className="act-label">{t('chat.assistant.actions.readAloud')}</span>
     </button>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { createRef, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import type { AppSettings } from '@conduit/config-schema';
@@ -283,7 +283,7 @@ describe('Composer', () => {
     expect(await screen.findByText('Anthropic · keychain')).toBeInTheDocument();
     expect(screen.getByText('OpenAI · keychain')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('menuitem', { name: /Claude Opus 4/ }));
+    fireEvent.click(screen.getByRole('option', { name: /Claude Opus 4/ }));
 
     // One write, carrying provider and model together.
     expect(onSelectModel).toHaveBeenCalledTimes(1);
@@ -294,10 +294,12 @@ describe('Composer', () => {
     renderComposer();
     fireEvent.click(screen.getByTitle('Switch model'));
 
-    const active = await screen.findByRole('menuitem', { name: /Claude Sonnet 4/ });
+    const active = await screen.findByRole('option', { name: /Claude Sonnet 4/ });
     expect(active).toHaveAttribute('aria-current', 'true');
     // Prices are resolved by the backend after the models arrive.
-    await waitFor(() => expect(active).toHaveTextContent('$3 / $15'));
+    // Input and output in their own columns.
+    await waitFor(() => expect(active.querySelectorAll('.model-row-cost')).toHaveLength(2));
+    expect([...active.querySelectorAll('.model-row-cost')].map((cell) => cell.textContent)).toEqual(['$3', '$15']);
   });
 
   it('keeps an unreachable provider selectable instead of hiding it', async () => {
@@ -1056,7 +1058,7 @@ describe('Composer Web and Research toggles', () => {
     expect(screen.queryByRole('button', { name: 'Research' })).toBeNull();
   });
 
-  it('drops the labels to icons, named by aria-label, when the composer is narrow', () => {
+  it('narrow, moves Web and Research into the "+" menu as switches, with a chip while on', () => {
     const original = globalThis.ResizeObserver;
     class NarrowObserver {
       private readonly callback: ResizeObserverCallback;
@@ -1074,11 +1076,29 @@ describe('Composer Web and Research toggles', () => {
     }
     globalThis.ResizeObserver = NarrowObserver as unknown as typeof ResizeObserver;
     try {
-      renderComposer({ settings: ready, onResearchToggle: vi.fn() });
-      expect(webToggle()).toHaveAttribute('aria-label', 'Web');
-      expect(webToggle()).toHaveAttribute('data-icon-only', 'true');
-      expect(webToggle()).not.toHaveTextContent('Web');
-      expect(researchToggle()).toHaveAttribute('aria-label', 'Research');
+      const onResearchToggle = vi.fn();
+      const { onWebSearchToggle } = renderComposer({
+        settings: ready,
+        webSearchOn: true,
+        onResearchToggle,
+        researchOn: false,
+      });
+      // Not in the bar any more.
+      expect(document.querySelectorAll('.composer-bar .composer-tool[aria-pressed]:not(.composer-dictation-button)')).toHaveLength(0);
+      // Switches in the "+" menu, right after Attach.
+      fireEvent.click(screen.getByRole('button', { name: 'Add to this message' }));
+      const items = screen.getByRole('menu', { name: 'Add to this message' }).querySelectorAll('[role^="menuitem"]');
+      expect(items[1]).toHaveAccessibleName(/^Web/);
+      expect(items[1]).toHaveAttribute('aria-checked', 'true');
+      expect(items[2]).toHaveAccessibleName(/^Research/);
+      expect(items[2]).toHaveAttribute('aria-checked', 'false');
+      fireEvent.click(items[2]);
+      expect(onResearchToggle).toHaveBeenCalledTimes(1);
+      // Web is on, so it shows as a chip whose × turns it off.
+      const chips = screen.getByRole('group', { name: 'Active in this chat' });
+      expect(chips).toHaveTextContent('Web');
+      fireEvent.click(within(chips).getByRole('button', { name: 'Turn off Web search' }));
+      expect(onWebSearchToggle).toHaveBeenCalledTimes(1);
     } finally {
       globalThis.ResizeObserver = original;
     }

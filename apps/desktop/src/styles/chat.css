@@ -351,6 +351,34 @@
 }
 .act:hover { background: var(--card); color: var(--ink); }
 .act svg { width: 13px; height: 13px; }
+.act-label { white-space: nowrap; }
+/* The reply's ⋯ menu (TurnMoreMenu): hidden while the thread is wide, where
+   Read aloud, Fork, Delete and the usage tip sit in the row (`.act-fold`). */
+.act-fold:not(button) { display: contents; }
+.turn-more { display: none; position: relative; }
+.turn-more-menu { bottom: 30px; left: 0; }
+.turn-more-usage {
+  padding: 6px 9px;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+/* A narrow thread (a docked panel, a small window): the row keeps Copy and
+   Retry as icons and folds the rest into ⋯, so it stays one short line. Each
+   icon keeps a tooltip, and its label stays in the accessibility tree. Read
+   aloud stays in the row while it is speaking, so Stop is one click away. */
+@container thread (max-width: 520px) {
+  .turn-more { display: inline-flex; }
+  .turn-actions .act-fold:not(:has([aria-pressed="true"])) { display: none; }
+  .turn-actions .act:has(> svg) { padding: 0 7px; }
+  .turn-actions .act-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
 
 /* `overflow-wrap: anywhere` because prose routinely carries tokens with no break
  * opportunity — URLs, Windows paths, hashes, base64. Without it they overflow
@@ -1382,63 +1410,271 @@
 .cbtn.model .pdot { width: 6px; height: 6px; background: var(--provider-hue); }
 .cbtn.model .model-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cbtn.model svg { width: 13px; height: 13px; color: var(--ink-3); }
+/* A narrow composer: the chevron and some padding give their room to the
+   model's name, which is what tells models apart; ellipsis stays the fallback. */
+.cbtn.model.compact { padding: 0 6px; }
+.cbtn.model.compact svg { display: none; }
+.composer-bar:has(.cbtn.model.compact) { gap: 2px; }
+/* Narrow, the mic and Send share one spot (Composer's data-mic-send). The mic
+   hides only while idle, so a recording or transcription stays in view; Send
+   hides only when there is a mic to take its place. */
+.composer-bar[data-mic-send="mic"]:has(.composer-dictation-button) > .send { display: none; }
+.composer-bar[data-mic-send="send"] .composer-dictation:has(.composer-dictation-button[data-phase="idle"]) { display: none; }
 
-/* The menu opens upward from the bar, right-aligned under the trigger. The
- * open state repeats the position for the same reason .status-menu does:
- * `.menu[data-open="true"]` resets `transform`, and at 0,2,0 it outranks this
- * rule — anything positional expressed as a transform would be dropped on
- * open. Kept to `right`/`bottom` here so there is no transform to lose. */
-.model-menu {
-  right: 0;
-  bottom: calc(100% + 8px);
-  min-width: min(260px, calc(100vw - 32px));
-  max-width: calc(100vw - 32px);
-  max-height: min(420px, var(--model-menu-room, 52vh));
-  overflow-y: auto;
-}
-/* Retry ▾ in a reply's actions: the menu starts at the arrow's left edge (the
- * reply column's room is to the right) and opens down when the reply sits
- * high in the pane. */
-.reply-model-menu { left: 0; right: auto; }
-.reply-model-menu.opens-down { top: calc(100% + 8px); bottom: auto; }
+/* The model picker (ComposerModelPicker): a dialog over the window, so long
+ * model names, their ids and both prices fit on one row. Search across the
+ * top, the providers down the side (a strip across the top when narrow), the
+ * models grouped by provider in the scrolling list. */
 .act.retry-model { padding: 0 4px; margin-left: -1px; }
-.model-menu .menu-item .pdot { width: 7px; height: 7px; background: var(--provider-hue); }
-.model-menu .menu-item[aria-current="true"] { background: var(--card-hi); color: var(--ink); }
-/* The search leads the menu and stays put while the groups scroll under it.
- * The negative margins pull it over .menu's 5px padding so nothing scrolls
- * through the gap above or beside it; `top` matches, because a sticky offset
- * is measured inside the scroller's padding. */
-.model-menu-search {
-  position: sticky;
-  top: -5px;
-  z-index: 1;
-  margin: -5px -5px 4px;
-  padding: 5px;
-  background: var(--card);
+.model-dialog-backdrop { padding: 24px 16px; }
+.model-dialog {
+  width: min(760px, 100%);
+  height: min(620px, 100%);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.model-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 12px 0 18px;
+}
+.model-dialog-head .cu-dialog-title { flex: 1 1 auto; margin: 0; }
+.model-dialog-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px 12px;
   border-bottom: 1px solid var(--line);
 }
-.model-menu-search input {
+/* "Sort by [Name] [Price]" beside the search. The active key carries an arrow
+   for its direction; clicking it again flips it. */
+.model-dialog-sort {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.model-dialog-sort-label { margin-right: 4px; font-size: var(--fs-xl); color: var(--ink-3); white-space: nowrap; }
+.model-dialog-sort button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  padding: 5px 10px;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-xl);
+  color: var(--ink-3);
+  white-space: nowrap;
+  transition: background var(--tap), color var(--tap);
+}
+.model-dialog-sort button:hover { color: var(--ink); }
+.model-dialog-sort button[aria-pressed="true"] {
+  border-color: var(--line);
+  background: var(--card-hi);
+  color: var(--ink);
+  font-weight: 600;
+}
+.model-dialog-sort-arrow { width: 12px; height: 12px; transition: transform var(--tap); }
+/* The glyph points down; ascending (A→Z, lowest price first) points up. */
+.model-dialog-sort-arrow[data-dir="asc"] { transform: rotate(180deg); }
+.model-dialog-search input {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
-  padding: 6px 9px;
+  padding: 8px 11px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: none;
+  background: var(--bg);
   outline: none;
-  font-size: var(--fs-3xl);
+  font-size: var(--fs-4xl);
   color: var(--ink);
 }
-.model-menu-search input:focus { border-color: var(--line-hi); }
-.model-menu-search input::placeholder { color: var(--ink-3); }
+.model-dialog-search input:focus { border-color: var(--line-hi); }
+.model-dialog-search input::placeholder { color: var(--ink-3); }
+.model-dialog-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.model-dialog-providers {
+  flex: 0 0 196px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.model-dialog-provider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 9px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: var(--fs-2xl);
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.model-dialog-provider:hover { background: var(--card-hi); color: var(--ink); }
+.model-dialog-provider[aria-pressed="true"] { background: var(--card-hi); color: var(--ink); font-weight: 600; }
+.model-dialog-provider .pdot { width: 7px; height: 7px; background: var(--provider-hue); }
+.model-dialog-provider-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-dialog-provider-count { flex: none; font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; font-weight: 400; }
+/* The list and its column headers share one grid template, and both reserve
+   the scrollbar's gutter, so the Input and Output headers sit over their
+   prices. */
+.model-dialog-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.model-dialog-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 4px 10px 12px;
+}
+/* `.model-row.model-row-pick`: it has to outrank `.model-row`'s flex below. */
+.model-dialog-columns,
+.model-row.model-row-pick {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr) 78px 78px 16px;
+  column-gap: 10px;
+  align-items: center;
+}
+/* `flex: none`: with `overflow-y: hidden` (needed for the gutter) a flex item's
+   minimum height drops to 0, and the list below squeezed the header to a
+   sliver. It carries `.scroll` too, so its gutter is the list's thin one. */
+.model-dialog-columns {
+  flex: none;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  padding: 9px 19px 8px;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.model-dialog-col-cost { text-align: right; cursor: help; }
+/* Each group bounds its sticky label, so a provider's heading scrolls away
+   with its last model. */
+.model-dialog-group { display: block; }
+.model-dialog-group-label {
+  position: sticky;
+  top: -4px;
+  z-index: 1;
+  margin: 0;
+  padding: 10px 9px 6px;
+  background: var(--card);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 5px 9px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--ink-2);
+  transition: background var(--tap), color var(--tap);
+}
+.model-row-pick:hover,
+.model-row-pick:focus-visible { background: var(--card-hi); color: var(--ink); outline: none; }
+.model-row[aria-current="true"] { background: var(--card-hi); color: var(--ink); }
+.model-row .pdot { width: 7px; height: 7px; background: var(--provider-hue); }
+.model-row-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
+.model-row-name,
+.model-row-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-row-name { font-size: var(--fs-3xl); }
+.model-row-id { font: 400 var(--fs-sm)/1.3 var(--font-mono); color: var(--ink-3); }
+.model-row-cost {
+  text-align: right;
+  font: 400 var(--fs-md)/1 var(--font-mono);
+  color: var(--ink-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* "Free", "local" or a dash: one word across both price columns. */
+.model-row-cost-span { grid-column: 3 / 5; text-align: center; color: var(--ink-3); }
+.model-row-check { flex: 0 0 16px; display: inline-flex; color: var(--accent-text, var(--ink)); }
+.model-row-check svg { width: 14px; height: 14px; }
+/* Lists every provider again; the catalogue is otherwise kept for the session. */
+/* The footer: what the prices mean, and Refresh with its words. */
+.model-dialog-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--line);
+}
+.model-dialog-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.model-dialog-refresh {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xl);
+  color: var(--ink-2);
+  white-space: nowrap;
+  transition: background var(--tap), color var(--tap), border-color var(--tap);
+}
+.model-dialog-refresh:hover:not(:disabled) { background: var(--card-hi); border-color: var(--line-hi); color: var(--ink); }
+.model-dialog-refresh:disabled { cursor: default; }
+.model-dialog-refresh svg { width: 14px; height: 14px; }
+.model-dialog-refresh[data-busy] svg { animation: model-menu-spin .9s linear infinite; }
+@keyframes model-menu-spin { to { transform: rotate(-360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .model-dialog-refresh[data-busy] svg { animation: none; }
+}
+.model-menu-pending { padding: 4px 9px 6px; font-size: var(--fs-sm); text-align: left; }
 .menu-empty { padding: 14px 11px; font-size: var(--fs-2xl); color: var(--ink-2); font-weight: var(--muted-weight); text-align: center; }
+/* A small window: the providers become a strip across the top. */
+@media (max-width: 640px) {
+  .model-dialog-backdrop { padding: 12px 8px; }
+  .model-dialog-search { flex-wrap: wrap; }
+  .model-dialog { height: 100%; }
+  .model-dialog-body { flex-direction: column; }
+  .model-dialog-providers {
+    flex: none;
+    flex-direction: row;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .model-dialog-provider { flex: none; }
+  .model-dialog-provider-name { overflow: visible; }
+  .model-row-id { display: none; }
+  .model-dialog-columns,
+  .model-row.model-row-pick { grid-template-columns: 7px minmax(0, 1fr) 62px 62px 14px; column-gap: 6px; }
+  .model-dialog-columns { padding-inline: 15px; }
+}
 
-/* The free-text row a provider gets when it lists no models. V7's popover
- * degraded to a `Model id` input in exactly this case, and a self-hosted
+/* The free-text row a provider gets when it lists no models: a self-hosted
  * endpoint with no model-listing route depends on it — without the row that
- * provider is not merely awkward to reach, it is unreachable from the composer.
- * Styled as a menu row rather than a form field so it reads as one of the
- * options, not as a settings panel that wandered in. */
-.menu-item-input { cursor: default; }
-.menu-item-input:hover { background: none; }
+ * provider is unreachable from the composer. Styled as a row rather than a
+ * form field so it reads as one of the options. */
+.model-row-input { cursor: default; }
 .model-id-input {
   flex: 1 1 auto;
   min-width: 0;
@@ -1449,15 +1685,16 @@
   color: var(--ink);
 }
 .model-id-input::placeholder { color: var(--ink-3); }
-.menu-item-input .tail {
+.model-id-use {
   border: 1px solid var(--line);
   border-radius: var(--r-xs);
-  padding: 2px 6px;
+  padding: 2px 8px;
+  font: 400 var(--fs-md)/1.4 var(--font-mono);
   color: var(--ink-2);
   transition: border-color var(--tap), color var(--tap);
 }
-.menu-item-input .tail:hover:not(:disabled) { border-color: var(--line-hi); color: var(--ink); }
-.menu-item-input .tail:disabled { opacity: .45; cursor: default; }
+.model-id-use:hover:not(:disabled) { border-color: var(--line-hi); color: var(--ink); }
+.model-id-use:disabled { opacity: .45; cursor: default; }
 
 /* The accent arrives with the ability to act. `disabled` tracks
  * `!prompt.trim()` in Composer.tsx, so the armed state needs no extra state.

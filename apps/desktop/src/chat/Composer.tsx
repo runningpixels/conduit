@@ -303,10 +303,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The text a pick just consumed, until the next frame. React's select event
   // for the picking keystroke still carries it, and must not reopen the menu.
   const slashPickedTextRef = useRef<string | null>(null);
-  // The composer is narrow (a docked panel, a small window): the Web and
-  // Research toggles show their icons only, the model picker drops the
-  // vendor prefix, the folder chip drops "(default)" and the status line
-  // drops what the picker already shows.
+  // The composer is narrow (a docked panel, a small window): the Web,
+  // Research and Browser toggles move into the "+" menu (chips while on),
+  // the mic and Send share one spot, the model picker drops the vendor
+  // prefix, the folder chip drops "(default)" and the status line drops
+  // what the picker already shows.
   const [narrow, setNarrow] = useState(false);
   // True while an IME composition is in progress (D12): the trigger and the
   // Enter-to-send guard both go quiet until it ends.
@@ -1069,6 +1070,55 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (browserActive) onBrowserChange!(false, false);
     else onBrowserChange!(true, true);
   }
+  // Narrow, the bar has no room for the Web, Research and Browser toggles:
+  // they move into this menu as switches, right after Attach, and a switch
+  // that is on shows as a chip above the input (below).
+  if (narrow) {
+    const toggles: PlusMenuItem[] = [];
+    if (showWebToggle) {
+      toggles.push({
+        id: 'web',
+        label: t('chat.composer.tools.web'),
+        icon: <GlobeIcon />,
+        title: webToggleTitle,
+        disabled: webToggleDisabled,
+        checked: webPressed,
+        onSelect: onWebSearchToggle,
+      });
+    }
+    if (showResearchToggle) {
+      toggles.push({
+        id: 'research',
+        label: t('chat.composer.tools.research'),
+        icon: <ResearchIcon />,
+        title: researchToggleTitle,
+        disabled: researchToggleDisabled,
+        checked: researchOn,
+        onSelect: () => onResearchToggle?.(),
+      });
+    }
+    if (browserAvailable) {
+      toggles.push(
+        {
+          id: 'browser',
+          label: t('chat.browser.chip'),
+          icon: <BrowserIcon />,
+          title: browserToggleTitle,
+          disabled: browserToggleDisabled,
+          checked: browserActive,
+          onSelect: toggleBrowser,
+        },
+        {
+          id: 'browserOptions',
+          label: t('chat.browser.ariaLabel'),
+          icon: <SlidersIcon />,
+          disabled: browserToggleDisabled,
+          onSelect: () => togglePop('browser'),
+        },
+      );
+    }
+    plusItems.splice(1, 0, ...toggles);
+  }
   if (onSaveChatSettings) {
     plusItems.push({
       id: 'chatSettings',
@@ -1153,8 +1203,40 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       removeLabel: t('chat.composer.chips.removeSkills', { count }),
     });
   }
-  // Web and Research have no chip: their toggles in the bar already show
-  // whether they are on, and turn them off.
+  // Wide, Web, Research and Browser have no chip: their toggles in the bar
+  // show whether they are on, and turn them off. Narrow, those toggles live in
+  // the "+" menu, so a switch that is on shows here instead.
+  if (narrow && webPressed) {
+    chips.push({
+      id: 'web',
+      label: t('chat.composer.tools.web'),
+      icon: <GlobeIcon />,
+      title: webToggleTitle,
+      onRemove: streaming ? undefined : onWebSearchToggle,
+      removeLabel: t('chat.composer.chips.removeWeb'),
+    });
+  }
+  if (narrow && showResearchToggle && researchOn) {
+    chips.push({
+      id: 'research',
+      label: t('chat.composer.tools.research'),
+      icon: <ResearchIcon />,
+      title: researchToggleTitle,
+      onRemove: streaming ? undefined : () => onResearchToggle?.(),
+      removeLabel: t('chat.composer.chips.removeResearch'),
+    });
+  }
+  if (narrow && browserActive) {
+    chips.push({
+      id: 'browser',
+      label: t('chat.browser.chip'),
+      icon: <BrowserIcon />,
+      title: browserToggleTitle,
+      onOpen: conversationId ? () => togglePop('browser') : undefined,
+      onRemove: streaming ? undefined : () => onBrowserChange!(false, false),
+      removeLabel: t('chat.composer.chips.removeBrowser'),
+    });
+  }
   if (draftSources) {
     const openSources = draftSources.onOpen;
     if (draftSources.webSearch) {
@@ -1213,7 +1295,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       removeLabel: '',
     });
   }
-  // The browser has no chip either: its toggle in the bar shows it.
   if (onSaveChatSettings && (generationControls || userInstructions)) {
     chips.push({
       id: 'chatSettings',
@@ -1488,7 +1569,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onPick={pickAgent}
           />
         ) : null}
-        <div className="composer-bar">
+        <div
+          className="composer-bar"
+          // Narrow, the mic and Send share one spot: the mic while there is
+          // nothing to send, Send once there is. Both stay mounted and CSS
+          // hides one, so typing during a recording never cuts it off.
+          data-mic-send={
+            narrow && settings.dictationButton !== false && !(streaming && !sendOverride)
+              ? (sendOverride ? prompt.trim() !== '' : canSend)
+                ? 'send'
+                : 'mic'
+              : undefined
+          }
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -1653,52 +1746,47 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ) : null}
           </span>
           {/* Web and Research are the two tools people reach for per message,
-              so they live in the bar rather than in the "+" menu. Narrow, they
-              keep their icon and move the label to aria-label. */}
-          {showWebToggle ? (
+              so they live in the bar rather than in the "+" menu. Narrow, the
+              bar has no room for them: they are switches in the "+" menu and
+              show as chips while on. */}
+          {showWebToggle && !narrow ? (
             <button
               className="composer-tool"
               type="button"
               aria-pressed={webPressed}
-              aria-label={narrow ? t('chat.composer.tools.web') : undefined}
               title={webToggleTitle}
               disabled={webToggleDisabled}
-              data-icon-only={narrow ? 'true' : undefined}
               onClick={onWebSearchToggle}
             >
               <GlobeIcon />
-              {narrow ? null : <span>{t('chat.composer.tools.web')}</span>}
+              <span>{t('chat.composer.tools.web')}</span>
             </button>
           ) : null}
-          {showResearchToggle ? (
+          {showResearchToggle && !narrow ? (
             <button
               className="composer-tool"
               type="button"
               aria-pressed={researchOn}
-              aria-label={narrow ? t('chat.composer.tools.research') : undefined}
               title={researchToggleTitle}
               disabled={researchToggleDisabled}
-              data-icon-only={narrow ? 'true' : undefined}
               onClick={onResearchToggle}
             >
               <ResearchIcon />
-              {narrow ? null : <span>{t('chat.composer.tools.research')}</span>}
+              <span>{t('chat.composer.tools.research')}</span>
             </button>
           ) : null}
-          {browserAvailable ? (
+          {browserAvailable && !narrow ? (
             <span className="composer-tool-split">
               <button
                 className="composer-tool"
                 type="button"
                 aria-pressed={browserActive}
-                aria-label={narrow ? t('chat.browser.chip') : undefined}
                 title={browserToggleTitle}
                 disabled={browserToggleDisabled}
-                data-icon-only={narrow ? 'true' : undefined}
                 onClick={toggleBrowser}
               >
                 <BrowserIcon />
-                {narrow ? null : <span>{t('chat.browser.chip')}</span>}
+                <span>{t('chat.browser.chip')}</span>
               </button>
               <button
                 className="composer-tool composer-tool-more"

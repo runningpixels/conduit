@@ -70,6 +70,11 @@ function perMtokDollars(dollars: number): string {
   return String(Number(dollars.toFixed(dollars < 0.1 ? 3 : 2)));
 }
 
+/** One per-Mtok price as shown in a column: 3 → "$3", 0.075 → "$0.075". */
+export function formatPerMtokPrice(dollars: number): string {
+  return `$${perMtokDollars(dollars)}`;
+}
+
 /**
  * The `$3 / $15` input/output tail shown beside a model (V9 §2.3), or null when
  * the model has no price -- the caller then falls back to a posture word

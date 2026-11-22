@@ -284,7 +284,7 @@ Reviewer에게 보내고, 찾아낸 내용으로 문서를 고칩니다.
 입력 영역에서 설정해 둔 모델을 아무거나 고르세요. Anthropic, OpenAI, Gemini,
 OpenRouter, OpenCode Zen, Groq, DeepSeek, Mistral, xAI, Z.ai, Moonshot AI, Qwen,
 Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax,
-NVIDIA NIM, LM Studio, Ollama, 그리고 OpenAI 호환 엔드포인트
+NVIDIA NIM, Perplexity, Hugging Face, Vercel AI Gateway, Ollama Cloud, Nebius, Chutes, SiliconFlow, Venice AI, Cohere, llama.cpp, vLLM, Jan, LM Studio, Ollama, 그리고 OpenAI 호환 엔드포인트
 전부를 쓸 수 있습니다. 채팅이 모델의 컨텍스트 창에 가까워지면 오래된 턴이 자동으로
 요약되어 대화가 계속 이어집니다.
 
@@ -354,7 +354,7 @@ iframe에서 렌더링되어 스스로는 네트워크에도 앱에도 닿을 �
 ### 그 밖에도
 
 - **제공자별 기본 URL**을 적합한 곳에 두었습니다(xAI, Z.ai, Moonshot AI, Qwen,
-  Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax, NVIDIA NIM,
+  Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax, NVIDIA NIM, Perplexity, Hugging Face, Vercel AI Gateway, Ollama Cloud, Nebius, Chutes, SiliconFlow, Venice AI, Cohere,
   Anthropic, OpenAI). 지역별 또는 자체 호스팅
   엔드포인트, 호환 API, LiteLLM 프록시를 위한 것입니다.
 - **첫 실행 설정**은 언어, 테마, 텍스트 크기, 로컬 전용 모드, 키 저장 방식,
@@ -413,7 +413,7 @@ iframe에서 렌더링되어 스스로는 네트워크에도 앱에도 닿을 �
 
 ## 상태
 
-**v1.0.0-rc.37 — 릴리스 후보.** Windows, macOS(Apple 실리콘 및 Intel), Linux용
+**v1.0.0-rc.38 — 릴리스 후보.** Windows, macOS(Apple 실리콘 및 Intel), Linux용
 설치 프로그램은
 [릴리스 페이지](https://github.com/runningpixels/conduit/releases)에 있습니다.
 운영체제 수준의 코드 서명이 없으므로 첫 실행 시 Gatekeeper 또는 SmartScreen 경고가
@@ -455,7 +455,7 @@ iframe에서 렌더링되어 스스로는 네트워크에도 앱에도 닿을 �
 | 새 프로필의 첫 실행 예시 | 동작함 |
 | 홈과 탐색 — 입력 상자, 확인 필요, 워크플로의 새 소식, 이어가기, 영역 타일, 묶인 탐색 모음, `Ctrl+1`…`9` | 동작함 |
 | 8개 언어로 제공되는 인터페이스 | 동작함 |
-| 업데이트/패키징 파이프라인, 선택형 자동 업데이트 | 동작함 — 1.0.0-rc.37는 네 개 대상 모두에서 빌드, 서명, 게시되었으며, 업데이트는 실제 Windows 설치에서 확인했고 macOS와 Linux에서는 아직 확인하지 않음 |
+| 업데이트/패키징 파이프라인, 선택형 자동 업데이트 | 동작함 — 1.0.0-rc.38는 네 개 대상 모두에서 빌드, 서명, 게시되었으며, 업데이트는 실제 Windows 설치에서 확인했고 macOS와 Linux에서는 아직 확인하지 않음 |
 | 운영체제 코드 서명 | 미완료 — 번들에 서명이 없음 |
 | 클라우드 동기화 / 계정 | 이 저장소에서는 계획 없음 |
 

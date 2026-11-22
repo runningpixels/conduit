@@ -247,7 +247,7 @@ Reviewer 和 Data analyst。在聊天中输入 `@` 加名字即可使用，也�
 
 从输入区选择任何你已配置好的模型：Anthropic、OpenAI、Gemini、OpenRouter、
 OpenCode Zen、Groq、DeepSeek、Mistral、xAI、Z.ai、Moonshot AI、Qwen、Together AI、
-Fireworks AI、Cerebras、SambaNova、DeepInfra、Novita AI、MiniMax、NVIDIA NIM、
+Fireworks AI、Cerebras、SambaNova、DeepInfra、Novita AI、MiniMax、NVIDIA NIM、Perplexity、Hugging Face、Vercel AI Gateway、Ollama Cloud、Nebius、Chutes、SiliconFlow、Venice AI、Cohere、llama.cpp、vLLM、Jan、
 LM Studio、Ollama，或任何兼容 OpenAI 的接口。当聊天接近模型的上下文
 窗口时，较早的轮次会被自动摘要，让对话得以继续。
 
@@ -310,7 +310,7 @@ Brave 或你自己的 SearXNG）进行搜索，设置中还有获取密钥的链
 ### 更多
 
 - **每个提供商的基础 URL**（在合适的情况下：xAI、Z.ai、Moonshot AI、Qwen、
-  Together AI、Fireworks AI、Cerebras、SambaNova、DeepInfra、Novita AI、MiniMax、NVIDIA NIM、
+  Together AI、Fireworks AI、Cerebras、SambaNova、DeepInfra、Novita AI、MiniMax、NVIDIA NIM、Perplexity、Hugging Face、Vercel AI Gateway、Ollama Cloud、Nebius、Chutes、SiliconFlow、Venice AI、Cohere、
   Anthropic 和 OpenAI），可用于区域端点或自托管端点、
   兼容的 API 或 LiteLLM 代理。
 - **首次运行设置**涵盖语言、主题、文字大小、仅本地模式、密钥存储方式、更新检查
@@ -359,7 +359,7 @@ Brave 或你自己的 SearXNG）进行搜索，设置中还有获取密钥的链
 
 ## 状态
 
-**v1.0.0-rc.37：发布候选版。** 适用于 Windows、macOS（Apple 芯片与 Intel）和
+**v1.0.0-rc.38：发布候选版。** 适用于 Windows、macOS（Apple 芯片与 Intel）和
 Linux 的安装包在[发布页](https://github.com/runningpixels/conduit/releases)。
 它们没有经过操作系统层面的代码签名，因此首次启动会出现 Gatekeeper 或 SmartScreen
 警告。从源码构建同样可行。
@@ -400,7 +400,7 @@ Linux 的安装包在[发布页](https://github.com/runningpixels/conduit/releas
 | 新配置中的首次运行示例 | 可用 |
 | 首页与导航——输入框、待处理、工作流的最新动态、继续、区域磁贴、分组的导航栏、`Ctrl+1`…`9` | 可用 |
 | 八种语言的界面 | 可用 |
-| 更新/打包流水线，自动更新需主动开启 | 可用——1.0.0-rc.37 已在全部四个目标平台构建、签名并发布；更新已在真实的 Windows 安装上验证，macOS 和 Linux 上尚未验证 |
+| 更新/打包流水线，自动更新需主动开启 | 可用——1.0.0-rc.38 已在全部四个目标平台构建、签名并发布；更新已在真实的 Windows 安装上验证，macOS 和 Linux 上尚未验证 |
 | 操作系统代码签名 | 未完成——安装包未签名 |
 | 云同步 / 账号 | 本仓库不做规划 |
 

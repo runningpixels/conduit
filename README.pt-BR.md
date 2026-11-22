@@ -310,7 +310,7 @@ comandos (`Ctrl+K`) tem uma entrada "Ir para" para cada uma.
 
 Escolha no campo de mensagem qualquer modelo que você tenha configurado:
 Anthropic, OpenAI, Gemini, OpenRouter, OpenCode Zen, Groq, DeepSeek, Mistral,
-xAI, Z.ai, Moonshot AI, Qwen, Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax, NVIDIA NIM,
+xAI, Z.ai, Moonshot AI, Qwen, Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax, NVIDIA NIM, Perplexity, Hugging Face, Vercel AI Gateway, Ollama Cloud, Nebius, Chutes, SiliconFlow, Venice AI, Cohere, llama.cpp, vLLM, Jan,
 LM Studio, Ollama, ou
 qualquer endpoint compatível com a OpenAI. Quando um chat se aproxima da janela
 de contexto do modelo, os turnos mais antigos são resumidos automaticamente
@@ -388,7 +388,7 @@ você escolher.
 ### E mais
 
 - **Uma URL base para cada provedor** onde faz sentido (xAI, Z.ai, Moonshot
-  AI, Qwen, Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax, NVIDIA NIM,
+  AI, Qwen, Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax, NVIDIA NIM, Perplexity, Hugging Face, Vercel AI Gateway, Ollama Cloud, Nebius, Chutes, SiliconFlow, Venice AI, Cohere,
   Anthropic e OpenAI) para endpoints
   regionais ou auto-hospedados, uma API compatível ou um proxy LiteLLM.
 - **A configuração inicial** cobre idioma, tema, tamanho do texto, modo somente
@@ -454,7 +454,7 @@ Veja o [`CHANGELOG.md`](./CHANGELOG.md) para tudo o que muda em cada versão.
 
 ## Situação
 
-**v1.0.0-rc.37 — versão candidata.** Os instaladores para Windows, macOS (Apple
+**v1.0.0-rc.38 — versão candidata.** Os instaladores para Windows, macOS (Apple
 silicon e Intel) e Linux estão na
 [página de versões](https://github.com/runningpixels/conduit/releases). Eles não
 são assinados no nível do sistema operacional, então a primeira execução exibe um
@@ -497,7 +497,7 @@ Esta é a versão candidata da 1.0: tudo o que está abaixo funciona, e o que fa
 | Exportação do Slides — HTML e PowerPoint em todas as plataformas, PDF no Windows | Funcionando |
 | Início e navegação — campo de pedido, precisa de você, novidades, continue de onde parou, blocos de áreas, barra agrupada, `Ctrl+1`…`9` | Funcionando |
 | Interface em oito idiomas | Funcionando |
-| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.37 foi compilada, assinada e publicada nos quatro alvos; a atualização foi verificada em uma instalação real do Windows, ainda não no macOS nem no Linux |
+| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.38 foi compilada, assinada e publicada nos quatro alvos; a atualização foi verificada em uma instalação real do Windows, ainda não no macOS nem no Linux |
 | Assinatura de código do SO | Não feita — os pacotes não são assinados |
 | Sincronização na nuvem / contas | Não planejado neste repositório |
 

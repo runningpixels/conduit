@@ -294,7 +294,9 @@ has a "Go to" entry for each.
 Pick any model you have set up from the composer: Anthropic, OpenAI, Gemini,
 OpenRouter, OpenCode Zen, Groq, DeepSeek, Mistral, xAI, Z.ai, Moonshot AI, Qwen,
 Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita AI, MiniMax,
-NVIDIA NIM, LM Studio, Ollama, or any OpenAI-compatible endpoint.
+NVIDIA NIM, Perplexity, Hugging Face, Vercel AI Gateway, Ollama Cloud, Nebius,
+Chutes, SiliconFlow, Venice AI, Cohere, LM Studio, Ollama, llama.cpp, vLLM, Jan,
+or any OpenAI-compatible endpoint.
 When a chat nears the model's context window, older turns are summarised
 automatically so it keeps going.
 
@@ -364,10 +366,9 @@ dates, numbers and file sizes follow the language you pick.
 
 ### And more
 
-- **A base URL for each provider** where it makes sense (xAI, Z.ai, Moonshot
-  AI, Qwen, Together AI, Fireworks AI, Cerebras, SambaNova, DeepInfra, Novita
-  AI, MiniMax, NVIDIA NIM, Anthropic and OpenAI) for regional or
-  self-hosted endpoints, a compatible API or a LiteLLM proxy.
+- **A base URL for each provider** where it makes sense (every hosted preset
+  from xAI on, plus Anthropic and OpenAI) for regional or self-hosted
+  endpoints, a compatible API or a LiteLLM proxy.
 - **First-run setup** covers language, theme, text size, local-only mode, key
   storage, update checks and diagnostics.
 - **First-run examples**: a new, empty profile starts with a live weather app, a

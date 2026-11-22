@@ -113,6 +113,18 @@ pub fn registry() -> Vec<Box<dyn ProviderAdapter>> {
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::novita()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::minimax()),
         Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::nvidia()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::perplexity()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::huggingface()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::vercel()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::ollama_cloud()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::nebius()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::chutes()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::siliconflow()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::venice()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::cohere()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::llamacpp()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::vllm()),
+        Box::new(crate::adapters::openai_preset::OpenAiPresetAdapter::jan()),
         Box::new(crate::adapters::openai_compat::OpenAiCompatAdapter::default()),
         Box::new(crate::adapters::ollama::OllamaAdapter),
     ]
@@ -212,6 +224,16 @@ mod tests {
             .map(|a| a.id())
             .collect();
         local_ids.sort_unstable();
-        assert_eq!(local_ids, ["lmstudio", "ollama", "openai_compat"]);
+        assert_eq!(
+            local_ids,
+            [
+                "jan",
+                "llamacpp",
+                "lmstudio",
+                "ollama",
+                "openai_compat",
+                "vllm"
+            ]
+        );
     }
 }

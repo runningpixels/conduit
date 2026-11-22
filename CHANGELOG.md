@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Twelve more providers.** Perplexity (Agent API), Hugging Face, Vercel AI
+  Gateway, Ollama Cloud, Nebius, Chutes, SiliconFlow, Venice AI and Cohere
+  take a key in Settings → Providers. llama.cpp, vLLM and Jan connect to
+  their local servers on the default ports, with no key, and stay available
+  in local-only mode. Vercel, Chutes and Venice show prices in the model
+  picker, and Hugging Face, Chutes, Vercel and Venice say which models take
+  images.
+
 ## [1.0.0-rc.37] - 2026-11-21
 
 Everything you have made is on one Artifacts page, Home starts with what you

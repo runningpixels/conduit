@@ -236,6 +236,162 @@ impl OpenAiPresetAdapter {
         ))
     }
 
+    pub fn perplexity() -> Self {
+        Self(OpenAiAdapter::preset(
+            "perplexity",
+            "Perplexity",
+            "https://api.perplexity.ai/v1",
+            false,
+            false,
+            &[],
+            false,
+            true,
+        ))
+    }
+
+    pub fn huggingface() -> Self {
+        Self(OpenAiAdapter::preset(
+            "huggingface",
+            "Hugging Face",
+            "https://router.huggingface.co/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn vercel() -> Self {
+        Self(OpenAiAdapter::preset(
+            "vercel",
+            "Vercel AI Gateway",
+            "https://ai-gateway.vercel.sh/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn ollama_cloud() -> Self {
+        Self(OpenAiAdapter::preset(
+            "ollama_cloud",
+            "Ollama Cloud",
+            "https://ollama.com/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn nebius() -> Self {
+        Self(OpenAiAdapter::preset(
+            "nebius",
+            "Nebius",
+            "https://api.tokenfactory.nebius.com/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn chutes() -> Self {
+        Self(OpenAiAdapter::preset(
+            "chutes",
+            "Chutes",
+            "https://llm.chutes.ai/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn siliconflow() -> Self {
+        Self(OpenAiAdapter::preset(
+            "siliconflow",
+            "SiliconFlow",
+            "https://api.siliconflow.com/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn venice() -> Self {
+        Self(OpenAiAdapter::preset(
+            "venice",
+            "Venice AI",
+            "https://api.venice.ai/api/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn cohere() -> Self {
+        Self(OpenAiAdapter::preset(
+            "cohere",
+            "Cohere",
+            "https://api.cohere.ai/compatibility/v1",
+            false,
+            false,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn llamacpp() -> Self {
+        Self(OpenAiAdapter::preset(
+            "llamacpp",
+            "llama.cpp",
+            "http://localhost:8080/v1",
+            true,
+            true,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn vllm() -> Self {
+        Self(OpenAiAdapter::preset(
+            "vllm",
+            "vLLM",
+            "http://localhost:8000/v1",
+            true,
+            true,
+            &[],
+            false,
+            false,
+        ))
+    }
+
+    pub fn jan() -> Self {
+        Self(OpenAiAdapter::preset(
+            "jan",
+            "Jan",
+            "http://localhost:1337/v1",
+            true,
+            true,
+            &[],
+            false,
+            false,
+        ))
+    }
+
     pub fn lmstudio() -> Self {
         Self(OpenAiAdapter::preset(
             "lmstudio",

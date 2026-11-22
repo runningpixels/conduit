@@ -1703,6 +1703,29 @@ pub(crate) fn base_url(adapter: &OpenAiAdapter, ctx: &AdapterContext) -> String 
     base.trim_end_matches('/').to_string()
 }
 
+/// True for a `/models` entry whose `type` names a non-chat model. Gateways
+/// such as Vercel AI Gateway list embedding, image, speech and video models
+/// next to chat ones; they would only fail in the composer. Entries without a
+/// `type`, or with one we do not know, stay listed.
+fn listed_as_non_chat(item: &Value) -> bool {
+    matches!(
+        item.get("type").and_then(Value::as_str),
+        Some(
+            "embedding"
+                | "embeddings"
+                | "image"
+                | "video"
+                | "speech"
+                | "transcription"
+                | "reranking"
+                | "rerank"
+                | "realtime"
+                | "moderation"
+                | "audio"
+        )
+    )
+}
+
 #[async_trait]
 impl ProviderAdapter for OpenAiAdapter {
     fn id(&self) -> &'static str {
@@ -1747,6 +1770,7 @@ impl ProviderAdapter for OpenAiAdapter {
             .map(|items| {
                 items
                     .iter()
+                    .filter(|item| !listed_as_non_chat(item))
                     .filter_map(|item| {
                         let id = item.get("id")?.as_str()?.to_string();
                         Some(ModelInfo {
@@ -2937,6 +2961,19 @@ mod tests {
             tools[0].pointer("/function/name").and_then(|v| v.as_str()),
             Some("get_weather")
         );
+    }
+
+    #[test]
+    fn model_listing_drops_only_known_non_chat_types() {
+        assert!(listed_as_non_chat(
+            &json!({ "id": "e", "type": "embedding" })
+        ));
+        assert!(listed_as_non_chat(&json!({ "id": "v", "type": "video" })));
+        assert!(!listed_as_non_chat(
+            &json!({ "id": "l", "type": "language" })
+        ));
+        assert!(!listed_as_non_chat(&json!({ "id": "c", "type": "chat" })));
+        assert!(!listed_as_non_chat(&json!({ "id": "plain" })));
     }
 
     #[test]

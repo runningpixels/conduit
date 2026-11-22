@@ -49,6 +49,15 @@ export const PROVIDER_KEYS = {
   novita: 'novita-ai',
   minimax: 'minimax',
   nvidia: 'nvidia',
+  perplexity: 'perplexity-agent',
+  huggingface: 'huggingface',
+  vercel: 'vercel',
+  ollama_cloud: 'ollama-cloud',
+  nebius: 'nebius',
+  chutes: 'chutes',
+  siliconflow: 'siliconflow',
+  venice: 'venice',
+  cohere: 'cohere',
 };
 
 if (process.argv.includes('--check')) {

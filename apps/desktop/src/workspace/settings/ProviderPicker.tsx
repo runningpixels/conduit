@@ -49,6 +49,18 @@ export const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
   { id: 'novita', brand: 'Novita AI' },
   { id: 'minimax', brand: 'MiniMax' },
   { id: 'nvidia', brand: 'NVIDIA NIM' },
+  { id: 'perplexity', brand: 'Perplexity' },
+  { id: 'huggingface', brand: 'Hugging Face' },
+  { id: 'vercel', brand: 'Vercel AI Gateway' },
+  { id: 'ollama_cloud', brand: 'Ollama Cloud' },
+  { id: 'nebius', brand: 'Nebius' },
+  { id: 'chutes', brand: 'Chutes' },
+  { id: 'siliconflow', brand: 'SiliconFlow' },
+  { id: 'venice', brand: 'Venice AI' },
+  { id: 'cohere', brand: 'Cohere' },
+  { id: 'llamacpp', brand: 'llama.cpp' },
+  { id: 'vllm', brand: 'vLLM' },
+  { id: 'jan', brand: 'Jan' },
 ];
 
 /**
@@ -57,7 +69,7 @@ export const FALLBACK_PROVIDER_BRANDS: { id: string; brand: string }[] = [
  * dropdown is already interactive on its fallback list then, and a provider
  * change must still know whether it is leaving local-only mode.
  */
-export const FALLBACK_LOCAL_PROVIDER_IDS: ReadonlySet<string> = new Set(['ollama', 'lmstudio', 'openai_compat']);
+export const FALLBACK_LOCAL_PROVIDER_IDS: ReadonlySet<string> = new Set(['ollama', 'lmstudio', 'llamacpp', 'vllm', 'jan', 'openai_compat']);
 
 /** Phase 6 M6.4: shared provider + BYOK surface. Used by Onboarding and
  *  SettingsScreen. Owns provider selection, model listing, the optional base

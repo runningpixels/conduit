@@ -7,6 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.38] - 2026-11-22
+
+Twelve more providers, 35 in all, including three servers that run on your own
+machine.
+
 ### Added
 
 - **Twelve more providers.** Perplexity (Agent API), Hugging Face, Vercel AI
@@ -16,6 +21,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   in local-only mode. Vercel, Chutes and Venice show prices in the model
   picker, and Hugging Face, Chutes, Vercel and Venice say which models take
   images.
+
+### Security
+
+- **`url` 2.5.9** (#363), for RUSTSEC-2026-0592: a deeply nested `blob:` URL
+  could overflow the stack in `Url::origin()`.
 
 ## [1.0.0-rc.37] - 2026-11-21
 

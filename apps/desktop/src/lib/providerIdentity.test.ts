@@ -32,6 +32,18 @@ describe('providerHueId', () => {
       'novita',
       'minimax',
       'nvidia',
+      'perplexity',
+      'huggingface',
+      'vercel',
+      'ollama_cloud',
+      'nebius',
+      'chutes',
+      'siliconflow',
+      'venice',
+      'cohere',
+      'llamacpp',
+      'vllm',
+      'jan',
     ]) {
       expect(providerHueId(id)).toBe('custom');
     }

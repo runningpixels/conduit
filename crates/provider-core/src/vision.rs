@@ -103,8 +103,23 @@ pub fn listed_file_input(item: &serde_json::Value) -> Option<bool> {
 
 /// What an OpenRouter catalogue entry says about image input, like
 /// [`listed_file_input`].
+/// Also reads the shapes other listings use: Chutes' top-level
+/// `input_modalities`, Vercel AI Gateway's `modalities.input` and Venice's
+/// `model_spec.capabilities.supportsVision`.
 pub fn listed_image_input(item: &serde_json::Value) -> Option<bool> {
-    let modalities = item.pointer("/architecture/input_modalities")?.as_array()?;
+    if let Some(vision) = item
+        .pointer("/model_spec/capabilities/supportsVision")
+        .and_then(|v| v.as_bool())
+    {
+        return Some(vision);
+    }
+    let modalities = [
+        "/architecture/input_modalities",
+        "/input_modalities",
+        "/modalities/input",
+    ]
+    .iter()
+    .find_map(|p| item.pointer(p)?.as_array())?;
     Some(modalities.iter().any(|m| m.as_str() == Some("image")))
 }
 
@@ -118,7 +133,7 @@ pub fn model_accepts_images(provider_id: &str, model_id: &str) -> bool {
 
     match provider.as_str() {
         "anthropic" | "openai" | "gemini" | "openrouter" | "opencode_zen" | "groq" | "mistral"
-        | "lmstudio" | "openai_compat" | "xai" => true,
+        | "lmstudio" | "llamacpp" | "vllm" | "jan" | "openai_compat" | "xai" => true,
         // DeepSeek's API mixes vision and text-only models (`deepseek-v4-flash`
         // takes images, `deepseek-v4-pro` does not), so ask the bundled
         // models.dev snapshot. A model it does not know stays text-only.
@@ -126,7 +141,9 @@ pub fn model_accepts_images(provider_id: &str, model_id: &str) -> bool {
             crate::pricing::snapshot_accepts_images(&provider, model_id.trim()).unwrap_or(false)
         }
         // Gateway presets (zai, moonshot, qwen, together, fireworks, cerebras,
-        // sambanova, deepinfra, novita, minimax, nvidia) deliberately
+        // sambanova, deepinfra, novita, minimax, nvidia, perplexity,
+        // huggingface, vercel, ollama_cloud, nebius, chutes, siliconflow,
+        // venice, cohere) deliberately
         // have no arm: their vision support is per-model, so they take the
         // heuristic below (provider-expansion plan, D8).
         "ollama" => ollama_model_accepts_images(&model),
@@ -220,6 +237,20 @@ mod tests {
     }
 
     #[test]
+    fn listed_image_input_reads_every_listing_shape() {
+        use serde_json::json;
+        let or = json!({ "architecture": { "input_modalities": ["text", "image"] } });
+        let chutes = json!({ "input_modalities": ["text", "image"] });
+        let vercel = json!({ "modalities": { "input": ["text"], "output": ["text"] } });
+        let venice = json!({ "model_spec": { "capabilities": { "supportsVision": true } } });
+        assert_eq!(listed_image_input(&or), Some(true));
+        assert_eq!(listed_image_input(&chutes), Some(true));
+        assert_eq!(listed_image_input(&vercel), Some(false));
+        assert_eq!(listed_image_input(&venice), Some(true));
+        assert_eq!(listed_image_input(&json!({ "id": "plain" })), None);
+    }
+
+    #[test]
     fn gateway_presets_use_the_model_heuristic() {
         for provider in [
             "zai",
@@ -233,6 +264,15 @@ mod tests {
             "novita",
             "minimax",
             "nvidia",
+            "perplexity",
+            "huggingface",
+            "vercel",
+            "ollama_cloud",
+            "nebius",
+            "chutes",
+            "siliconflow",
+            "venice",
+            "cohere",
         ] {
             assert!(
                 model_accepts_images(provider, "qwen2.5-vl-72b-instruct"),

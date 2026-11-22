@@ -47,7 +47,7 @@ use crate::schema::{ModelPrice, ModelPriceOverride, PriceSource, ResolvedModelPr
 const SNAPSHOT_JSON: &str = include_str!("../data/model-prices.json");
 
 /// Providers whose models run on the user's machine and cost nothing per token.
-const LOCAL_PROVIDERS: &[&str] = &["ollama", "lmstudio"];
+const LOCAL_PROVIDERS: &[&str] = &["ollama", "lmstudio", "llamacpp", "vllm", "jan"];
 
 /// Models that are gone from the snapshot but appear in older usage. Prices are
 /// copied from Conduit's original hand-kept table and are not updated. Columns:
@@ -349,11 +349,15 @@ pub fn parse_openrouter_pricing(value: &serde_json::Value) -> Option<ModelPrice>
 /// The price a `/models` entry reports, in whichever shape its provider uses:
 /// - OpenRouter, SambaNova: `pricing.{prompt,completion}`, USD per token as strings;
 /// - DeepInfra: `metadata.pricing.{input_tokens,output_tokens}`, USD per million as numbers;
-/// - Novita: `pricing.{prompt,completion}.price_per_m_decimal`, USD per million as strings.
+/// - Novita: `pricing.{prompt,completion}.price_per_m_decimal`, USD per million as strings;
+/// - Vercel AI Gateway: `pricing.{input,output}`, USD per token as strings;
+/// - Chutes: `price.{input,output}.usd`, Venice: `model_spec.pricing.{input,output}.usd`,
+///   USD per million as numbers.
 ///
-/// Shapes that are ambiguous are left out rather than guessed: Chutes puts
-/// numbers per million under the same `pricing.prompt` key, so a number there
-/// is not read as a price.
+/// Shapes that are ambiguous are left out rather than guessed: Chutes also puts
+/// numbers per million under OpenRouter's `pricing.prompt` key, so a number there
+/// is not read as a price (its unambiguous `price.*.usd` is). Hugging Face lists
+/// one price per backing provider and the router picks among them, so it gets none.
 pub fn parse_listed_price(item: &serde_json::Value) -> Option<ModelPrice> {
     if let Some(price) = item.get("pricing").and_then(parse_openrouter_pricing) {
         return Some(price);
@@ -376,6 +380,41 @@ pub fn parse_listed_price(item: &serde_json::Value) -> Option<ModelPrice> {
                 input_per_mtok: input,
                 output_per_mtok: output,
                 cache_read_per_mtok: per_mtok(p.get("cache_read_tokens")),
+                cache_write_per_mtok: None,
+            });
+        }
+    }
+    // Vercel AI Gateway: `pricing.{input,output}`, USD per token as strings
+    // (the base tier when `*_tiers` are also listed).
+    let per_token = |v: Option<&serde_json::Value>| -> Option<f64> {
+        let amount: f64 = v?.as_str()?.trim().parse().ok()?;
+        (amount.is_finite() && amount >= 0.0).then_some(amount * 1_000_000.0)
+    };
+    if let Some(p) = item.get("pricing") {
+        if let (Some(input), Some(output)) = (per_token(p.get("input")), per_token(p.get("output")))
+        {
+            return Some(ModelPrice {
+                input_per_mtok: input,
+                output_per_mtok: output,
+                cache_read_per_mtok: per_token(p.get("input_cache_read")),
+                cache_write_per_mtok: per_token(p.get("input_cache_write")),
+            });
+        }
+    }
+    // Chutes (`price`) and Venice (`model_spec.pricing`): `{input,output}.usd`,
+    // USD per million as numbers.
+    let usd = |p: &serde_json::Value, key: &str| {
+        per_mtok(p.get(key)?.get("usd").filter(|v| v.is_number()))
+    };
+    for p in [item.get("price"), item.pointer("/model_spec/pricing")]
+        .into_iter()
+        .flatten()
+    {
+        if let (Some(input), Some(output)) = (usd(p, "input"), usd(p, "output")) {
+            return Some(ModelPrice {
+                input_per_mtok: input,
+                output_per_mtok: output,
+                cache_read_per_mtok: usd(p, "input_cache_read").or_else(|| usd(p, "cache_input")),
                 cache_write_per_mtok: None,
             });
         }
@@ -710,6 +749,47 @@ mod tests {
         let p = parse_listed_price(&novita).unwrap();
         assert_eq!((p.input_per_mtok, p.output_per_mtok), (0.3, 1.2));
         assert_eq!(p.cache_read_per_mtok, Some(0.006));
+    }
+
+    #[test]
+    fn listed_price_reads_vercel_chutes_and_venice() {
+        // Shapes copied from the live /models listings, 2026-11-22.
+        let vercel = serde_json::json!({
+            "id": "alibaba/qwen-3-14b",
+            "pricing": {
+                "input": "0.0000012", "output": "0.000006", "input_cache_read": "0.00000024",
+                "input_tiers": [{ "cost": "0.0000012", "min": 0, "max": 32001 }]
+            }
+        });
+        let p = parse_listed_price(&vercel).unwrap();
+        assert!((p.input_per_mtok - 1.2).abs() < 1e-9);
+        assert!((p.output_per_mtok - 6.0).abs() < 1e-9);
+        assert!((p.cache_read_per_mtok.unwrap() - 0.24).abs() < 1e-9);
+
+        let chutes = serde_json::json!({
+            "id": "Qwen/Qwen3.8-27B-TEE",
+            "price": {
+                "input": { "tao": 0.0002, "usd": 0.039 },
+                "output": { "tao": 0.0065, "usd": 1.25 },
+                "input_cache_read": { "tao": 0.00002, "usd": 0.0039 }
+            },
+            "pricing": { "prompt": 0.039, "completion": 1.25 }
+        });
+        let p = parse_listed_price(&chutes).unwrap();
+        assert_eq!((p.input_per_mtok, p.output_per_mtok), (0.039, 1.25));
+        assert_eq!(p.cache_read_per_mtok, Some(0.0039));
+
+        let venice = serde_json::json!({
+            "id": "gemini-4-carbon",
+            "model_spec": { "pricing": {
+                "input": { "usd": 2.5, "diem": 2.5 },
+                "cache_input": { "usd": 0.125, "diem": 0.125 },
+                "output": { "usd": 12.5, "diem": 12.5 }
+            } }
+        });
+        let p = parse_listed_price(&venice).unwrap();
+        assert_eq!((p.input_per_mtok, p.output_per_mtok), (2.5, 12.5));
+        assert_eq!(p.cache_read_per_mtok, Some(0.125));
     }
 
     #[test]

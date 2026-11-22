@@ -44,6 +44,18 @@ export const DISPLAY_NAMES: Record<string, string> = {
   novita: 'Novita AI',
   minimax: 'MiniMax',
   nvidia: 'NVIDIA NIM',
+  perplexity: 'Perplexity',
+  huggingface: 'Hugging Face',
+  vercel: 'Vercel AI Gateway',
+  ollama_cloud: 'Ollama Cloud',
+  nebius: 'Nebius',
+  chutes: 'Chutes',
+  siliconflow: 'SiliconFlow',
+  venice: 'Venice AI',
+  cohere: 'Cohere',
+  llamacpp: 'llama.cpp',
+  vllm: 'vLLM',
+  jan: 'Jan',
 };
 
 /** Map a provider-core adapter id to one of the four CSS hue identities. */

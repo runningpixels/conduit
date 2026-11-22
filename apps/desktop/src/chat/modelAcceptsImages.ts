@@ -17,6 +17,9 @@ export function modelAcceptsImages(providerId: string, modelId: string): boolean
     case 'groq':
     case 'mistral':
     case 'lmstudio':
+    case 'llamacpp':
+    case 'vllm':
+    case 'jan':
     case 'openai_compat':
     case 'xai':
       return true;

@@ -5538,7 +5538,7 @@ mod local_only_tests {
 
     #[test]
     fn local_only_allows_local_providers() {
-        for id in ["ollama", "lmstudio"] {
+        for id in ["ollama", "lmstudio", "llamacpp", "vllm", "jan"] {
             ensure_provider_allowed(&settings(true), adapter(id).as_ref(), id)
                 .unwrap_or_else(|e| panic!("{id} should be allowed: {e}"));
         }

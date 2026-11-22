@@ -28,13 +28,22 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
-const PROVIDERS: [&str; 6] = [
+const PROVIDERS: [&str; 15] = [
     "cerebras",
     "sambanova",
     "deepinfra",
     "novita",
     "minimax",
     "nvidia",
+    "perplexity",
+    "huggingface",
+    "vercel",
+    "ollama_cloud",
+    "nebius",
+    "chutes",
+    "siliconflow",
+    "venice",
+    "cohere",
 ];
 
 const MAX_TOKENS: u32 = 64;
@@ -52,6 +61,15 @@ fn default_model(provider: &str) -> &'static str {
         "novita" => "meta-llama/llama-3.1-8b-instruct",
         "minimax" => "MiniMax-M2",
         "nvidia" => "meta/llama-3.1-8b-instruct",
+        "perplexity" => "perplexity/glm-5.3-flash",
+        "huggingface" => "meta-llama/Llama-3.2-1B-Instruct",
+        "vercel" => "alibaba/qwen-3-14b",
+        "ollama_cloud" => "gpt-oss:20b",
+        "nebius" => "Qwen/Qwen3-30B-A3B-Instruct-2507",
+        "chutes" => "Qwen/Qwen3.8-27B-TEE",
+        "siliconflow" => "Qwen/Qwen3-8B",
+        "venice" => "openai-gpt-oss-120b",
+        "cohere" => "command-r7b-12-2024",
         _ => "",
     }
 }

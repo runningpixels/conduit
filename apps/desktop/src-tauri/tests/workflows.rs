@@ -2258,6 +2258,49 @@ async fn an_agent_step_calls_its_tools_and_answers() {
 }
 
 #[tokio::test]
+async fn a_repeated_agent_step_is_handed_its_last_answer() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h
+        .save(json!({ "steps": [
+            { "id": "think", "type": "agent", "prompt": "Watch it", "input": "{{inputs.price}}",
+              "tools": ["current_time"], "previous": true },
+        ], "inputs": [{ "id": "price", "label": "Price" }] }))
+        .await;
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let sent = |i: usize| {
+        let requests = h.model.requests.lock().unwrap();
+        requests[i].messages.last().unwrap().parts[0]
+            .content
+            .clone()
+            .unwrap()
+    };
+    let inputs = |p: &str| HashMap::from([("price".to_string(), p.to_string())]);
+
+    let first = runner
+        .run(&id, &inputs("Price 10"), "manual")
+        .await
+        .unwrap();
+    assert_eq!(first.run.status, "completed", "{:?}", first.run.error);
+    assert!(sent(0).contains("This is the first run"), "{}", sent(0));
+
+    let second = runner
+        .run(&id, &inputs("Price 12"), "manual")
+        .await
+        .unwrap();
+    assert_eq!(second.run.status, "completed", "{:?}", second.run.error);
+    let text = sent(1);
+    assert!(text.contains("Price 12"), "{text}");
+    assert!(
+        text.contains("<previous_result>\nSUMMARY: Price 10\n</previous_result>"),
+        "{text}"
+    );
+}
+
+#[tokio::test]
 async fn an_agent_step_without_a_tool_loop_fails_and_needs_approval_unattended() {
     let h = Harness::new(EchoModel::default()).await;
     let id = h
@@ -7996,7 +8039,7 @@ async fn a_routine_is_saved_as_a_flagged_workflow_with_its_schedule_off_until_ap
     assert_eq!(
         record.definition["steps"][0],
         json!({ "id": "work", "type": "agent", "agent": "researcher",
-                "prompt": "Brief me on EU energy prices since yesterday" })
+                "prompt": "Brief me on EU energy prices since yesterday", "previous": true })
     );
     let summary = repo::list(&h.state.db)
         .await

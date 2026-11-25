@@ -199,6 +199,7 @@ const SPECS: &[Spec] = &[
             opt("agents", "list of text", "ids of HELPERS it may hand tasks to"),
             opt("agent", "text", "the id of one of the user's own agents (when the user has some) this step runs as: its instructions lead the turn, and its tools and helpers are used when the step lists none (it needs no HELPERS entry)"),
             opt("model", "never set", MODEL_NOTE),
+            opt("previous", "true or false", "true hands it its own answer from the last completed run, so a repeated check can say what changed since then"),
         ],
         outputs: "text (its answer), toolCalls (the tools it called), actions (what it sent through connectors, when it did), handoffs (the tasks it handed to helpers)",
     },

@@ -203,7 +203,12 @@ pub fn definition_for(request: &RoutineRequest) -> Result<Value, String> {
     if let Some(model) = &request.model {
         work["model"] = serde_json::to_value(model).map_err(|e| e.to_string())?;
     }
-    if !input.is_empty() {
+    if input.is_empty() {
+        // A run on a clock does the same job again, so it gets its last
+        // answer to say what changed. A file or a post is new each time,
+        // so the last one isn't worth comparing with.
+        work["previous"] = json!(true);
+    } else {
         work["input"] = json!(input);
     }
     steps.push(work);
@@ -532,7 +537,8 @@ mod tests {
             def,
             json!({ "steps": [
                 { "id": "work", "type": "agent", "agent": "researcher",
-                  "prompt": "Brief me on EU energy prices since yesterday" },
+                  "prompt": "Brief me on EU energy prices since yesterday",
+                  "previous": true },
                 { "id": "save", "type": "save_artifact",
                   "title": "Energy brief \u{2014} {{run.date}}",
                   "content": "{{steps.work.text}}", "mode": "create" }
@@ -560,7 +566,8 @@ mod tests {
                 { "id": "work", "type": "agent",
                   "prompt": "Brief me on EU energy prices since yesterday",
                   "tools": ["web_search", "web_fetch", "current_time", "calculator"],
-                  "model": { "provider": "openrouter", "model": "glm" } },
+                  "model": { "provider": "openrouter", "model": "glm" },
+                  "previous": true },
                 { "id": "save", "type": "save_chat",
                   "title": "Energy brief \u{2014} {{run.date}}",
                   "prompt": "Brief me on EU energy prices since yesterday",
@@ -648,6 +655,8 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("{{steps.file.text}}"));
+        // A new file each time: nothing to compare with.
+        assert!(def["steps"][1].get("previous").is_none());
 
         asked.trigger = Some(Trigger::Feed {
             url: "https://example.com/feed".into(),
@@ -659,6 +668,7 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("{{trigger.title}}"));
+        assert!(def["steps"][0].get("previous").is_none());
     }
 
     #[test]

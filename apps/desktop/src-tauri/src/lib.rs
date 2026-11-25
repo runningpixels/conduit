@@ -11,6 +11,8 @@
 
 pub mod agent_tools;
 pub mod agents;
+pub mod app_install;
+pub mod app_windows;
 pub mod artifact_frames;
 pub mod artifact_network;
 pub mod attachment_documents;

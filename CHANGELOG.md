@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Install apps on your computer.** An app's ⋯ menu has "Install as app…":
+  it gets its own entry in the Start menu (Windows), Applications (macOS) or
+  your app menu (Linux), and a desktop shortcut if you like, with its own
+  icon. It opens straight into its own window, whether Conduit is running or
+  not, and works offline when the app does. Edits reach the installed app
+  without reinstalling. "Remove from computer" takes the entries away; deleting
+  the app or uninstalling Conduit does too. You can also install while saving
+  a page as an app.
+- **Apps in their own window.** "Open in its own window" shows any app on its
+  own, without the rest of Conduit; on Windows it gets its own taskbar button,
+  which you can pin. "Open in Conduit" goes back to the main window.
+
+### Fixed
+
+- The "Clear stored data" dialog showed `{name}` instead of the app's name.
+
 ## [1.0.0-rc.39] - 2026-11-25
 
 Scheduled tasks: a page for everything that runs on its own, and tasks you can

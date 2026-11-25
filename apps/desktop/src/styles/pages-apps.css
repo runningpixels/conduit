@@ -498,3 +498,34 @@
 /* The ⋮ menu in an open app's header opens under its button. */
 .app-view-overflow { position: relative; flex: none; }
 .app-view-menu { top: calc(100% + 4px); right: 0; }
+
+/* ── Installed apps and the app's own window ──────────────────────────── */
+.app-card-installed { color: var(--ink); border-color: var(--accent-line); background: var(--accent-soft); }
+.app-install-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.app-install-name { min-width: 0; font-size: var(--fs-3xl); font-weight: 600; overflow-wrap: anywhere; }
+.app-install-where { margin: 0; }
+
+/* The app's own window: the app view fills it, no rail, no page padding. */
+html[data-window='app'],
+html[data-window='app'] body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+html[data-window='app'] #root { height: 100%; }
+[data-window='app'] .standalone-app { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; }
+[data-window='app'] .standalone-app > .app-view { flex: 1; }
+[data-window='app'] .standalone-removed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  color: var(--ink-2);
+  font-size: var(--fs-3xl);
+  text-align: center;
+}
+[data-window='app'] .standalone-removed p { margin: 0; }

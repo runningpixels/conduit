@@ -8,6 +8,13 @@ import { fileURLToPath } from 'node:url';
 
 const ipc = vi.hoisted(() => ({
   openApp: vi.fn(),
+  appInstallStatus: vi.fn(),
+  appInstallPlace: vi.fn(),
+  listAppInstalls: vi.fn(),
+  installApp: vi.fn(),
+  uninstallApp: vi.fn(),
+  openAppWindow: vi.fn(),
+  showAppInMain: vi.fn(),
   getAppInputs: vi.fn(),
   setAppInputs: vi.fn(),
   getArtifactNetworkState: vi.fn(),
@@ -82,6 +89,9 @@ function renderAppView(overrides: Partial<Parameters<typeof AppView>[0]> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ipc.appInstallStatus.mockResolvedValue({ appId: 'a1', installed: false, desktopShortcut: false, place: 'startMenu' });
+  ipc.appInstallPlace.mockResolvedValue('startMenu');
+  ipc.listAppInstalls.mockResolvedValue([]);
   ipc.getAppSettings.mockResolvedValue({
     slots: { default: null, quick: null },
     dailyTokenCap: null,
@@ -303,5 +313,64 @@ describe('AppView site data (ADR-007)', () => {
     await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull());
     fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
     expect(screen.queryByRole('menuitem', { name: 'Clear site data' })).toBeNull();
+  });
+});
+
+describe('AppView install and own-window actions', () => {
+  const plain = { ...weatherApp, inputs: [], inputsMissing: false };
+
+  function openMenu() {
+    ipc.openApp.mockResolvedValue(plain);
+    ipc.getAppInputs.mockResolvedValue({});
+  }
+
+  it('in the main window: Back, "Open in its own window", "Install as app…"', async () => {
+    openMenu();
+    renderAppView();
+    await screen.findByRole('heading', { name: 'Weather dashboard' });
+    expect(screen.getByRole('button', { name: 'All apps' })).toBeTruthy();
+    await waitFor(() => expect(ipc.appInstallStatus).toHaveBeenCalledWith('a1'));
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open in its own window' }));
+    expect(ipc.openAppWindow).toHaveBeenCalledWith('a1');
+    expect(screen.queryByRole('menuitem', { name: /Open in Conduit/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Install as app…' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Remove from computer' })).toBeNull();
+  });
+
+  it('standalone: no Back, "Open in Conduit" instead of "Open in its own window"', async () => {
+    openMenu();
+    renderAppView({ standalone: true });
+    await screen.findByRole('heading', { name: 'Weather dashboard' });
+    expect(screen.queryByRole('button', { name: 'All apps' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    expect(screen.queryByRole('menuitem', { name: 'Open in its own window' })).toBeNull();
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Open in / }));
+    expect(ipc.showAppInMain).toHaveBeenCalledWith('a1');
+  });
+
+  it('an installed app offers "Remove from computer" (no confirm) instead of Install', async () => {
+    openMenu();
+    ipc.appInstallStatus.mockResolvedValue({ appId: 'a1', installed: true, desktopShortcut: true, place: 'startMenu' });
+    ipc.uninstallApp.mockResolvedValue({ appId: 'a1', installed: false, desktopShortcut: false, place: 'startMenu' });
+    const onStatus = vi.fn();
+    renderAppView({ onStatus });
+    await screen.findByRole('heading', { name: 'Weather dashboard' });
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    expect(screen.queryByRole('menuitem', { name: 'Install as app…' })).toBeNull();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove from computer' }));
+    await waitFor(() => expect(ipc.uninstallApp).toHaveBeenCalledWith('a1'));
+    await waitFor(() => expect(onStatus).toHaveBeenCalled());
+  });
+
+  it('offers no install where the OS has no place for it', async () => {
+    openMenu();
+    ipc.appInstallStatus.mockResolvedValue({ appId: 'a1', installed: false, desktopShortcut: false, place: 'unsupported' });
+    renderAppView();
+    await screen.findByRole('heading', { name: 'Weather dashboard' });
+    await waitFor(() => expect(ipc.appInstallStatus).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'App actions' }));
+    expect(screen.queryByRole('menuitem', { name: 'Install as app…' })).toBeNull();
   });
 });

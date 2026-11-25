@@ -1786,6 +1786,51 @@ pub struct AppSummary {
     pub inputs_missing: bool,
 }
 
+/// Where an installed app shows up on this computer: the Start menu
+/// (Windows), the Applications folder (macOS) or the app menu (Linux).
+/// `Unsupported` where Conduit can't install apps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_install_place.ts"
+)]
+pub enum AppInstallPlace {
+    StartMenu,
+    Applications,
+    AppMenu,
+    Unsupported,
+}
+
+/// Whether an app is installed on this computer (its own Start menu,
+/// Applications or app-menu entry that opens it in its own window).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_install_status.ts"
+)]
+pub struct AppInstallStatus {
+    pub app_id: String,
+    pub installed: bool,
+    /// A desktop shortcut was added too (Windows and Linux).
+    pub desktop_shortcut: bool,
+    pub place: AppInstallPlace,
+}
+
+/// One size of an installed app's icon, drawn by the page (it has the
+/// fonts the tile uses, colour emoji included). Base64 PNG, square.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    export_to = "../packages/config-schema/src/generated/app_icon_image.ts"
+)]
+pub struct AppIconImage {
+    pub size: u32,
+    pub png_base64: String,
+}
+
 /// A ready-made app bundled with Conduit, as the Apps page lists it. Its
 /// name and description are the matching Ideas strings (`idea_id`).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

@@ -36,7 +36,7 @@ keyring = { version = "3.6", features = [
 # breaks the build (missing `cargo:dev` / `DEP_TAURI_DEV`).
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tauri = { version = "2.0", features = ["tray-icon"] }
+tauri = { version = "2.0", features = ["tray-icon", "image-png"] }
 thiserror = "2.0"
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "sync", "time", "net", "io-util", "process"] }
 uuid = { version = "1.11", features = ["v4", "serde"] }
@@ -192,10 +192,16 @@ windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Security_Authorization",
+    "Win32_Storage_EnhancedStorage",
     "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
     "Win32_System_JobObjects",
     "Win32_System_Pipes",
     "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
 ] }
 
 # macOS only: the startup check asks AppKit where the webview is

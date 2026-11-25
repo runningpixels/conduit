@@ -6,6 +6,7 @@
 
 pub mod agents;
 pub mod app_inputs;
+pub mod app_install;
 pub mod app_settings;
 pub mod apps;
 pub mod artifact_frames;
@@ -35,6 +36,7 @@ pub mod workflows;
 
 pub use agents::*;
 pub use app_inputs::*;
+pub use app_install::*;
 pub use app_settings::*;
 pub use apps::*;
 pub use artifact_frames::*;

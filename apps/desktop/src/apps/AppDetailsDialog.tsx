@@ -12,14 +12,22 @@ import { useT } from '../i18n';
 import { declaredCapabilities, declaredHosts, declaredInputs } from '../artifacts/networkHosts';
 import { useSiteLabel } from '../workspace/ArtifactNetwork';
 import {
+  appInstallPlace,
   artifactPrincipal,
   getArtifactNetworkState,
   saveApp,
   updateApp,
   type AppMetaInput,
 } from '../ipc/client';
-import type { AppCategory, AppSummary } from '../ipc/contracts';
+import type { AppCategory, AppInstallPlace, AppInstallStatus, AppSummary } from '../ipc/contracts';
 import { APP_CATEGORIES, AppTile } from './AppTile';
+import { installAppWithIcons, offersDesktopShortcut } from './appInstall';
+
+/** What "Install as app on this computer" did, when it was ticked on save. */
+export interface SaveInstallOutcome {
+  status?: AppInstallStatus;
+  error?: string;
+}
 
 export type AppDetailsTarget =
   | { mode: 'save'; artifactId: string; title: string | null; html: string }
@@ -36,7 +44,7 @@ export function AppDetailsDialog({
 }: {
   target: AppDetailsTarget | null;
   onClose: () => void;
-  onSaved: (app: AppSummary, mode: 'save' | 'edit') => void;
+  onSaved: (app: AppSummary, mode: 'save' | 'edit', install?: SaveInstallOutcome) => void;
 }) {
   const t = useT();
   const siteLabel = useSiteLabel();
@@ -54,6 +62,22 @@ export function AppDetailsDialog({
   const [keep, setKeep] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Save mode only: offer to install the new app as an OS app too.
+  const [installAfter, setInstallAfter] = useState(false);
+  const [place, setPlace] = useState<AppInstallPlace>('unsupported');
+  const saving = target?.mode === 'save';
+  useEffect(() => {
+    if (!saving) return;
+    let cancelled = false;
+    appInstallPlace()
+      .then((p) => {
+        if (!cancelled) setPlace(p);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [saving]);
 
   const declared = useMemo(
     () => (target?.mode === 'save' ? declaredHosts(target.html).map((d) => d.origin) : []),
@@ -69,6 +93,7 @@ export function AppDetailsDialog({
     if (!target) return;
     setError(null);
     setBusy(false);
+    setInstallAfter(false);
     setKeep(new Set());
     setGranted([]);
     if (target.mode === 'save') {
@@ -128,7 +153,17 @@ export function AppDetailsDialog({
         target.mode === 'save'
           ? await saveApp(target.artifactId, meta, declared, [...keep], capabilities, inputs)
           : await updateApp(target.app.id, meta);
-      onSaved(app, target.mode);
+      if (target.mode === 'save' && installAfter && place !== 'unsupported') {
+        let outcome: SaveInstallOutcome;
+        try {
+          outcome = { status: await installAppWithIcons(app, offersDesktopShortcut(place)) };
+        } catch (e) {
+          outcome = { error: e instanceof Error ? e.message : String(e) };
+        }
+        onSaved(app, 'save', outcome);
+      } else {
+        onSaved(app, target.mode);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -226,6 +261,13 @@ export function AppDetailsDialog({
               </p>
             ))}
           </fieldset>
+        )}
+
+        {target.mode === 'save' && place !== 'unsupported' && (
+          <label className="app-details-keep">
+            <input type="checkbox" checked={installAfter} onChange={(e) => setInstallAfter(e.target.checked)} />
+            <span>{t('apps.details.install')}</span>
+          </label>
         )}
 
         {error && (

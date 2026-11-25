@@ -8,6 +8,13 @@ import { defaultMark } from '../apps/AppTile';
 
 const ipc = vi.hoisted(() => ({
   listApps: vi.fn(),
+  appInstallStatus: vi.fn(),
+  appInstallPlace: vi.fn(),
+  listAppInstalls: vi.fn(),
+  installApp: vi.fn(),
+  uninstallApp: vi.fn(),
+  openAppWindow: vi.fn(),
+  showAppInMain: vi.fn(),
   openApp: vi.fn(),
   saveApp: vi.fn(),
   updateApp: vi.fn(),
@@ -67,6 +74,9 @@ const timer: AppSummaryFixture = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ipc.appInstallStatus.mockResolvedValue({ appId: 'a1', installed: false, desktopShortcut: false, place: 'startMenu' });
+  ipc.appInstallPlace.mockResolvedValue('startMenu');
+  ipc.listAppInstalls.mockResolvedValue([]);
   ipc.listApps.mockResolvedValue([weather, timer]);
   ipc.getArtifactNetworkState.mockResolvedValue({ blockedReason: null, always: [], session: [] });
   ipc.getAppInputs.mockResolvedValue({});

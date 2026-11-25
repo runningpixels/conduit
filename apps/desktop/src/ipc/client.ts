@@ -13,6 +13,9 @@ import type {
   AppInput,
   AppPaths,
   AppSummary,
+  AppIconImage,
+  AppInstallPlace,
+  AppInstallStatus,
   DeckDetail,
   DeckReplaceResult,
   SlotEdit,
@@ -2049,6 +2052,44 @@ export async function updateAppFromArtifact(
 
 export async function deleteApp(id: string): Promise<void> {
   await invokeCommand('delete_app', { id });
+}
+
+/** Open (or focus) the app's own window, label `app-<id>`. */
+export async function openAppWindow(id: string): Promise<void> {
+  await invokeCommand('open_app_window', { id });
+}
+
+/** Install an app as an OS app (Start menu / Applications / app menu). Idempotent:
+ *  again for an installed app refreshes its name, icon and shortcut choice. */
+export async function installApp(
+  id: string,
+  icons: AppIconImage[],
+  desktopShortcut: boolean,
+): Promise<AppInstallStatus> {
+  return invokeCommand<AppInstallStatus>('install_app', { id, icons, desktopShortcut });
+}
+
+export async function uninstallApp(id: string): Promise<AppInstallStatus> {
+  return invokeCommand<AppInstallStatus>('uninstall_app', { id });
+}
+
+export async function appInstallStatus(id: string): Promise<AppInstallStatus> {
+  return invokeCommand<AppInstallStatus>('app_install_status', { id });
+}
+
+/** Only the installed apps. */
+export async function listAppInstalls(): Promise<AppInstallStatus[]> {
+  return invokeCommand<AppInstallStatus[]>('list_app_installs');
+}
+
+/** Where installed apps appear on this OS. */
+export async function appInstallPlace(): Promise<AppInstallPlace> {
+  return invokeCommand<AppInstallPlace>('app_install_place');
+}
+
+/** Show and focus the main window on this app (Rust emits `open-app-in-main`). */
+export async function showAppInMain(id: string): Promise<void> {
+  await invokeCommand('show_app_in_main', { id });
 }
 
 // =============================================================================

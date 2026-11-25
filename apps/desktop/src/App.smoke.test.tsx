@@ -172,6 +172,7 @@ const IPC_EXPORTS = [
   'listKnowledgeCollections',
   // Home: its lists and the apps App.tsx keeps for it.
   'listWorkflows', 'listAgents', 'listLibraryAgents', 'listApps', 'listStarterApps', 'openApp',
+  'appInstallStatus', 'appInstallPlace', 'listAppInstalls', 'installApp', 'uninstallApp', 'openAppWindow', 'showAppInMain',
   // Slides: App.tsx asks whether the open chat is bound to a deck.
   'getDeckForConversation', 'listDecks', 'openDeck', 'undoStartDeck', 'listDeckSnapshots', 'listSlideThemes',
   'editSlideWords', 'setSlotPinned', 'replaceInDeck', 'insertBullet', 'removeBullet',

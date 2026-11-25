@@ -66,8 +66,8 @@ describe('selectBuiltinDocumentTools', () => {
   it('keeps the full catalog available for reference', () => {
     // 15 pre-Phase-4 tools + write_brand_theme + 5 workspace tools + ask_user + remember
     // + patch_document + read_document + generate_image + 10 deck tools + start_deck
-    // + 5 draft tools + search_tools + 8 spreadsheet tools.
-    expect(builtinToolDefinitions()).toHaveLength(51);
+    // + 5 draft tools + search_tools + 8 spreadsheet tools + schedule_task + list_scheduled_tasks.
+    expect(builtinToolDefinitions()).toHaveLength(53);
   });
 
   it('offers the deck tools by stage and never through the other selectors', () => {
@@ -145,6 +145,44 @@ describe('start_deck gating', () => {
     expect(names('make me a slide deck', 'storyline')).not.toContain('start_deck');
     expect(names('make me a slide deck', 'slides')).not.toContain('start_deck');
     expect(DECK_TOOL_NAMES.has('start_deck')).toBe(false);
+  });
+});
+
+describe('scheduling tools', () => {
+  const settings = { memoryEnabled: true };
+  const names = (prompt: string, deckStage: 'slides' | null = null, draftStage: 'outline' | 'draft' | null = null) =>
+    selectBuiltinTurnTools(prompt, settings, null, undefined, undefined, deckStage, draftStage).tools.map((t) => t.name);
+
+  it('are offered in a normal chat, whatever the prompt', () => {
+    for (const prompt of ['hello', 'every morning at 8 send me the news', 'write a report on solar power']) {
+      expect(names(prompt), prompt).toEqual(expect.arrayContaining(['schedule_task', 'list_scheduled_tasks']));
+    }
+  });
+
+  it('are not offered in a deck or draft chat', () => {
+    expect(names('build it', 'slides')).not.toContain('schedule_task');
+    expect(names('build it', 'slides')).not.toContain('list_scheduled_tasks');
+    expect(names('build it', null, 'draft')).not.toContain('schedule_task');
+    expect(names('build it', null, 'outline')).not.toContain('list_scheduled_tasks');
+  });
+
+  it('schedule_task asks for a name, instructions and a timed schedule, and tells the model how to behave', () => {
+    const def = builtinToolDefinitions().find((t) => t.name === 'schedule_task')!;
+    const schema = def.inputSchema as { required: string[]; properties: Record<string, { properties?: Record<string, { enum?: string[] }> }> };
+    expect(schema.required).toEqual(['name', 'instructions', 'schedule']);
+    expect(Object.keys(schema.properties)).toEqual(['name', 'instructions', 'schedule', 'model', 'notify']);
+    expect(schema.properties.schedule!.properties!.kind!.enum).toEqual(['daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once']);
+    expect(def.description).toMatch(/ask them first/);
+    expect(def.description).toMatch(/local time/);
+    expect(def.description).toMatch(/current_time/);
+    expect(def.description).toMatch(/new chat/);
+    expect(def.description).toMatch(/nothing until they press Create|creates nothing until/);
+  });
+
+  it('list_scheduled_tasks takes no arguments and is read-only', () => {
+    const def = builtinToolDefinitions().find((t) => t.name === 'list_scheduled_tasks')!;
+    expect(def.permissionLevel).toBe('readOnly');
+    expect(Object.keys((def.inputSchema as { properties: object }).properties)).toEqual([]);
   });
 });
 

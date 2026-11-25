@@ -565,6 +565,19 @@ export const WindowIcon = (p: IconProps) => (
 );
 
 /** A close mark: two crossed strokes. */
+/** A clock: Scheduled tasks, and a chat a scheduled run saved. */
+export const ClockIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </Svg>
+);
+export const ClockSolidIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" strokeWidth={2.4} />
+    <path d="M12 7v5l3 2" strokeWidth={2.4} />
+  </Svg>
+);
 export const CloseIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M6 6l12 12M18 6 6 18" />

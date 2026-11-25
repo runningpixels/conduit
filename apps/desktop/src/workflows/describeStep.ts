@@ -200,6 +200,8 @@ function describeKind(
       return (step.format ?? 'markdown') === 'html'
         ? t('workspace.workflows.step.saveHtml', { title: q(step.title) })
         : t('workspace.workflows.step.saveMarkdown', { title: q(step.title) });
+    case 'save_chat':
+      return t('workspace.workflows.step.saveChat', { title: q(step.title) });
     case 'export_file':
       return t('workspace.workflows.step.exportFile', { name: q(step.name) });
     case 'save_memory':

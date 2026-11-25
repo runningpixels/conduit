@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { submitAskUser } from '../ipc/client';
 import { useT } from '../i18n';
+import { ScheduleTaskCard } from './ScheduleTaskCard';
 
 export interface AskUserFieldView {
   id: string;
@@ -16,8 +17,20 @@ interface AskUserBlockProps {
   onDone?: () => void;
 }
 
+/** The field type that carries a `schedule_task` draft (its prompt is the call's arguments as JSON). */
+export const SCHEDULE_TASK_FIELD_TYPE = 'schedule_task';
+
+/** What a paused turn waits on: an ask_user form, or the confirm card of a drafted scheduled task. */
+export function AskUserBlock(props: AskUserBlockProps) {
+  const draft = props.fields.find((f) => f.type === SCHEDULE_TASK_FIELD_TYPE);
+  if (draft) {
+    return <ScheduleTaskCard toolCallId={props.toolCallId} argumentsJson={draft.prompt} onDone={props.onDone} />;
+  }
+  return <AskUserForm {...props} />;
+}
+
 /** Mid-turn ask_user form (t1-2). Answers are user-authored content. */
-export function AskUserBlock({ toolCallId, title, fields, onDone }: AskUserBlockProps) {
+function AskUserForm({ toolCallId, title, fields, onDone }: AskUserBlockProps) {
   const t = useT();
   const [values, setValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};

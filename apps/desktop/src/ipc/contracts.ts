@@ -723,7 +723,10 @@ export interface WorkflowSummary {
 
 /** What the routine form sends (Rust `workflows::routines::RoutineRequest`). */
 export interface RoutineRequest {
-  agentId: string;
+  /** One of the user's agents; absent, null or empty: a task for the assistant itself. */
+  agentId?: string | null;
+  /** The model that does the work; absent follows the chat (or the agent's). */
+  model?: WorkflowModel | null;
   name: string;
   /** What the agent does each run, as written. */
   task: string;
@@ -732,10 +735,13 @@ export interface RoutineRequest {
   trigger?: Extract<WorkflowTrigger, { kind: 'feed' | 'folder' }> | null;
   /** Also show a notification when a run finishes. */
   notify: boolean;
-  /** A new document in Results each run, or a Markdown file in the exports folder. */
-  output: 'document' | 'file';
+  /** A chat you can reply to (the default), a document in Results, or a Markdown file in the exports folder. */
+  output: RoutineOutput;
   folder?: string | null;
 }
+
+/** Where each run of a routine puts its result. */
+export type RoutineOutput = 'chat' | 'document' | 'file';
 
 /** A routine just made (Rust `commands::workflows::RoutineCreated`); its schedule is off until approved. */
 export interface RoutineCreated {
@@ -746,7 +752,8 @@ export interface RoutineCreated {
 /** One routine, for its agent's card (Rust `workflows::routines::RoutineSummary`). */
 export interface RoutineSummary {
   workflowId: string;
-  agentId: string;
+  /** Null for a task done by the assistant itself rather than one of the user's agents. */
+  agentId: string | null;
   name: string;
   task: string;
   schedule: ScheduleSpec | null;
@@ -761,11 +768,40 @@ export interface RoutineSummary {
   lastResultTitle: string | null;
 }
 
+/** One row of the Scheduled page (Rust `commands::workflows::ScheduledItem`): a task, a routine or a scheduled workflow. */
+export interface ScheduledItem {
+  workflowId: string;
+  /** `task`: a routine with no agent; `routine`: one of the user's agents on a schedule. */
+  kind: 'task' | 'routine' | 'workflow';
+  name: string;
+  task: string | null;
+  agentId: string | null;
+  schedule: ScheduleSpec | null;
+  trigger: WorkflowTrigger | null;
+  enabled: boolean;
+  nextRunAt: string | null;
+  lastRunId: string | null;
+  lastRunStatus: WorkflowRunStatus | null;
+  lastRunAt: string | null;
+  lastResultTitle: string | null;
+  /** The chat the last run saved, if any. */
+  lastConversationId: string | null;
+  lastArtifactId: string | null;
+}
+
+/** A day of the week in a weekly schedule. */
+export type ScheduleDay = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
 /** When a workflow runs on its own (Rust `workflows::schedule::ScheduleSpec`). */
 export type ScheduleSpec =
   | { kind: 'daily'; time: string }
   | { kind: 'weekdays'; time: string }
+  | { kind: 'weekly'; days: ScheduleDay[]; time: string }
+  /** Day 1–31; a shorter month runs on its last day. */
+  | { kind: 'monthly'; day: number; time: string }
   | { kind: 'interval'; hours: number }
+  /** Local wall time `YYYY-MM-DDTHH:MM`; runs once, then the schedule turns itself off. */
+  | { kind: 'once'; at: string }
   /** Polled for new items instead of timed: the definition's `trigger` says what to watch. */
   | { kind: 'trigger' };
 
@@ -795,6 +831,8 @@ export interface WorkflowRunFinished {
   error: string | null;
   trigger: 'schedule' | 'catch_up' | 'feed' | 'folder' | 'connector';
   documents: { artifactId: string; conversationId: string; title: string }[];
+  /** The chat the run saved, when its output is a chat: the notification opens it. */
+  conversationId?: string | null;
   /** `nothing_new` when a condition stopped the run. */
   outcome?: string | null;
 }
@@ -1048,6 +1086,8 @@ export type WorkflowStep = {
   | { type: 'for_each'; items: string; steps: WorkflowStep[] }
   | { type: 'save_artifact'; title: string; content: string; format?: 'markdown' | 'html'; mode?: 'update' | 'create'; onlyIfChanged?: boolean }
   | { type: 'export_file'; name: string; content: string }
+  /** A chat of its own: `prompt` is the user's message, `content` the assistant's answer. */
+  | { type: 'save_chat'; title: string; prompt: string; content: string }
   | { type: 'save_memory'; text: string }
   | { type: 'notify'; title: string; body?: string; onlyIfChanged?: boolean }
   | { type: 'condition'; value: string; is: ConditionTest; text?: string }
@@ -1119,7 +1159,7 @@ export interface WorkflowRun {
 
 /** One thing a run saved (a document, deck, draft or file), for "Open". */
 export interface WorkflowRunOutput {
-  kind: 'document' | 'deck' | 'draft' | 'file';
+  kind: 'document' | 'deck' | 'draft' | 'file' | 'chat';
   title: string;
   /** The step that saved it. */
   stepId: string;

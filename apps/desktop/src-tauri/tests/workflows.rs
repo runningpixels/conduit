@@ -8052,7 +8052,7 @@ async fn routines_are_listed_by_agent_with_their_last_result_and_turn_into_workf
     assert_eq!(listed.len(), 1, "{listed:?}");
     let routine = &listed[0];
     assert_eq!(routine.workflow_id, record.id);
-    assert_eq!(routine.agent_id, "researcher");
+    assert_eq!(routine.agent_id.as_deref(), Some("researcher"));
     assert_eq!(routine.task, "Brief me on EU energy prices since yesterday");
     assert_eq!(
         routine.schedule,
@@ -8086,6 +8086,108 @@ async fn routines_are_listed_by_agent_with_their_last_result_and_turn_into_workf
         .unwrap();
     assert_eq!(kept.definition, record.definition);
     assert_eq!(kept.version, record.version);
+}
+
+#[tokio::test]
+async fn a_task_without_an_agent_saves_its_answer_as_a_chat_and_is_listed() {
+    use conduit_desktop::workflows::routines;
+    let h = Harness::new(EchoModel::default()).await;
+    let request: routines::RoutineRequest = serde_json::from_value(json!({
+        "name": "Daily brief",
+        "task": "Brief me",
+        "schedule": { "kind": "weekly", "days": ["mon", "fri"], "time": "08:00" }
+    }))
+    .unwrap();
+    let record = routines::create(&h.state, &request).await.unwrap();
+    // A plain chat save needs nothing approved beyond the model and tools.
+    let required = h.required(&record.id).await;
+    assert!(
+        !required.contains(&Permission::SaveDocuments),
+        "{required:?}"
+    );
+    let connectors = conduit_desktop::connector_runtime::ConnectorRuntimeManager::new();
+    let runner = Runner {
+        connectors: Some(&connectors),
+        ..h.manual_runner()
+    };
+    let detail = runner
+        .run(&record.id, &HashMap::new(), "manual")
+        .await
+        .unwrap();
+    assert_eq!(detail.run.status, "completed", "{:?}", detail.run.error);
+
+    let items = routines::list_scheduled(&h.state).await.unwrap();
+    assert_eq!(items.len(), 1, "{items:?}");
+    let item = &items[0];
+    assert_eq!(item.kind, "task");
+    assert_eq!(item.agent_id, None);
+    assert_eq!(item.task.as_deref(), Some("Brief me"));
+    let chat = item.last_conversation_id.clone().expect("a chat was saved");
+    assert_eq!(item.last_artifact_id, None);
+    assert!(item
+        .last_result_title
+        .as_deref()
+        .unwrap()
+        .starts_with("Daily brief \u{2014} 20"));
+
+    let conversation = conversations::get(&h.state.db, &chat)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        conversation.metadata.unwrap()["scheduled"],
+        json!({ "workflowId": record.id, "runId": detail.run.id })
+    );
+    assert!(conversations::list(&h.state.db)
+        .await
+        .unwrap()
+        .iter()
+        .any(|c| c.id == chat));
+    let messages =
+        conduit_desktop::db::repository::messages::load_conversation_messages(&h.state.db, &chat)
+            .await
+            .unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].parts[0].content.as_deref(), Some("Brief me"));
+
+    // Editing rewrites it and leaves the schedule off; runs stay.
+    let mut edited = request.clone();
+    edited.name = "Daily brief 2".into();
+    routines::update(&h.state, &record.id, &edited)
+        .await
+        .unwrap();
+    let items = routines::list_scheduled(&h.state).await.unwrap();
+    assert_eq!(items[0].name, "Daily brief 2");
+    assert!(!items[0].enabled);
+    assert_eq!(
+        items[0].last_run_id.as_deref(),
+        Some(detail.run.id.as_str())
+    );
+}
+
+#[tokio::test]
+async fn a_one_time_schedule_runs_its_slot_then_turns_itself_off() {
+    let h = Harness::new(EchoModel::default()).await;
+    let id = h.save(saving_workflow()).await;
+    // 08:00 at +02:00 is 06:00Z.
+    h.schedule(
+        &id,
+        json!({ "kind": "once", "at": "2026-09-29T08:00" }),
+        true,
+        "2026-09-29T06:00:00.000Z",
+    )
+    .await;
+    let running = std::sync::Arc::new(RunningWorkflows::default());
+    let finished = h.tick(&running, "2026-09-29T06:00:30Z").await;
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].status, "completed", "{:?}", finished[0].error);
+    assert_eq!(finished[0].conversation_id, None);
+    let schedule = repo::get_schedule(&h.state.db, &id).await.unwrap().unwrap();
+    assert!(!schedule.enabled);
+    assert_eq!(schedule.next_run_at, None);
+    assert!(schedule.last_run_at.is_some());
+    // It never fires again.
+    assert!(h.tick(&running, "2026-09-30T06:00:30Z").await.is_empty());
 }
 
 // ── Helpers side by side, stopped, and as a tree ────────────────────────────

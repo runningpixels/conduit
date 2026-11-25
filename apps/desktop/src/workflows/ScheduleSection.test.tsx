@@ -77,6 +77,33 @@ describe('ScheduleSection', () => {
     await waitFor(() => expect(screen.queryByText(/^Next run: /)).not.toBeInTheDocument());
   });
 
+  it('edits a weekly, monthly and one-time schedule', async () => {
+    ipc.getWorkflowSchedule.mockResolvedValue({
+      workflowId: 'w1',
+      spec: { kind: 'daily', time: '07:15' },
+      enabled: true,
+      nextRunAt: '2026-09-30T05:15:00.000Z',
+      lastRunAt: null,
+    });
+    render(<ScheduleSection workflowId="w1" onStatus={vi.fn()} />);
+    const last = () => ipc.setWorkflowSchedule.mock.lastCall;
+
+    fireEvent.change(await screen.findByRole('combobox', { name: 'How often' }), { target: { value: 'weekly' } });
+    await waitFor(() => expect(last()).toEqual(['w1', { kind: 'weekly', days: ['mon'], time: '07:15' }, true]));
+    fireEvent.click(await screen.findByRole('button', { name: 'Thursday' }));
+    await waitFor(() => expect(last()).toEqual(['w1', { kind: 'weekly', days: ['mon', 'thu'], time: '07:15' }, true]));
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'How often' }), { target: { value: 'monthly' } });
+    await waitFor(() => expect(last()).toEqual(['w1', { kind: 'monthly', day: 1, time: '07:15' }, true]));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Day of the month' }), { target: { value: '28' } });
+    await waitFor(() => expect(last()).toEqual(['w1', { kind: 'monthly', day: 28, time: '07:15' }, true]));
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'How often' }), { target: { value: 'once' } });
+    await waitFor(() => expect(last()?.[1]).toMatchObject({ kind: 'once', at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T07:15$/) }));
+    fireEvent.change(await screen.findByLabelText('Date and time'), { target: { value: '2999-03-04T18:30' } });
+    await waitFor(() => expect(last()).toEqual(['w1', { kind: 'once', at: '2999-03-04T18:30' }, true]));
+  });
+
   it('reports a schedule that could not be saved', async () => {
     ipc.setWorkflowSchedule.mockRejectedValueOnce(new Error('disk full'));
     const onStatus = vi.fn();

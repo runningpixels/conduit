@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterAll, beforeAll, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { ConversationFolder, ConversationSummary } from '../ipc/contracts';
 import { Sidebar } from './Sidebar';
 import { conversationGroup } from '../lib/dayGroup';
@@ -115,6 +115,14 @@ describe('Sidebar', () => {
     expect(ollamaRow?.getAttribute('data-provider')).toBe('ollama');
     const fallbackRow = screen.getByText('Old notes').closest('button');
     expect(fallbackRow?.getAttribute('data-provider')).toBe('custom');
+  });
+
+  it('puts a clock beside a chat a scheduled run saved', () => {
+    render(<Sidebar {...props} scheduledIds={new Set(['c2'])} />);
+    const marked = screen.getByText('API overview').closest('button');
+    expect(within(marked!).getByRole('img', { name: 'Scheduled task' })).toBeTruthy();
+    const plain = screen.getByText('Old notes').closest('button');
+    expect(within(plain!).queryByRole('img', { name: 'Scheduled task' })).toBeNull();
   });
 
   it('names an untitled chat itself, rather than rendering nothing', () => {

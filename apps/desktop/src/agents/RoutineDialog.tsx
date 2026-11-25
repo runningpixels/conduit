@@ -16,7 +16,8 @@ import {
   pickWorkspaceFolder,
   setWorkflowSchedule,
 } from '../ipc/client';
-import type { RoutineCreated, RoutineRequest, ScheduleSpec, WorkflowPermissionView } from '../ipc/contracts';
+import type { RoutineCreated, RoutineOutput, RoutineRequest, ScheduleSpec, WorkflowPermissionView } from '../ipc/contracts';
+import { nameFromTask } from '../scheduled/taskForm';
 import { DEFAULT_TIME, INTERVAL_HOURS } from '../workflows/ScheduleSection';
 import { permissionText, type HelperNames } from '../workflows/permissionText';
 import { COMPUTER_TOOL, helperNames as namesIn } from '../workflows/editorModel';
@@ -24,18 +25,7 @@ import { COMPUTER_TOOL, helperNames as namesIn } from '../workflows/editorModel'
 /// When a routine runs: a time schedule, or a folder or feed trigger.
 export type RoutineWhen = 'daily' | 'weekdays' | 'interval' | 'folder' | 'feed';
 
-/// Most words, and characters, of a name made from the task.
-const NAME_FROM_TASK_WORDS = 6;
-const NAME_FROM_TASK_CHARS = 60;
-
-/// A short name for the routine from its task: the first words of its first line, without
-/// trailing punctuation.
-export function nameFromTask(task: string): string {
-  const line = task.trim().split('\n')[0]?.trim() ?? '';
-  const words = line.split(/\s+/).filter(Boolean).slice(0, NAME_FROM_TASK_WORDS).join(' ');
-  const short = words.length > NAME_FROM_TASK_CHARS ? words.slice(0, NAME_FROM_TASK_CHARS) : words;
-  return short.replace(/[\s.,;:!?…-]+$/u, '');
-}
+export { nameFromTask };
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -51,7 +41,7 @@ export function routineRequest(form: {
   hours: number;
   folder: string;
   feedUrl: string;
-  output: 'document' | 'file';
+  output: RoutineOutput;
   notify: boolean;
 }): RoutineRequest {
   const schedule: ScheduleSpec =
@@ -109,7 +99,7 @@ export function RoutineDialog({
   const [hours, setHours] = useState(4);
   const [folder, setFolder] = useState('');
   const [feedUrl, setFeedUrl] = useState('');
-  const [output, setOutput] = useState<'document' | 'file'>('document');
+  const [output, setOutput] = useState<RoutineOutput>('chat');
   const [notify, setNotify] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problems, setProblems] = useState<string[]>([]);
@@ -335,6 +325,10 @@ export function RoutineDialog({
             ) : null}
             <fieldset className="wf-tools routine-output">
               <legend>{t('shell.agents.routines.output')}</legend>
+              <label className="wf-check">
+                <input type="radio" name={`${titleId}-output`} checked={output === 'chat'} onChange={() => setOutput('chat')} />
+                {t('shell.scheduled.dialog.outputChat')}
+              </label>
               <label className="wf-check">
                 <input type="radio" name={`${titleId}-output`} checked={output === 'document'} onChange={() => setOutput('document')} />
                 {t('shell.agents.routines.outputDocument')}

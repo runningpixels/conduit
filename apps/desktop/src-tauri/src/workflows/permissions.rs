@@ -468,6 +468,9 @@ fn collect(
             StepAction::SaveArtifact { .. } => {
                 set.insert(Permission::SaveDocuments);
             }
+            // A chat in the app's own history: local, like a note to oneself,
+            // so there is nothing to approve.
+            StepAction::SaveChat { .. } => {}
             StepAction::ForEach { steps, .. } => collect(steps, workflow_model, folder, ctx, set),
         }
     }

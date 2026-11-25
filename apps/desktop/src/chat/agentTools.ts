@@ -215,6 +215,13 @@ function brandThemeInputSchema(): Record<string, unknown> {
   };
 }
 
+/** The chat tool that drafts a scheduled task for a confirm card (Rust: `SCHEDULE_TASK_TOOL`). */
+export const SCHEDULE_TASK_TOOL_NAME = 'schedule_task';
+/** The chat tool that lists the scheduled tasks (Rust: `LIST_SCHEDULED_TASKS_TOOL`). */
+export const LIST_SCHEDULED_TASKS_TOOL_NAME = 'list_scheduled_tasks';
+/** Offered in a normal chat only (with the utilities), not in a deck or draft chat. */
+const SCHEDULING_TOOL_NAMES = new Set([SCHEDULE_TASK_TOOL_NAME, LIST_SCHEDULED_TASKS_TOOL_NAME]);
+
 /** The built-in that finds deferred connector tools (Rust: `SEARCH_TOOLS_TOOL`). */
 export const SEARCH_TOOLS_TOOL_NAME = 'search_tools';
 /** Word for word the same as Rust's `SEARCH_TOOLS_DESCRIPTION`. */
@@ -477,6 +484,62 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       },
       required: ['title', 'fields'],
     },
+    permissionLevel: 'readOnly',
+    displayGroup: 'Utilities',
+  },
+  {
+    // Run by the agent loop like `ask_user`: the call pauses on a card in the thread (name,
+    // instructions, when, model) and the user's choice is the result. Only the normal chat gets it
+    // (`SCHEDULING_TOOL_NAMES`).
+    toolId: SCHEDULE_TASK_TOOL_NAME,
+    name: SCHEDULE_TASK_TOOL_NAME,
+    description:
+      'Set up a scheduled task: instructions that run on their own at a time the user picks, each run arriving as a new chat. This shows the user a confirm card and creates nothing until they press Create, so call it once you know the plan. If the user has not said what the task should do, how often it should run and at what time, ask them first. Times are the user\'s local time (24-hour HH:MM). Call current_time if you need today\'s date (for a one-time run or "tomorrow"). Write `instructions` so they work with nobody watching: they run in a fresh chat with no memory of this one, so include everything needed (topic, sources, length, format). Check list_scheduled_tasks first if the task may already exist. The result says whether the task was created (and when it runs next), opened in the form, or cancelled; tell the user in a sentence. Not supported here: tasks that start when a file or feed item arrives.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'A short name for the task, such as "Morning news".' },
+        instructions: {
+          type: 'string',
+          description: 'What to do on each run, self-contained.',
+        },
+        schedule: {
+          type: 'object',
+          description:
+            'When it runs. {"kind":"daily"|"weekdays","time":"08:00"}, {"kind":"weekly","days":["mon","fri"],"time":"09:00"}, {"kind":"monthly","day":1,"time":"09:00"}, {"kind":"interval","hours":4} (every N hours, 1 to 24) or {"kind":"once","at":"2026-12-01T09:00"} (local date and time, in the future).',
+          properties: {
+            kind: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once'] },
+            time: { type: 'string', description: '24-hour HH:MM, local time (not for interval or once).' },
+            days: {
+              type: 'array',
+              items: { type: 'string', enum: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] },
+              description: 'weekly only.',
+            },
+            day: { type: 'integer', description: 'monthly only: 1 to 31.' },
+            hours: { type: 'integer', description: 'interval only: 1 to 24.' },
+            at: { type: 'string', description: 'once only: YYYY-MM-DDTHH:MM, local time.' },
+          },
+          required: ['kind'],
+        },
+        model: {
+          type: 'object',
+          description: 'Only when the user asked for a specific model; otherwise leave it out to use their default.',
+          properties: { provider: { type: 'string' }, model: { type: 'string' } },
+          required: ['provider', 'model'],
+        },
+        notify: { type: 'boolean', description: 'Also show a desktop notification when a run finishes. Default false.' },
+      },
+      required: ['name', 'instructions', 'schedule'],
+    },
+    permissionLevel: 'sideEffectful',
+    displayGroup: 'Utilities',
+  },
+  {
+    toolId: LIST_SCHEDULED_TASKS_TOOL_NAME,
+    name: LIST_SCHEDULED_TASKS_TOOL_NAME,
+    description:
+      'List what is scheduled in the app: each task\'s name, instructions, schedule, whether it is on, and when it runs next. Read-only; no arguments.',
+    inputSchema: schema([]),
     permissionLevel: 'readOnly',
     displayGroup: 'Utilities',
   },
@@ -1189,7 +1252,9 @@ const DOCUMENT_REVISION_TOOL_NAMES = new Set(['patch_document', 'read_document']
 
 /** Built-in document tools exposed to the model for a given turn intent. */
 export function selectBuiltinDocumentTools(intent: DocumentTurnIntent): ToolDefinition[] {
-  const utilityTools = builtinToolDefinitions().filter((t) => UTILITY_TOOL_NAMES.has(t.name));
+  const utilityTools = builtinToolDefinitions().filter(
+    (t) => UTILITY_TOOL_NAMES.has(t.name) || SCHEDULING_TOOL_NAMES.has(t.name),
+  );
   // Only the Documents group: the Writing tools `write_section` and
   // `edit_blocks` share the `write_`/`edit_` prefixes.
   const documentTools = builtinToolDefinitions().filter((tool) => tool.displayGroup === DOCUMENT_TOOL_GROUP);

@@ -27,6 +27,7 @@ import { Menu } from '../workspace/Menu';
 import { destinationIcon } from './Rail';
 import {
   ArchiveIcon,
+  ClockIcon,
   ConnectorsIcon,
   FolderIcon,
   KnowledgeIcon,
@@ -50,6 +51,8 @@ interface SidebarProps {
   activeConversationId: string | null;
   /** conversationId → providerId, for the row's last-used-provider dot. */
   convoProviders: Record<string, string>;
+  /** Chats a scheduled run saved, besides those whose summary says so (`scheduled`): they carry a small clock mark. */
+  scheduledIds?: ReadonlySet<string>;
   /** Optional workspace path label for the footer chip. */
   workspaceLabel?: string;
   localOnly?: boolean;
@@ -136,6 +139,7 @@ export function Sidebar({
   folders,
   activeConversationId,
   convoProviders,
+  scheduledIds,
   workspaceLabel,
   localOnly = true,
   providerCount,
@@ -345,6 +349,11 @@ export function Sidebar({
           {row.pinnedAt && !row.archivedAt ? (
             <span className="convo-flag" aria-label={t('shell.sidebar.groups.pinned')}>
               <PinIcon />
+            </span>
+          ) : null}
+          {row.scheduled || scheduledIds?.has(row.id) ? (
+            <span className="sched-mark" role="img" aria-label={t('shell.scheduled.chatMark')} title={t('shell.scheduled.chatMark')}>
+              <ClockIcon />
             </span>
           ) : null}
           <span className="convo-name">{label}</span>

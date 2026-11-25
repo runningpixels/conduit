@@ -37,4 +37,9 @@ folderId?: string,
 /**
  * Denormalized folder name for the rail and search badges.
  */
-folderName?: string, };
+folderName?: string, 
+/**
+ * Set when a scheduled task's run wrote this chat (its `scheduled`
+ * metadata), so the rail can mark it.
+ */
+scheduled?: boolean, };

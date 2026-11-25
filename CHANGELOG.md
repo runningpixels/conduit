@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Scheduled tasks.** A new Scheduled page on the rail lists everything that
+  runs on its own: tasks, your agents' routines and scheduled workflows, with
+  Run now, Pause, Edit and the last result. "New task" asks for a name,
+  instructions, an agent (or none) and a model, and when: daily, weekdays,
+  chosen days of the week, a day of the month, every few hours, once, or when
+  a file or feed post arrives. Six templates fill the form in. Each run lands
+  as a new chat you can reply to (marked with a clock in the history list),
+  or as a document or file. Runs happen while Conduit is open, including from
+  the tray, and can only do what you approved when you set the task up.
+- **Set up in chat.** Ask in any chat ("every weekday at 8, brief me on AI
+  news") and the assistant drafts the task on a card you confirm, edit in the
+  form or cancel. It can also list the tasks you have.
+
+### Security
+
+- **`cookie` 0.18.3** (#365), for RUSTSEC-2026-0594: private cookie nonces
+  could repeat in processes that fork. Conduit does not fork; updated to keep
+  the audit clean.
+
 ## [1.0.0-rc.38] - 2026-11-22
 
 Twelve more providers, 35 in all, including three servers that run on your own

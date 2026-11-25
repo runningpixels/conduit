@@ -23,6 +23,7 @@ import {
 } from '../ipc/client';
 import type { AgentCallChange, AgentEntry, LibraryAgent, RoutineSummary } from '../ipc/contracts';
 import { formatNextRun } from '../workflows/ScheduleSection';
+import { describeSchedule } from '../scheduled/schedule';
 import { useNow } from '../agents/useNow';
 import { PageFrame } from '../shell/PageFrame';
 import { destinationIcon } from '../shell/Rail';
@@ -43,15 +44,8 @@ export const AGENTS_REFRESH_MS = 3000;
 type Filter = 'all' | 'working' | 'helpers' | 'routines';
 
 /// When a routine runs, in words: "On weekdays at 08:00", "Every 4 hours", "When a file arrives".
-export function routineWhenText(routine: RoutineSummary, t: ReturnType<typeof useT>): string {
-  const spec = routine.schedule;
-  if (spec?.kind === 'trigger' || routine.trigger) {
-    return routine.trigger?.kind === 'feed' ? t('shell.agents.routines.onFeed') : t('shell.agents.routines.onFolder');
-  }
-  if (spec?.kind === 'daily') return t('shell.agents.routines.dailyAt', { time: spec.time });
-  if (spec?.kind === 'weekdays') return t('shell.agents.routines.weekdaysAt', { time: spec.time });
-  if (spec?.kind === 'interval') return t('shell.agents.routines.everyHours', { count: spec.hours });
-  return t('shell.agents.routines.noSchedule');
+export function routineWhenText(routine: RoutineSummary, t: ReturnType<typeof useT>, locale = 'en'): string {
+  return describeSchedule(routine.schedule, routine.trigger, t, locale);
 }
 
 /// Working agents first; otherwise the order `list_agents` gives.
@@ -267,7 +261,7 @@ export function AgentsPage({
             <span className="agent-routine-text">
               <span className="agent-routine-name">{r.name}</span>
               <span className="agent-routine-when">
-                {routineWhenText(r, t)}
+                {routineWhenText(r, t, fmt.locale)}
                 {' · '}
                 {r.enabled
                   ? r.nextRunAt

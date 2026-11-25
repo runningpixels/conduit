@@ -5,14 +5,16 @@
 //! runs, approvals, Results and the agent tree all work as they do for any
 //! workflow. Its definition is one agent step run as the agent (its `agent`
 //! set to the library id, the task as its prompt), then a step that keeps the
-//! answer (a new document each run, or a Markdown file) and, when asked, a
-//! notification. The `routine` column only says where it is listed; turning
-//! it into a workflow clears it and keeps the definition.
+//! answer (a new chat each run, a new document, or a Markdown file) and, when
+//! asked, a notification. The agent is optional: a routine without one is a
+//! "task", an agent step with the task as its prompt and the plain assistant's
+//! tools. The `routine` column only says where it is listed; turning it into
+//! a workflow clears it and keeps the definition.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::definition::{self, Trigger, WorkflowDefinition};
+use super::definition::{self, ModelChoice, Trigger, WorkflowDefinition};
 use super::schedule::ScheduleSpec;
 use crate::db::repository::workflows::{self as repo, WorkflowRecord};
 use crate::state::AppState;
@@ -26,8 +28,11 @@ const MAX_NAME_CHARS: usize = 120;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RoutineOutput {
-    /// A new document in Results, titled with the routine's name and the date.
+    /// A new chat in the history, titled with the routine's name and the
+    /// date, that the user can open and reply to.
     #[default]
+    Chat,
+    /// A new document in Results, titled with the routine's name and the date.
     Document,
     /// A Markdown file in the app's exports folder.
     File,
@@ -37,8 +42,13 @@ pub enum RoutineOutput {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutineRequest {
-    /// The library agent that does the task.
-    pub agent_id: String,
+    /// The library agent that does the task; none (or empty) for the plain
+    /// assistant.
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    /// The model for the task; without one, the agent's, else the default.
+    #[serde(default)]
+    pub model: Option<ModelChoice>,
     pub name: String,
     /// What to do each run, in words; used as written (not a template).
     pub task: String,
@@ -63,7 +73,8 @@ pub struct RoutineRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RoutineSummary {
     pub workflow_id: String,
-    pub agent_id: String,
+    /// The agent that does it; `None` for a task (the plain assistant).
+    pub agent_id: Option<String>,
     pub name: String,
     pub task: String,
     /// The stored schedule spec; `None` when it has none.
@@ -78,6 +89,34 @@ pub struct RoutineSummary {
     pub last_run_at: Option<String>,
     /// What its latest run saved, when it saved something.
     pub last_result_title: Option<String>,
+}
+
+/// One row of the Scheduled page: a task (a routine without an agent), a
+/// routine (an agent's), or a workflow that has a schedule or a trigger.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledItem {
+    pub workflow_id: String,
+    /// `task`, `routine` or `workflow`.
+    pub kind: String,
+    pub name: String,
+    /// What it does each run, for a task or routine.
+    pub task: Option<String>,
+    pub agent_id: Option<String>,
+    /// The stored schedule spec; `None` when it has none.
+    pub schedule: Option<Value>,
+    pub trigger: Option<Trigger>,
+    pub enabled: bool,
+    pub next_run_at: Option<String>,
+    pub last_run_id: Option<String>,
+    pub last_run_status: Option<String>,
+    pub last_run_at: Option<String>,
+    /// What its latest run saved, when it saved something.
+    pub last_result_title: Option<String>,
+    /// The chat its latest run saved, if it saved one.
+    pub last_conversation_id: Option<String>,
+    /// The document its latest run saved, if it saved one.
+    pub last_artifact_id: Option<String>,
 }
 
 /// Write `text` so a template shows it as it is.
@@ -116,10 +155,11 @@ pub fn definition_for(request: &RoutineRequest) -> Result<Value, String> {
     if task.chars().count() > MAX_TASK_CHARS {
         return Err(format!("Keep the task under {MAX_TASK_CHARS} characters."));
     }
-    let agent = request.agent_id.trim();
-    if agent.is_empty() {
-        return Err("Choose the agent that does it.".to_string());
-    }
+    let agent = request
+        .agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|a| !a.is_empty());
     let trigger = match (&request.schedule, &request.trigger) {
         (ScheduleSpec::Trigger, None) => {
             return Err("Choose what starts it.".to_string());
@@ -153,15 +193,29 @@ pub fn definition_for(request: &RoutineRequest) -> Result<Value, String> {
     let mut work = json!({
         "id": "work",
         "type": "agent",
-        "agent": agent,
         "prompt": literal(task),
     });
+    match agent {
+        Some(agent) => work["agent"] = json!(agent),
+        // The plain assistant: the read-only tools every agent step may use.
+        None => work["tools"] = json!(definition::AGENT_TOOLS),
+    }
+    if let Some(model) = &request.model {
+        work["model"] = serde_json::to_value(model).map_err(|e| e.to_string())?;
+    }
     if !input.is_empty() {
         work["input"] = json!(input);
     }
     steps.push(work);
     let title = format!("{} \u{2014} {{{{run.date}}}}", literal(name));
     steps.push(match request.output {
+        RoutineOutput::Chat => json!({
+            "id": "save",
+            "type": "save_chat",
+            "title": title,
+            "prompt": literal(task),
+            "content": "{{steps.work.text}}"
+        }),
         RoutineOutput::Document => json!({
             "id": "save",
             "type": "save_artifact",
@@ -211,16 +265,27 @@ fn checked_name(name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-/// Save a new routine: its definition checked with the user's agents filled
-/// in, the workflow marked as a routine, and its schedule stored but off
-/// (nobody has approved what it may do yet; the caller turns it on).
-pub async fn create(state: &AppState, request: &RoutineRequest) -> Result<WorkflowRecord, String> {
+/// The name, schedule and definition of `request`, all checked with the
+/// user's agents filled in.
+async fn checked(
+    state: &AppState,
+    request: &RoutineRequest,
+) -> Result<(String, Value, Value), String> {
     let name = checked_name(&request.name)?;
     request.schedule.validate()?;
     let definition = definition_for(request)?;
     let resolved =
         crate::agents::library::resolve_value(&state.db, &state.encryption, &definition).await?;
     definition::check_value(&resolved)?;
+    let spec = serde_json::to_value(&request.schedule).map_err(|e| e.to_string())?;
+    Ok((name, spec, definition))
+}
+
+/// Save a new routine: its definition checked with the user's agents filled
+/// in, the workflow marked as a routine, and its schedule stored but off
+/// (nobody has approved what it may do yet; the caller turns it on).
+pub async fn create(state: &AppState, request: &RoutineRequest) -> Result<WorkflowRecord, String> {
+    let (name, spec, definition) = checked(state, request).await?;
     let record = repo::create(
         &state.db,
         &state.encryption,
@@ -233,27 +298,90 @@ pub async fn create(state: &AppState, request: &RoutineRequest) -> Result<Workfl
     repo::set_routine(&state.db, &record.id, true)
         .await
         .map_err(|e| e.to_string())?;
-    let spec = serde_json::to_value(&request.schedule).map_err(|e| e.to_string())?;
     repo::put_schedule(&state.db, &record.id, &spec, false, None)
         .await
         .map_err(|e| e.to_string())?;
     Ok(record)
 }
 
-/// The agent a routine runs as and its task: its first agent step that runs
-/// as one of the user's agents.
-fn agent_and_task(def: &WorkflowDefinition) -> Option<(String, String)> {
+/// Rewrite a routine from the form again: its name, description (the task),
+/// definition and schedule. Its runs stay. The schedule is left **off**, as
+/// in [`create`]: what it may do has changed, so the caller shows the
+/// approval step again and turns it on.
+pub async fn update(
+    state: &AppState,
+    id: &str,
+    request: &RoutineRequest,
+) -> Result<WorkflowRecord, String> {
+    let is_routine = repo::list(&state.db)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .any(|w| w.id == id && w.routine);
+    if !is_routine {
+        return Err("That task no longer exists.".to_string());
+    }
+    let (name, spec, definition) = checked(state, request).await?;
+    let record = repo::update(
+        &state.db,
+        &state.encryption,
+        id,
+        &name,
+        Some(request.task.trim()),
+        &definition,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    repo::put_schedule(&state.db, id, &spec, false, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(record)
+}
+
+/// The agent a routine runs as (none for the plain assistant) and its task:
+/// its first agent step.
+fn agent_and_task(def: &WorkflowDefinition) -> Option<(Option<String>, String)> {
     def.steps.iter().find_map(|step| match &step.action {
-        definition::StepAction::Agent {
-            agent: Some(agent),
-            prompt,
-            ..
-        } => Some((
+        definition::StepAction::Agent { agent, prompt, .. } => Some((
             agent.clone(),
             prompt.replace("\\{{", "{{").replace("\\}}", "}}"),
         )),
         _ => None,
     })
+}
+
+/// The latest run of a workflow and what it saved.
+struct LastRun {
+    id: String,
+    status: String,
+    started_at: String,
+    /// Title of the first thing it saved.
+    title: Option<String>,
+    conversation_id: Option<String>,
+    artifact_id: Option<String>,
+}
+
+async fn last_run(state: &AppState, workflow_id: &str) -> Result<Option<LastRun>, String> {
+    let mut runs = repo::list_runs(&state.db, workflow_id, 1)
+        .await
+        .map_err(|e| e.to_string())?;
+    repo::add_outputs(&state.db, &state.encryption, &mut runs)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(runs.into_iter().next().map(|run| {
+        let outputs = run.outputs.unwrap_or_default();
+        LastRun {
+            title: outputs.first().map(|o| o.title.clone()),
+            conversation_id: outputs
+                .iter()
+                .find(|o| o.kind == "chat")
+                .and_then(|o| o.conversation_id.clone()),
+            artifact_id: outputs.iter().find_map(|o| o.artifact_id.clone()),
+            id: run.id,
+            status: run.status,
+            started_at: run.started_at,
+        }
+    }))
 }
 
 /// Every routine, most recently changed first; only `agent_id`'s with one.
@@ -279,19 +407,13 @@ pub async fn list(state: &AppState, agent_id: Option<&str>) -> Result<Vec<Routin
         let Some((agent, task)) = agent_and_task(&def) else {
             continue;
         };
-        if agent_id.is_some_and(|wanted| wanted != agent) {
+        if agent_id.is_some_and(|wanted| agent.as_deref() != Some(wanted)) {
             continue;
         }
         let schedule = repo::get_schedule(pool, &summary.id)
             .await
             .map_err(|e| e.to_string())?;
-        let mut runs = repo::list_runs(pool, &summary.id, 1)
-            .await
-            .map_err(|e| e.to_string())?;
-        repo::add_outputs(pool, enc, &mut runs)
-            .await
-            .map_err(|e| e.to_string())?;
-        let last = runs.into_iter().next();
+        let last = last_run(state, &summary.id).await?;
         out.push(RoutineSummary {
             workflow_id: summary.id,
             agent_id: agent,
@@ -302,11 +424,60 @@ pub async fn list(state: &AppState, agent_id: Option<&str>) -> Result<Vec<Routin
             folder: def.folder,
             enabled: schedule.as_ref().is_some_and(|s| s.enabled),
             next_run_at: schedule.and_then(|s| s.next_run_at),
-            last_result_title: last
-                .as_ref()
-                .and_then(|r| r.outputs.as_ref())
-                .and_then(|o| o.first())
-                .map(|o| o.title.clone()),
+            last_result_title: last.as_ref().and_then(|r| r.title.clone()),
+            last_run_status: last.as_ref().map(|r| r.status.clone()),
+            last_run_at: last.as_ref().map(|r| r.started_at.clone()),
+            last_run_id: last.map(|r| r.id),
+        });
+    }
+    Ok(out)
+}
+
+/// Everything that runs on its own, for the Scheduled page, most recently
+/// changed first: every task and routine, and the workflows that have a
+/// schedule (on or off) or a trigger.
+pub async fn list_scheduled(state: &AppState) -> Result<Vec<ScheduledItem>, String> {
+    let pool = &state.db;
+    let enc = &state.encryption;
+    let mut out = Vec::new();
+    for summary in repo::list(pool).await.map_err(|e| e.to_string())? {
+        let Some(record) = repo::get(pool, enc, &summary.id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+        let Ok(def) = serde_json::from_value::<WorkflowDefinition>(record.definition) else {
+            continue;
+        };
+        let schedule = repo::get_schedule(pool, &summary.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let (kind, task, agent_id) = if summary.routine {
+            let Some((agent, task)) = agent_and_task(&def) else {
+                continue;
+            };
+            let kind = if agent.is_some() { "routine" } else { "task" };
+            (kind, Some(task), agent)
+        } else if schedule.is_some() || def.trigger.is_some() {
+            ("workflow", None, None)
+        } else {
+            continue;
+        };
+        let last = last_run(state, &summary.id).await?;
+        out.push(ScheduledItem {
+            workflow_id: summary.id,
+            kind: kind.to_string(),
+            name: summary.name,
+            task,
+            agent_id,
+            schedule: schedule.as_ref().map(|s| s.spec.clone()),
+            trigger: def.trigger,
+            enabled: schedule.as_ref().is_some_and(|s| s.enabled),
+            next_run_at: schedule.and_then(|s| s.next_run_at),
+            last_result_title: last.as_ref().and_then(|r| r.title.clone()),
+            last_conversation_id: last.as_ref().and_then(|r| r.conversation_id.clone()),
+            last_artifact_id: last.as_ref().and_then(|r| r.artifact_id.clone()),
             last_run_status: last.as_ref().map(|r| r.status.clone()),
             last_run_at: last.as_ref().map(|r| r.started_at.clone()),
             last_run_id: last.map(|r| r.id),
@@ -336,7 +507,8 @@ mod tests {
 
     fn request(schedule: ScheduleSpec) -> RoutineRequest {
         RoutineRequest {
-            agent_id: "researcher".into(),
+            agent_id: Some("researcher".into()),
+            model: None,
             name: "Energy brief".into(),
             task: "Brief me on EU energy prices since yesterday".into(),
             schedule,
@@ -373,6 +545,69 @@ mod tests {
     }
 
     #[test]
+    fn a_task_has_no_agent_and_saves_a_chat_by_default() {
+        let mut asked = request(weekdays());
+        asked.agent_id = Some("  ".into());
+        asked.output = RoutineOutput::default();
+        asked.model = Some(ModelChoice {
+            provider: "openrouter".into(),
+            model: "glm".into(),
+        });
+        let def = definition_for(&asked).unwrap();
+        assert_eq!(
+            def,
+            json!({ "steps": [
+                { "id": "work", "type": "agent",
+                  "prompt": "Brief me on EU energy prices since yesterday",
+                  "tools": ["web_search", "web_fetch", "current_time", "calculator"],
+                  "model": { "provider": "openrouter", "model": "glm" } },
+                { "id": "save", "type": "save_chat",
+                  "title": "Energy brief \u{2014} {{run.date}}",
+                  "prompt": "Brief me on EU energy prices since yesterday",
+                  "content": "{{steps.work.text}}" }
+            ]})
+        );
+        // Valid as it stands: no agent to fill in.
+        definition::check_value(&def).unwrap();
+        let parsed: WorkflowDefinition = serde_json::from_value(def).unwrap();
+        assert_eq!(
+            agent_and_task(&parsed),
+            Some((None, "Brief me on EU energy prices since yesterday".into()))
+        );
+    }
+
+    #[test]
+    fn an_agent_routine_sets_the_step_model_only_when_given() {
+        let mut asked = request(weekdays());
+        assert!(definition_for(&asked).unwrap()["steps"][0]
+            .get("model")
+            .is_none());
+        asked.model = Some(ModelChoice {
+            provider: "p".into(),
+            model: "m".into(),
+        });
+        let def = definition_for(&asked).unwrap();
+        assert_eq!(def["steps"][0]["agent"], "researcher");
+        assert_eq!(def["steps"][0]["model"]["model"], "m");
+        assert!(def["steps"][0].get("tools").is_none());
+    }
+
+    #[test]
+    fn requests_read_from_the_form_without_an_agent() {
+        let asked: RoutineRequest = serde_json::from_value(json!({
+            "name": "Daily", "task": "Do it",
+            "schedule": { "kind": "once", "at": "2030-01-01T09:00" }
+        }))
+        .unwrap();
+        assert_eq!(asked.agent_id, None);
+        assert_eq!(asked.output, RoutineOutput::Chat);
+        assert_eq!(
+            serde_json::to_value(RoutineOutput::Chat).unwrap(),
+            json!("chat")
+        );
+    }
+
+    #[test]
     fn notify_adds_a_notification_and_file_output_writes_markdown() {
         let mut asked = request(ScheduleSpec::Interval { hours: 4 });
         asked.notify = true;
@@ -396,7 +631,7 @@ mod tests {
         let parsed: WorkflowDefinition = serde_json::from_value(def).unwrap();
         assert_eq!(
             agent_and_task(&parsed),
-            Some(("researcher".into(), "Fill in {{this}}".into()))
+            Some((Some("researcher".into()), "Fill in {{this}}".into()))
         );
     }
 

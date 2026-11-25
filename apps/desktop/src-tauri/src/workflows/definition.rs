@@ -291,6 +291,7 @@ pub const MAX_CHOICE_CHARS: usize = 80;
 /// - `for_each`: `items`, one object per element holding that iteration's step
 ///   outputs by step id
 /// - `save_artifact`: `artifactId`
+/// - `save_chat`: `conversationId` and `title` (the chat it wrote)
 /// - `notify`: `delivered` (or `sent`, `unchanged` and `hash` with `onlyIfChanged`)
 /// - `condition`: `passed`, `is`, `hash`, `previousHash`, `changed` and `text`
 ///   (why it passed or stopped the run)
@@ -362,6 +363,17 @@ pub enum StepAction {
         /// Skip the save when the content is the same as the last run's.
         #[serde(default, skip_serializing_if = "is_false")]
         only_if_changed: bool,
+    },
+    /// Keep an answer as a new chat the user can open and reply to: `prompt`
+    /// is shown as their message and `content` as the assistant's answer.
+    /// Top-level steps only: one chat per run.
+    SaveChat {
+        /// The chat's title (a template).
+        title: String,
+        /// Shown as the user's message (a template).
+        prompt: String,
+        /// The assistant's answer, Markdown (a template).
+        content: String,
     },
     /// A model turn that may use a few read-only tools before answering.
     Agent {
@@ -756,6 +768,7 @@ pub fn action_keys(step_type: &str) -> &'static [&'static str] {
         "template" => &["template"],
         "for_each" => &["items", "steps"],
         "save_artifact" => &["title", "content", "format", "mode", "onlyIfChanged"],
+        "save_chat" => &["title", "prompt", "content"],
         "agent" => &["prompt", "input", "tools", "agents", "agent", "model"],
         "ask" => &["question", "choices", "default"],
         "notify" => &["title", "body", "onlyIfChanged"],
@@ -1251,6 +1264,23 @@ fn check_steps(
                     problems.push(only_if_changed_in_loop(name));
                 }
                 texts.push(title);
+                texts.push(content);
+            }
+            StepAction::SaveChat {
+                title,
+                prompt,
+                content,
+            } => {
+                if title.trim().is_empty() {
+                    problems.push(format!("Step \"{name}\" needs a title for the chat."));
+                }
+                if scope.in_loop {
+                    problems.push(format!(
+                        "Step \"{name}\" saves a chat, which only works on the steps at the top level, not inside a repeated step."
+                    ));
+                }
+                texts.push(title);
+                texts.push(prompt);
                 texts.push(content);
             }
             StepAction::Agent {

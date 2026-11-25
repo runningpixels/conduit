@@ -165,6 +165,11 @@ export const TEMPLATE_FIELDS: Record<StepType, TemplateField[]> = {
   template: [F('template', 'workspace.workflows.editor.template.text')],
   for_each: [F('items', 'workspace.workflows.editor.forEach.items', 'items')],
   save_artifact: [F('content', 'workspace.workflows.editor.save.content'), F('title', 'workspace.workflows.editor.save.title')],
+  save_chat: [
+    F('content', 'workspace.workflows.editor.save.content'),
+    F('prompt', 'workspace.workflows.editor.saveChat.prompt'),
+    F('title', 'workspace.workflows.editor.save.title'),
+  ],
   export_file: [F('content', 'workspace.workflows.editor.export.content'), F('name', 'workspace.workflows.editor.export.name')],
   save_memory: [F('text', 'workspace.workflows.editor.memory.text')],
   notify: [F('body', 'workspace.workflows.editor.notify.body'), F('title', 'workspace.workflows.editor.notify.title')],

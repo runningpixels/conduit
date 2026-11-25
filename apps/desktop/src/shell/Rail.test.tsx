@@ -35,7 +35,7 @@ describe('Rail', () => {
     expect(bands).toEqual([
       { id: 'make', items: ['chats', 'artifacts', 'slides', 'writing'] },
       { id: 'apps', items: ['apps'] },
-      { id: 'automate', items: ['work'] },
+      { id: 'automate', items: ['scheduled', 'work'] },
       { id: 'context', items: ['context'] },
     ]);
     expect(container.querySelector('.rail-band [data-destination="settings"]')).toBeNull();
@@ -75,7 +75,7 @@ describe('Rail', () => {
   it('labels every destination, and leaves Ideas to the new-chat screen', () => {
     const { container } = renderRail();
     const labels = [...container.querySelectorAll('.rail-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['Home', 'Chats', 'Artifacts', 'Slides', 'Writing', 'Apps', 'Agents', 'Context', 'Settings', 'More']);
+    expect(labels).toEqual(['Home', 'Chats', 'Artifacts', 'Slides', 'Writing', 'Apps', 'Scheduled', 'Agents', 'Context', 'Settings', 'More']);
     expect(screen.queryByRole('button', { name: 'Ideas' })).toBeNull();
   });
 
@@ -195,8 +195,8 @@ describe('Rail on a phone', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More (new)' }));
     const dialog = screen.getByRole('dialog', { name: 'More' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    // Slides, Writing, Apps, Context, Settings, and the light/dark row.
-    expect(dialog.querySelectorAll('.more-row')).toHaveLength(6);
+    // Slides, Writing, Apps, Scheduled, Context, Settings, and the light/dark row.
+    expect(dialog.querySelectorAll('.more-row')).toHaveLength(7);
     fireEvent.click(screen.getAllByRole('button', { name: 'Writing' }).find((b) => b.classList.contains('more-row'))!);
     expect(onNavigate).toHaveBeenCalledWith('writing');
     expect(screen.queryByRole('dialog')).toBeNull();

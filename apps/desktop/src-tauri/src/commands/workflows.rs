@@ -451,7 +451,11 @@ pub async fn set_workflow_schedule(
         // The first look, right away, is the baseline.
         Some(crate::workflows::scheduler::to_iso(chrono::Utc::now()))
     } else {
-        Some(next_run(&spec, chrono::Utc::now(), &chrono::Local)?)
+        match next_run(&spec, chrono::Utc::now(), &chrono::Local)? {
+            Some(next) => Some(next),
+            // Only a one-time schedule whose time has passed has no next time.
+            None => return Err("That time has already passed. Choose a later one.".to_string()),
+        }
     };
     if spec != ScheduleSpec::Trigger || !enabled || !was_watching {
         triggers::remove_cursor(&state.paths.root, &id);
@@ -486,6 +490,32 @@ pub async fn create_routine(
         workflow,
         permissions,
     })
+}
+
+/// Rewrite a routine or task from the form again (see `routines::update`).
+/// Like `create_routine`, it leaves the schedule off and returns what needs
+/// approving; the renderer shows it and turns the schedule on.
+#[tauri::command]
+pub async fn update_routine(
+    state: State<'_, AppState>,
+    id: String,
+    request: routines::RoutineRequest,
+) -> Result<RoutineCreated, String> {
+    let workflow = routines::update(&state, &id, &request).await?;
+    let permissions = workflow_permissions(&state, &workflow.id).await?;
+    Ok(RoutineCreated {
+        workflow,
+        permissions,
+    })
+}
+
+/// Everything that runs on its own, for the Scheduled page: tasks, routines
+/// and workflows with a schedule or trigger.
+#[tauri::command]
+pub async fn list_scheduled(
+    state: State<'_, AppState>,
+) -> Result<Vec<routines::ScheduledItem>, String> {
+    routines::list_scheduled(&state).await
 }
 
 /// Every routine, or only those of the agent `agent_id`.

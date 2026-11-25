@@ -3129,10 +3129,22 @@ impl StreamManager {
             }
 
             if agent_tools::is_builtin_tool_name(&tool_name) {
-                if tool_name == agent_tools::ASK_USER_TOOL {
-                    let outcome = self
-                        .execute_ask_user_tool(
+                if tool_name == agent_tools::ASK_USER_TOOL
+                    || tool_name == agent_tools::SCHEDULE_TASK_TOOL
+                    || tool_name == agent_tools::LIST_SCHEDULED_TASKS_TOOL
+                {
+                    let outcome = if tool_name == agent_tools::LIST_SCHEDULED_TASKS_TOOL {
+                        self.execute_list_scheduled_tool(
                             state,
+                            &call.tool_call_id,
+                            request_id,
+                            &call.arguments,
+                        )
+                        .await
+                    } else {
+                        self.execute_ask_user_tool(
+                            state,
+                            &tool_name,
                             &call.tool_call_id,
                             request_id,
                             &call.arguments,
@@ -3140,7 +3152,8 @@ impl StreamManager {
                             cancel,
                             user_wait_ms,
                         )
-                        .await;
+                        .await
+                    };
                     if let Some(channel) = runtime_channel {
                         match &outcome {
                             Ok(exec) => {
@@ -3372,12 +3385,66 @@ impl StreamManager {
         }
     }
 
-    /// Pause the agent loop for a native `ask_user` form (t1-2). The time spent
-    /// waiting for the answer is added to `user_wait_ms`.
+    /// The `list_scheduled_tasks` tool: what the Scheduled page lists, as the
+    /// model needs it (the schedule as its spec, the next run, whether it is on).
+    async fn execute_list_scheduled_tool(
+        &self,
+        state: &AppState,
+        tool_call_id: &str,
+        request_id: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<agent_tools::AgentToolExecution, String> {
+        let clip = |text: &str| -> String { text.chars().take(240).collect() };
+        let items = crate::workflows::routines::list_scheduled(state).await?;
+        let tasks: Vec<serde_json::Value> = items
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "name": item.name,
+                    "kind": item.kind,
+                    "instructions": item.task.as_deref().map(clip),
+                    "schedule": item.schedule,
+                    "trigger": item.trigger,
+                    "enabled": item.enabled,
+                    "next_run_at": item.next_run_at,
+                })
+            })
+            .collect();
+        let output = serde_json::json!({ "ok": true, "count": tasks.len(), "tasks": tasks });
+        let completed = ToolCallRecord {
+            id: tool_call_id.to_string(),
+            tool_id: agent_tools::LIST_SCHEDULED_TASKS_TOOL.to_string(),
+            request_id: request_id.to_string(),
+            status: ToolCallStatus::Completed,
+            arguments: Some(arguments.clone()),
+            result: Some(output.clone()),
+            error: None,
+            approved_at: None,
+            completed_at: Some(crate::time::now_iso8601()),
+        };
+        tool_calls::insert_tool_call(&state.db, &completed)
+            .await
+            .map_err(|e| e.to_string())?;
+        tool_calls::insert_tool_result(&state.db, &state.encryption, tool_call_id, &output, false)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(agent_tools::AgentToolExecution {
+            record: completed,
+            output,
+            is_error: false,
+        })
+    }
+
+    /// Pause the agent loop for a native `ask_user` form (t1-2), or for the
+    /// confirm card of `schedule_task`: the card travels as a single field of
+    /// type `schedule_task` whose prompt is the call's arguments as JSON, and
+    /// the renderer answers `{ ok, result }` with the words the model reads.
+    /// The time spent waiting for the answer is added to `user_wait_ms`.
     #[allow(clippy::too_many_arguments)]
     async fn execute_ask_user_tool(
         &self,
         state: &AppState,
+        tool_name: &str,
         tool_call_id: &str,
         request_id: &str,
         arguments: &serde_json::Value,
@@ -3385,31 +3452,49 @@ impl StreamManager {
         cancel: &CancellationToken,
         user_wait_ms: &std::sync::atomic::AtomicU64,
     ) -> Result<agent_tools::AgentToolExecution, String> {
-        let title = arguments
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Question")
-            .to_string();
-        let fields_val = arguments
-            .get("fields")
-            .cloned()
-            .unwrap_or(serde_json::json!([]));
-        let mut fields: Vec<AskUserField> = serde_json::from_value(fields_val).unwrap_or_default();
-        if fields.is_empty() {
-            return Err("ask_user requires at least one field".to_string());
-        }
-        if fields.len() > 4 {
-            fields.truncate(4);
-        }
-        for field in &mut fields {
-            if field.field_type != "text" && field.field_type != "choice" {
-                field.field_type = "text".to_string();
+        let is_schedule = tool_name == agent_tools::SCHEDULE_TASK_TOOL;
+        let (title, fields) = if is_schedule {
+            let title = arguments
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Scheduled task")
+                .to_string();
+            let draft = AskUserField {
+                id: "draft".to_string(),
+                prompt: arguments.to_string(),
+                field_type: "schedule_task".to_string(),
+                options: None,
+            };
+            (title, vec![draft])
+        } else {
+            let title = arguments
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Question")
+                .to_string();
+            let fields_val = arguments
+                .get("fields")
+                .cloned()
+                .unwrap_or(serde_json::json!([]));
+            let mut fields: Vec<AskUserField> =
+                serde_json::from_value(fields_val).unwrap_or_default();
+            if fields.is_empty() {
+                return Err("ask_user requires at least one field".to_string());
             }
-        }
+            if fields.len() > 4 {
+                fields.truncate(4);
+            }
+            for field in &mut fields {
+                if field.field_type != "text" && field.field_type != "choice" {
+                    field.field_type = "text".to_string();
+                }
+            }
+            (title, fields)
+        };
 
         let pending = ToolCallRecord {
             id: tool_call_id.to_string(),
-            tool_id: agent_tools::ASK_USER_TOOL.to_string(),
+            tool_id: tool_name.to_string(),
             request_id: request_id.to_string(),
             status: ToolCallStatus::Pending,
             arguments: Some(arguments.clone()),
@@ -3483,8 +3568,21 @@ impl StreamManager {
             return Err("ask_user dismissed".to_string());
         }
 
+        // A schedule_task card answers with the words the model reads and whether
+        // the task was made.
+        let schedule_result = if is_schedule {
+            answers
+                .get("result")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        } else {
+            None
+        };
+        let is_error = is_schedule && answers.get("ok").and_then(|v| v.as_bool()) == Some(false);
         let mut content = format!("User answered \"{title}\":\n");
-        if let Some(obj) = answers.as_object() {
+        if let Some(result) = schedule_result {
+            content = result;
+        } else if let Some(obj) = answers.as_object() {
             for (k, v) in obj {
                 let val = v
                     .as_str()
@@ -3508,7 +3606,7 @@ impl StreamManager {
 
         let completed = ToolCallRecord {
             id: tool_call_id.to_string(),
-            tool_id: agent_tools::ASK_USER_TOOL.to_string(),
+            tool_id: tool_name.to_string(),
             request_id: request_id.to_string(),
             status: ToolCallStatus::Completed,
             arguments: Some(arguments.clone()),
@@ -3525,7 +3623,7 @@ impl StreamManager {
             &state.encryption,
             tool_call_id,
             &result_value,
-            false,
+            is_error,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -3533,7 +3631,7 @@ impl StreamManager {
         Ok(agent_tools::AgentToolExecution {
             record: completed,
             output: result_value,
-            is_error: false,
+            is_error,
         })
     }
 
@@ -3837,9 +3935,11 @@ impl StreamManager {
                                 downloads
                                     .extend(crate::browser::download::take_download(&mut value));
                             }
-                            // Only ask_user writes `user_authored`; another tool's output
-                            // claiming it is still checked.
-                            let user_authored = record.tool_id == agent_tools::ASK_USER_TOOL
+                            // Only ask_user (and the schedule_task card, whose words the
+                            // app writes after the user's decision) writes `user_authored`;
+                            // another tool's output claiming it is still checked.
+                            let user_authored = (record.tool_id == agent_tools::ASK_USER_TOOL
+                                || record.tool_id == agent_tools::SCHEDULE_TASK_TOOL)
                                 && value
                                     .get("user_authored")
                                     .and_then(|v| v.as_bool())

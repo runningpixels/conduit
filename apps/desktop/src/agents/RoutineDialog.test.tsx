@@ -51,7 +51,8 @@ describe('RoutineDialog', () => {
         schedule: { kind: 'weekdays', time: '08:00' },
         trigger: null,
         notify: false,
-        output: 'document',
+        // A chat you can reply to is the default result.
+        output: 'chat',
         folder: null,
       }),
     );

@@ -104,6 +104,7 @@ import type {
   RoutineCreated,
   RoutineRequest,
   RoutineSummary,
+  ScheduledItem,
   WorkflowSummary,
   WorkflowPermissions,
   WorkflowReview,
@@ -2484,6 +2485,19 @@ export async function setWorkflowSchedule(
  */
 export async function createRoutine(request: RoutineRequest): Promise<RoutineCreated> {
   return invokeCommand<RoutineCreated>('create_routine', { request });
+}
+
+/**
+ * Rewrite a routine or task: its definition, name and schedule spec. The schedule is left off (what it may do
+ * can have changed), so the caller shows the approval step again, as after `createRoutine`.
+ */
+export async function updateRoutine(id: string, request: RoutineRequest): Promise<RoutineCreated> {
+  return invokeCommand<RoutineCreated>('update_routine', { id, request });
+}
+
+/** Everything that runs on its own, for the Scheduled page: tasks, routines and scheduled workflows. */
+export async function listScheduled(): Promise<ScheduledItem[]> {
+  return invokeCommand<ScheduledItem[]>('list_scheduled');
 }
 
 /** Every routine, or only those of one agent. */

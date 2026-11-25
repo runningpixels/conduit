@@ -393,6 +393,10 @@ pub enum StepAction {
         /// are used unless the step sets its own (see [`apply_step_agents`]).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         agent: Option<String>,
+        /// Hand it what this step answered the last time the workflow
+        /// completed, so a repeated task can say what changed since then.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        previous: bool,
     },
     /// Stop and ask the user; the answer is the step's `answer`.
     Ask {
@@ -769,7 +773,9 @@ pub fn action_keys(step_type: &str) -> &'static [&'static str] {
         "for_each" => &["items", "steps"],
         "save_artifact" => &["title", "content", "format", "mode", "onlyIfChanged"],
         "save_chat" => &["title", "prompt", "content"],
-        "agent" => &["prompt", "input", "tools", "agents", "agent", "model"],
+        "agent" => &[
+            "prompt", "input", "tools", "agents", "agent", "model", "previous",
+        ],
         "ask" => &["question", "choices", "default"],
         "notify" => &["title", "body", "onlyIfChanged"],
         "condition" | "branch" => &["value", "is", "text"],

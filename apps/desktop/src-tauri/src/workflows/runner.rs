@@ -2729,6 +2729,9 @@ impl Exec<'_> {
                 // What the task itself carries in from outside, read from its
                 // settings as written (before they're filled in).
                 let mut carried_in = Vec::new();
+                if let StepAction::Agent { previous: true, .. } = &step.action {
+                    carried_in.push("its result from the last run".to_string());
+                }
                 if let StepAction::Agent { prompt, input, .. } = &step.action {
                     let written = format!("{prompt}\n{input}");
                     if written.contains("trigger.") {
@@ -2740,10 +2743,18 @@ impl Exec<'_> {
                     }
                 }
                 let prompt = filled["prompt"].as_str().unwrap_or_default();
-                let input = filled["input"].as_str().unwrap_or_default();
+                let mut input = filled["input"].as_str().unwrap_or_default().to_string();
+                if matches!(step.action, StepAction::Agent { previous: true, .. }) {
+                    let earlier = self.previous_output(&step.id).await?;
+                    let text = earlier
+                        .as_ref()
+                        .and_then(|o| o["text"].as_str())
+                        .unwrap_or_default();
+                    input = with_previous(&input, text);
+                }
                 let output = self
                     .agent(
-                        &step.id, prompt, input, tools, agents, runs_as, &model, carried_in,
+                        &step.id, prompt, &input, tools, agents, runs_as, &model, carried_in,
                     )
                     .await?;
                 Ok(with_model(output, &model))
@@ -5355,6 +5366,7 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
             tools,
             agents,
             agent,
+            ..
         } => {
             let mut filled = json!({
                 "type": "agent",
@@ -5588,6 +5600,29 @@ pub(crate) fn cap_text(text: &str, max: usize) -> String {
     };
     let rest = text[end..].chars().count();
     format!("{}\n[\u{2026} cut: {rest} more characters]", &text[..end])
+}
+
+/// Most characters of the last run's answer an agent step is handed.
+const MAX_PREVIOUS_CHARS: usize = 8_000;
+
+/// An agent step's `input` with what it answered last time (`previous`)
+/// after it, so a repeated task can compare. The first run says there is
+/// nothing yet, so the model doesn't invent a change.
+fn with_previous(input: &str, previous: &str) -> String {
+    let previous = previous.trim();
+    let block = if previous.is_empty() {
+        "This is the first run: there is no earlier result to compare with.".to_string()
+    } else {
+        format!(
+            "Your result from the last run, to compare with:\n<previous_result>\n{}\n</previous_result>",
+            cap_text(previous, MAX_PREVIOUS_CHARS)
+        )
+    };
+    if input.trim().is_empty() {
+        block
+    } else {
+        format!("{input}\n\n{block}")
+    }
 }
 
 /// Whether a fetched page has nothing worth reading. A data file (CSV, JSON,
@@ -6081,6 +6116,20 @@ mod tests {
         assert_eq!(cap_text("abcde", 5), "abcde");
         let cut = cap_text("h\u{e9}llo w\u{f6}rld", 4);
         assert_eq!(cut, "h\u{e9}ll\n[\u{2026} cut: 7 more characters]");
+    }
+
+    #[test]
+    fn the_last_answer_follows_the_input_or_says_there_is_none() {
+        assert_eq!(
+            with_previous("", "  "),
+            "This is the first run: there is no earlier result to compare with."
+        );
+        assert_eq!(
+            with_previous("New file", "Old"),
+            "New file\n\nYour result from the last run, to compare with:\n<previous_result>\nOld\n</previous_result>"
+        );
+        let long = "x".repeat(MAX_PREVIOUS_CHARS + 5);
+        assert!(with_previous("", &long).contains("[\u{2026} cut: 5 more characters]"));
     }
 
     #[test]

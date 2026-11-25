@@ -1106,6 +1106,8 @@ export type WorkflowStep = {
       model?: WorkflowModel;
       agents?: string[];
       agent?: string;
+      /** Hand it its own answer from the last completed run. */
+      previous?: boolean;
     }
   | { type: 'read_file'; path: string }
   | { type: 'edit_deck'; deck: string; instructions: string; input?: string; model?: WorkflowModel }

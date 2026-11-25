@@ -20,7 +20,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the tray, and can only do what you approved when you set the task up.
 - **Set up in chat.** Ask in any chat ("every weekday at 8, brief me on AI
   news") and the assistant drafts the task on a card you confirm, edit in the
-  form or cancel. It can also list the tasks you have.
+  form or cancel. It can also list the tasks you have. A task that runs again
+  sees its last result, so "Watch a page" can tell you what changed.
+
+### Fixed
+
+- **The assistant knows your local time.** Its clock tool gave only UTC, so
+  "today at 9:58" could be read as already past; it now gives your own time,
+  date and time zone too.
 
 ### Security
 

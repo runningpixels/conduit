@@ -541,7 +541,7 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_id: CURRENT_TIME_TOOL.to_string(),
             name: CURRENT_TIME_TOOL.to_string(),
-            description: "Get the current date and time in ISO-8601 format. No arguments needed."
+            description: "Get the current date and time: UTC (iso8601) and the user's local time (local, localDate, localTime, weekday, utcOffset). Use the local fields for anything the user means by today, now or a time of day. No arguments needed."
                 .to_string(),
             input_schema: json_schema(&[]),
             permission_level: Some(PermissionLevel::ReadOnly),
@@ -1116,6 +1116,23 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
     )
 }
 
+/// What `current_time` answers for `now`: UTC, and the user's own clock,
+/// since schedules, "today" and "this morning" are local and a model given
+/// only UTC misreads them.
+fn current_time_result(now: chrono::DateTime<chrono::Utc>) -> Value {
+    let local = now.with_timezone(&chrono::Local);
+    serde_json::json!({
+        "ok": true,
+        "iso8601": now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        "local": local.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+        "localDate": local.format("%Y-%m-%d").to_string(),
+        "localTime": local.format("%H:%M").to_string(),
+        "weekday": local.format("%A").to_string(),
+        "utcOffset": local.format("%:z").to_string(),
+        "unix_seconds": now.timestamp().max(0),
+    })
+}
+
 pub async fn execute_builtin_tool(
     ctx: &AgentToolContext<'_>,
     tool_call_id: &str,
@@ -1285,17 +1302,7 @@ async fn dispatch_builtin_tool(
         // ---------------------------------------------------------------------
         // Utility tools
         // ---------------------------------------------------------------------
-        CURRENT_TIME_TOOL => {
-            let now = crate::time::now_iso8601();
-            Ok(serde_json::json!({
-                "ok": true,
-                "iso8601": now,
-                "unix_seconds": std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0),
-            }))
-        }
+        CURRENT_TIME_TOOL => Ok(current_time_result(chrono::Utc::now())),
         UUID_TOOL => {
             let id = uuid::Uuid::new_v4().to_string();
             Ok(serde_json::json!({
@@ -4902,6 +4909,23 @@ mod tests {
         assert!(is_builtin_tool_name(GENERATE_IMAGE_TOOL));
         assert!(is_builtin_tool_name(SEARCH_TOOLS_TOOL));
         assert!(!is_builtin_tool_name("nonexistent_tool"));
+    }
+
+    #[test]
+    fn current_time_gives_the_users_clock_beside_utc() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-25T14:55:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let out = current_time_result(now);
+        assert_eq!(out["iso8601"], "2026-11-25T14:55:00.000Z");
+        assert_eq!(out["unix_seconds"], now.timestamp());
+        // Whatever zone the machine is in, the local fields agree with it.
+        let local = now.with_timezone(&chrono::Local);
+        assert_eq!(out["localTime"], local.format("%H:%M").to_string());
+        assert_eq!(out["localDate"], local.format("%Y-%m-%d").to_string());
+        assert_eq!(out["utcOffset"], local.format("%:z").to_string());
+        let parsed = chrono::DateTime::parse_from_rfc3339(out["local"].as_str().unwrap()).unwrap();
+        assert_eq!(parsed.timestamp(), now.timestamp());
     }
 
     #[test]

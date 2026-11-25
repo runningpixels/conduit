@@ -40,6 +40,7 @@ export function ScheduledPage({
   onOpenWorkflow,
   onOpenConversation,
   onSetUpInChat,
+  onRunDone,
   refreshKey,
 }: {
   /// Open a workflow in the Workflows page, on this run's results when one is given.
@@ -48,6 +49,8 @@ export function ScheduledPage({
   onOpenConversation: (conversationId: string) => void;
   /// Open a new chat and send it `message`, which asks the assistant to set a task up. Without it, New task is just the form.
   onSetUpInChat?: (message: string) => void;
+  /// After "Run now" ends: the run may have saved a chat the history should show.
+  onRunDone?: () => void;
   /// Changes when a run starts or ends elsewhere; the page re-reads.
   refreshKey?: number;
 }) {
@@ -113,6 +116,7 @@ export function ScheduledPage({
           return next;
         });
         void read();
+        onRunDone?.();
       });
   };
 

@@ -2672,6 +2672,8 @@ export default function App() {
   useWorkflowRunEvents((event) => {
     setWorkflowRunsVersion((v) => v + 1);
     refreshUnreadResults();
+    // A run that saved a chat: show it in the history now, not after a reload.
+    if (event.conversationId) void refreshConversations();
     const note = notificationFor(event, t);
     if (!note) return;
     void notifyWorkflowRun(note.title, note.body).catch(() => {});
@@ -4429,6 +4431,7 @@ export default function App() {
             {destination === 'scheduled' && (
               <ScheduledPage
                 refreshKey={workflowRunsVersion}
+                onRunDone={() => void refreshConversations()}
                 onSetUpInChat={(text) => void openFreshChat(text)}
                 onOpenWorkflow={(workflowId, runId) => {
                   setWorkflowsFocus({ workflowId, runId, showRun: runId !== undefined, nonce: Date.now() });

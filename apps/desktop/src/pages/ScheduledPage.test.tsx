@@ -76,7 +76,7 @@ const WORKFLOW: ScheduledItem = {
 };
 
 function renderPage() {
-  const props = { onOpenWorkflow: vi.fn(), onOpenConversation: vi.fn() };
+  const props = { onOpenWorkflow: vi.fn(), onOpenConversation: vi.fn(), onRunDone: vi.fn() };
   render(<ScheduledPage {...props} />);
   return props;
 }
@@ -146,9 +146,11 @@ describe('ScheduledPage', () => {
   it('runs, pauses and deletes a task', async () => {
     ipc.listScheduled.mockResolvedValue([TASK]);
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    renderPage();
+    const props = renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Run Morning news now' }));
     await waitFor(() => expect(ipc.runWorkflow).toHaveBeenCalledWith('wf-task', {}));
+    // The run may have saved a chat: the app re-reads its history.
+    await waitFor(() => expect(props.onRunDone).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: 'Pause Morning news' }));
     await waitFor(() =>
       expect(ipc.setWorkflowSchedule).toHaveBeenCalledWith('wf-task', { kind: 'weekly', days: ['mon'], time: '07:00' }, false),

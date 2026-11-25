@@ -22,6 +22,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   news") and the assistant drafts the task on a card you confirm, edit in the
   form or cancel. It can also list the tasks you have.
 
+### Security
+
+- **`cookie` 0.18.3** (#365), for RUSTSEC-2026-0594: private cookie nonces
+  could repeat in processes that fork. Conduit does not fork; updated to keep
+  the audit clean.
+
 ## [1.0.0-rc.38] - 2026-11-22
 
 Twelve more providers, 35 in all, including three servers that run on your own

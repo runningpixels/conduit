@@ -149,9 +149,10 @@ function stepFor(tc: ToolCallState, state: AssistantStreamState): ActivityStep {
   if (tc.name === 'generate_image') {
     return { ...base, kind: 'image', label: pickString(tc.arguments, ['prompt']) ?? '' };
   }
-  if (tc.name === 'ask_user') {
+  // `schedule_task` waits on its confirm card the way ask_user waits on its form.
+  if (tc.name === 'ask_user' || tc.name === 'schedule_task') {
     const title =
-      state.askUser?.toolCallId === tc.toolCallId ? state.askUser.title : pickString(tc.arguments, ['title']);
+      state.askUser?.toolCallId === tc.toolCallId ? state.askUser.title : pickString(tc.arguments, ['title', 'name']);
     return { ...base, kind: 'askUser', label: title ?? '' };
   }
   // A click or typing in the agents' browser: what it was for, not the element ref.

@@ -47,6 +47,8 @@ import {
   WritingSolidIcon,
   BrandMark,
   ChatIcon,
+  ClockIcon,
+  ClockSolidIcon,
   ConnectorsIcon,
   HomeIcon,
   IdeaIcon,
@@ -81,6 +83,8 @@ export type Destination =
   | 'work'
   | 'inbox'
   | 'workflows'
+  /** Scheduled tasks: everything that runs on its own, and a template gallery. */
+  | 'scheduled'
   | 'agents'
   /** Context on the rail; navigating to it opens the last Context tab. */
   | 'context'
@@ -123,7 +127,7 @@ export const RAIL_BANDS: ReadonlyArray<{ id: string; items: readonly Destination
   { id: 'top', items: ['home'] },
   { id: 'make', items: ['chats', 'artifacts', 'slides', 'writing'] },
   { id: 'apps', items: ['apps'] },
-  { id: 'automate', items: ['work'] },
+  { id: 'automate', items: ['scheduled', 'work'] },
   { id: 'context', items: ['context'] },
 ];
 
@@ -141,6 +145,7 @@ const ICONS: Record<Destination, ReactNode> = {
   work: <AgentsIcon />,
   inbox: <InboxIcon />,
   workflows: <WorkflowIcon />,
+  scheduled: <ClockIcon />,
   agents: <AgentsIcon />,
   context: <KnowledgeIcon />,
   documents: <KnowledgeIcon />,
@@ -168,6 +173,7 @@ const SOLID_ICONS: Partial<Record<Destination, ReactNode>> = {
   work: <AgentsSolidIcon />,
   inbox: <InboxSolidIcon />,
   workflows: <WorkflowSolidIcon />,
+  scheduled: <ClockSolidIcon />,
   agents: <AgentsSolidIcon />,
   context: <KnowledgeSolidIcon />,
   settings: <SettingsSolidIcon />,

@@ -15,14 +15,16 @@ pub const PREVIEW_CHARS: usize = 320;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunOutput {
-    /// `document`, `deck`, `draft` or `file`.
+    /// `document`, `deck`, `draft`, `file` or `chat` (a chat a `save_chat`
+    /// step wrote: `conversation_id` and `title`, no artifact).
     pub kind: String,
     pub title: String,
     /// The step that saved it.
     pub step_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_id: Option<String>,
-    /// Where a document lives (the workflow's own conversation).
+    /// Where a document lives (the workflow's own conversation), or the chat
+    /// itself for a `chat` output.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -76,6 +78,7 @@ impl RunOutput {
                 "document" => self.artifact_id == other.artifact_id,
                 "deck" => self.deck_id == other.deck_id,
                 "draft" => self.draft_id == other.draft_id,
+                "chat" => self.conversation_id == other.conversation_id,
                 _ => self.path == other.path,
             }
     }
@@ -110,6 +113,16 @@ fn from_step(
     conversation_id: Option<&str>,
 ) -> Option<RunOutput> {
     let input_title = input.and_then(|i| text(i, "title"));
+    // A chat a `save_chat` step wrote: it opens by its conversation, and has
+    // no artifact.
+    if input.and_then(|i| text(i, "type")) == Some("save_chat") {
+        let conversation = text(out, "conversationId")?;
+        let title = text(out, "title").or(input_title).unwrap_or("Chat");
+        let mut output = RunOutput::new("chat", title.to_string(), step_id);
+        output.conversation_id = Some(conversation.to_string());
+        output.preview = input.and_then(|i| text(i, "content")).and_then(preview);
+        return Some(output);
+    }
     if let Some(artifact_id) = text(out, "artifactId") {
         let title = text(out, "title").or(input_title).unwrap_or("Document");
         let mut output = RunOutput::new("document", title.to_string(), step_id);

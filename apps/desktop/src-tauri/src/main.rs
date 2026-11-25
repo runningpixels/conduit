@@ -475,6 +475,8 @@ fn main() {
             set_workflow_schedule,
             // Routines: one of the user's agents on a schedule or trigger.
             create_routine,
+            update_routine,
+            list_scheduled,
             list_routines,
             convert_routine_to_workflow,
             notify_workflow_run,

@@ -19,7 +19,7 @@ const GROUPS: readonly { key: string; types: readonly StepType[] }[] = [
   },
   {
     key: 'workspace.workflows.editor.addMenu.save',
-    types: ['save_artifact', 'export_file', 'edit_deck', 'edit_draft', 'save_memory', 'notify'],
+    types: ['save_artifact', 'save_chat', 'export_file', 'edit_deck', 'edit_draft', 'save_memory', 'notify'],
   },
   {
     key: 'workspace.workflows.editor.addMenu.flow',

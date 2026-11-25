@@ -1,0 +1,199 @@
+/* The Scheduled page (pages/ScheduledPage.tsx), its task dialog (scheduled/TaskDialog.tsx) and the
+   marks a scheduled run leaves in the chat it saved. */
+
+/* Yours / Templates */
+.sched-tabs { display: flex; gap: var(--sp-1); margin: 0 0 var(--sp-5); border-bottom: 1px solid var(--line-soft); }
+.sched-tab {
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 2px solid transparent;
+  color: var(--ink-2);
+  font-size: var(--fs-5xl);
+  font-weight: 600;
+  transition: color var(--tap), border-color var(--tap);
+}
+.sched-tab:hover { color: var(--ink); }
+.sched-tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--ink); }
+.sched-tab:focus-visible { outline: 2px solid var(--hue); outline-offset: -2px; }
+
+/* Search, filter and sort */
+.sched-bar-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin: 0 0 var(--sp-4); }
+.sched-bar-tools .sched-search { flex: 1 1 14rem; margin: 0; }
+.sched-tool { min-width: 9rem; }
+
+/* One row per task, routine or workflow */
+.sched-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
+.sched-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.sched-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sched-icon svg { width: 20px; height: 20px; }
+.sched-text { flex: 1 1 auto; display: grid; gap: 2px; min-width: 0; }
+.sched-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-6xl); font-weight: 600; overflow-wrap: anywhere; }
+.sched-kind { padding: 0 var(--sp-2); border-radius: var(--r-pill); background: var(--card-hi); color: var(--ink-3); font-size: var(--fs-md); font-weight: 600; }
+.sched-when-text,
+.sched-last { color: var(--ink-3); font-size: var(--fs-3xl); overflow-wrap: anywhere; }
+.sched-last.is-bad { color: var(--err); }
+.sched-actions { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+@media (max-width: 720px) {
+  .sched-row { flex-wrap: wrap; }
+  .sched-actions { flex-basis: 100%; justify-content: flex-start; }
+}
+
+/* Empty state: a clock, one sentence, one button, then the templates below a divider */
+.sched-empty { display: grid; justify-items: center; gap: var(--sp-3); padding: var(--sp-6) 0 0; }
+.sched-empty-art {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sched-empty-art svg { width: 44px; height: 44px; }
+.sched-empty-title { margin: 0; color: var(--ink-2); font-size: var(--fs-6xl); font-weight: 600; }
+.sched-divider { width: 100%; margin: var(--sp-5) 0 var(--sp-2); border: 0; border-top: 1px solid var(--line-soft); }
+.sched-empty .sched-templates { width: 100%; text-align: left; }
+
+/* Templates: a two-column grid of an icon tile, a bold name, a grey line and a clock line */
+.sched-templates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sched-templates > li { display: flex; min-width: 0; }
+.sched-template {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color var(--tap), background var(--tap);
+}
+.sched-template:hover { border-color: var(--line-hi); background: var(--card-hi); }
+.sched-template:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.sched-template-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sched-template-tile svg { width: 20px; height: 20px; }
+.sched-template-text { display: grid; gap: 2px; min-width: 0; }
+.sched-template-name { font-size: var(--fs-6xl); font-weight: 700; }
+.sched-template-desc { color: var(--ink-2); font-size: var(--fs-4xl); line-height: 1.4; }
+.sched-template-when { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--sp-1); color: var(--ink-3); font-size: var(--fs-3xl); }
+.sched-template-when svg { width: 13px; height: 13px; flex: none; }
+@media (max-width: 720px) {
+  .sched-templates { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* The task dialog */
+.app-inputs-dialog.sched-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; gap: 0; padding: 0; }
+.sched-dialog .routine-dialog-body { overflow-y: auto; }
+.sched-instructions { display: grid; gap: var(--sp-2); }
+.sched-instructions textarea { resize: vertical; min-height: 7rem; }
+/* The bar under the instructions: the agent on the left, the model on the right. */
+.sched-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); align-items: end; gap: var(--sp-3); margin-top: var(--sp-1); }
+.sched-bar-agent,
+.sched-bar-model { min-width: 0; }
+.sched-bar-model .app-settings-slot { display: grid; gap: 5px; }
+.sched-bar-model .app-settings-slot-controls { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.sched-bar-model .app-settings-slot-controls select { flex: 1 1 10rem; min-width: 0; }
+
+/* One look for every field in the task dialog. Its controls come from three
+   places (the app fields, the workflow fields and the model slot), whose rules
+   clash: a .sel inside an .app-field got padding on a fixed 28px height and
+   clipped its text, and labels came out in two styles. Here every label reads
+   the same and every select and text box has one height, so rows line up. */
+.sched-dialog.app-inputs-dialog .wf-field { gap: 5px; }
+.sched-dialog.app-inputs-dialog .wf-field > span:first-child,
+.sched-dialog.app-inputs-dialog .app-settings-slot-name { color: var(--ink-2); font-size: var(--fs-md); font-weight: 600; letter-spacing: .01em; }
+.sched-dialog.app-inputs-dialog select,
+.sched-dialog.app-inputs-dialog input:not([type='checkbox']):not([type='radio']) {
+  height: 38px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-2xl);
+  line-height: normal;
+}
+.sched-dialog.app-inputs-dialog select { width: 100%; }
+.sched-dialog.app-inputs-dialog select:focus-visible,
+.sched-dialog.app-inputs-dialog input:focus-visible { outline: var(--ring-width) solid var(--ring-color); outline-offset: 1px; }
+.sched-note { margin: 0; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line-soft); border-radius: var(--r-md); background: var(--card-hi); color: var(--ink-2); font-size: var(--fs-4xl); line-height: 1.45; }
+.sched-when { display: grid; gap: var(--sp-2); }
+.sched-when-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); }
+.sched-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.sched-day {
+  min-width: 2.6em;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-2xl);
+}
+.sched-day:hover { border-color: var(--line-hi); }
+.sched-day[aria-pressed="true"] { border-color: var(--accent-line); background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.sched-day:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.sched-advanced { display: grid; gap: var(--sp-3); }
+.sched-advanced-toggle { justify-self: start; padding: 0; color: var(--ink-2); font-size: var(--fs-5xl); font-weight: 600; }
+.sched-advanced-toggle::before { content: "▸ "; }
+.sched-advanced-toggle[aria-expanded="true"]::before { content: "▾ "; }
+.sched-advanced-toggle:hover { color: var(--ink); }
+.sched-advanced-toggle:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }
+.sched-advanced-body { display: grid; gap: var(--sp-4); }
+
+/* In a chat a scheduled run saved: "Scheduled task · name · Open task" above the thread */
+.sched-chat-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-4); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line-soft); border-radius: var(--r-md); background: var(--card); color: var(--ink-2); font-size: var(--fs-3xl); }
+.sched-chat-line svg { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.sched-chat-open { padding: 0; color: var(--accent); font: inherit; }
+.sched-chat-open:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sched-chat-open:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }
+/* The same clock, small, beside a scheduled chat's title in the history rail */
+.sched-mark { display: inline-flex; flex: none; align-items: center; color: var(--ink-3); }
+.sched-mark svg { width: 12px; height: 12px; }
+
+/* "New task ▾": the button and its menu (New task · Set up in chat) */
+.sched-new { position: relative; display: inline-flex; }
+.sched-new-menu { top: calc(100% + 6px); right: 0; min-width: 180px; }
+/* "Set up in chat instead", under the dialog's title */
+.sched-dialog .agent-editor-head .sched-chat-open { display: block; margin-top: var(--sp-1); font-size: var(--fs-3xl); }
+
+/* The chat's confirm card for a drafted task */
+.sched-card-fields { display: grid; grid-template-columns: max-content 1fr; gap: var(--sp-1) var(--sp-3); margin: 0 0 var(--sp-3); font-size: var(--fs-2xl); }
+.sched-card-fields dt { color: var(--ink-3); }
+.sched-card-fields dd { margin: 0; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.sched-card-instructions { white-space: pre-wrap; max-height: 9em; overflow: auto; }

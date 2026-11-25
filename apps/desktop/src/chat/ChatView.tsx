@@ -250,6 +250,7 @@ import type { AppSummary } from '../ipc/contracts';
 import type { Capabilities } from '../ideas/capabilities';
 import type { IdeaState } from '../ideas/ideaState';
 import { useT, type Translate } from '../i18n';
+import { ScheduledChatLine, scheduledFrom } from '../scheduled/ScheduledChatLine';
 
 export type { ChatTurn } from './conversationHydration';
 export type { DocumentToolActivity } from './agentTools';
@@ -441,6 +442,10 @@ interface ChatViewProps {
   /// The helper whose agent view is open (its agent call id), or null on the
   /// main thread: the shell does not toast about the agent being watched.
   onAgentViewChange?: (view: { conversationId: string; callId: string } | null) => void;
+  /** "Open task" on the line a scheduled run's chat starts with: the task's page. */
+  onOpenScheduledTask?: (workflowId: string) => void;
+  /** This chat was saved by a scheduled run (read from its metadata when it loads). */
+  onScheduledChat?: (conversationId: string) => void;
 }
 
 /// Extracts a human-readable message from a Tauri `invoke` rejection.
@@ -1049,6 +1054,8 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
     pendingAgentView = null,
     onPendingAgentViewConsumed,
     onAgentViewChange,
+    onOpenScheduledTask,
+    onScheduledChat,
   },
   ref,
 ) {
@@ -1264,6 +1271,10 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
   const composerAgentRef = useRef<{ id: string; name: string } | null>(null);
   composerAgentRef.current = composerAgent;
   useEffect(() => setComposerAgent(null), [conversationId]);
+  /** The scheduled run that saved this chat, from its metadata. */
+  const [scheduledRun, setScheduledRun] = useState<{ conversationId: string; workflowId: string } | null>(null);
+  const onScheduledChatRef = useRef(onScheduledChat);
+  onScheduledChatRef.current = onScheduledChat;
   // The model an agent turn runs on, for the status line: the agent's own,
   // read from the library once per agent. The chat's model is only what a
   // plain message uses.
@@ -1593,6 +1604,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
           setCompaction(latestCompaction);
           setConversationWorkspaceRoot(conversation?.workspaceRoot?.trim() || null);
           setWorkspaceOffForChat(conversationWorkspaceDisabled(conversation?.metadata));
+          const fromTask = scheduledFrom(conversation?.metadata);
+          setScheduledRun(fromTask ? { conversationId, workflowId: fromTask.workflowId } : null);
+          if (fromTask) onScheduledChatRef.current?.(conversationId);
           setConversationGenerationControls(conversation?.generationControls ?? null);
           setConversationUserInstructions(conversation?.userInstructions ?? null);
           const pending = pendingSendText?.trim();
@@ -3995,6 +4009,9 @@ export const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(function ChatV
             />
           ) : (
             <>
+            {scheduledRun && scheduledRun.conversationId === conversationId && !compact ? (
+              <ScheduledChatLine workflowId={scheduledRun.workflowId} onOpen={onOpenScheduledTask} />
+            ) : null}
             {threadLoading && (
               <div className="thread-skeleton" aria-busy="true" aria-label={t('chat.view.aria.loadingConversation')}>
                 <div className="skel-msg">

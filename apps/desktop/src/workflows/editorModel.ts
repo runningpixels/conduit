@@ -31,6 +31,7 @@ export const STEP_TYPES: readonly StepType[] = [
   'template',
   'for_each',
   'save_artifact',
+  'save_chat',
   'export_file',
   'save_memory',
   'ask',
@@ -45,7 +46,13 @@ export const STEP_TYPES: readonly StepType[] = [
 export function stepTypesFor(nested: boolean): readonly StepType[] {
   return nested
     ? STEP_TYPES.filter(
-        (type) => type !== 'condition' && type !== 'branch' && type !== 'edit_deck' && type !== 'edit_draft' && type !== 'research',
+        (type) =>
+          type !== 'condition' &&
+          type !== 'branch' &&
+          type !== 'edit_deck' &&
+          type !== 'edit_draft' &&
+          type !== 'research' &&
+          type !== 'save_chat',
       )
     : STEP_TYPES;
 }
@@ -477,6 +484,7 @@ const ID_PREFIX: Record<StepType, string> = {
   template: 'text',
   for_each: 'each',
   save_artifact: 'save',
+  save_chat: 'chat',
   export_file: 'export',
   save_memory: 'memory',
   agent: 'agent',
@@ -535,6 +543,8 @@ export function newStep(type: StepType, taken: ReadonlySet<string>): WorkflowSte
       return { id, type, items: '', steps: [] };
     case 'save_artifact':
       return { id, type, title: '', content: '', format: 'markdown', mode: 'update' };
+    case 'save_chat':
+      return { id, type, title: '', prompt: '', content: '' };
     case 'export_file':
       return { id, type, name: '', content: '' };
     case 'save_memory':
@@ -735,6 +745,11 @@ export function stepOutputs(step: WorkflowStep): { field: string; list: boolean 
       return [{ field: 'items', list: true }];
     case 'save_artifact':
       return [{ field: 'artifactId', list: false }];
+    case 'save_chat':
+      return [
+        { field: 'conversationId', list: false },
+        { field: 'title', list: false },
+      ];
     case 'export_file':
       return [
         { field: 'path', list: false },

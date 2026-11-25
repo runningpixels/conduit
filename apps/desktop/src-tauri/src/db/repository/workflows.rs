@@ -1150,6 +1150,24 @@ pub async fn mark_schedule_ran(
     Ok(())
 }
 
+/// Record the last run of a schedule that will never run again (a one-time
+/// schedule): no next time, and turned off so the page shows it as done.
+pub async fn mark_schedule_finished(
+    pool: &SqlitePool,
+    workflow_id: &str,
+    ran_at: &str,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE workflow_schedules SET last_run_at = ?, next_run_at = NULL, enabled = 0, updated_at = ? WHERE workflow_id = ?",
+    )
+    .bind(ran_at)
+    .bind(now_iso8601())
+    .bind(workflow_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Set a run's status while it is in progress: `paused` while it waits for
 /// the user, `running` again after.
 pub async fn set_run_status(pool: &SqlitePool, run_id: &str, status: &str) -> Result<(), DbError> {

@@ -271,6 +271,11 @@ pub struct ConversationSummary {
     #[serde(default)]
     #[ts(optional)]
     pub folder_name: Option<String>,
+    /// Set when a scheduled task's run wrote this chat (its `scheduled`
+    /// metadata), so the rail can mark it.
+    #[serde(default)]
+    #[ts(optional)]
+    pub scheduled: Option<bool>,
 }
 
 // =============================================================================

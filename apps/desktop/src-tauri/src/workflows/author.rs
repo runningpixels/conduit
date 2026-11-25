@@ -180,6 +180,16 @@ const SPECS: &[Spec] = &[
         outputs: "artifactId",
     },
     Spec {
+        kind: "save_chat",
+        what: "Save an answer as a new chat the user can open and reply to (top level only).",
+        settings: &[
+            req("title", "text (template)", "the chat's title"),
+            req("prompt", "text (template)", "shown as the user's message"),
+            req("content", "text (template)", "the assistant's answer, Markdown"),
+        ],
+        outputs: "conversationId, title",
+    },
+    Spec {
         kind: "agent",
         what: "A model turn that may call tools before answering: the agent tools below, and tools of the user's connectors. Slower and less predictable than the other steps: use it for open-ended work that fixed steps cannot do, such as research, or deciding what to send through a connector.",
         settings: &[

@@ -46,7 +46,7 @@ const FOLDER_HAS_SETTINGS_SQL: &str =
 const FOLDER_NAME_MAX_CHARS: usize = 80;
 
 /// Row shape for [`list`] (id, title, updated_at, message_count, last preview,
-/// first user prompt, fork, pin, archive, folder id, folder name).
+/// first user prompt, fork, pin, archive, folder id, folder name, scheduled).
 type ConversationSummaryRow = (
     String,
     Option<String>,
@@ -59,6 +59,7 @@ type ConversationSummaryRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    i64,
 );
 
 /// Row shape for [`get`] (id, title, created_at, updated_at, cloud_id, metadata,
@@ -147,7 +148,8 @@ async fn summaries(
                 c.pinned_at, \
                 c.archived_at, \
                 c.folder_id, \
-                f.name AS folder_name \
+                f.name AS folder_name, \
+                COALESCE(json_valid(c.metadata) AND json_extract(c.metadata, '$.scheduled') IS NOT NULL, 0) AS scheduled \
          FROM conversations c \
          LEFT JOIN conversation_folders f ON f.id = c.folder_id \
          WHERE {filter} \
@@ -174,6 +176,7 @@ async fn summaries(
                 archived_at,
                 folder_id,
                 folder_name,
+                scheduled,
             )| {
                 ConversationSummary {
                     id,
@@ -192,6 +195,7 @@ async fn summaries(
                     archived_at,
                     folder_id,
                     folder_name,
+                    scheduled: (scheduled != 0).then_some(true),
                 }
             },
         )
@@ -787,6 +791,27 @@ pub async fn set_kind(pool: &SqlitePool, id: &str, kind: &str) -> Result<(), DbE
         .bind(id)
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+/// Mark a chat as the result of a scheduled run: `{ "scheduled": { "workflowId",
+/// "runId" } }` in its metadata, beside whatever else is there, so the app can
+/// show where it came from and link back to the task.
+pub async fn set_scheduled(
+    pool: &SqlitePool,
+    id: &str,
+    workflow_id: &str,
+    run_id: &str,
+) -> Result<(), DbError> {
+    let scheduled = serde_json::json!({ "workflowId": workflow_id, "runId": run_id });
+    sqlx::query(
+        "UPDATE conversations SET metadata = json_set(COALESCE(metadata, '{}'), '$.scheduled', json(?)) \
+         WHERE id = ?",
+    )
+    .bind(scheduled.to_string())
+    .bind(id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

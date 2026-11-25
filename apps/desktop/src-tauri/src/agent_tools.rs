@@ -56,6 +56,11 @@ pub const RANDOM_TOOL: &str = "random";
 pub const CALCULATOR_TOOL: &str = "calculator";
 /// Mid-answer structured elicitation (t1-2). Handled specially by the agent loop.
 pub const ASK_USER_TOOL: &str = "ask_user";
+/// Draft a scheduled task for the user to confirm in a card in the chat. Paused on
+/// like `ask_user` (the card is the answer); the renderer creates the task.
+pub const SCHEDULE_TASK_TOOL: &str = "schedule_task";
+/// The tasks on the Scheduled page, for the assistant to check before it drafts one.
+pub const LIST_SCHEDULED_TASKS_TOOL: &str = "list_scheduled_tasks";
 /// t1-5: propose a memory fact. Writes `pending` until the user saves it.
 pub const REMEMBER_TOOL: &str = "remember";
 /// Finds connector tools by what they do and loads the matches for the rest
@@ -625,6 +630,37 @@ pub fn builtin_tool_definitions() -> Vec<ToolDefinition> {
             kind: None,
             host_config: None,
         },
+        // The model's copy (with the full schema) is `chat/agentTools.ts`; only the
+        // metadata is checked against it (agentToolsParity).
+        ToolDefinition {
+            tool_id: SCHEDULE_TASK_TOOL.to_string(),
+            name: SCHEDULE_TASK_TOOL.to_string(),
+            description: "Draft a scheduled task for the user to confirm in a card in the chat."
+                .to_string(),
+            input_schema: json_schema(&[
+                ("name", "string", true),
+                ("instructions", "string", true),
+                ("schedule", "object", true),
+                ("model", "object", false),
+                ("notify", "boolean", false),
+            ]),
+            permission_level: Some(PermissionLevel::SideEffectful),
+            display_group: Some("Utilities".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
+        ToolDefinition {
+            tool_id: LIST_SCHEDULED_TASKS_TOOL.to_string(),
+            name: LIST_SCHEDULED_TASKS_TOOL.to_string(),
+            description: "List the scheduled tasks.".to_string(),
+            input_schema: json_schema(&[]),
+            permission_level: Some(PermissionLevel::ReadOnly),
+            display_group: Some("Utilities".to_string()),
+            tenant_scope: None,
+            kind: None,
+            host_config: None,
+        },
         ToolDefinition {
             tool_id: REMEMBER_TOOL.to_string(),
             name: REMEMBER_TOOL.to_string(),
@@ -1041,6 +1077,8 @@ pub fn is_builtin_tool_name(name: &str) -> bool {
             | CALCULATOR_TOOL
             | SEARCH_TOOLS_TOOL
             | ASK_USER_TOOL
+            | SCHEDULE_TASK_TOOL
+            | LIST_SCHEDULED_TASKS_TOOL
             | REMEMBER_TOOL
             | WEB_SEARCH_TOOL
             | WEB_FETCH_TOOL
@@ -1400,6 +1438,15 @@ async fn dispatch_builtin_tool(
         // arm exists so TS/Rust parity treats ask_user as a known builtin.
         ASK_USER_TOOL => Err(
             "ask_user must be handled by the agent loop (StreamManager), not execute_builtin_tool"
+                .to_string(),
+        ),
+        // Both need the app state and the user, so `StreamManager` runs them.
+        SCHEDULE_TASK_TOOL => Err(
+            "schedule_task must be handled by the agent loop (StreamManager), not execute_builtin_tool"
+                .to_string(),
+        ),
+        LIST_SCHEDULED_TASKS_TOOL => Err(
+            "list_scheduled_tasks must be handled by the agent loop (StreamManager), not execute_builtin_tool"
                 .to_string(),
         ),
         REMEMBER_TOOL => {
@@ -5052,7 +5099,8 @@ mod tests {
         // + search_tools (connector tool search) = 43
         // + 6 spreadsheet tools = 49
         // + add_chart, delete_chart = 51
-        assert_eq!(defs.len(), 51);
+        // + schedule_task, list_scheduled_tasks = 53
+        assert_eq!(defs.len(), 53);
     }
 
     #[test]

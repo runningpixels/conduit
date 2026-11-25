@@ -26,6 +26,7 @@ import {
   listConversations,
   getConversation,
   notifyWorkflowRun,
+  listScheduled,
   notifyUser,
   listConversationFolders,
   listConnectorGrants,
@@ -156,6 +157,7 @@ import { ArtifactsPage } from './pages/ArtifactsPage';
 import type { ArtifactOpen } from './artifacts/artifactItems';
 import type { MakeKind } from './home/makeKinds';
 import { AgentsPage } from './pages/AgentsPage';
+import { ScheduledPage } from './pages/ScheduledPage';
 import { useRunningAgentCalls } from './agents/runningAgentCalls';
 import { announceAgentCall, isWatchingAgentCall } from './agents/agentCallNotices';
 import type { AgentCallChange } from './ipc/contracts';
@@ -544,6 +546,12 @@ export default function App() {
   /** Bumped when a project's settings are saved, so the open chat reads them again. */
   const [projectsVersion, setProjectsVersion] = useState(0);
   const [convoProviders, setConvoProviders] = useState<Record<string, string>>(readConvoProviders);
+  // Chats a scheduled run saved (a clock beside them in the history rail): the latest result of each task,
+  // plus any chat opened that carries the mark in its metadata.
+  const [scheduledChats, setScheduledChats] = useState<ReadonlySet<string>>(() => new Set());
+  const markScheduledChat = useCallback((id: string) => {
+    setScheduledChats((current) => (current.has(id) ? current : new Set(current).add(id)));
+  }, []);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [connectorCount, setConnectorCount] = useState<number | undefined>(undefined);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -2617,6 +2625,24 @@ export default function App() {
     const timer = window.setInterval(refreshWaiting, 3000);
     return () => window.clearInterval(timer);
   }, [waitingCount, refreshWaiting]);
+  // The latest chat each scheduled task saved gets the clock mark in the history rail.
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => listScheduled())
+      .then((list) => {
+        if (cancelled || !Array.isArray(list)) return;
+        setScheduledChats((current) => {
+          const next = new Set(current);
+          for (const item of list) if (item.lastConversationId) next.add(item.lastConversationId);
+          return next.size === current.size ? current : next;
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [workflowRunsVersion]);
   // Results nobody has opened yet put the same dot on the rail.
   const [workflowsUnread, setWorkflowsUnread] = useState(false);
   const refreshUnreadResults = useCallback(() => {
@@ -2653,7 +2679,17 @@ export default function App() {
     // that saved a document offers to open it (it still leaves on its own).
     const runId = event.runId;
     const toast = workflowRunStatus(note.title, event.status === 'failed' ? 'error' : 'success', note.body);
-    if (event.documents.length > 0 && runId) {
+    const savedChat = event.conversationId;
+    if (savedChat) {
+      // A run that saved a chat: the notification's Open goes to that chat.
+      toast.action = {
+        label: t('workspace.workflows.notify.openChat'),
+        run: () => {
+          handleSelectConversation(savedChat);
+          navigateTo('chats');
+        },
+      };
+    } else if (event.documents.length > 0 && runId) {
       toast.action = {
         label: t('workspace.workflows.notify.open'),
         run: () => {
@@ -3979,6 +4015,7 @@ export default function App() {
           folders={conversationFolders}
           activeConversationId={activeConversationId}
           convoProviders={convoProviders}
+          scheduledIds={scheduledChats}
           workspaceLabel={workspaceLabel}
           localOnly={settings.localOnly}
           providerCount={providers.length > 0 ? providers.length : undefined}
@@ -4206,6 +4243,11 @@ export default function App() {
             onAgentViewChange={(view) => {
               watchedAgentRef.current = view;
             }}
+            onOpenScheduledTask={(workflowId) => {
+              setWorkflowsFocus({ workflowId, nonce: Date.now() });
+              setDestination('workflows');
+            }}
+            onScheduledChat={markScheduledChat}
             ideaGallery={activeDeck || activeDraft || ideaState.rowHidden ? null : { caps: ideaCaps, state: ideaState }}
             yourApps={activeDeck || activeDraft ? [] : savedApps}
             onOpenApp={openSavedApp}
@@ -4378,6 +4420,20 @@ export default function App() {
                 onOpenWorkflows={() => navigateTo('workflows')}
                 onOpenDocuments={openDocuments}
                 onAskAgent={(agent) => void askAgent(agent)}
+                onOpenConversation={(id) => {
+                  handleSelectConversation(id);
+                  navigateTo('chats');
+                }}
+              />
+            )}
+            {destination === 'scheduled' && (
+              <ScheduledPage
+                refreshKey={workflowRunsVersion}
+                onSetUpInChat={(text) => void openFreshChat(text)}
+                onOpenWorkflow={(workflowId, runId) => {
+                  setWorkflowsFocus({ workflowId, runId, showRun: runId !== undefined, nonce: Date.now() });
+                  setDestination('workflows');
+                }}
                 onOpenConversation={(id) => {
                   handleSelectConversation(id);
                   navigateTo('chats');

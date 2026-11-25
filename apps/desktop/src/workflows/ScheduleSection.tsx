@@ -7,7 +7,7 @@
 /// it. When an edit later needs more, the section says what and offers to
 /// approve it; until then a scheduled run pauses and asks.
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useT } from '../i18n';
 import { useFormatters } from '../i18n/formatters';
 import {
@@ -23,17 +23,17 @@ import type {
   WorkflowSchedule,
   WorkflowTrigger,
 } from '../ipc/contracts';
+import { DEFAULT_TIME, INTERVAL_HOURS } from '../scheduled/schedule';
+import { WhenFields } from '../scheduled/WhenFields';
 import { BackgroundSection } from './BackgroundSection';
 import { permissionText, type HelperNames } from './permissionText';
 import { loadWatchStatus, watchingText, type WatchStatus } from './triggers';
 
 /// What a schedule starts as when it is first switched on.
-export const DEFAULT_TIME = '08:00';
+export { DEFAULT_TIME, INTERVAL_HOURS };
 export const DEFAULT_SCHEDULE: Extract<ScheduleSpec, { kind: 'daily' }> = { kind: 'daily', time: DEFAULT_TIME };
 /// What a triggered workflow stores: it is polled, not timed.
 export const TRIGGER_SCHEDULE: ScheduleSpec = { kind: 'trigger' };
-/// Choices for "every N hours".
-export const INTERVAL_HOURS = [1, 2, 3, 4, 6, 8, 12, 24] as const;
 
 function errorText(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
@@ -89,7 +89,6 @@ export function ScheduleSection({
 }) {
   const t = useT();
   const fmt = useFormatters();
-  const timeId = useId();
   const [schedule, setSchedule] = useState<WorkflowSchedule | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -260,56 +259,14 @@ export function ScheduleSection({
       ) : null}
       {enabled && !trigger ? (
         <>
-          <div className="wf-input-row">
-            <label className="wf-field">
-              <span>{t('workspace.workflows.schedule.often')}</span>
-              <select
-                className="sel"
-                value={kind}
-                disabled={saving}
-                onChange={(e) => {
-                  const next = e.target.value as ScheduleSpec['kind'];
-                  const time = spec.kind === 'interval' ? DEFAULT_TIME : spec.time;
-                  void save(next === 'interval' ? { kind: 'interval', hours: 4 } : { kind: next, time }, true);
-                }}
-              >
-                <option value="daily">{t('workspace.workflows.schedule.daily')}</option>
-                <option value="weekdays">{t('workspace.workflows.schedule.weekdays')}</option>
-                <option value="interval">{t('workspace.workflows.schedule.interval')}</option>
-              </select>
-            </label>
-            {spec.kind === 'interval' ? (
-              <label className="wf-field">
-                <span>{t('workspace.workflows.schedule.every')}</span>
-                <select
-                  className="sel"
-                  value={spec.hours}
-                  disabled={saving}
-                  onChange={(e) => void save({ kind: 'interval', hours: Number(e.target.value) }, true)}
-                >
-                  {INTERVAL_HOURS.map((h) => (
-                    <option key={h} value={h}>
-                      {t('workspace.workflows.schedule.hours', { count: h })}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <label className="wf-field" htmlFor={timeId}>
-                <span>{t('workspace.workflows.schedule.at')}</span>
-                <input
-                  id={timeId}
-                  className="mem-input"
-                  type="time"
-                  value={spec.time}
-                  disabled={saving}
-                  onChange={(e) => {
-                    if (e.target.value) void save({ kind: spec.kind, time: e.target.value }, true);
-                  }}
-                />
-              </label>
-            )}
-          </div>
+          <WhenFields
+            kind={kind}
+            spec={spec}
+            label={t('workspace.workflows.schedule.often')}
+            disabled={saving}
+            onKind={() => {}}
+            onSpec={(next) => void save(next, true)}
+          />
           {schedule?.nextRunAt ? (
             <p className="wf-next-run">
               {t('workspace.workflows.schedule.next', { when: formatNextRun(schedule.nextRunAt, fmt.locale) })}

@@ -2681,6 +2681,14 @@ impl Exec<'_> {
                 output["hash"] = json!(hash);
                 Ok(output)
             }
+            StepAction::SaveChat { .. } => {
+                // Local and nothing leaves the app, so (like a note to
+                // oneself) it needs no approval.
+                let title = filled["title"].as_str().unwrap_or_default().trim();
+                let prompt = filled["prompt"].as_str().unwrap_or_default();
+                let content = filled["content"].as_str().unwrap_or_default();
+                self.save_chat(title, prompt, content).await
+            }
             StepAction::Agent {
                 tools,
                 agents,
@@ -5196,6 +5204,69 @@ impl Exec<'_> {
         // The conversation too, so a run can open the document where it lives.
         Ok(json!({ "artifactId": id, "title": title, "conversationId": self.conversation_id }))
     }
+
+    /// Keep an answer as a new, visible chat: the prompt as the user's
+    /// message and the answer as the assistant's, so they can open it and
+    /// reply. The chat is marked with the workflow and run that made it (its
+    /// `scheduled` metadata) so the app can say where it came from.
+    async fn save_chat(&self, title: &str, prompt: &str, content: &str) -> Result<Value, String> {
+        let pool = &self.runner.state.db;
+        let title = if title.is_empty() {
+            self.workflow_name
+        } else {
+            title
+        };
+        let conversation = conversations::create(pool, Some(title))
+            .await
+            .map_err(|e| e.to_string())?;
+        let asked = chrono::Utc::now() - chrono::Duration::seconds(1);
+        let at = |t: chrono::DateTime<chrono::Utc>| {
+            t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+        };
+        for (role, text, when) in [
+            (MessageRole::User, prompt, asked),
+            (
+                MessageRole::Assistant,
+                content,
+                asked + chrono::Duration::milliseconds(500),
+            ),
+        ] {
+            let id = Uuid::new_v4().to_string();
+            let created_at = at(when);
+            let message = Message {
+                id: id.clone(),
+                conversation_id: conversation.id.clone(),
+                role,
+                author_label: None,
+                provider_message_id: None,
+                request_id: None,
+                interrupted_at: None,
+                metadata: None,
+                parts: vec![MessagePart {
+                    id: Uuid::new_v4().to_string(),
+                    message_id: id,
+                    index: 0,
+                    kind: MessagePartKind::Text,
+                    content: Some(text.to_string()),
+                    mime_type: None,
+                    artifact_id: None,
+                    attachment_id: None,
+                    tool_call_id: None,
+                    blob_ref: None,
+                    metadata: None,
+                    created_at: created_at.clone(),
+                }],
+                created_at,
+            };
+            crate::db::repository::messages::insert_message(pool, &message)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        conversations::set_scheduled(pool, &conversation.id, self.workflow_id, self.run_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(json!({ "conversationId": conversation.id, "title": title }))
+    }
 }
 
 /// Most lines in a page's `linkText`.
@@ -5268,6 +5339,14 @@ fn fill(action: &StepAction, ctx: &Value) -> Result<Value, String> {
         } => json!({
             "type": "save_artifact", "title": render(title)?, "content": render(content)?,
             "format": format, "mode": mode, "onlyIfChanged": only_if_changed,
+        }),
+        StepAction::SaveChat {
+            title,
+            prompt,
+            content,
+        } => json!({
+            "type": "save_chat", "title": render(title)?, "prompt": render(prompt)?,
+            "content": render(content)?,
         }),
         StepAction::ForEach { items, .. } => json!({ "type": "for_each", "items": items }),
         StepAction::Agent {
@@ -5574,6 +5653,7 @@ fn step_type(action: &StepAction) -> &'static str {
         StepAction::Template { .. } => "template",
         StepAction::ForEach { .. } => "for_each",
         StepAction::SaveArtifact { .. } => "save_artifact",
+        StepAction::SaveChat { .. } => "save_chat",
         StepAction::Agent { .. } => "agent",
         StepAction::EditDeck { .. } => "edit_deck",
         StepAction::EditDraft { .. } => "edit_draft",

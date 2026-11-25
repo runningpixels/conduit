@@ -516,6 +516,32 @@ function StepCard({
       );
       break;
     }
+    case 'save_chat':
+      body = (
+        <>
+          <TextField
+            label={t('workspace.workflows.editor.save.title')}
+            value={step.title}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'save_chat' ? { ...s, title: v } : s))}
+          />
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.saveChat.prompt')}
+            value={step.prompt}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'save_chat' ? { ...s, prompt: v } : s))}
+          />
+          <TextField
+            multiline
+            label={t('workspace.workflows.editor.save.content')}
+            value={step.content}
+            refs={refs}
+            onChange={(v) => update((s) => (s.type === 'save_chat' ? { ...s, content: v } : s))}
+          />
+        </>
+      );
+      break;
     case 'save_artifact':
       body = (
         <>

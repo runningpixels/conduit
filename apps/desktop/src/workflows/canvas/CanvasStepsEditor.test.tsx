@@ -82,8 +82,8 @@ describe('editing on the canvas', () => {
     const groups = within(menu).getAllByRole('group').map((g) => [g.getAttribute('aria-label'), within(g).getAllByRole('menuitem').map((i) => i.textContent)]);
     expect(groups.map(([name]) => name)).toEqual(['Get information', 'Work with the model', 'Save and tell me', 'Control the flow']);
     const all = groups.flatMap(([, items]) => items as string[]);
-    expect(all).toHaveLength(20);
-    expect(new Set(all).size).toBe(20);
+    expect(all).toHaveLength(21);
+    expect(new Set(all).size).toBe(21);
     expect(groups[3][1]).toEqual(['Repeat for each', 'Continue only if…', 'If… otherwise', 'Ask me']);
     expect(within(menu).getByText('Add at the end')).toBeTruthy();
   });

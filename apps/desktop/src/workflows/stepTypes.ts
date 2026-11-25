@@ -17,6 +17,7 @@ export const STEP_TYPE_KEY: Record<StepType, string> = {
   template: 'workspace.workflows.editor.type.template',
   for_each: 'workspace.workflows.editor.type.forEach',
   save_artifact: 'workspace.workflows.editor.type.saveArtifact',
+  save_chat: 'workspace.workflows.editor.type.saveChat',
   export_file: 'workspace.workflows.editor.type.exportFile',
   save_memory: 'workspace.workflows.editor.type.saveMemory',
   notify: 'workspace.workflows.editor.type.notify',

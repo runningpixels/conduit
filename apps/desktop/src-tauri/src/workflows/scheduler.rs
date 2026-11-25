@@ -223,6 +223,9 @@ pub struct RunFinished {
     /// published, id`) or file (`path, name, modified, bytes`) it ran for.
     pub trigger_item: Option<serde_json::Value>,
     pub documents: Vec<SavedDocument>,
+    /// The chat a `save_chat` step wrote, so clicking the notification can
+    /// open it; `None` when the run saved no chat.
+    pub conversation_id: Option<String>,
 }
 
 /// ISO-8601 UTC with milliseconds, the format every `*_at` column uses, so
@@ -231,14 +234,15 @@ pub fn to_iso(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-/// When `spec` is next due after `now`, reading its times in `tz`.
+/// When `spec` is next due after `now`, reading its times in `tz`; `None`
+/// when it never is again (a one-time schedule that has passed).
 pub fn next_run<Tz: TimeZone>(
     spec: &ScheduleSpec,
     now: DateTime<Utc>,
     tz: &Tz,
-) -> Result<String, String> {
+) -> Result<Option<String>, String> {
     let next = spec.next_after(&now.with_timezone(tz))?;
-    Ok(to_iso(next.with_timezone(&Utc)))
+    Ok(next.map(|next| to_iso(next.with_timezone(&Utc))))
 }
 
 fn saved_documents(detail: &repo::WorkflowRunDetail) -> Vec<SavedDocument> {
@@ -260,6 +264,20 @@ fn saved_documents(detail: &repo::WorkflowRunDetail) -> Vec<SavedDocument> {
         });
     }
     docs
+}
+
+/// The chat a run's `save_chat` step wrote (the last one, if several), read
+/// from the run's steps: their output names it and their input says what kind
+/// of step it was.
+fn saved_chat(detail: &repo::WorkflowRunDetail) -> Option<String> {
+    detail.steps.iter().rev().find_map(|step| {
+        let is_chat = step.input.as_ref().and_then(|i| i["type"].as_str()) == Some("save_chat");
+        let output = step.output.as_ref()?;
+        let completed = matches!(step.status.as_str(), "completed" | "reused");
+        (is_chat && completed)
+            .then(|| output["conversationId"].as_str().map(str::to_string))
+            .flatten()
+    })
 }
 
 /// Show a desktop notification. Only Rust shows them; the webview has no
@@ -331,9 +349,9 @@ pub async fn claim_due<Tz: TimeZone>(
                     })
                     .and_then(|def| def.trigger);
                 match watched {
-                    Some(trigger) => Ok(to_iso(
+                    Some(trigger) => Ok(Some(to_iso(
                         now + ChronoDuration::minutes(i64::from(trigger.poll_minutes())),
-                    )),
+                    ))),
                     None => Err("this workflow has no trigger any more".to_string()),
                 }
             }
@@ -341,8 +359,16 @@ pub async fn claim_due<Tz: TimeZone>(
             Err(e) => Err(e.clone()),
         };
         // A spec that no longer reads turns the schedule off (no next time).
-        if let Err(e) = repo::mark_schedule_ran(pool, &id, &to_iso(now), next.as_deref().ok()).await
-        {
+        // So does a one-time schedule that just came due: this slot still
+        // runs, and the page then shows it as done.
+        let marked = match &next {
+            Ok(Some(next)) => {
+                repo::mark_schedule_ran(pool, &id, &to_iso(now), Some(next.as_str())).await
+            }
+            Ok(None) => repo::mark_schedule_finished(pool, &id, &to_iso(now)).await,
+            Err(_) => repo::mark_schedule_ran(pool, &id, &to_iso(now), None).await,
+        };
+        if let Err(e) = marked {
             tracing::warn!(workflow_id = %id, error = %e, "could not update a workflow schedule");
             continue;
         }
@@ -499,6 +525,7 @@ async fn continue_one(ctx: &RunContext<'_>, waiting: WaitingRun) -> RunFinished 
         trigger: run.trigger.clone(),
         trigger_item: None,
         documents: Vec::new(),
+        conversation_id: None,
     };
     match outcome {
         Ok(detail) => RunFinished {
@@ -507,6 +534,7 @@ async fn continue_one(ctx: &RunContext<'_>, waiting: WaitingRun) -> RunFinished 
             outcome: detail.run.outcome.clone(),
             trigger_item: detail.run.trigger_item.clone(),
             documents: saved_documents(&detail),
+            conversation_id: saved_chat(&detail),
             ..base
         },
         Err(error) => RunFinished {
@@ -582,6 +610,7 @@ async fn poll_and_run(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> 
         trigger: String::new(),
         trigger_item: None,
         documents: Vec::new(),
+        conversation_id: None,
     };
     if let Some(error) = error {
         return vec![event("failed", Some(error))];
@@ -713,6 +742,7 @@ async fn poll_and_run(ctx: &RunContext<'_>, claim: Claimed) -> Vec<RunFinished> 
                 error: detail.run.error.clone(),
                 outcome: detail.run.outcome.clone(),
                 documents: saved_documents(&detail),
+                conversation_id: saved_chat(&detail),
                 ..base
             },
             Err(error) => RunFinished {
@@ -756,6 +786,7 @@ async fn run_timed(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
         trigger: trigger.clone(),
         trigger_item: None,
         documents: Vec::new(),
+        conversation_id: None,
     };
     if error.is_some() {
         return finished("failed", error);
@@ -793,6 +824,7 @@ async fn run_timed(ctx: &RunContext<'_>, claim: Claimed) -> RunFinished {
             error: detail.run.error.clone(),
             outcome: detail.run.outcome.clone(),
             documents: saved_documents(&detail),
+            conversation_id: saved_chat(&detail),
             ..finished("", None)
         },
         Err(error) => finished("failed", Some(error)),

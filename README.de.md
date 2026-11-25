@@ -224,6 +224,21 @@ Dokumentsammlungen durchsuchen, die Sie auswählen. **Prüfen lassen** im Menü
 eines Chat-Dokuments schickt das Dokument an Ihren Reviewer und überarbeitet es
 mit dem, was er findet.
 
+### Geplante Aufgaben
+
+Die Seite **Geplant** zeigt alles, was von selbst läuft: Aufgaben, die
+Routinen Ihrer Agenten und geplante Workflows, mit Jetzt ausführen, Pausieren,
+Bearbeiten und dem letzten Ergebnis. Eine Aufgabe besteht aus Anweisungen,
+optional einem Agenten und einem Modell; sie läuft täglich, werktags, an
+gewählten Tagen, monatlich, alle paar Stunden, einmal oder wenn eine Datei
+oder ein Feed-Beitrag eintrifft. Jeder Lauf landet als neuer Chat, auf den Sie
+antworten können, oder als Dokument oder Datei, und eine Aufgabe, die erneut
+läuft, sieht ihr letztes Ergebnis und kann sagen, was sich geändert hat. Sie
+können auch in jedem Chat fragen („jeden Werktag um 8 eine KI-Nachrichtenlage“)
+und die Aufgabe auf einer Karte bestätigen. Aufgaben laufen, solange Conduit
+geöffnet ist, auch aus dem Infobereich, und dürfen nur, was Sie beim
+Einrichten freigegeben haben.
+
 ### Workflows
 
 **Workflows** führen Routineaufgaben für Sie aus. Ein Schritt kann Seiten
@@ -487,7 +502,7 @@ Siehe [`CHANGELOG.md`](./CHANGELOG.md) für alles, was in jeder Version enthalte
 
 ## Status
 
-**v1.0.0-rc.38 — Release Candidate.** Installationsprogramme für Windows, macOS (Apple
+**v1.0.0-rc.39 — Release Candidate.** Installationsprogramme für Windows, macOS (Apple
 Silicon und Intel) und Linux liegen auf der
 [Releases-Seite](https://github.com/runningpixels/conduit/releases). Sie sind
 nicht vom Betriebssystem signiert, daher zeigt der erste Start eine Gatekeeper-
@@ -523,6 +538,7 @@ gilt.
 | Workflow-Zeichenfläche — Schrittstatus live, Bearbeiten auf der Zeichenfläche, Verzweigungen, parallele Schritte und Zusammenführungen, Reiter Läufe und Ergebnisse, Durchläufe, die nach einem Neustart weiterlaufen | Funktioniert |
 | Workflow-Agenten — Connector-Werkzeuge mit Freigabe, Helfer, Seiten Eingang und Agenten | Funktioniert |
 | Ihre Agenten — einmal angelegt, genutzt in Chat, Workflows und Routinen; Helfer arbeiten gleichzeitig; einen öffnen, stoppen oder umlenken; Gedächtnis, Dokumente und Dokumentprüfung | Funktioniert |
+| Geplante Aufgaben — eine Seite für Aufgaben, Routinen und geplante Workflows; Einrichtung im Formular oder im Chat; jeder Lauf als Chat, Dokument oder Datei | Funktioniert |
 | Computernutzung — Agenten führen Befehle aus und ändern Dateien in einem von Ihnen gewählten Ordner, mit Freigabe, Befehlsregeln und einem Reiter Berechtigungen | Funktioniert, standardmäßig aus; Befehle sind nur unter Windows auf den Ordner beschränkt |
 | Persönliche Apps — eine Seite speichern, neun Starter-Apps, Speicher pro App, Einstellungen, Modellzugriff und Nutzungslimits | Funktioniert |
 | Erste Beispiele in einem neuen Profil | Funktioniert |
@@ -530,7 +546,7 @@ gilt.
 | Folien-Export — HTML und PowerPoint auf jeder Plattform, PDF unter Windows | Funktioniert |
 | Start und Navigation — Eingabefeld, Braucht dich, neue Ergebnisse, Weitermachen, Bereichskacheln, gruppierte Navigationsleiste, `Ctrl+1`…`9` | Funktioniert |
 | Oberfläche in acht Sprachen | Funktioniert |
-| Update-/Paketierungs-Pipeline, mit optionalen automatischen Updates | Funktioniert — 1.0.0-rc.38 für alle vier Ziele gebaut, signiert und veröffentlicht; das Update auf einer echten Windows-Installation geprüft, auf macOS und Linux noch nicht |
+| Update-/Paketierungs-Pipeline, mit optionalen automatischen Updates | Funktioniert — 1.0.0-rc.39 für alle vier Ziele gebaut, signiert und veröffentlicht; das Update auf einer echten Windows-Installation geprüft, auf macOS und Linux noch nicht |
 | Code-Signierung durch das Betriebssystem | Nicht erledigt — die Bundles sind unsigniert |
 | Cloud-Synchronisierung / Konten | In diesem Repository nicht geplant |
 

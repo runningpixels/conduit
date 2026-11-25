@@ -213,6 +213,20 @@ guardar as próprias anotações entre execuções e pesquisar nas coleções de
 documentos que você escolher. **Pedir revisão**, no menu de um documento do
 chat, envia o documento ao seu Reviewer e o revisa com o que ele encontrar.
 
+### Tarefas agendadas
+
+A página **Agendadas** reúne tudo o que roda sozinho: tarefas, as rotinas dos
+seus agentes e os fluxos de trabalho agendados, com Executar agora, Pausar,
+Editar e o último resultado. Uma tarefa é um conjunto de instruções com um
+agente opcional e um modelo, executada todo dia, nos dias úteis, nos dias
+escolhidos, todo mês, a cada poucas horas, uma única vez ou quando chega um
+arquivo ou uma postagem de feed. Cada execução chega como um novo chat que você
+pode responder, ou como um documento ou arquivo, e uma tarefa que roda de novo
+vê o último resultado, então pode dizer o que mudou. Você também pode pedir em
+qualquer chat ("todo dia útil às 8, um resumo das notícias de IA") e confirmar a
+tarefa em um cartão. As tarefas rodam enquanto o Conduit está aberto, inclusive
+na bandeja do sistema, e só podem fazer o que você aprovou ao configurá-las.
+
 ### Fluxos de trabalho
 
 Os **fluxos de trabalho** executam rotinas para você. Uma etapa pode buscar
@@ -454,7 +468,7 @@ Veja o [`CHANGELOG.md`](./CHANGELOG.md) para tudo o que muda em cada versão.
 
 ## Situação
 
-**v1.0.0-rc.38 — versão candidata.** Os instaladores para Windows, macOS (Apple
+**v1.0.0-rc.39 — versão candidata.** Os instaladores para Windows, macOS (Apple
 silicon e Intel) e Linux estão na
 [página de versões](https://github.com/runningpixels/conduit/releases). Eles não
 são assinados no nível do sistema operacional, então a primeira execução exibe um
@@ -490,6 +504,7 @@ Esta é a versão candidata da 1.0: tudo o que está abaixo funciona, e o que fa
 | Tela de fluxos — status ao vivo de cada etapa, edição na tela, ramos, etapas em paralelo e junções, abas Execuções e Resultados, execuções que continuam depois de reiniciar | Funcionando |
 | Agentes de fluxo — ferramentas de conector com aprovação, ajudantes, páginas Caixa de entrada e Agentes | Funcionando |
 | Seus agentes — definidos uma vez, usados em chats, fluxos e rotinas; ajudantes ao mesmo tempo; abrir, parar ou redirecionar um; memória, documentos e revisão de documentos | Funcionando |
+| Tarefas agendadas — uma página para tarefas, rotinas e fluxos agendados; configuradas em um formulário ou no chat; cada execução como chat, documento ou arquivo | Funcionando |
 | Uso do computador — agentes executam comandos e alteram arquivos em uma pasta que você escolhe, com aprovação, regras de comando e uma aba Permissões | Funcionando, desligado por padrão; os comandos ficam confinados à pasta só no Windows |
 | Apps pessoais — salvar uma página, nove apps iniciais, armazenamento por app, configurações, acesso ao modelo e limites de uso | Funcionando |
 | Exemplos de primeiro uso em um perfil novo | Funcionando |
@@ -497,7 +512,7 @@ Esta é a versão candidata da 1.0: tudo o que está abaixo funciona, e o que fa
 | Exportação do Slides — HTML e PowerPoint em todas as plataformas, PDF no Windows | Funcionando |
 | Início e navegação — campo de pedido, precisa de você, novidades, continue de onde parou, blocos de áreas, barra agrupada, `Ctrl+1`…`9` | Funcionando |
 | Interface em oito idiomas | Funcionando |
-| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.38 foi compilada, assinada e publicada nos quatro alvos; a atualização foi verificada em uma instalação real do Windows, ainda não no macOS nem no Linux |
+| Pipeline de atualização/empacotamento, com atualizações automáticas opcionais | Funcionando — a 1.0.0-rc.39 foi compilada, assinada e publicada nos quatro alvos; a atualização foi verificada em uma instalação real do Windows, ainda não no macOS nem no Linux |
 | Assinatura de código do SO | Não feita — os pacotes não são assinados |
 | Sincronização na nuvem / contas | Não planejado neste repositório |
 

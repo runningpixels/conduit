@@ -201,6 +201,19 @@ between runs and search the document collections you pick. **Have it
 reviewed** in a chat document's menu sends the document to your Reviewer and
 revises it with what it finds.
 
+### Scheduled tasks
+
+The **Scheduled** page lists everything that runs on its own: tasks, your
+agents' routines and scheduled workflows, with Run now, Pause, Edit and the
+last result. A task is a set of instructions with an optional agent and a
+model, run daily, on weekdays, on chosen days, monthly, every few hours, once,
+or when a file or feed post arrives. Each run lands as a new chat you can reply
+to, or as a document or file, and a task that runs again sees its last result,
+so it can say what changed. You can also ask in any chat ("every weekday at 8,
+brief me on AI news") and confirm the task on a card. Tasks run while Conduit
+is open, including from the tray, and can only do what you approved when you
+set them up.
+
 ### Workflows
 
 **Workflows** run routines for you. A step can fetch pages, search the web, run
@@ -425,7 +438,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.38 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.39 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -459,6 +472,7 @@ left is checking it on real installs before calling it final.
 | Workflow canvas — live step status, editing on the canvas, branches, parallel steps and joins, Runs and Results tabs, runs that resume after a restart | Working |
 | Workflow agents — connector tools with approval, helpers, Inbox and Agents pages | Working |
 | Your agents — defined once, used in chat, workflows and routines; helpers side by side; open, stop or redirect one; memory, documents and document review | Working |
+| Scheduled tasks — one page for tasks, routines and scheduled workflows; set up in a form or in chat; each run as a chat, document or file | Working |
 | Computer use — agents run commands and change files in a folder you choose, with approval, command rules and a Permissions tab | Working, off by default; commands are confined to the folder on Windows only |
 | Personal apps — save a page, nine starter apps, per-app storage, settings, model access and usage limits | Working |
 | First-run examples in a new profile | Working |
@@ -466,7 +480,7 @@ left is checking it on real installs before calling it final.
 | Slides export — HTML and PowerPoint on every platform, PDF on Windows | Working |
 | Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.38 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.39 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

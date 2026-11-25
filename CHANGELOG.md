@@ -7,6 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.39] - 2026-11-25
+
+Scheduled tasks: a page for everything that runs on its own, and tasks you can
+set up by asking in a chat.
+
 ### Added
 
 - **Scheduled tasks.** A new Scheduled page on the rail lists everything that

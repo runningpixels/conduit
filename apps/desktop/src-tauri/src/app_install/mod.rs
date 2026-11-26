@@ -551,7 +551,12 @@ mod tests {
             // A rename replaces the entries instead of adding to them.
             let renamed = inst.install(ID, "Deep work", &images, false).unwrap();
             assert_eq!(renamed.entries.len(), 1);
-            for old in &record.entries {
+            // (Linux names the menu file by id, so that one is rewritten in place.)
+            for old in record
+                .entries
+                .iter()
+                .filter(|e| !renamed.entries.contains(e))
+            {
                 assert!(!old.exists(), "{} removed on refresh", old.display());
             }
             assert!(renamed.entries[0]

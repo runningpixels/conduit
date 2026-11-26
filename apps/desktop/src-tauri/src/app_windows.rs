@@ -15,7 +15,9 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindow};
+#[cfg(windows)]
+use tauri::WebviewWindow;
+use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl};
 
 use crate::{app_install::Installer, db::repository::apps, state::AppState, tray};
 

@@ -28,10 +28,7 @@ fn exec_quote(arg: &str) -> String {
 
 /// A value for a string key: one line, `\` escaped.
 fn value(text: &str) -> String {
-    text.replace('\\', "\\\\")
-        .replace('\n', " ")
-        .replace('\r', " ")
-        .replace('\t', " ")
+    text.replace('\\', "\\\\").replace(['\n', '\r', '\t'], " ")
 }
 
 pub(super) fn desktop_entry(spec: &EntrySpec) -> String {

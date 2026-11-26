@@ -7,6 +7,7 @@
 // integration tests (`tests/`) can reach the migration runner and repositories.
 use conduit_desktop::{
     agents::calls::AGENT_CALL_CHANGED_EVENT,
+    app_windows,
     artifact_frames::{self, ArtifactFrames},
     boot_check, brand,
     commands::*,
@@ -94,8 +95,11 @@ fn main() {
     let app = tauri::Builder::default()
         // First, so a second launch hands off before anything else starts: it
         // exits, and the running one shows its window (it may be in the tray).
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            tray::show_main_window(app);
+        // An installed app's launcher (`--open-app <id>`) opens only that app.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !app_windows::handle_second_launch(app, &args) {
+                tray::show_main_window(app);
+            }
         }))
         // Start at sign-in (opt-in, off by default), straight into the tray.
         .plugin(tauri_plugin_autostart::init(
@@ -510,6 +514,14 @@ fn main() {
             open_quick_ask,
             take_pending_quick_ask,
             get_quick_ask_status,
+            // Apps in their own window, and installed on this computer.
+            open_app_window,
+            show_app_in_main,
+            app_install_place,
+            install_app,
+            uninstall_app,
+            app_install_status,
+            list_app_installs,
         ])
         .setup(|app| {
             // The main window is built here, not from tauri.conf.json, so its
@@ -531,7 +543,11 @@ fn main() {
                 .cloned()
                 .ok_or("tauri.conf.json has no \"main\" window")?;
             // Started at sign-in with the tray on: stay hidden in the tray.
-            let visible = config.visible && !tray::start_hidden(std::env::args(), close_to_tray);
+            // Started from an installed app's launcher: only the app shows.
+            let launch_app = app_windows::launch_request(std::env::args());
+            let visible = config.visible
+                && !tray::start_hidden(std::env::args(), close_to_tray)
+                && launch_app.is_none();
             // Pages with full web access get their own origin from the
             // loopback page server; without it they keep the opaque one.
             // Before the guard proxy, whose ephemeral port must not take the
@@ -567,6 +583,10 @@ fn main() {
             #[cfg(target_os = "linux")]
             webview_args::disable_webrtc(&_window)?;
             tray::ensure_tray(app.handle(), close_to_tray)?;
+            if let Some(id) = launch_app {
+                app_windows::spawn_open(app.handle(), id);
+            }
+            verify_installs_at_boot(app.handle());
             // The optional quick-ask shortcut. Added here, not on the builder,
             // so a system without global shortcuts (no X server, Wayland) only
             // logs; a key taken by another app shows in Settings. Neither
@@ -647,6 +667,11 @@ fn main() {
                 if keep && window.app_handle().tray_by_id(tray::TRAY_ID).is_some() {
                     api.prevent_close();
                     let _ = window.hide();
+                } else if app_windows::main_should_hide_for_apps(window.app_handle()) {
+                    // App windows stay open: hide, so a second launch can
+                    // still show it; the last app window closing quits.
+                    api.prevent_close();
+                    let _ = window.hide();
                 } else if window
                     .try_state::<std::sync::Arc<RunningWorkflows>>()
                     .is_some_and(|r| r.count() > 0)
@@ -655,6 +680,9 @@ fn main() {
                     api.prevent_close();
                     tray::request_quit(window.app_handle());
                 }
+            }
+            tauri::WindowEvent::Destroyed if app_windows::is_app_window(window.label()) => {
+                app_windows::after_app_window_closed(window.app_handle(), window.label());
             }
             _ => {}
         })

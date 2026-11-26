@@ -73,6 +73,9 @@ import { useLocale, useRichT, useT } from './i18n';
 import { applyBrand, applyBrandTheme, clearBrand } from './brand/applyBrand';
 import { fetchBrandLogo } from './brand/logo';
 import { appName } from './brand';
+import { appNetworkPolicyKey } from './apps/appHostSettings';
+import { OPEN_APP_IN_MAIN_EVENT, useTauriEvent } from './apps/appEvents';
+import { installedMessageKey } from './apps/InstallAppDialog';
 import { providerDisplayName, providerHueId } from './lib/providerIdentity';
 import { MainHead } from './workspace/MainHead';
 import { TitleBar } from './shell/TitleBar';
@@ -470,6 +473,9 @@ export default function App() {
     setOpenAppId(id);
     setDestination('apps');
   }, []);
+  // "Open in Conduit" from an app's own window: Rust focuses this window and
+  // sends the app id.
+  useTauriEvent<string>(OPEN_APP_IN_MAIN_EVENT, openSavedApp);
   // A starter app: add it the first time (named in the user's language, from
   // its Ideas strings), then it is an ordinary app.
   const addStarterApp = useCallback(
@@ -4385,7 +4391,7 @@ export default function App() {
                 allowlist={settings.artifactRemoteAllowlist}
                 styledPreview={settings.artifactStyledPreview}
                 colorScheme={effectiveTheme}
-                networkPolicyKey={`${settings.localOnly}:${settings.artifactNetworkEnabled}:${settings.artifactFullWebAccess === true}`}
+                networkPolicyKey={appNetworkPolicyKey(settings)}
                 onAppsChanged={() => void refreshSavedApps()}
                 starters={starterApps}
                 onAddStarter={(starter) => void addStarterApp(starter)}
@@ -4679,10 +4685,16 @@ export default function App() {
       <AppDetailsDialog
         target={appDetailsTarget}
         onClose={() => setAppDetailsTarget(null)}
-        onSaved={(app) => {
+        onSaved={(app, _mode, install) => {
           setAppDetailsTarget(null);
           void refreshSavedApps();
-          setStatusMessage(t('apps.status.saved', { name: app.name }));
+          setStatusMessage(
+            install?.status
+              ? t(installedMessageKey(install.status.place), { name: app.name })
+              : install?.error
+                ? install.error
+                : t('apps.status.saved', { name: app.name }),
+          );
         }}
       />
 

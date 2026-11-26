@@ -4,9 +4,10 @@
 
 use provider_core::schema::{AppCategory, AppDetail, AppInput, AppSummary, StarterAppInfo};
 use serde::Deserialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::{
+    app_windows::{self, AppChangeKind},
     artifact_network,
     db::repository::apps::{self, AppMeta},
     starter_apps::{self, STARTER_APPS},
@@ -92,17 +93,21 @@ pub async fn open_app(state: State<'_, AppState>, id: String) -> Result<AppDetai
 
 #[tauri::command]
 pub async fn update_app(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     meta: AppMetaInput,
 ) -> Result<AppSummary, String> {
-    apps::update_meta(&state.db, &state.encryption, &id, meta.validated()?)
+    let summary = apps::update_meta(&state.db, &state.encryption, &id, meta.validated()?)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    app_windows::emit_app_changed(&app, &id, AppChangeKind::Updated);
+    Ok(summary)
 }
 
 #[tauri::command]
 pub async fn update_app_from_artifact(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     declared_hosts: Vec<String>,
@@ -112,7 +117,7 @@ pub async fn update_app_from_artifact(
     let capabilities = apps::validate_capabilities(&declared_capabilities)?;
     provider_core::app_inputs::validate_declaration(&declared_inputs)
         .map_err(|e| format!("invalid: {e}"))?;
-    apps::update_from_artifact(
+    let summary = apps::update_from_artifact(
         &state.db,
         &state.paths.artifacts,
         &state.encryption,
@@ -122,7 +127,9 @@ pub async fn update_app_from_artifact(
         declared_inputs,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    app_windows::emit_app_changed(&app, &id, AppChangeKind::Updated);
+    Ok(summary)
 }
 
 /// The ready-made apps, and which of them the user has added.
@@ -168,11 +175,27 @@ pub async fn install_starter_app(
 }
 
 #[tauri::command]
-pub async fn delete_app(state: State<'_, AppState>, id: String) -> Result<(), String> {
+pub async fn delete_app(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
     artifact_network::clear_session_grants(Some(&format!("app:{id}")));
     apps::delete(&state.db, &id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // Its launchers go with it; a failure here only leaves a launcher that
+    // offers to remove itself when opened.
+    if let Some(installer) = app_windows::installer(&app) {
+        let app_id = id.clone();
+        let removed =
+            tauri::async_runtime::spawn_blocking(move || installer.uninstall(&app_id)).await;
+        if let Ok(Err(error)) = removed {
+            tracing::warn!(%error, app_id = %id, "could not remove the deleted app's launchers");
+        }
+    }
+    app_windows::emit_app_changed(&app, &id, AppChangeKind::Deleted);
+    Ok(())
 }
 
 #[cfg(test)]

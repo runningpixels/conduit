@@ -12,11 +12,20 @@ import { useT } from '../i18n';
 import { PageEmpty, PageFrame } from '../shell/PageFrame';
 import { declaredCapabilities, declaredHosts, declaredInputs } from '../artifacts/networkHosts';
 import type { ArtifactColorScheme } from '../artifacts/HtmlArtifactRenderer';
-import { deleteApp, getArtifact, getArtifactContentBytes, listApps, updateAppFromArtifact } from '../ipc/client';
+import {
+  deleteApp,
+  getArtifact,
+  getArtifactContentBytes,
+  listAppInstalls,
+  listApps,
+  updateAppFromArtifact,
+} from '../ipc/client';
 import type { AppSummary, StarterAppInfo } from '../ipc/contracts';
 import { AppDetailsDialog, type AppDetailsTarget } from '../apps/AppDetailsDialog';
 import { AppTile } from '../apps/AppTile';
 import { AppView } from '../apps/AppView';
+import { useAppChanged } from '../apps/appEvents';
+import { refreshInstalledApp } from '../apps/appInstall';
 import { withLocalStarterNames } from '../apps/starterNames';
 import { useSiteLabel } from '../workspace/ArtifactNetwork';
 import { sweepPageSiteData } from '../artifacts/pageSiteData';
@@ -65,6 +74,31 @@ export function AppsPage({
   const [editing, setEditing] = useState<AppDetailsTarget | null>(null);
   const [deleting, setDeleting] = useState<AppSummary | null>(null);
   const [revision, setRevision] = useState(0);
+  // Ids of apps installed as OS apps, for the "Installed" chip.
+  const [installedIds, setInstalledIds] = useState<ReadonlySet<string>>(new Set());
+  const refreshInstalls = useCallback(async () => {
+    try {
+      setInstalledIds(new Set((await listAppInstalls()).map((s) => s.appId)));
+    } catch {
+      setInstalledIds(new Set());
+    }
+  }, []);
+  useEffect(() => {
+    void refreshInstalls();
+  }, [refreshInstalls, openAppId]);
+  // Changes made elsewhere too (an app's own window): the list follows, the
+  // open app reloads after an edit and closes after a delete. (The hook calls
+  // the latest handler, so it sees this render's props.)
+  useAppChanged((event) => {
+    void refreshInstalls();
+    if (event.kind === 'installed') return;
+    if (event.id === openAppId) {
+      if (event.kind === 'deleted') onOpenAppIdChange(null);
+      else setRevision((r) => r + 1);
+    }
+    void refresh();
+    onAppsChanged?.();
+  });
 
   // Read through a ref: the default `[]` is a new array every render.
   const startersRef = useRef(starters);
@@ -132,8 +166,10 @@ export function AppsPage({
       <AppDetailsDialog
         target={editing}
         onClose={() => setEditing(null)}
-        onSaved={() => {
+        onSaved={(app, mode) => {
           setEditing(null);
+          // An installed app's entries carry its name and icon: keep them in step.
+          if (mode === 'edit') void refreshInstalledApp(app).then(() => refreshInstalls());
           void changed();
         }}
       />
@@ -160,6 +196,7 @@ export function AppsPage({
           networkPolicyKey={networkPolicyKey}
           revision={revision}
           onBack={() => onOpenAppIdChange(null)}
+          onOpenedElsewhere={() => onOpenAppIdChange(null)}
           onEdit={(app) => setEditing({ mode: 'edit', app })}
           onUpdateFromSource={(app) => void updateFromSource(app)}
           onDelete={setDeleting}
@@ -205,6 +242,9 @@ export function AppsPage({
                   <span className="app-card-desc">{app.description ?? ''}</span>
                 </div>
                 <div className="app-card-chips">
+                  {installedIds.has(app.id) && (
+                    <span className="app-chip app-card-installed">{t('apps.card.installed')}</span>
+                  )}
                   {app.hosts.length === 0 ? (
                     <span className="app-chip">
                       <span className="app-view-dot" data-tone="off" aria-hidden="true" />

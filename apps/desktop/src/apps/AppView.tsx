@@ -27,21 +27,27 @@ import {
 } from '../workspace/ArtifactNetwork';
 import { OpenExternalLinkDialog } from '../workspace/OpenExternalLinkDialog';
 import { Menu } from '../workspace/Menu';
-import { ChevronLeft, ModelIcon, MoreIcon, PencilIcon, RetryIcon, SettingsIcon, SlidersIcon, TrashIcon } from '../icons';
+import { ChevronLeft, DownloadIcon, ExternalIcon, ModelIcon, MoreIcon, PencilIcon, RetryIcon, SettingsIcon, SlidersIcon, TrashIcon } from '../icons';
 import {
+  appInstallStatus,
   appPrincipal,
   getAppInputs,
   openApp,
+  openAppWindow,
+  showAppInMain,
+  uninstallApp,
   openExternalUrl,
   pageStorageClear,
   pageStorageUsage,
   type PageStorageUsage,
 } from '../ipc/client';
-import type { AppDetail, AppSummary } from '../ipc/contracts';
+import type { AppDetail, AppInstallStatus, AppSummary } from '../ipc/contracts';
 import { AppTile } from './AppTile';
 import { AppInputsDialog } from './AppInputsDialog';
 import { AppSettingsView } from './AppSettingsView';
 import { clearPageSiteData } from '../artifacts/pageSiteData';
+import { useAppChanged } from './appEvents';
+import { InstallAppDialog, installedMessageKey } from './InstallAppDialog';
 
 export interface AppViewProps {
   appId: string;
@@ -53,7 +59,12 @@ export interface AppViewProps {
   networkPolicyKey?: string;
   /** Bumped by the page after an edit or update, to reload the app. */
   revision: number;
-  onBack: () => void;
+  /** Not used in a standalone window, which has no list to go back to. */
+  onBack?: () => void;
+  /** The app's own window: no Back, "Open in Conduit" instead of "Open in its own window". */
+  standalone?: boolean;
+  /** After "Open in its own window" / "Open in Conduit" succeeded: close this copy. */
+  onOpenedElsewhere?: () => void;
   onEdit: (app: AppSummary) => void;
   onUpdateFromSource: (app: AppSummary) => void;
   onDelete: (app: AppSummary) => void;
@@ -68,6 +79,8 @@ export function AppView({
   networkPolicyKey,
   revision,
   onBack,
+  standalone = false,
+  onOpenedElsewhere,
   onEdit,
   onUpdateFromSource,
   onDelete,
@@ -100,6 +113,45 @@ export function AppView({
   // origin (cookies, storage), like a browser's. Bumped after, to reload.
   const [siteDataConfirmOpen, setSiteDataConfirmOpen] = useState(false);
   const [siteDataRevision, setSiteDataRevision] = useState(0);
+
+  // Whether this app is installed as an OS app (and where it would go).
+  const [install, setInstall] = useState<AppInstallStatus | null>(null);
+  const [installRevision, setInstallRevision] = useState(0);
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
+  useAppChanged((event) => {
+    if (event.id === appId) setInstallRevision((r) => r + 1);
+  });
+  useEffect(() => {
+    let cancelled = false;
+    appInstallStatus(appId)
+      .then((status) => {
+        if (!cancelled) setInstall(status);
+      })
+      .catch(() => {
+        if (!cancelled) setInstall(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [appId, installRevision]);
+  const handleUninstall = useCallback(async () => {
+    try {
+      setInstall(await uninstallApp(appId));
+      onStatus?.(t('apps.status.uninstalled', { name: app?.name ?? '' }));
+    } catch (e) {
+      onStatus?.(e instanceof Error ? e.message : String(e));
+    }
+  }, [appId, app?.name, onStatus, t]);
+  const handleOpenElsewhere = useCallback(async () => {
+    try {
+      await (standalone ? showAppInMain(appId) : openAppWindow(appId));
+    } catch (e) {
+      onStatus?.(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    // The app moves: one copy running, not two writing the same storage.
+    onOpenedElsewhere?.();
+  }, [standalone, appId, onStatus, onOpenedElsewhere]);
 
   useEffect(() => {
     let cancelled = false;
@@ -293,10 +345,12 @@ export function AppView({
     return (
       <section className="app-view">
         <div className="app-view-head">
-          <button type="button" className="btn ghost app-view-back" onClick={onBack}>
-            <ChevronLeft />
-            {t('apps.view.allApps')}
-          </button>
+          {!standalone && (
+            <button type="button" className="btn ghost app-view-back" onClick={onBack}>
+              <ChevronLeft />
+              {t('apps.view.allApps')}
+            </button>
+          )}
         </div>
         <p className="app-view-error" role="alert">
           {error}
@@ -308,10 +362,12 @@ export function AppView({
     return (
       <section className="app-view" aria-busy="true">
         <div className="app-view-head">
-          <button type="button" className="btn ghost app-view-back" onClick={onBack}>
-            <ChevronLeft />
-            {t('apps.view.allApps')}
-          </button>
+          {!standalone && (
+            <button type="button" className="btn ghost app-view-back" onClick={onBack}>
+              <ChevronLeft />
+              {t('apps.view.allApps')}
+            </button>
+          )}
         </div>
       </section>
     );
@@ -322,13 +378,17 @@ export function AppView({
   const reachable = [...(network.state?.always ?? []), ...(network.state?.session ?? [])];
 
   return (
-    <section className="app-view" aria-labelledby={`app-view-title-${summary.id}`}>
+    <section className={standalone ? 'app-view app-view-standalone' : 'app-view'} aria-labelledby={`app-view-title-${summary.id}`}>
       <header className="app-view-head">
-        <button type="button" className="btn ghost app-view-back" onClick={onBack}>
-          <ChevronLeft />
-          {t('apps.view.allApps')}
-        </button>
-        <span className="app-view-sep" aria-hidden="true" />
+        {!standalone && (
+          <>
+            <button type="button" className="btn ghost app-view-back" onClick={onBack}>
+              <ChevronLeft />
+              {t('apps.view.allApps')}
+            </button>
+            <span className="app-view-sep" aria-hidden="true" />
+          </>
+        )}
         <AppTile icon={summary.icon} name={summary.name} category={summary.category} size="sm" />
         <h2 id={`app-view-title-${summary.id}`} className="app-view-title" title={summary.name}>
           {summary.name}
@@ -460,6 +520,49 @@ export function AppView({
                 <ModelIcon />
                 {t('apps.menu.stopModelAccess')}
               </button>
+            )}
+            <div className="menu-sep" role="separator" />
+            <button
+              type="button"
+              className="menu-item"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                void handleOpenElsewhere();
+              }}
+            >
+              <ExternalIcon />
+              {standalone ? t('apps.menu.openInMain') : t('apps.menu.openWindow')}
+            </button>
+            {install?.installed ? (
+              <button
+                type="button"
+                className="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  void handleUninstall();
+                }}
+              >
+                <TrashIcon />
+                {t('apps.menu.uninstall')}
+              </button>
+            ) : (
+              install &&
+              install.place !== 'unsupported' && (
+                <button
+                  type="button"
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setInstallDialogOpen(true);
+                  }}
+                >
+                  <DownloadIcon />
+                  {t('apps.menu.install')}
+                </button>
+              )
             )}
             <div className="menu-sep" role="separator" />
             <button
@@ -598,7 +701,7 @@ export function AppView({
       <PageLlmDialog open={llmReviewOpen} title={summary.name} state={llm.state} onDecide={handleLlmDecision} />
       <ConfirmDialog
         open={clearConfirmOpen}
-        title={t('apps.clearData.title')}
+        title={t('apps.clearData.title', { name: summary.name })}
         description={t('apps.clearData.description')}
         confirmLabel={t('apps.clearData.confirm')}
         cancelLabel={t('common.actions.cancel')}
@@ -613,6 +716,16 @@ export function AppView({
         cancelLabel={t('common.actions.cancel')}
         onCancel={() => setSiteDataConfirmOpen(false)}
         onConfirm={() => void handleClearSiteData()}
+      />
+      <InstallAppDialog
+        app={installDialogOpen ? summary : null}
+        place={install?.place ?? 'unsupported'}
+        onClose={() => setInstallDialogOpen(false)}
+        onInstalled={(installed, status) => {
+          setInstallDialogOpen(false);
+          setInstall(status);
+          onStatus?.(t(installedMessageKey(status.place), { name: installed.name }));
+        }}
       />
       <AppInputsDialog
         appId={inputsDialogOpen ? summary.id : null}

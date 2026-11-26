@@ -63,6 +63,8 @@ export interface AppViewProps {
   onBack?: () => void;
   /** The app's own window: no Back, "Open in Conduit" instead of "Open in its own window". */
   standalone?: boolean;
+  /** After "Open in its own window" / "Open in Conduit" succeeded: close this copy. */
+  onOpenedElsewhere?: () => void;
   onEdit: (app: AppSummary) => void;
   onUpdateFromSource: (app: AppSummary) => void;
   onDelete: (app: AppSummary) => void;
@@ -78,6 +80,7 @@ export function AppView({
   revision,
   onBack,
   standalone = false,
+  onOpenedElsewhere,
   onEdit,
   onUpdateFromSource,
   onDelete,
@@ -144,8 +147,11 @@ export function AppView({
       await (standalone ? showAppInMain(appId) : openAppWindow(appId));
     } catch (e) {
       onStatus?.(e instanceof Error ? e.message : String(e));
+      return;
     }
-  }, [standalone, appId, onStatus]);
+    // The app moves: one copy running, not two writing the same storage.
+    onOpenedElsewhere?.();
+  }, [standalone, appId, onStatus, onOpenedElsewhere]);
 
   useEffect(() => {
     let cancelled = false;

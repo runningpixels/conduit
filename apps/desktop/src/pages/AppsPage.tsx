@@ -196,6 +196,7 @@ export function AppsPage({
           networkPolicyKey={networkPolicyKey}
           revision={revision}
           onBack={() => onOpenAppIdChange(null)}
+          onOpenedElsewhere={() => onOpenAppIdChange(null)}
           onEdit={(app) => setEditing({ mode: 'edit', app })}
           onUpdateFromSource={(app) => void updateFromSource(app)}
           onDelete={setDeleting}

@@ -163,6 +163,7 @@ export function StandaloneAppRoot({ appId }: { appId: string }) {
             colorScheme={effectiveTheme}
             networkPolicyKey={appNetworkPolicyKey(settings)}
             revision={revision}
+            onOpenedElsewhere={() => void closeThisWindow()}
             onEdit={(app) => setEditing({ mode: 'edit', app })}
             // Refreshing from the source chat needs the main window's artifacts.
             onUpdateFromSource={(app) => void showAppInMain(app.id).catch(() => {})}

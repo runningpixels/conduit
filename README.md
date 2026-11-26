@@ -20,10 +20,11 @@
 Conduit is an open-source desktop app for working with large language models.
 Bring your own key for any of twenty-three providers, or run a local model with
 Ollama or LM Studio, and ask for things you can keep: a **personal app** that
-pulls live data, a **slide deck** you edit by asking, a **spreadsheet** whose formulas
+pulls live data and installs like any other app, a **slide deck** you edit by asking, a **spreadsheet** whose formulas
 recalculate, an **answer cited from
 your own documents**, a **research report** whose every finding is checked
-against the page it came from, a **workflow** that runs on a schedule or when
+against the page it came from, a **scheduled task** that briefs you every morning, a
+**workflow** that runs on a schedule or when
 something new arrives, and stops to ask. Connect your tools over MCP: tools
 that change things, and every site a page wants to reach, ask you first.
 
@@ -44,12 +45,12 @@ open-source sync app built with Rust and Tauri.
 | ![The Workflows screen with the "Weekly Ferry team brief" workflow on the canvas: a Start step that asks for the Tauri blog and Rust blog addresses, two Fetch pages steps and two Ask the model summaries side by side, then a step that combines them, every step marked Finished, and the latest run's result, "Ferry team weekly brief 2026-10-17", on the right](./docs/assets/tour-workflows.webp) | ![A finished Research run comparing how Automerge, Yjs, cr-sqlite, ElectricSQL and PowerSync resolve conflicts: the card ends with Open report and Write from this report, notes 8 claims left out because their quotes could not be found in their sources, and lists the numbered sources under "10 cited · 10 read", with the report open beside it at its summary](./docs/assets/tour-research.webp) |
 | **[Writing](#writing)**: blog posts, docs and reports, written section by section | **[Slides](#slides)**: a deck you edit by asking, not a file you regenerate |
 | ![The Writing area: a draft titled "How five sync engines resolve conflicts — and what fits a file-sync app", written from a Research report with links back to its sources, one paragraph selected with the Rewrite, Shorter, Longer, Clearer, Fix grammar and Ask… toolbar above it, and the assistant's notes on each section beside it](./docs/assets/tour-writing.webp) | ![The Slides studio: a "Ferry 1.0 — how sync works" deck of eight slides in the dark Ink theme, on slide 4, "A one-line edit uploads one chunk": 10 MB for the whole file re-uploaded against 64 KiB, "1 of 5 chunks sent — the changed one", with the slide strip down the left and the chat on the right where the assistant changed that label on request](./docs/assets/tour-slides.webp) |
-| **[Personal apps](#personal-apps)**: keep what it builds, and open it any time | **[Spreadsheets](#spreadsheets)**: formulas that recalculate, changed by asking |
+| **[Personal apps](#personal-apps)**: keep what it builds, and install it like any other app | **[Spreadsheets](#spreadsheets)**: formulas that recalculate, changed by asking |
 | ![A personal app built in a chat: the request for a "Lisbon city guide" with an OpenStreetMap map, and the live app open beside it with 14 places in a list by category (landmarks, museums, viewpoints, markets and food) and coloured pins on the map, São Jorge Castle selected with its popup open](./docs/assets/tour-apps.webp) | ![A "Ferry 1.0 Launch Budget" spreadsheet open beside the chat: planned, actual, difference and share of budget for seven items, a "Security audit" row the assistant just added on request, and a total row whose formulas now include it](./docs/assets/screenshot-spreadsheet.webp) |
 | **[Answers from your own documents](#answers-from-your-own-documents)**: cited down to the exact passage | **[MCP connectors](#mcp-connectors)**: plug in any MCP server, on your own terms |
 | ![A chat with the Ferry docs attached, asked why the Ferry client retries auth twice before signing the user out: the four Ferry documents it drew on are listed under the question, and the answer starts from the auth design notes with the retry loop sketched in Rust](./docs/assets/screenshot-documents.webp) | ![A chat that called the DeepWiki connector three times (read_wiki_structure, then ask_wiki_question twice) to learn how Tauri passes IPC messages, then wrote a white one-page primer for Ferry's contributors beside it: "Tauri 2 IPC — the invoke round trip", with the round trip in five steps from the webview to the Rust core](./docs/assets/tour-connectors.webp) |
-| **[White-label](https://conduitllm.com/whitelabel.html)**: your name, logo and colours from one brand file | |
-| ![Conduit rebranded as Ferry Assistant: the Ferry ship logo and name at the top of the rail, a navy and teal palette across the app, and Settings → Branding open with branding enabled, the app name Ferry, the display name Ferry Assistant, the tagline, the logo and the colour fields filled in from one brand file](./docs/assets/tour-whitelabel.webp) | |
+| **[White-label](https://conduitllm.com/whitelabel.html)**: your name, logo and colours from one brand file | **[Scheduled tasks](#scheduled-tasks)**: ask once, and it reports back every morning |
+| ![Conduit rebranded as Ferry Assistant: the Ferry ship logo and name at the top of the rail, a navy and teal palette across the app, and Settings → Branding open with branding enabled, the app name Ferry, the display name Ferry Assistant, the tagline, the logo and the colour fields filled in from one brand file](./docs/assets/tour-whitelabel.webp) | ![The Scheduled tasks page with five tasks, each with Run now, Pause, Edit and Delete: a Hacker News task that runs when its feed has a new post, an AI news briefing on weekdays at 08:00, a Rust and Tauri release check every day at 09:00 and a weekly local-first review done by the Researcher agent, those three with today's result to open, and a monthly dependency check on day 1 at 10:00](./docs/assets/screenshot-scheduled.webp) |
 
 ## What you can build
 
@@ -64,6 +65,16 @@ Upstream watch, below, is one: it calls the GitHub API live, after asking once
 for that site.
 
 ![The Apps page: eight personal apps as cards (Lisbon city guide, Upstream watch, Pomodoro timer, Weather dashboard, Snake, Release note polisher, Budget tracker, Unit converter), each showing what it may do](./docs/assets/screenshot-apps.webp)
+
+**Install as app** (in the app's ⋯ menu) puts it on your computer like any other
+program: in the Start menu under *Conduit Apps* on Windows, with a desktop shortcut
+if you like; in `~/Applications/Conduit Apps` on macOS; in the app menu on Linux.
+It opens in a window of its own, without the rest of Conduit, and on Windows gets
+its own taskbar button you can pin. Renaming the app or changing its icon updates
+the shortcut, and **Remove from computer** takes it away again. **Open in its own
+window** gives you the window without installing.
+
+![The Lisbon city guide app open in its own window, without the rest of Conduit, and the Install as app dialog over it: the app's icon and name, "It will appear in Start menu › Conduit Apps", and a ticked "Also add a shortcut to the desktop" box](./docs/assets/screenshot-install-app.webp)
 
 Personal apps can do three things a plain page in a sandbox can't, each
 declared by the page and checked by Conduit:
@@ -213,6 +224,8 @@ so it can say what changed. You can also ask in any chat ("every weekday at 8,
 brief me on AI news") and confirm the task on a card. Tasks run while Conduit
 is open, including from the tray, and can only do what you approved when you
 set them up.
+
+![The Scheduled tasks page with five tasks, each with Run now, Pause, Edit and Delete: a Hacker News task that runs when its feed has a new post, an AI news briefing on weekdays at 08:00, a Rust and Tauri release check every day at 09:00 and a weekly local-first review done by the Researcher agent, those three with today's result to open, and a monthly dependency check on day 1 at 10:00](./docs/assets/screenshot-scheduled.webp)
 
 ### Workflows
 

@@ -451,7 +451,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for everything in each release.
 
 ## Status
 
-**v1.0.0-rc.39 — release candidate.** Installers for Windows, macOS (Apple silicon and
+**v1.0.0-rc.40 — release candidate.** Installers for Windows, macOS (Apple silicon and
 Intel) and Linux are on the [releases page](https://github.com/runningpixels/conduit/releases).
 They are not OS-code-signed, so the first launch shows a Gatekeeper or
 SmartScreen warning. Building from source works too.
@@ -487,13 +487,13 @@ left is checking it on real installs before calling it final.
 | Your agents — defined once, used in chat, workflows and routines; helpers side by side; open, stop or redirect one; memory, documents and document review | Working |
 | Scheduled tasks — one page for tasks, routines and scheduled workflows; set up in a form or in chat; each run as a chat, document or file | Working |
 | Computer use — agents run commands and change files in a folder you choose, with approval, command rules and a Permissions tab | Working, off by default; commands are confined to the folder on Windows only |
-| Personal apps — save a page, nine starter apps, per-app storage, settings, model access and usage limits | Working |
+| Personal apps — save a page, nine starter apps, per-app storage, settings, model access and usage limits; install on the computer and open in its own window | Working; installing checked on Windows only |
 | First-run examples in a new profile | Working |
 | Slides — storyline, one live deck built from layout parts, charts drawn from data, a layout check after each change, Script, history, themes, presenter window | Working |
 | Slides export — HTML and PowerPoint on every platform, PDF on Windows | Working |
 | Home and navigation — ask box, needs-you, fresh results, pick up, area tiles, grouped rail, `Ctrl+1`…`9` | Working |
 | Interface in eight languages | Working |
-| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.39 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
+| Update/packaging pipeline, with opt-in automatic updates | Working — 1.0.0-rc.40 built, signed and published on all four targets; updating checked on a real Windows install, not yet on macOS or Linux |
 | OS code-signing | Not done — bundles are unsigned |
 | Cloud sync / accounts | Not planned in this repository |
 

@@ -7,6 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0-rc.40] - 2026-11-26
+
+Installable apps: put an app you made in Conduit on your computer, with its
+own icon and window.
+
 ### Added
 
 - **Install apps on your computer.** An app's ⋯ menu has "Install as app…":
